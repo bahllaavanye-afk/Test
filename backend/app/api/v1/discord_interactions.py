@@ -18,6 +18,7 @@ Setup (one-time, documented in docs/DISCORD_FALLBACK.md):
 """
 from __future__ import annotations
 
+import json as _json
 import os
 from datetime import datetime, timezone
 
@@ -64,13 +65,26 @@ async def _cmd_status() -> str:
     from app.models.bot import Bot
 
     async with AsyncSessionLocal() as db:
-        total = (await db.execute(select(func.count(Bot.id)).where(Bot.is_archived == False))).scalar_one()  # noqa: E712
-        enabled = (await db.execute(
-            select(func.count(Bot.id)).where(Bot.is_enabled == True, Bot.is_archived == False)  # noqa: E712
-        )).scalar_one()
-        ran = (await db.execute(
-            select(func.count(Bot.id)).where(Bot.run_count > 0, Bot.is_archived == False)  # noqa: E712
-        )).scalar_one()
+        total = (
+            await db.execute(
+                select(func.count(Bot.id)).where(Bot.is_archived == False)  # noqa: E712
+            )
+        ).scalar_one()
+        enabled = (
+            await db.execute(
+                select(func.count(Bot.id)).where(
+                    Bot.is_enabled == True,  # noqa: E712
+                    Bot.is_archived == False,  # noqa: E712
+                )
+            )
+        ).scalar_one()
+        ran = (
+            await db.execute(
+                select(func.count(Bot.id)).where(
+                    Bot.run_count > 0, Bot.is_archived == False  # noqa: E712
+                )
+            )
+        ).scalar_one()
     now = datetime.now(timezone.utc).strftime("%H:%M UTC")
     return (
         f"**QuantEdge status** · {now}\n"
@@ -88,10 +102,13 @@ async def _cmd_pnl() -> str:
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     async with AsyncSessionLocal() as db:
         equity = await latest_total_equity(db)
-        n_closed, pnl_today = (await db.execute(
-            select(func.count(Trade.id), func.coalesce(func.sum(Trade.realized_pnl), 0.0))
-            .where(Trade.closed_at >= today_start)
-        )).one()
+        n_closed, pnl_today = (
+            await db.execute(
+                select(func.count(Trade.id), func.coalesce(func.sum(Trade.realized_pnl), 0.0)).where(
+                    Trade.closed_at >= today_start
+                )
+            )
+        ).one()
         open_count = (await db.execute(select(func.count(Position.id)))).scalar_one()
     arrow = "▲" if float(pnl_today) >= 0 else "▼"
     return (
@@ -131,13 +148,17 @@ async def _cmd_run_bot(name_query: str) -> str:
     if not q:
         return "Usage: `/run-bot name:<part of the bot's name>`"
     async with AsyncSessionLocal() as db:
-        bots = (await db.execute(
-            select(Bot).where(
-                Bot.is_enabled == True,  # noqa: E712
-                Bot.is_archived == False,  # noqa: E712
-                Bot.name.ilike(f"%{q}%"),
-            ).limit(2)
-        )).scalars().all()
+        bots = (
+            await db.execute(
+                select(Bot)
+                .where(
+                    Bot.is_enabled == True,  # noqa: E712
+                    Bot.is_archived == False,  # noqa: E712
+                    Bot.name.ilike(f"%{q}%"),
+                )
+                .limit(2)
+            )
+        ).scalars().all()
         if not bots:
             return f"No enabled bot matches `{q}`."
         if len(bots) > 1:
@@ -152,6 +173,31 @@ async def _cmd_run_bot(name_query: str) -> str:
     )
 
 
+def _extract_options(data: dict) -> dict[str, str]:
+    """Return a mapping of option name → value from a Discord command payload."""
+    return {opt.get("name"): opt.get("value") for opt in (data.get("options") or []) if opt}
+
+
+async def _handle_application_command(data: dict) -> dict:
+    """Process a Discord application command and return a Discord message payload."""
+    name = (data.get("name") or "").lower()
+    options = _extract_options(data)
+
+    try:
+        if name == "status":
+            return _msg(await _cmd_status())
+        if name == "pnl":
+            return _msg(await _cmd_pnl())
+        if name == "health":
+            return _msg(await _cmd_health())
+        if name == "run-bot":
+            return _msg(await _cmd_run_bot(str(options.get("name", ""))))
+        return _msg(f"Unknown command `{name}`.", ephemeral=True)
+    except Exception as exc:  # pragma: no cover
+        logger.error("Discord command failed", command=name, error=str(exc))
+        return _msg(f"⚠️ `{name}` failed: {str(exc)[:150]}", ephemeral=True)
+
+
 @router.post("/interactions")
 async def discord_interactions(request: Request):
     """Discord interactions webhook: signature-verified, 3s response budget."""
@@ -162,8 +208,6 @@ async def discord_interactions(request: Request):
         # 401 is required by Discord's endpoint validation for bad signatures
         raise HTTPException(status_code=401, detail="invalid request signature")
 
-    import json as _json
-
     payload = _json.loads(body)
     itype = payload.get("type")
 
@@ -171,21 +215,6 @@ async def discord_interactions(request: Request):
         return {"type": _PONG}
 
     if itype == _APPLICATION_COMMAND:
-        data = payload.get("data") or {}
-        name = (data.get("name") or "").lower()
-        options = {o.get("name"): o.get("value") for o in (data.get("options") or [])}
-        try:
-            if name == "status":
-                return _msg(await _cmd_status())
-            if name == "pnl":
-                return _msg(await _cmd_pnl())
-            if name == "health":
-                return _msg(await _cmd_health())
-            if name == "run-bot":
-                return _msg(await _cmd_run_bot(str(options.get("name", ""))))
-            return _msg(f"Unknown command `{name}`.", ephemeral=True)
-        except Exception as exc:
-            logger.error("Discord command failed", command=name, error=str(exc))
-            return _msg(f"⚠️ `{name}` failed: {str(exc)[:150]}", ephemeral=True)
+        return await _handle_application_command(payload.get("data") or {})
 
     return _msg("Unsupported interaction type.", ephemeral=True)
