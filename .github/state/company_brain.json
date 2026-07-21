@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784667809.504757,
+    "last_updated": 1784671934.1980855,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784667809.5038018
+    "last_brain_update": 1784671934.1971436
   },
   "episodic": [
     {
@@ -1842,11 +1842,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The deployment failed due to resource limits, with messages advising to retry after 24 hours or 1 day, and an automated patch attempt also failed.",
-      "item_count": 20,
-      "ts": 1783805629.1501637
-    },
-    {
       "summary": "We need to summarize the given GitHub PR/issue discussions. The input shows repeated errors: \"Deployment failed with the following error: Resource is limited - try again in 24 hours (more th\" (appears truncated). It seems to be a single issue or multiple similar comments about deployment failing due to resource limits. The user wants a 1-2 sentence summary.\n\nThe summary should capture that deployment is failing due to resource limitations, with a suggestion to retry after 24 hours.",
       "item_count": 20,
       "ts": 1783809143.415538
@@ -2340,6 +2335,11 @@
       "summary": "The automated fix attempts failed because the patch could not be applied to the file, and the issue was deemed too complex for automated resolution.",
       "item_count": 20,
       "ts": 1784667809.4953427
+    },
+    {
+      "summary": "I'm unable to summarize the discussion because the provided input appears to be a corrupted or malformed string (likely a base64-encoded payload that couldn't be decoded). The error message indicates that no valid JSON object was found, and an auto-fix attempt failed. Please share a direct link to the GitHub PR or issue, or paste the actual discussion text, and I'll be happy to summarize it in 1\u20132 sentences.",
+      "item_count": 20,
+      "ts": 1784671934.1884077
     }
   ],
   "experiment_results": [
