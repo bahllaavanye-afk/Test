@@ -10,6 +10,7 @@ from typing import Dict, List
 
 import httpx
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.config import settings
 from app.utils.logging import logger
@@ -36,6 +37,95 @@ def _alpaca_headers() -> dict:
         "APCA-API-KEY-ID": settings.alpaca_api_key,
         "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
     }
+
+
+class BenchmarkPoint(BaseModel):
+    """Single point on a benchmark equity curve."""
+
+    date: date = Field(
+        ...,
+        description="Date of the equity curve point",
+        example="2023-01-02",
+    )
+    value: float = Field(
+        ...,
+        description="Equity curve value normalized to 100 at the start date",
+        example=102.45,
+    )
+
+    @validator("value")
+    def non_negative(cls, v: float) -> float:
+        """Equity values should be non‑negative."""
+        if v < 0:
+            raise ValueError("Benchmark value must be non‑negative")
+        return v
+
+
+class BenchmarkCurve(BaseModel):
+    """Equity curve for a single benchmark ticker."""
+
+    ticker: str = Field(
+        ...,
+        description="Ticker symbol of the benchmark",
+        example="SPY",
+    )
+    points: List[BenchmarkPoint] = Field(
+        ...,
+        description="Chronologically ordered list of equity curve points",
+    )
+
+    @validator("points")
+    def sorted_chronologically(cls, v: List[BenchmarkPoint]) -> List[BenchmarkPoint]:
+        """Ensure points are sorted by date."""
+        dates = [p.date for p in v]
+        if dates != sorted(dates):
+            raise ValueError("Benchmark points must be ordered by date")
+        return v
+
+
+class BenchmarkResponse(BaseModel):
+    """Container for multiple benchmark curves."""
+
+    __root__: Dict[str, List[BenchmarkPoint]] = Field(
+        ...,
+        description="Mapping from ticker symbol to its equity curve points",
+    )
+
+    @validator("__root__", pre=True)
+    def convert_dict(cls, v: Dict[str, List[dict]]) -> Dict[str, List[BenchmarkPoint]]:
+        """Convert raw dicts to BenchmarkPoint models."""
+        return {
+            ticker: [BenchmarkPoint(**point) for point in points]
+            for ticker, points in v.items()
+        }
+
+
+class BenchmarkStat(BaseModel):
+    """Reference statistics for a benchmark."""
+
+    name: str = Field(..., description="Human‑readable name of the benchmark")
+    annual_return: float = Field(
+        ...,
+        description="Average annual return as a decimal (e.g., 0.10 for 10%)",
+        example=0.10,
+    )
+    sharpe: float = Field(
+        ...,
+        description="Sharpe ratio of the benchmark",
+        example=0.47,
+    )
+    max_dd: float = Field(
+        ...,
+        description="Maximum drawdown as a decimal (negative value)",
+        example=-0.57,
+    )
+
+    @validator("annual_return", "sharpe", "max_dd")
+    def numeric(cls, v: float) -> float:
+        """Ensure numeric fields are finite."""
+        if not isinstance(v, (int, float)):
+            raise TypeError("Numeric fields must be int or float")
+        return float(v)
 
 
 async def _fetch_ticker_bars(
@@ -173,3 +263,12 @@ def get_benchmark_stats() -> dict:
         "BRK-B": {"name": "Warren Buffett (BRK.B)", "annual_return": 0.199, "sharpe": 0.79, "max_dd": -0.48},
         "ALL_WEATHER": {"name": "Ray Dalio All Weather", "annual_return": 0.082, "sharpe": 0.67, "max_dd": -0.20},
     }
+
+__all__ = [
+    "BenchmarkPoint",
+    "BenchmarkCurve",
+    "BenchmarkResponse",
+    "BenchmarkStat",
+    "fetch_benchmark_curves",
+    "get_benchmark_stats",
+]
