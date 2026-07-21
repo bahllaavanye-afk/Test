@@ -11,6 +11,27 @@ from pydantic import BaseModel, ConfigDict
 import uuid
 from datetime import datetime, timezone
 
+# Constants
+DEFAULT_PORTFOLIO_VALUE = 100_000
+DEFAULT_VAR_METHOD = "historical"
+DEFAULT_EVENT_LIMIT = 20
+DEFAULT_TRADE_LIMIT = 252
+DEFAULT_SEED = 42
+DEFAULT_SEED_FACTOR = 99
+DEFAULT_MAX_DRAWDOWN_LIMIT_PCT = 15.0
+DEFAULT_POSITION_LIMIT_PCT = 10.0
+DEFAULT_REGIME = "bull"
+DEFAULT_CIRCUIT_BREAKER_STATUS = "normal"
+DEFAULT_RULE_ACCOUNT_ID = "system"
+DEFAULT_RULE_ACTION = "alert"
+RULE_NOT_FOUND_DETAIL = "Rule not found"
+DEFAULT_EVENT_TYPE_FALLBACK = "risk_event"
+HALT_ALL = "halt_all"
+HALT_BUCKET = "halt_bucket"
+STATUS_TRIPPED = "tripped"
+STATUS_NORMAL = "normal"
+DEFAULT_DRAWNDOWN_PCT = 5.0
+
 router = APIRouter(prefix="/risk", tags=["risk"])
 
 
@@ -29,17 +50,17 @@ async def risk_summary(
     return {
         "active_rules": len(active_rules),
         "recent_events": len(recent_events),
-        "circuit_breaker": "normal",
-        "regime": "bull",
-        "max_drawdown_limit_pct": 15.0,
-        "position_limit_pct": 10.0,
+        "circuit_breaker": DEFAULT_CIRCUIT_BREAKER_STATUS,
+        "regime": DEFAULT_REGIME,
+        "max_drawdown_limit_pct": DEFAULT_MAX_DRAWDOWN_LIMIT_PCT,
+        "position_limit_pct": DEFAULT_POSITION_LIMIT_PCT,
     }
 
 
 class RiskRuleCreate(BaseModel):
     rule_type: str
     threshold: float
-    action: str = "alert"
+    action: str = DEFAULT_RULE_ACTION
 
 
 class RiskRuleOut(BaseModel):
@@ -69,7 +90,7 @@ async def create_rule(
 ):
     rule = RiskRule(
         id=str(uuid.uuid4()),
-        account_id="system",
+        account_id=DEFAULT_RULE_ACCOUNT_ID,
         rule_type=body.rule_type,
         threshold=body.threshold,
         action=body.action,
@@ -91,7 +112,7 @@ async def delete_risk_rule(
     from fastapi import HTTPException
     rule = await db.get(RiskRule, rule_id)
     if not rule:
-        raise HTTPException(status_code=404, detail="Rule not found")
+        raise HTTPException(status_code=404, detail=RULE_NOT_FOUND_DETAIL)
     await db.delete(rule)
     await db.commit()
     return {"deleted": rule_id}
@@ -99,7 +120,7 @@ async def delete_risk_rule(
 
 @router.get("/events")
 async def list_events(
-    limit: int = 20,
+    limit: int = DEFAULT_EVENT_LIMIT,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -114,7 +135,7 @@ async def list_events(
     return [
         {
             "id": e.id,
-            "event_type": (e.rule.rule_type if e.rule else None) or e.action_taken or "risk_event",
+            "event_type": (e.rule.rule_type if e.rule else None) or e.action_taken or DEFAULT_EVENT_TYPE_FALLBACK,
             "details": e.notes,
             "created_at": e.triggered_at,
         }
@@ -136,9 +157,13 @@ async def get_circuit_breaker_status(
         .limit(1)
     )
     latest = result.scalar_one_or_none()
-    is_tripped = latest is not None and latest.resolved_at is None and latest.action_taken in ("halt_all", "halt_bucket")
+    is_tripped = (
+        latest is not None
+        and latest.resolved_at is None
+        and latest.action_taken in (HALT_ALL, HALT_BUCKET)
+    )
     return {
-        "status": "tripped" if is_tripped else "normal",
+        "status": STATUS_TRIPPED if is_tripped else STATUS_NORMAL,
         "tripped": is_tripped,
         "last_event_at": latest.triggered_at.isoformat() if latest else None,
     }
@@ -146,22 +171,22 @@ async def get_circuit_breaker_status(
 
 @router.get("/var")
 async def get_var(
-    portfolio_value: float = Query(100_000, description="Portfolio value in USD"),
-    method: str = Query("historical"),
+    portfolio_value: float = Query(DEFAULT_PORTFOLIO_VALUE, description="Portfolio value in USD"),
+    method: str = Query(DEFAULT_VAR_METHOD),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Compute portfolio VaR and CVaR from recent trade returns."""
     from app.risk.var import historical_var
     result = await db.execute(
-        select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(252)
+        select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(DEFAULT_TRADE_LIMIT)
     )
     pnl_list = [float(row[0]) for row in result.all() if row[0] is not None]
     if not pnl_list:
         # Use synthetic returns for demo
         import numpy as np
-        np.random.seed(42)
-        pnl_list = list(np.random.normal(0.001, 0.015, 252))
+        np.random.seed(DEFAULT_SEED)
+        pnl_list = list(np.random.normal(0.001, 0.015, DEFAULT_TRADE_LIMIT))
     returns = [p / portfolio_value for p in pnl_list]
     var_result = historical_var(returns, portfolio_value, method)
     return var_result.to_dict()
@@ -169,7 +194,7 @@ async def get_var(
 
 @router.get("/factor-exposure")
 async def get_factor_exposure(
-    portfolio_value: float = Query(100_000),
+    portfolio_value: float = Query(DEFAULT_PORTFOLIO_VALUE),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -178,16 +203,16 @@ async def get_factor_exposure(
     import numpy as np
 
     result = await db.execute(
-        select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(252)
+        select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(DEFAULT_TRADE_LIMIT)
     )
     pnl_list = [float(row[0]) for row in result.all() if row[0] is not None]
     if not pnl_list:
-        np.random.seed(42)
-        pnl_list = list(np.random.normal(80, 500, 252))
+        np.random.seed(DEFAULT_SEED)
+        pnl_list = list(np.random.normal(80, 500, DEFAULT_TRADE_LIMIT))
 
     port_returns = [p / portfolio_value for p in pnl_list]
     # Approximate SPY returns (actual would come from market data cache)
-    np.random.seed(99)
+    np.random.seed(DEFAULT_SEED_FACTOR)
     spy_returns = list(np.random.normal(0.0004, 0.012, len(port_returns)))
 
     exposure = compute_factor_exposure(port_returns, spy_returns)
@@ -196,8 +221,8 @@ async def get_factor_exposure(
 
 @router.get("/drawdown-recovery")
 async def get_drawdown_recovery(
-    current_drawdown_pct: float = Query(5.0, description="Current drawdown as percentage, e.g. 5.0"),
-    portfolio_value: float = Query(100_000),
+    current_drawdown_pct: float = Query(DEFAULT_DRAWNDOWN_PCT, description="Current drawdown as percentage, e.g. 5.0"),
+    portfolio_value: float = Query(DEFAULT_PORTFOLIO_VALUE),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -205,12 +230,12 @@ async def get_drawdown_recovery(
     from app.risk.drawdown_recovery import estimate_recovery
     import numpy as np
     result = await db.execute(
-        select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(252)
+        select(Trade.realized_pnl).order_by(Trade.closed_at.desc()).limit(DEFAULT_TRADE_LIMIT)
     )
     pnl_list = [float(row[0]) for row in result.all() if row[0] is not None]
     if not pnl_list:
-        np.random.seed(42)
-        pnl_list = list(np.random.normal(80, 500, 252))
+        np.random.seed(DEFAULT_SEED)
+        pnl_list = list(np.random.normal(80, 500, DEFAULT_TRADE_LIMIT))
     returns = [p / portfolio_value for p in pnl_list]
     estimate = estimate_recovery(returns, current_drawdown_pct / 100.0)
     return estimate.to_dict()
