@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784650838.6050763,
+    "last_updated": 1784652831.876948,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784647396.1648898
+    "last_brain_update": 1784652831.876013
   },
   "episodic": [
     {
@@ -1802,11 +1802,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The deployment failed due to a resource limit error, and subsequent auto-fix attempts also failed to apply patches to the file.",
-      "item_count": 20,
-      "ts": 1783771182.339502
-    },
-    {
       "summary": "The deployment failed due to resource limits,",
       "item_count": 20,
       "ts": 1783784212.2430017
@@ -2300,6 +2295,11 @@
       "summary": "A deployment failed due to resource limits, and an autonomous PR modifying protected files could not be auto-fixed because the patch failed to apply.",
       "item_count": 20,
       "ts": 1784647396.1563742
+    },
+    {
+      "summary": "A deployment failed due to a resource limit error (\"try again in 24 hours\"), while an autonomous PR that modifies protected backend files had its automerge revoked by a team lead and then failed to auto-fix because the patch could not be applied.",
+      "item_count": 20,
+      "ts": 1784652831.8675303
     }
   ],
   "experiment_results": [
