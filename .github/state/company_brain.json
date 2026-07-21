@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784604560.2639723,
+    "last_updated": 1784608262.3518991,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -151,70 +151,10 @@
       "TMO"
     ],
     "risk_flags": [],
-    "risk_status": "alert",
-    "last_brain_update": 1784596099.7626352
+    "risk_status": "normal",
+    "last_brain_update": 1784608262.3509626
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 3,
-      "sector_leaders": [
-        "Financials",
-        "Healthcare",
-        "Utilities"
-      ],
-      "gap_count": 5,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=3). Leading: Financials, Healthcare. Gaps: 5, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784136263.576393
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 3,
-      "sector_leaders": [
-        "Financials",
-        "Healthcare",
-        "Industrials"
-      ],
-      "gap_count": 5,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=3). Leading: Financials, Healthcare. Gaps: 5, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784139046.9253001
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 3,
-      "sector_leaders": [
-        "Financials",
-        "Healthcare",
-        "Utilities"
-      ],
-      "gap_count": 5,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=3). Leading: Financials, Healthcare. Gaps: 5, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784142162.5666144
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 3,
-      "sector_leaders": [
-        "Financials",
-        "Healthcare",
-        "Industrials"
-      ],
-      "gap_count": 4,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=3). Leading: Financials, Healthcare. Gaps: 4, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784146259.2681155
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -1817,14 +1757,37 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784596092.1528845
+    },
+    {
+      "lesson": "Automated patch application is failing repeatedly, indicating potential code conflicts or misconfigured CI/CD pipeline.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784608248.5751228
+    },
+    {
+      "lesson": "Multiple consecutive auto-fix failures suggest a systemic issue with the fix generation logic or repository state.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784608248.5805964
+    },
+    {
+      "lesson": "No manual intervention or workaround logged for auto-fix failures, posing risk of unresolved code issues accumulating.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784608248.5847194
+    },
+    {
+      "lesson": "The presence of encoded tokens (likely from Vercel) implies external integrations may be interfering with patch application.",
+      "category": "strategy",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784608248.5887935
     }
   ],
   "github_insights": [
-    {
-      "summary": "Multiple failures occurred: a Slack agent run failed due to message limit quota exhaustion, a deployment was blocked by a resource limit (retry in 24 hours), and an auto-fix attempt could not apply a patch to a file.",
-      "item_count": 20,
-      "ts": 1783728738.5429888
-    },
     {
       "summary": "The auto-fix process repeatedly failed three times because it could not apply the patch to the file.",
       "item_count": 20,
@@ -2319,6 +2282,11 @@
       "summary": "The Slack agent-team run failed due to message quota limits, deployment was blocked by resource constraints requiring a 24-hour wait, and an auto-fix attempt could not apply a patch to the file.",
       "item_count": 20,
       "ts": 1784596099.7559478
+    },
+    {
+      "summary": "The GitHub discussion reports that an automated fix attempt failed twice, as the system could not apply the patch to the file.",
+      "item_count": 20,
+      "ts": 1784608262.3415425
     }
   ],
   "experiment_results": [
