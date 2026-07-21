@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784671934.1980855,
+    "last_updated": 1784675507.7351708,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,37 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784671934.1971436
+    "last_brain_update": 1784675507.7342012
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix skipped because issue description lacked sufficient detail. Improve issue templates to require clear current behavior, failing scenario, and expected fix scope.",
-      "category": "execution",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1784198088.9697464
-    },
-    {
-      "lesson": "Auto-fix failures indicate CI/CD pipeline fragility; manual intervention is needed to apply patches, slowing development.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784211684.6266687
-    },
-    {
-      "lesson": "Architectural changes for multi-leg order infrastructure are critical to enable options-desk income structures; prioritize design and implementation.",
-      "category": "strategy",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784211684.6294248
-    },
-    {
-      "lesson": "Skipping complex fixes due to architectural dependencies creates technical debt and execution risk; allocate dedicated engineering resources.",
-      "category": "risk",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784211684.6320245
-    },
     {
       "lesson": "Vercel deployment links may indicate environment issues; verify CI/CD stability to avoid production disruptions.",
       "category": "execution",
@@ -1838,14 +1810,37 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784667673.8138556
+    },
+    {
+      "lesson": "Auto-fix patch failures indicate fragile code patching process; implement fallback to manual review and improve patch validation.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784675475.7034986
+    },
+    {
+      "lesson": "Missing historical data across multiple asset classes reveals data pipeline fragility; deploy comprehensive data quality checks and automated retries.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784675475.70903
+    },
+    {
+      "lesson": "Slack agent failures due to quota limits or dead tokens pose operational risk; set up proactive monitoring and automated token rotation.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784675475.7134118
+    },
+    {
+      "lesson": "Lack of concrete details in issue descriptions blocks automated resolution; enforce structured templates for bug reports and error logs.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784675475.7176871
     }
   ],
   "github_insights": [
-    {
-      "summary": "We need to summarize the given GitHub PR/issue discussions. The input shows repeated errors: \"Deployment failed with the following error: Resource is limited - try again in 24 hours (more th\" (appears truncated). It seems to be a single issue or multiple similar comments about deployment failing due to resource limits. The user wants a 1-2 sentence summary.\n\nThe summary should capture that deployment is failing due to resource limitations, with a suggestion to retry after 24 hours.",
-      "item_count": 20,
-      "ts": 1783809143.415538
-    },
     {
       "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a combination of a base64-encoded string and some text. The text says: \"Deployment failed with the following error: Resource is limited - try again in 24 hours (more th\" and then \":robot: **Auto-fix failed** \u2014 could not apply patch to file.\"\n\nThe base64 string likely contains metadata but we don't need to decode it for summary.",
       "item_count": 20,
@@ -2340,6 +2335,11 @@
       "summary": "I'm unable to summarize the discussion because the provided input appears to be a corrupted or malformed string (likely a base64-encoded payload that couldn't be decoded). The error message indicates that no valid JSON object was found, and an auto-fix attempt failed. Please share a direct link to the GitHub PR or issue, or paste the actual discussion text, and I'll be happy to summarize it in 1\u20132 sentences.",
       "item_count": 20,
       "ts": 1784671934.1884077
+    },
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1784675507.7236147
     }
   ],
   "experiment_results": [
