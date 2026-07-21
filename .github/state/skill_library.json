@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Test network connectivity",
-    "Add unit tests",
-    "Parse JSON feeds",
     "Implement circuit breaker",
     "Log broker responses",
     "Sanitize query strings",
@@ -199,8 +196,11 @@
     "Inspect model logs",
     "Check GPU temps",
     "Test DB connections",
-    "Log market holidays"
+    "Log market holidays",
+    "Test RAM usage",
+    "Verify disk space",
+    "Scan for malware"
   ],
-  "last_updated": "2026-07-21T22:01:14.654332+00:00",
+  "last_updated": "2026-07-21T23:27:31.355609+00:00",
   "total": 200
 }
