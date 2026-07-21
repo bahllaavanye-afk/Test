@@ -23,16 +23,29 @@ from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
+# Priority levels
 PRIORITY_CRITICAL = 0
 PRIORITY_HIGH = 1
 PRIORITY_NORMAL = 2
 PRIORITY_LOW = 3
 
+# Queue keys
 _QUEUE_PREFIX = "tasks:pending:"
 _PROCESSING_KEY = "tasks:processing"
 _DEAD_KEY = "tasks:dead"
+
+# Operational constants
 _LOCK_TTL = 300          # seconds — task lock expires after 5 min (worker crash recovery)
 _MAX_STREAM_LEN = 5000
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_POLL_INTERVAL = 0.5
+ERROR_RETRY_SLEEP = 2.0
+MAX_REQUEUE_DELAY = 5.0
+BACKOFF_BASE = 2
+DEAD_LETTER_MAXLEN = 1000
+QUEUE_READ_COUNT = 1
+PRIORITY_LEVELS = 4
+PRIORITY_DEPTH_KEY_FMT = "priority_{priority}"
 
 TaskFn = Callable[..., Awaitable[None]]
 
@@ -43,7 +56,7 @@ class Task:
     task_type: str
     payload: dict
     priority: int = PRIORITY_NORMAL
-    max_retries: int = 3
+    max_retries: int = DEFAULT_MAX_RETRIES
     attempt: int = 0
     created_at: float = field(default_factory=time.time)
     scheduled_at: float = field(default_factory=time.time)
@@ -61,7 +74,7 @@ class Task:
             except (json.JSONDecodeError, TypeError):
                 d[k] = v
         d["priority"] = int(d.get("priority", PRIORITY_NORMAL))
-        d["max_retries"] = int(d.get("max_retries", 3))
+        d["max_retries"] = int(d.get("max_retries", DEFAULT_MAX_RETRIES))
         d["attempt"] = int(d.get("attempt", 0))
         d["created_at"] = float(d.get("created_at", 0))
         d["scheduled_at"] = float(d.get("scheduled_at", 0))
@@ -94,7 +107,7 @@ class TaskQueue:
         task_type: str,
         payload: dict,
         priority: int = PRIORITY_NORMAL,
-        max_retries: int = 3,
+        max_retries: int = DEFAULT_MAX_RETRIES,
         delay_seconds: float = 0,
     ) -> str:
         task_id = str(uuid.uuid4())
@@ -121,7 +134,7 @@ class TaskQueue:
         for priority in (PRIORITY_CRITICAL, PRIORITY_HIGH, PRIORITY_NORMAL, PRIORITY_LOW):
             key = f"{_QUEUE_PREFIX}{priority}"
             try:
-                results = await self._r.xread({key: "0"}, count=1)
+                results = await self._r.xread({key: "0"}, count=QUEUE_READ_COUNT)
                 if not results:
                     continue
                 for _, messages in results:
@@ -135,7 +148,7 @@ class TaskQueue:
                 logger.debug("TaskQueue.process_once error priority=%d: %s", priority, e)
         return False
 
-    async def run_worker(self, poll_interval: float = 0.5) -> None:
+    async def run_worker(self, poll_interval: float = DEFAULT_POLL_INTERVAL) -> None:
         """Continuous worker loop. Run as background task."""
         logger.info("TaskQueue worker started")
         while True:
@@ -145,14 +158,14 @@ class TaskQueue:
                     await asyncio.sleep(poll_interval)
             except Exception as e:
                 logger.error("TaskQueue worker error: %s", e)
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(ERROR_RETRY_SLEEP)
 
     async def _dispatch(self, task: Task) -> None:
         now = time.time()
         if task.scheduled_at > now:
             # Re-enqueue with delay (use original priority)
             delay = task.scheduled_at - now
-            await asyncio.sleep(min(delay, 5.0))
+            await asyncio.sleep(min(delay, MAX_REQUEUE_DELAY))
             await self._requeue(task, delay=max(0, task.scheduled_at - time.time()))
             return
 
@@ -171,7 +184,7 @@ class TaskQueue:
                 task.task_type, task.attempt, task.max_retries, exc,
             )
             if task.attempt < task.max_retries:
-                backoff = 2 ** task.attempt
+                backoff = BACKOFF_BASE ** task.attempt
                 await self._requeue(task, delay=backoff)
             else:
                 await self._dead_letter(task)
@@ -187,7 +200,7 @@ class TaskQueue:
     async def _dead_letter(self, task: Task) -> None:
         logger.error("TaskQueue: task permanently failed type=%s id=%s error=%s", task.task_type, task.task_id, task.error)
         try:
-            await self._r.xadd(_DEAD_KEY, task.to_redis(), maxlen=1000, approximate=True)
+            await self._r.xadd(_DEAD_KEY, task.to_redis(), maxlen=DEAD_LETTER_MAXLEN, approximate=True)
         except Exception:
             pass
 
@@ -195,12 +208,12 @@ class TaskQueue:
 
     async def queue_depths(self) -> dict[str, int]:
         depths = {}
-        for priority in range(4):
+        for priority in range(PRIORITY_LEVELS):
             key = f"{_QUEUE_PREFIX}{priority}"
             try:
-                depths[f"priority_{priority}"] = await self._r.xlen(key)
+                depths[PRIORITY_DEPTH_KEY_FMT.format(priority=priority)] = await self._r.xlen(key)
             except Exception:
-                depths[f"priority_{priority}"] = -1
+                depths[PRIORITY_DEPTH_KEY_FMT.format(priority=priority)] = -1
         try:
             depths["dead"] = await self._r.xlen(_DEAD_KEY)
         except Exception:
