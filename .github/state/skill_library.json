@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Track dependency updates",
-    "Implement early-stopping",
-    "Optimize log tracking",
     "Test network connectivity",
     "Add unit tests",
     "Parse JSON feeds",
@@ -199,8 +196,11 @@
     "Ping network nodes",
     "Combine MACD with RSI",
     "Use Temporal Fusion",
-    "Inspect model logs"
+    "Inspect model logs",
+    "Check GPU temps",
+    "Test DB connections",
+    "Log market holidays"
   ],
-  "last_updated": "2026-07-21T20:43:21.090645+00:00",
+  "last_updated": "2026-07-21T22:01:14.654332+00:00",
   "total": 200
 }
