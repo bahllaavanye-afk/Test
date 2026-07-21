@@ -7,10 +7,8 @@ from app.models.user import User
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
 
-@router.get("/notion/status")
-async def notion_status(current_user: User = Depends(get_current_user)):
-    """Whether Notion sync is configured."""
-    sync = get_notion_sync()
+def _build_notion_status(sync) -> dict:
+    """Construct a status dictionary for a NotionSync instance."""
     return {
         "enabled": sync.enabled,
         "notion_token_set": bool(sync.notion_token),
@@ -18,6 +16,13 @@ async def notion_status(current_user: User = Depends(get_current_user)):
         "github_token_set": bool(sync.github_token),
         "github_repo": sync.github_repo or None,
     }
+
+
+@router.get("/notion/status")
+async def notion_status(current_user: User = Depends(get_current_user)):
+    """Whether Notion sync is configured."""
+    sync = get_notion_sync()
+    return _build_notion_status(sync)
 
 
 @router.post("/notion/sync")
