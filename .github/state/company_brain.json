@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784643032.161051,
+    "last_updated": 1784647396.1658418,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784628001.8089554
+    "last_brain_update": 1784647396.1648898
   },
   "episodic": [
     {
@@ -1789,11 +1789,6 @@
   ],
   "github_insights": [
     {
-      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a mix of automated messages: \"Auto-fix failed \u2014 could not apply patch to file.\" and \"Auto-fix skipped \u2014 too complex for automated resolution.\" Plus a partial sentence \"Reason: The issue refers to a\". The user likely wants a concise summary of these automated comments. I'll produce a one-sentence summary capturing that auto-fix attempts failed or were skipped due to",
-      "item_count": 20,
-      "ts": 1783763400.5794423
-    },
-    {
       "summary": "The deployment failed due to a resource limit error, and subsequent auto-fix attempts also failed to apply patches to the file.",
       "item_count": 20,
       "ts": 1783771182.339502
@@ -2287,6 +2282,11 @@
       "summary": "An automated security scan (Bandit) flagged high-severity issues, and a subsequent deployment failed due to a resource limit error, advising a retry in 24 hours.",
       "item_count": 20,
       "ts": 1784628001.8005466
+    },
+    {
+      "summary": "A deployment failed due to resource limits, and an autonomous PR modifying protected files could not be auto-fixed because the patch failed to apply.",
+      "item_count": 20,
+      "ts": 1784647396.1563742
     }
   ],
   "experiment_results": [
