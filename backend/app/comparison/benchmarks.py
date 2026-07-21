@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import time
 from datetime import date, datetime, timezone
 from typing import Dict, List
 
@@ -105,8 +106,14 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
 
     cache_key = (start, end)
     if cached := _benchmark_cache.get(cache_key):
+        logger.info(
+            "Benchmark cache hit",
+            extra={"start": start.isoformat(), "end": end.isoformat(), "signal_count": len(cached)},
+        )
         # Return a shallow copy to avoid accidental mutation by callers
         return {k: v.copy() for k, v in cached.items()}
+
+    timer_start = time.monotonic()
 
     all_tickers = list(BENCHMARKS.keys()) + list(ALL_WEATHER_WEIGHTS.keys())
 
@@ -162,6 +169,26 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
 
     # Cache the result for future identical requests
     _benchmark_cache[cache_key] = {k: v.copy() for k, v in result.items()}
+
+    elapsed = time.monotonic() - timer_start
+
+    # Compute simple P&L metrics for logging
+    pnl_metrics = {}
+    for ticker, points in result.items():
+        if points:
+            first = points[0]["value"]
+            last = points[-1]["value"]
+            pnl = (last - first) / first if first != 0 else 0.0
+            pnl_metrics[ticker] = round(pnl, 4)
+
+    logger.info(
+        "Fetched benchmark curves",
+        extra={
+            "signal_count": len(result),
+            "execution_time_sec": round(elapsed, 3),
+            "pnl": pnl_metrics,
+        },
+    )
     return result
 
 

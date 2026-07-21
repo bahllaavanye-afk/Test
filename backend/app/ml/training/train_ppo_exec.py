@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +26,18 @@ import torch.optim as optim
 sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
 from app.execution.rl_exec import ExecutionPolicy, _MODEL_PATH, _STATE_DIM, _ACTION_DIM
+
+# Configure structured logger
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        fmt='%(asctime)s %(levelname)s %(name)s %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 
 class ExecutionEnv:
@@ -130,7 +144,14 @@ def train(
     best_avg_reward = -float("inf")
     episode_rewards = []
 
+    training_start = time.time()
+    logger.info(
+        "training_start",
+        extra={"n_episodes": n_episodes, "learning_rate": lr, "gamma": gamma}
+    )
+
     for episode in range(n_episodes):
+        episode_start = time.time()
         state = env.reset()
         log_probs, values, rewards = [], [], []
 
@@ -173,14 +194,41 @@ def train(
 
         ep_reward = sum(rewards)
         episode_rewards.append(ep_reward)
+        signal_count = len(log_probs)  # number of decisions made in episode
+        episode_time = time.time() - episode_start
+
+        logger.info(
+            "episode_complete",
+            extra={
+                "episode": episode + 1,
+                "reward": ep_reward,
+                "signal_count": signal_count,
+                "episode_time_sec": round(episode_time, 3)
+            }
+        )
 
         if (episode + 1) % 20 == 0:
             avg = np.mean(episode_rewards[-20:])
-            print(f"Episode {episode+1}/{n_episodes}  avg_reward={avg:.3f}", flush=True)
+            logger.info(
+                "episode_summary",
+                extra={
+                    "episode": episode + 1,
+                    "avg_reward_last_20": round(avg, 3)
+                }
+            )
             if avg > best_avg_reward:
                 best_avg_reward = avg
                 torch.save(policy.state_dict(), str(save_path))
 
+    total_time = time.time() - training_start
+    logger.info(
+        "training_complete",
+        extra={
+            "best_avg_reward": round(best_avg_reward, 3),
+            "total_training_time_sec": round(total_time, 3),
+            "model_path": str(save_path)
+        }
+    )
     print(f"Training complete. Best avg reward: {best_avg_reward:.3f}")
     print(f"Policy saved to {save_path}")
     return best_avg_reward
