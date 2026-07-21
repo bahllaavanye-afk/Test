@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Test SSL modes",
-    "Log memory usage",
     "**API Input Validation**: Focus on enhancing `backend/app/api/request_validator.py` to add explicit validation for malformed JSON bodies and ensure endpoints return relevant errors.",
     "Here are 3 concise bullet points representing the most important knowledge from the recent agent learnings:",
     "Verify SSL certs",
@@ -199,8 +197,10 @@
     "Verify thread counts",
     "Use deadlock detection",
     "Limit API bursts",
-    "Cache market data"
+    "Cache market data",
+    "Validate user inputs",
+    "Track CPU usage"
   ],
-  "last_updated": "2026-07-21T12:21:54.113621+00:00",
+  "last_updated": "2026-07-21T14:33:14.236540+00:00",
   "total": 200
 }
