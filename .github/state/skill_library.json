@@ -1,10 +1,5 @@
 {
   "skills": [
-    "**Research validation:** The `research_scientist` agent is actively working on validating key components, such as investor pipelines (`investor_pipeline`) in the latest cycle.",
-    "Refactor modules for maintainability",
-    "Review Experiment objects",
-    "Test config files",
-    "Limit open files",
     "Ping dependencies",
     "Scan for malware",
     "Retrain models",
@@ -199,8 +194,13 @@
     "* **Bandit algorithm updates**: Updating the UCB1 selection logic in `src/bandits/` to improve performance, and reviewing code for thread safety in `src/trading/`.",
     "Tighten signal-log validation",
     "Verify timezone sync",
-    "Based on the collective learnings, here are 3 concise bullet points of the most important, actionable knowledge:"
+    "Based on the collective learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
+    "Check DNS resolution",
+    "Verify dependency updates",
+    "Use circuit breakers",
+    "Refactor for type safety",
+    "Implement Temporal Fusion"
   ],
-  "last_updated": "2026-07-21T05:23:49.989991+00:00",
+  "last_updated": "2026-07-21T05:46:51.529851+00:00",
   "total": 200
 }
