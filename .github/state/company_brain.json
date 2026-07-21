@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784590781.6435463,
+    "last_updated": 1784596099.7632647,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,66 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "alert",
-    "last_brain_update": 1784590781.6425662
+    "last_brain_update": 1784596099.7626352
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Financials",
-        "Utilities",
-        "Industrials"
-      ],
-      "gap_count": 8,
-      "breakout_count": 2,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Financials, Utilities. Gaps: 8, Breakouts: 2, Risk flags: 0.",
-      "ts": 1784062482.1668599
-    },
-    {
-      "source": "market_opinion",
-      "regime": "bull",
-      "score": 4,
-      "gates": {
-        "directional": true,
-        "min_confidence": 0.6,
-        "size_multiplier": 1.0
-      },
-      "lesson": "[LLM unavailable \u2014 all providers failed]",
-      "ts": 1784128646.8856301
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 3,
-      "sector_leaders": [
-        "Financials",
-        "Utilities",
-        "Healthcare"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=3). Leading: Financials, Utilities. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784128838.5644305
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 3,
-      "sector_leaders": [
-        "Financials",
-        "Healthcare",
-        "Utilities"
-      ],
-      "gap_count": 5,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=3). Leading: Financials, Healthcare. Gaps: 5, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784132225.519641
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -1846,14 +1789,37 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784590771.9598293
+    },
+    {
+      "lesson": "Investigate Slack integration health: check for token expiry, quota limits, and crash logs to restore agent-team communication.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784596092.143462
+    },
+    {
+      "lesson": "Upgrade Vercel plan to Pro or implement deployment batching to avoid free-tier daily deployment limit (100/day).",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784596092.1474373
+    },
+    {
+      "lesson": "Improve auto-fix patch application by increasing allowed patch size from 50 lines or splitting fixes into smaller, validatable chunks.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784596092.150173
+    },
+    {
+      "lesson": "Add monitoring for auto-fix validation failures to trigger manual review when patch size exceeds limits.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784596092.1528845
     }
   ],
   "github_insights": [
-    {
-      "summary": "The deployment failed due to resource limits, requiring a 24-hour wait, and two automated attempts to fix the issue also failed.",
-      "item_count": 20,
-      "ts": 1783721730.7904632
-    },
     {
       "summary": "Multiple failures occurred: a Slack agent run failed due to message limit quota exhaustion, a deployment was blocked by a resource limit (retry in 24 hours), and an auto-fix attempt could not apply a patch to a file.",
       "item_count": 20,
@@ -2348,6 +2314,11 @@
       "summary": "The auto-fix tool failed twice due to inability to apply patches to files, and once was aborted because the fix changes exceeded the 50-line limit, triggering a validation failure.",
       "item_count": 20,
       "ts": 1784590781.6332068
+    },
+    {
+      "summary": "The Slack agent-team run failed due to message quota limits, deployment was blocked by resource constraints requiring a 24-hour wait, and an auto-fix attempt could not apply a patch to the file.",
+      "item_count": 20,
+      "ts": 1784596099.7559478
     }
   ],
   "experiment_results": [
