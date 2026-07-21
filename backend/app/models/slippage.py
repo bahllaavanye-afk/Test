@@ -1,9 +1,11 @@
 import uuid
+import logging
 from datetime import datetime
-from sqlalchemy import String, ForeignKey, Numeric, DateTime, Float
+from sqlalchemy import String, ForeignKey, Numeric, DateTime, Float, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
+logger = logging.getLogger(__name__)
 
 class SlippageRecord(Base):
     __tablename__ = "slippage_records"
@@ -25,3 +27,23 @@ class SlippageRecord(Base):
     execution_duration_seconds: Mapped[float | None] = mapped_column(Float)  # time from submit to fill
 
     order: Mapped["Order"] = relationship("Order", back_populates="slippage")
+
+# Structured logging for SlippageRecord creation
+def _log_slippage_record(mapper, connection, target: SlippageRecord):
+    logger.info(
+        "SlippageRecord created",
+        extra={
+            "record_id": target.id,
+            "order_id": target.order_id,
+            "signal_price": float(target.signal_price) if target.signal_price is not None else None,
+            "expected_price": float(target.expected_price) if target.expected_price is not None else None,
+            "fill_price": float(target.fill_price) if target.fill_price is not None else None,
+            "slippage_bps": float(target.slippage_bps) if target.slippage_bps is not None else None,
+            "execution_algo": target.execution_algo,
+            "execution_duration_seconds": target.execution_duration_seconds,
+            "is_cost_bps": float(target.is_cost_bps) if target.is_cost_bps is not None else None,
+            "vwap_shortfall_bps": float(target.vwap_shortfall_bps) if target.vwap_shortfall_bps is not None else None,
+        },
+    )
+
+event.listen(SlippageRecord, "after_insert", _log_slippage_record)
