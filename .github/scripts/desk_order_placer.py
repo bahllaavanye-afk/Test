@@ -558,6 +558,37 @@ def daily_loss_cap_hit(equity: float, last_equity: float,
     return equity < last_equity * (1.0 - cap)
 
 
+def is_risk_reducing(side: str, position_qty: float) -> bool:
+    """True when an order REDUCES an existing position (sell against a long,
+    buy against a short). 2026-07-21 lesson: the loss cap blocked ALL orders for
+    an entire session — including exits — trapping a losing book (couldn't add,
+    couldn't de-risk). Under the cap, reducing orders must always stay allowed;
+    only exposure-INCREASING orders are blocked.
+    """
+    return (side == "sell" and position_qty > 0) or (side == "buy" and position_qty < 0)
+
+
+async def _alpaca_position_map() -> dict[str, float]:
+    """{symbol: signed_qty} of open Alpaca positions. Fail-soft {} — when the
+    fetch fails while the loss cap is active, callers treat every order as
+    non-reducing (i.e. the cap blocks everything, the pre-2026-07-21 behavior).
+    """
+    try:
+        positions = await _alpaca_get("/v2/positions")
+        out: dict[str, float] = {}
+        for p in positions or []:
+            qty = float(p.get("qty") or 0)
+            if p.get("side") == "short":
+                qty = -abs(qty)
+            sym = p.get("symbol", "")
+            if sym and qty:
+                out[sym] = qty
+        return out
+    except Exception as exc:  # noqa: BLE001
+        print(f"  ⚠ position fetch failed ({str(exc)[:80]}) — cap stays strict", flush=True)
+        return {}
+
+
 def _vol_scalar(bars) -> float:
     """target/realized annualized vol from 20d closes, clamped [0.5, 2.0].
     1.0 when bars are absent/short/degenerate — sizing then falls back to
@@ -1534,13 +1565,22 @@ async def main() -> None:
         all_orders: list[dict] = []
         desk_summaries: list[str] = []
         total_notional = 0.0
-        _account_ok = (float(account.get("buying_power", 0)) > 0
-                       and not locals().get("_loss_cap_hit", False))
+        _account_ok = float(account.get("buying_power", 0)) > 0
+        # Loss cap no longer folds into _account_ok: it blocked EVERYTHING for a
+        # whole session (2026-07-20: weekend crypto drift vs Friday's last_equity
+        # tripped it at the open) — including exits, trapping a losing book.
+        # Under the cap, risk-REDUCING orders stay allowed; only new exposure is
+        # blocked. Positions fetched once; fetch failure → cap stays strict.
+        _cap_active = bool(locals().get("_loss_cap_hit", False)) and _account_ok
+        _cap_positions: dict[str, float] = (await _alpaca_position_map()) if _cap_active else {}
         with tracker.stage(ORDER_EXECUTION, "Place orders"):
             # The market clock only gates equity-hours desks — always-open desks
             # (crypto) trade through nights and weekends.
             if not is_open:
                 print("  ⚠ Equity market closed — only always-open desks may trade", flush=True)
+            if _cap_active:
+                print(f"  🛑 Loss cap ACTIVE — only risk-reducing orders allowed "
+                      f"({len(_cap_positions)} open positions eligible to reduce)", flush=True)
             if not _account_ok:
                 print("  ⚠ Skipping order placement (no buying power / account unavailable)", flush=True)
                 tracker.set_output(orders_placed=0, reason="account_unavailable")
@@ -1566,6 +1606,14 @@ async def main() -> None:
                         f"  · {strategy.name}/{symbol} signal={signal.side.upper()} "
                         f"conf={conf:.2f} — logged (no account)",
                         flush=True,
+                    )
+                    continue
+                if _cap_active and not is_risk_reducing(
+                    signal.side, _cap_positions.get(symbol.replace("/", ""), _cap_positions.get(symbol, 0.0))
+                ):
+                    print(
+                        f"  🛑 {strategy.name}/{symbol} {signal.side.upper()} — blocked by loss cap "
+                        f"(would increase exposure)", flush=True,
                     )
                     continue
                 kelly_notional = _kelly_notional(equity, conf, bars=bars_cache.get(symbol))
@@ -1683,6 +1731,8 @@ async def main() -> None:
             summary  = f"*QuantEdge Desk Run* ({now_str})  equity=${equity:,.2f}  regime={_regime_lbl}/{vol_regime}\n"
             summary += (f"funnel: {_gen} generated → {_survivors} survived gate+topK "
                         f"({_explored} exploration) → {len(all_orders)} placed\n")
+            if locals().get("_cap_active"):
+                summary += "🛑 loss cap ACTIVE — new exposure blocked, risk-reducing orders only\n"
             summary += "\n".join(desk_summaries)
             summary += f"\n\nTotal orders placed: *{len(all_orders)}*"
             _post_slack("#pnl-daily", summary)
