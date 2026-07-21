@@ -1,8 +1,7 @@
 {
-  "last_run_ts": 1784616688,
+  "last_run_ts": 1784617203,
   "last_commit_sha": "b9e4224",
   "posted_hashes": [
-    "68332d27d963",
     "36970873012f",
     "218e38aad4b1",
     "78208f0a4641",
@@ -1001,7 +1000,8 @@
     "933e7b79f259",
     "72117e16ab4f",
     "e8992819a337",
-    "2b5275c6182f"
+    "2b5275c6182f",
+    "ad1216cd3067"
   ],
   "replied_to": [],
   "post_dedup": {
@@ -1017,7 +1017,16 @@
     "squad-backend:silent_backend_lead": 1784616712.4079783,
     "squad-qa:silent_qa_dir": 1784616716.4779181,
     "infra-alerts:silent_devops_dir": 1784616720.6757593,
-    "squad-execution:silent_exec_eng": 1784616726.171669
+    "squad-execution:silent_exec_eng": 1784616726.171669,
+    "desk-polymarket:silent_poly_desk": 1784617210.8670888,
+    "ml-experiments:silent_ml_researcher": 1784617244.1631215,
+    "desk-fx-rates:silent_vp_research": 1784617258.9279714,
+    "alpha-research:silent_quant_researcher": 1784617273.291705,
+    "leadership-summary:silent_cro": 1784617288.017942,
+    "squad-frontend:silent_frontend": 1784617316.628687,
+    "engineering:silent_fixed_income_desk": 1784617330.560425,
+    "engineering:silent_model_validator": 1784617348.4497485,
+    "engineering:silent_portfolio_manager": 1784617366.418094
   },
   "response_cache": {},
   "posted_today": [
@@ -1077,23 +1086,23 @@
     "qa_dir": 1784616690.7667832,
     "devops_dir": 1784616690.7667832,
     "exec_eng": 1784616690.7667832,
-    "poly_desk": 1784511579.2217534,
-    "ml_researcher": 1784511579.2217534,
-    "vp_research": 1784556738.6303976,
-    "quant_researcher": 1784511579.2217534,
-    "cro": 1784488484.993073,
-    "frontend": 1784489020.0098388,
+    "poly_desk": 1784617210.8670454,
+    "ml_researcher": 1784617210.8670454,
+    "vp_research": 1784617210.8670454,
+    "quant_researcher": 1784617210.8670454,
+    "cro": 1784617210.8670454,
+    "frontend": 1784617210.8670454,
     "equity_lead": 1784489020.0098388,
-    "fixed_income_desk": 1784472314.115288,
+    "fixed_income_desk": 1784617210.8670454,
     "macro_researcher": 1784472314.115288,
     "stat_arb_desk": 1784472314.115288,
     "vol_trader": 1784472314.115288,
     "alt_data_lead": 1783777069.5503943,
-    "model_validator": 1784511579.2217534,
+    "model_validator": 1784617210.8670454,
     "feature_engineer": 1783777069.5503943,
     "crypto_quant": 1783777825.5999532,
     "arb_trader": 1784511579.2217534,
-    "portfolio_manager": 1784511579.2217534,
+    "portfolio_manager": 1784617210.8670454,
     "market_maker": 1784511579.2217534,
     "rl_trader": 1783777825.5999532,
     "momentum_quant": 1783776836.645194,
@@ -1168,16 +1177,6 @@
     "product_lead": 1784470078.4361582
   },
   "daily_usage": {
-    "2026-07-07": {
-      "GEMINI_API_KEY_2": {
-        "tokens": 900,
-        "requests": 3
-      },
-      "GEMINI_API_KEY_3": {
-        "tokens": 300,
-        "requests": 1
-      }
-    },
     "2026-07-09": {
       "GEMINI_API_KEY_3": {
         "tokens": 300,
@@ -1221,6 +1220,16 @@
       }
     },
     "2026-07-20": {
+      "GEMINI_API_KEY_2": {
+        "tokens": 300,
+        "requests": 1
+      },
+      "GEMINI_API_KEY_3": {
+        "tokens": 300,
+        "requests": 1
+      }
+    },
+    "2026-07-21": {
       "GEMINI_API_KEY_2": {
         "tokens": 300,
         "requests": 1
@@ -1319,76 +1328,6 @@
     }
   },
   "quality_log": [
-    {
-      "emp": "alpha_researcher",
-      "score": 5,
-      "reason": "reviewer unavailable \u2014 conservative score",
-      "channel": "unknown",
-      "ts": "2026-07-12 08:01:53"
-    },
-    {
-      "emp": "ml_lead",
-      "score": 7,
-      "reason": "While it provides specific metrics on funding rates and open interest, it lacks deeper analysis on implications and actionable strategies based on these indicators.",
-      "channel": "unknown",
-      "ts": "2026-07-15 12:10:42"
-    },
-    {
-      "emp": "vp_eng",
-      "score": 7,
-      "reason": "While it provides specific figures and a focus on actionable analysis, it lacks detailed actionable strategies based on the data presented.",
-      "channel": "unknown",
-      "ts": "2026-07-15 12:11:49"
-    },
-    {
-      "emp": "alpha_dir",
-      "score": 7,
-      "reason": "While it provides specific data points and focuses on relevant strategies, the analysis lacks depth in actionable recommendations based on the findings.",
-      "channel": "unknown",
-      "ts": "2026-07-15 12:11:57"
-    },
-    {
-      "emp": "ml_lead",
-      "score": 9,
-      "reason": "Provides specific data points and actionable insights regarding BTC funding rates and liquidation levels, effectively linking them to potential trading strategies.",
-      "channel": "unknown",
-      "ts": "2026-07-15 12:12:01"
-    },
-    {
-      "emp": "risk_eng",
-      "score": 7,
-      "reason": "While it cites specific metrics and considerations, it lacks deeper analysis on how funding rates or position limits specifically impact trading strategies or risk management decisions.",
-      "channel": "unknown",
-      "ts": "2026-07-15 12:12:05"
-    },
-    {
-      "emp": "backend_lead",
-      "score": 7,
-      "reason": "Provides actionable points about indexing and connection pooling but lacks detail on implementation steps or expected impact.",
-      "channel": "unknown",
-      "ts": "2026-07-15 12:12:09"
-    },
-    {
-      "emp": "qa_dir",
-      "score": 7,
-      "reason": "Identifies a specific file and coverage percentage but lacks a detailed action plan on how to enhance the coverage beyond just mentioning one function.",
-      "channel": "unknown",
-      "ts": "2026-07-15 12:12:13"
-    },
-    {
-      "emp": "devops_dir",
-      "score": 8,
-      "reason": "Cites specific file paths, quantifies the risk with a 12% failure rate, and provides concrete, actionable points such as implementing caching strategies and stabilizing flaky tests.",
-      "channel": "unknown",
-      "ts": "2026-07-15 12:12:19"
-    },
-    {
-      "emp": "exec_eng",
-      "score": 2,
-      "reason": "Output lacks concrete insights and actionable points, only mentioning a generic investigation into response time without providing any specific findings or recommendations.",
-      "channel": "unknown",
-      "ts": "2026-07-15 12:12:28"
-    },
     {
       "emp": "derivatives_desk",
       "score": 7,
@@ -2718,89 +2657,79 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-07-21 06:53:03"
-    }
-  ],
-  "agent_output_log": [
-    {
-      "emp": "quant_researcher",
-      "channel": "unknown",
-      "text": "Currently, I'm analyzing the historical impact of CI pipeline failures on intraday signal stability \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY)",
-      "ts": 1784510809.7428808,
-      "score": 5
-    },
-    {
-      "emp": "frontend",
-      "channel": "unknown",
-      "text": "I'm currently refining the `TradeSignalDisplay.tsx` component, which renders live trading signals. I've integrated **WebSocket** updates to ensure real-time data synchronization, reducing display latency by **15%**. Additionally, I'm enhancing accessibility features by adding **ARIA labels** to key ",
-      "provider": "Gemini(GEMINI_API_KEY_2)",
-      "ts": 1784510818.8017607,
-      "score": 7
-    },
-    {
-      "emp": "equity_lead",
-      "channel": "unknown",
-      "text": "I'm currently analyzing the **momentum signal** from the `EquitySignalsAnalysis.csv`, focusing on the top 5% performing equities over the last 30 days, which yielded an annualized return of **12.3%** with a *Sharpe ratio* of **1.48**. I'm also assessing the **factor exposure** for these equities, no",
-      "provider": "GitHub Models",
-      "ts": 1784510825.9190872,
-      "score": 7
-    },
-    {
-      "emp": "fixed_income_desk",
-      "channel": "unknown",
-      "text": "I'm currently analyzing the carry opportunities within our portfolio by examining the **US 10-Year Treasury Bonds** with a duration of **8.2 years**. The current yield stands at **3.75%**, which presents a favorable carry opportunity against our equity positions. Additionally, I'm assessing the **bo",
-      "provider": "GitHub Models",
-      "ts": 1784510830.1239166,
-      "score": 7
-    },
-    {
-      "emp": "macro_researcher",
-      "channel": "unknown",
-      "text": "I'm currently analyzing the **Consumer Price Index (CPI)** data from the **Macroeconomic_Indicators_Q4_2023.csv**. As of the latest report, the **CPI** has shown a **6.4%** year-over-year increase, indicating persistent inflation pressures. Given this, I'm adjusting our portfolio tilt towards inflat",
-      "provider": "GitHub Models",
-      "ts": 1784510837.1553257,
-      "score": 7
-    },
-    {
-      "emp": "stat_arb_desk",
-      "channel": "unknown",
-      "text": "I'm currently examining the *cointegration* signals for our pairs trading strategy using the dataset located at */QuantEdge/Data/Pairs_Analysis.csv*. The current Z-score for our primary pair is **-2.15**, indicating that the spread is outside of our entry threshold for mean reversion. Additionally, ",
-      "provider": "GitHub Models",
-      "ts": 1784510841.4235814,
-      "score": 7
-    },
-    {
-      "emp": "devops_dir",
-      "channel": "unknown",
-      "text": "I'm currently focused on the CI health of our GitHub Actions pipelines, specifically the `build.yml` workflow. Over the last 7 days, our build success rate is at *92%*, down from *98%* last month, largely due to a recurring issue in the `src/utils/retry.py` file, where the new exponential backoff im",
-      "provider": "GitHub Models",
-      "ts": 1784511589.1378996,
-      "score": 7
-    },
-    {
-      "emp": "exec_eng",
-      "channel": "unknown",
-      "text": "I'm currently analyzing **execution-path latency** in our order routing system, particularly focusing on the `order_management.py` module. I've identified that the average latency for order submissions has increased to **150ms**, up from **100ms** last week, impacting fill quality. I\u2019m tweaking the ",
-      "provider": "GitHub Models",
-      "ts": 1784511592.9731991,
-      "score": 7
     },
     {
       "emp": "poly_desk",
+      "score": 2,
+      "reason": "The output lacks concrete, actionable points and merely restates the task prompt without providing any meaningful analysis or insight.",
       "channel": "unknown",
-      "text": "I'm currently analyzing the probability calibration of the *BTC >$100k by Dec 2025* market, where current sentiment shows YES at 0.62 versus Metaculus at 0.71, indicating a 9pp gap. This suggests a potential arbitrage opportunity, and I plan to place a bet on YES given the 2% bid-ask spread, determi",
-      "provider": "GitHub Models",
-      "ts": 1784511596.1666846,
-      "score": 9
+      "ts": "2026-07-21 07:00:43"
     },
     {
       "emp": "ml_researcher",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
-      "text": "I'm currently analyzing the performance of our order routing system, focusing on execution-path latency metrics from the `order_management.py` module. I've found that the average latency for order submissions is currently at *350ms*, with a significant 25% increase observed in the last week. This in",
-      "provider": "GitHub Models",
-      "ts": 1784511600.2843912,
-      "score": 7
+      "ts": "2026-07-21 07:00:58"
     },
+    {
+      "emp": "vp_research",
+      "score": 2,
+      "reason": "Output lacks concrete, actionable points and provides only vague references to \"cross-asset correlation\" and \"new macro features\" without any specific analysis or data-driven insights.",
+      "channel": "unknown",
+      "ts": "2026-07-21 07:01:12"
+    },
+    {
+      "emp": "quant_researcher",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-07-21 07:01:27"
+    },
+    {
+      "emp": "cro",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-07-21 07:01:56"
+    },
+    {
+      "emp": "frontend",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-07-21 07:02:08"
+    },
+    {
+      "emp": "fixed_income_desk",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-07-21 07:02:19"
+    },
+    {
+      "emp": "model_validator",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-07-21 07:02:41"
+    },
+    {
+      "emp": "portfolio_manager",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-07-21 07:02:52"
+    },
+    {
+      "emp": "crypto_defi_desk",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-07-21 07:03:06"
+    }
+  ],
+  "agent_output_log": [
     {
       "emp": "vp_research",
       "channel": "unknown",
@@ -3120,6 +3049,86 @@
       "provider": "GitHub Models",
       "ts": 1784616783.410717,
       "score": 5
+    },
+    {
+      "emp": "poly_desk",
+      "channel": "unknown",
+      "text": "Currently analyzing the *ETH >$4k by EOY 2024 \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1784617243.9017467,
+      "score": 2
+    },
+    {
+      "emp": "ml_researcher",
+      "channel": "unknown",
+      "text": "Currently analyzing the impact of new macro features from `data/market/macro_indicators_ \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1784617258.7148426,
+      "score": 5
+    },
+    {
+      "emp": "vp_research",
+      "channel": "unknown",
+      "text": "Currently evaluating the *cross-asset correlation* implications of the *new macro features* from ` \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_3)",
+      "ts": 1784617272.990879,
+      "score": 2
+    },
+    {
+      "emp": "quant_researcher",
+      "channel": "unknown",
+      "text": "Currently performing a walk-forward optimization on our *intraday mean-reversion signal \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1784617287.8321164,
+      "score": 5
+    },
+    {
+      "emp": "cro",
+      "channel": "unknown",
+      "text": "The biggest firm-level risk is the *unknown impact of the new macro features* from ` \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1784617316.4986284,
+      "score": 5
+    },
+    {
+      "emp": "frontend",
+      "channel": "unknown",
+      "text": "Currently integrating the new `market/macro_indicators` WebSocket feed into the `MacroDashboardChart. \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1784617328.1162105,
+      "score": 5
+    },
+    {
+      "emp": "fixed_income_desk",
+      "channel": "unknown",
+      "text": "Currently preparing to analyze the potential *duration risk* and *bond-equity correlation* shifts \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1784617339.2205937,
+      "score": 5
+    },
+    {
+      "emp": "model_validator",
+      "channel": "unknown",
+      "text": "Currently validating the `intraday_mean_reversion_v2.py` model. \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1784617361.283396,
+      "score": 5
+    },
+    {
+      "emp": "portfolio_manager",
+      "channel": "unknown",
+      "text": "Currently cross-referencing the fixed_income_desk's preliminary analysis on *bond-equity \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1784617372.0998445,
+      "score": 5
+    },
+    {
+      "emp": "crypto_defi_desk",
+      "channel": "unknown",
+      "text": "Currently analyzing the *yield opportunity* on the Curve Finance stETH/ETH pool, \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_3)",
+      "ts": 1784617386.6377816,
+      "score": 5
     }
   ],
   "last_providers": {
@@ -3131,23 +3140,23 @@
     "backend_lead": "GitHub Models",
     "qa_dir": "GitHub Models",
     "exec_eng": "litellm:groq",
-    "poly_desk": "GitHub Models",
-    "ml_researcher": "GitHub Models",
-    "vp_research": "GitHub Models",
-    "quant_researcher": "GitHub Models",
-    "cro": "litellm:groq",
+    "poly_desk": "Gemini(GEMINI_API_KEY)",
+    "ml_researcher": "Gemini(GEMINI_API_KEY_2)",
+    "vp_research": "Gemini(GEMINI_API_KEY_3)",
+    "quant_researcher": "Gemini(GEMINI_API_KEY)",
+    "cro": "Gemini(GEMINI_API_KEY)",
     "frontend": "Gemini(GEMINI_API_KEY_2)",
     "equity_lead": "GitHub Models",
-    "fixed_income_desk": "GitHub Models",
+    "fixed_income_desk": "Gemini(GEMINI_API_KEY)",
     "macro_researcher": "GitHub Models",
     "stat_arb_desk": "GitHub Models",
     "vol_trader": "GitHub Models",
     "alt_data_lead": "GitHub Models",
-    "model_validator": "litellm:groq",
+    "model_validator": "Gemini(GEMINI_API_KEY_2)",
     "feature_engineer": "GitHub Models",
     "crypto_quant": "GitHub Models",
     "arb_trader": "GitHub Models",
-    "portfolio_manager": "GitHub Models",
+    "portfolio_manager": "Gemini(GEMINI_API_KEY_2)",
     "market_maker": "GitHub Models",
     "rl_trader": "GitHub Models",
     "momentum_quant": "GitHub Models",
@@ -3168,23 +3177,23 @@
     "data_lead": "GitHub Models",
     "alpha_researcher": "GitHub Models",
     "derivatives_desk": "GitHub Models",
-    "crypto_defi_desk": "GitHub Models",
+    "crypto_defi_desk": "Gemini(GEMINI_API_KEY_3)",
     "kalshi_desk": "GitHub Models"
   },
   "idle_posted_ts": {
     "gemini_fallback_alpha-research": 1781095580.7191632,
-    "GEMINI_API_KEY_2": 1784510745.854916,
-    "GEMINI_API_KEY_3": 1784510745.854916,
+    "GEMINI_API_KEY_2": 1784617203.956297,
+    "GEMINI_API_KEY_3": 1784617203.956297,
     "gemini_fallback_engineering": 1784487463.9653878
   },
   "token_budget": {
     "GEMINI_API_KEY_2": {
       "date": "2026-07-21",
-      "used": 0
+      "used": 300
     },
     "GEMINI_API_KEY_3": {
       "date": "2026-07-21",
-      "used": 0
+      "used": 300
     }
   },
   "bot_handle_announced": true,
@@ -3215,6 +3224,10 @@
       "GEMINI_API_KEY_2": 300
     },
     "2026-07-20": {
+      "GEMINI_API_KEY_2": 300,
+      "GEMINI_API_KEY_3": 300
+    },
+    "2026-07-21": {
       "GEMINI_API_KEY_2": 300,
       "GEMINI_API_KEY_3": 300
     }
