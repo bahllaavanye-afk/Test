@@ -1,13 +1,25 @@
 """BotRunner — schedules and executes all enabled bots via APScheduler."""
 from __future__ import annotations
 
+import random
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 
 from app.utils.logging import logger
+
+
+def _first_run_time() -> datetime:
+    """First evaluation shortly after boot (staggered 30–150s so 61 bots don't
+    stampede). Without this, APScheduler interval jobs wait one FULL interval
+    before the first run — and on the ephemeral-DB deploy, app restarts on every
+    merge reset that clock, so 1h/1d bots NEVER got to run (every bot showed
+    last_run_at=None). Found 2026-07-21 diagnosing 'OA doesn't work / 0 trades'.
+    """
+    return datetime.now(timezone.utc) + timedelta(seconds=random.uniform(30, 150))
 
 if TYPE_CHECKING:
     from app.models.bot import Bot
@@ -94,6 +106,7 @@ class BotRunner:
                     id=job_id,
                     replace_existing=True,
                     max_instances=1,
+                    next_run_time=_first_run_time(),
                     **interval_kwargs,
                 )
                 logger.debug("Bot scheduled", bot_id=bot.id, interval=interval_str)
@@ -107,6 +120,7 @@ class BotRunner:
                     id=job_id,
                     replace_existing=True,
                     max_instances=1,
+                    next_run_time=_first_run_time(),
                     minutes=5,
                 )
                 logger.debug("Bot scheduled (poll)", bot_id=bot.id, trigger=trigger_type)

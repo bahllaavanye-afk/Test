@@ -1,5 +1,13 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🚨 MONDAY 2026-07-20 POST-MORTEM — "all desks bad, 0 trades, OA doesn't work" (diagnosed + fixed 2026-07-21)
+Evidence-based, three stacked causes:
+1. **[FIXED] Loss cap froze the entire book all session** — every market-hours desk run logged `🛑 DAILY LOSS CAP: equity down 2.72% vs prior close (cap 2%)`. The cap compares to Alpaca `last_equity` = FRIDAY's close, so weekend crypto drift on existing positions tripped it before Monday even opened — and it blocked ALL orders including exits (couldn't add, couldn't de-risk). Desks were otherwise perfect: 410 signals, DIA/JNJ/GLD/EWT at conf 1.00. FIX: under the cap, risk-REDUCING orders stay allowed (`is_risk_reducing` vs live Alpaca positions, fail-strict on fetch error); only new exposure is blocked; cap state surfaced in the run log + Discord funnel line. 6 tests.
+2. **[FIXED] Bots never evaluated (all 61 last_run_at=None)** — APScheduler interval jobs wait one FULL interval before the first run, and every merge→deploy wipes the ephemeral SQLite + restarts the app, resetting that clock. 1h/1d bots never got to run. FIX: `next_run_time` = boot + 30–150s stagger, so every bot evaluates within ~2 min of every deploy.
+3. **[USER ACTION — the remaining one] Bot trades are DB-only and die with every deploy** on the SQLite fallback (desk trades survive because they re-sync from Alpaca 30d). Durable bot P&L requires unpausing Supabase (run schema-drift-gate first). Until then bot activity is visible between deploys but resets on each merge.
+- [ ] **[P2] Loss-cap window redesign** — `last_equity` spans the whole weekend for a 24/7 crypto book; measure vs a session anchor (portfolio-history API) instead. Needs validation — threshold semantics change.
+
+
 ## 🌡️ REGIME-AWARE STRATEGY SELECTION (user directive 2026-07-20: "different market conditions → different strategies")
 EXISTS today: `_detect_regime_from_bars` (SPY trend → bear/sideways/bull) +
 `_STRATEGY_REGIME_MAP` gating in desk_order_placer. Gaps: trend-only (no volatility
