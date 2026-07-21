@@ -161,6 +161,35 @@ def vol_scalar(df) -> float:
         return 1.0
 
 
+def open_positions() -> dict[str, float] | None:
+    """{pair: signed_net_units} for the practice account, or None when the
+    fetch fails (guard then FAILS OPEN — a monitoring call must never block
+    the desk). Long units positive, short negative."""
+    try:
+        out = _oanda("GET", f"/v3/accounts/{OANDA_ACCOUNT_ID}/openPositions")
+        pos: dict[str, float] = {}
+        for p in out.get("positions", []):
+            long_u = float((p.get("long") or {}).get("units") or 0)
+            short_u = float((p.get("short") or {}).get("units") or 0)
+            net = long_u + short_u          # OANDA short units are negative
+            if net:
+                pos[p.get("instrument", "")] = net
+        return pos
+    except Exception as exc:  # noqa: BLE001
+        print(f"  ⚠ openPositions fetch failed ({str(exc)[:80]}) — no-repeat guard off", flush=True)
+        return None
+
+
+def is_repeat(pair: str, side: str, positions: dict[str, float] | None) -> bool:
+    """True when an open position already exists in the SAME direction — the
+    'same 3 orders every run' fix. Opposite-direction signals stay allowed
+    (they reduce/flip exposure, which is new information acting)."""
+    if not positions:
+        return False
+    net = positions.get(pair, 0.0)
+    return (net > 0 and side == "buy") or (net < 0 and side == "sell")
+
+
 def place_order(pair: str, side: str, units: int) -> dict | None:
     """MARKET order on the practice account. Negative units = short (OANDA v20)."""
     signed = units if side == "buy" else -units
@@ -229,7 +258,14 @@ async def run() -> int:
 
     signals.sort(key=lambda s: -s["conf"])
     placed = 0
+    skipped_repeats = 0
+    positions = open_positions()   # None → guard fails open
     for s in signals[:MAX_ORDERS_PER_RUN]:
+        if is_repeat(s["pair"], s["side"], positions):
+            skipped_repeats += 1
+            print(f"  ↻ {s['strategy']}/{s['pair']} {s['side'].upper()} — already positioned "
+                  f"this direction ({positions.get(s['pair'], 0):+.0f} units) — skipped", flush=True)
+            continue
         print(f"  ► {s['strategy']}/{s['pair']} {s['side'].upper()} conf={s['conf']:.2f} "
               f"units={s['units']}", flush=True)
         if place_order(s["pair"], s["side"], s["units"]):
@@ -253,6 +289,8 @@ async def run() -> int:
                    f"≥ {CONFIDENCE_MIN}: {legs}")
         else:
             msg = f"FX desk — quiet: {len(signals)} signal(s) ≥ {CONFIDENCE_MIN}, 0 orders"
+        if skipped_repeats:
+            msg += f" | {skipped_repeats} skipped (already positioned)"
         notify.post_dedup("#desk-fx-rates", msg, username="QuantEdge FX Desk")
     except Exception as exc:  # noqa: BLE001
         print(f"  (notify skipped: {exc})")
