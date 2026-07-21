@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Verify DB sync",
-    "Test DB connections",
-    "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
-    "Test SSL certs",
     "Test SSL modes",
     "Log memory usage",
     "**API Input Validation**: Focus on enhancing `backend/app/api/request_validator.py` to add explicit validation for malformed JSON bodies and ensure endpoints return relevant errors.",
@@ -199,8 +195,12 @@
     "Log heartbeat signals",
     "Check RAM allocation",
     "Test network latency",
-    "Use retry mechanisms"
+    "Use retry mechanisms",
+    "Verify thread counts",
+    "Use deadlock detection",
+    "Limit API bursts",
+    "Cache market data"
   ],
-  "last_updated": "2026-07-21T10:37:37.816505+00:00",
+  "last_updated": "2026-07-21T12:21:54.113621+00:00",
   "total": 200
 }
