@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784665254.1509802,
+    "last_updated": 1784667673.8097358,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 3,
     "macro_score": 3,
-    "vix": 17.04,
-    "market_scan_ts": 1784665254.133356,
+    "vix": 17.05,
+    "market_scan_ts": 1784667673.7881093,
     "sector_leaders": [
       "Energy",
       "Healthcare",
@@ -125,23 +125,23 @@
       "TMO",
       "CRWD",
       "NFLX",
+      "MPC",
       "MS",
       "ABT",
-      "WFC",
-      "PANW",
-      "NOW",
       "XOM",
-      "TSLA",
-      "MPC",
+      "PANW",
       "CVX",
+      "NOW",
+      "TSLA",
+      "COP",
+      "EOG",
       "ADBE",
+      "WFC",
+      "BAC",
+      "BRK-B",
       "NVDA",
-      "AAPL",
-      "GOOGL",
-      "BLK",
-      "GS",
       "QQQ",
-      "COP"
+      "AAPL"
     ],
     "top_momentum": [
       "MPC",
@@ -155,13 +155,6 @@
     "last_brain_update": 1784663615.553994
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix skipped for per-desk performance attribution due to complexity exceeding 50-line limit. Consider breaking large features into smaller, independently deployable increments.",
-      "category": "code",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1784198088.9677963
-    },
     {
       "lesson": "Auto-fix skipped because issue description lacked sufficient detail. Improve issue templates to require clear current behavior, failing scenario, and expected fix scope.",
       "category": "execution",
@@ -1830,6 +1823,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784665254.1543183
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784667673.8138556
     }
   ],
   "github_insights": [
