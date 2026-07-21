@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784647699.9150963,
+    "last_updated": 1784647816.3213923,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -108,60 +108,53 @@
       "size_multiplier": 1.0
     },
     "opinion_score": 3,
-    "macro_score": 1,
-    "vix": 18.65,
-    "market_scan_ts": 1784581519.9818223,
+    "macro_score": 3,
+    "vix": 17.23,
+    "market_scan_ts": 1784647816.30447,
     "sector_leaders": [
       "Energy",
       "Healthcare",
       "Financials"
     ],
     "sector_laggards": [
-      "Industrials",
+      "Cons. Disc.",
       "Materials",
       "Tech"
     ],
     "active_universe": [
+      "TMO",
+      "CRWD",
+      "TSLA",
+      "NFLX",
       "ABT",
-      "C",
-      "MS",
-      "JNJ",
-      "WFC",
-      "CVX",
+      "PANW",
+      "ADBE",
+      "NOW",
+      "GS",
+      "SLB",
       "MPC",
-      "XLF",
+      "XOM",
       "COP",
-      "XLE",
-      "SPY",
-      "XLU",
-      "TLT",
+      "NVDA",
+      "WFC",
+      "QQQ",
+      "XLK",
+      "ORCL",
       "AAPL",
-      "BAC",
-      "XLI",
-      "WMT",
-      "IWM",
-      "KO",
-      "UNH"
+      "MRK"
     ],
     "top_momentum": [
       "MPC",
       "ABT",
-      "ABBV",
-      "MA",
-      "TMO"
+      "ADBE",
+      "INTU",
+      "AAPL"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1784647396.1648898
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix failures are occurring repeatedly; investigate the root cause in the patch generation pipeline or ML model.",
-      "category": "ml",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784172913.6933184
-    },
     {
       "lesson": "Deployment is blocked by a free-tier daily limit; upgrade to a Pro plan or implement usage monitoring to avoid production downtime.",
       "category": "risk",
@@ -1782,6 +1775,21 @@
       },
       "lesson": "[LLM unavailable \u2014 all providers failed]",
       "ts": 1784647699.9191282
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784647816.3245628
     }
   ],
   "github_insights": [
