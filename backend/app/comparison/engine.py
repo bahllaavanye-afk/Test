@@ -47,9 +47,86 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = 100_000,
     ) -> ComparisonResult:
+        """
+        Run a side‑by‑side comparison of a manual strategy versus its ML‑enhanced version.
+
+        Parameters
+        ----------
+        manual_signals : pd.Series
+            Signal series for the manual strategy.
+        ml_signals : pd.Series
+            Signal series for the ML‑enhanced strategy.
+        prices : pd.Series
+            Historical price series used for backtesting.
+        strategy_name : str
+            Human‑readable name of the strategy.
+        symbol : str
+            Trading symbol (e.g., "AAPL").
+        interval : str
+            Data interval (e.g., "1D").
+        start_date : date
+            Start date of the backtest period.
+        end_date : date
+            End date of the backtest period.
+        initial_equity : float, optional
+            Starting capital for the backtest (default 100_000).
+
+        Returns
+        -------
+        ComparisonResult
+            Dataclass containing backtest metrics, benchmark data, and statistical outcomes.
+
+        Raises
+        ------
+        ValueError
+            If any input is invalid or inconsistent.
+        """
+        # Input validation
+        if not isinstance(manual_signals, pd.Series):
+            raise ValueError("manual_signals must be a pandas Series.")
+        if manual_signals.empty:
+            raise ValueError("manual_signals cannot be empty.")
+
+        if not isinstance(ml_signals, pd.Series):
+            raise ValueError("ml_signals must be a pandas Series.")
+        if ml_signals.empty:
+            raise ValueError("ml_signals cannot be empty.")
+
+        if not isinstance(prices, pd.Series):
+            raise ValueError("prices must be a pandas Series.")
+        if prices.empty:
+            raise ValueError("prices cannot be empty.")
+
+        # Ensure series share the same index length
+        if len(manual_signals) != len(prices):
+            raise ValueError("manual_signals length must match prices length.")
+        if len(ml_signals) != len(prices):
+            raise ValueError("ml_signals length must match prices length.")
+
+        if not isinstance(strategy_name, str) or not strategy_name.strip():
+            raise ValueError("strategy_name must be a non‑empty string.")
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("symbol must be a non‑empty string.")
+        if not isinstance(interval, str) or not interval.strip():
+            raise ValueError("interval must be a non‑empty string.")
+
+        if not isinstance(start_date, date):
+            raise ValueError("start_date must be a datetime.date instance.")
+        if not isinstance(end_date, date):
+            raise ValueError("end_date must be a datetime.date instance.")
+        if start_date > end_date:
+            raise ValueError("start_date must be on or before end_date.")
+
+        if not isinstance(initial_equity, (int, float)):
+            raise ValueError("initial_equity must be a numeric type.")
+        if initial_equity <= 0:
+            raise ValueError("initial_equity must be a positive number.")
+
+        # Run backtests
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 
+        # Fetch benchmarks
         benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
         benchmark_stats = get_benchmark_stats()
 
@@ -70,11 +147,13 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
-        logger.info("Comparison complete",
-                    strategy=strategy_name,
-                    manual_sharpe=manual_metrics.sharpe,
-                    ml_sharpe=ml_metrics.sharpe,
-                    p_value=round(p_val, 4))
+        logger.info(
+            "Comparison complete",
+            strategy=strategy_name,
+            manual_sharpe=manual_metrics.sharpe,
+            ml_sharpe=ml_metrics.sharpe,
+            p_value=round(p_val, 4),
+        )
 
         return ComparisonResult(
             strategy_name=strategy_name,
