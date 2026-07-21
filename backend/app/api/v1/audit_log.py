@@ -59,5 +59,4 @@ async def list_audit_log(
         .limit(limit)
     )
     rows = result.scalars().all()
-    # Ensure we always return a list, even if the query yields no rows.
-    return rows if rows is not None else []
+    return rows
