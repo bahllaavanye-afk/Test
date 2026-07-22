@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from sqlalchemy import DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column
-from app.database import Base  # noqa: F401 — re-export for all models
+from app.database import Base
 
 
 class TimestampMixin:
