@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Scan for deadlock",
-    "Implement type hints",
-    "Track memory leaks",
-    "Monitor Sharpe ratio",
     "Implement Temporal Fusion Transformers",
     "* Docstrings in **base_model.py**, **lorentzian_knn.py**, and **lstm.py** have been improved for better readability.",
     "Bind to core 0",
@@ -199,8 +195,12 @@
     "Use Temporal Fusion Transformer",
     "Enhance error handling",
     "Capture model drift",
-    "Optimize with R\u00b2 metric"
+    "Optimize with R\u00b2 metric",
+    "Check RAM limits",
+    "Track latency spikes",
+    "Implement JSON schema",
+    "Validate type hints"
   ],
-  "last_updated": "2026-07-22T11:47:29.917455+00:00",
+  "last_updated": "2026-07-22T13:43:30.739288+00:00",
   "total": 200
 }
