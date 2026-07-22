@@ -2,7 +2,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,8 +18,16 @@ router = APIRouter(prefix="/trades", tags=["trades"])
 class TradeOut(BaseModel):
     """Schema representing a trade record returned by the API."""
 
-    id: str = Field(..., description="Unique identifier for the trade.", json_schema_extra={"example": "trd_12345"})
-    symbol: str = Field(..., description="Ticker symbol of the traded instrument.", json_schema_extra={"example": "AAPL"})
+    id: str = Field(
+        ...,
+        description="Unique identifier for the trade.",
+        json_schema_extra={"example": "trd_12345"},
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol of the traded instrument.",
+        json_schema_extra={"example": "AAPL"},
+    )
     side: str = Field(
         ...,
         description="Trade direction; either 'buy' or 'sell'.",
@@ -87,6 +95,24 @@ class TradeOut(BaseModel):
         if v <= 0:
             raise ValueError("quantity must be greater than 0")
         return v
+
+    @field_validator("entry_price", "exit_price")
+    @classmethod
+    def validate_price(cls, v: float | None) -> float | None:
+        """Entry and exit prices, if provided, must be positive."""
+        if v is not None and v <= 0:
+            raise ValueError("price must be greater than 0")
+        return v
+
+    @model_validator
+    @classmethod
+    def validate_dates(cls, values):
+        """If both timestamps are present, closed_at must not be earlier than opened_at."""
+        opened = values.get("opened_at")
+        closed = values.get("closed_at")
+        if opened and closed and closed < opened:
+            raise ValueError("closed_at cannot be earlier than opened_at")
+        return values
 
 
 @router.get("/", response_model=list[TradeOut])
