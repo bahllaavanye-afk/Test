@@ -1,4 +1,6 @@
 """Strategy management endpoints."""
+import logging
+import time
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -10,6 +12,7 @@ from app.strategies import STRATEGY_REGISTRY, list_desks, strategies_by_desk
 from pydantic import BaseModel, ConfigDict
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
+logger = logging.getLogger(__name__)
 
 
 class StrategyOut(BaseModel):
@@ -33,6 +36,7 @@ class StrategyToggle(BaseModel):
 @router.get("/params-schema")
 async def get_params_schema(current_user: User = Depends(get_current_user)):
     """Return configurable params for each strategy that exposes DEFAULT_PARAMS."""
+    start = time.time()
     schema = {}
     for name, cls in STRATEGY_REGISTRY.items():
         if hasattr(cls, "DEFAULT_PARAMS"):
@@ -40,13 +44,23 @@ async def get_params_schema(current_user: User = Depends(get_current_user)):
                 "params": cls.DEFAULT_PARAMS,
                 "display_name": getattr(cls, "display_name", name),
             }
+    logger.info(
+        "get_params_schema completed",
+        extra={"duration_seconds": time.time() - start, "schema_keys": len(schema)},
+    )
     return schema
 
 
 @router.get("/available")
 async def list_available(current_user: User = Depends(get_current_user)):
     """List all registered strategy classes."""
-    return [{"name": k} for k in STRATEGY_REGISTRY.keys()]
+    start = time.time()
+    result = [{"name": k} for k in STRATEGY_REGISTRY.keys()]
+    logger.info(
+        "list_available completed",
+        extra={"duration_seconds": time.time() - start, "strategy_count": len(result)},
+    )
+    return result
 
 
 @router.get("/desks")
@@ -57,13 +71,23 @@ async def list_strategy_desks(current_user: User = Depends(get_current_user)):
     so the equities/crypto/options/prediction-market/TradingView desks all share one
     format and a new strategy is placed automatically.
     """
+    start = time.time()
     grouped = strategies_by_desk()
-    return {
+    response = {
         "desks": list_desks(),
         "by_desk": grouped,
         "counts": {desk: len(members) for desk, members in grouped.items()},
         "total": sum(len(m) for m in grouped.values()),
     }
+    logger.info(
+        "list_strategy_desks completed",
+        extra={
+            "duration_seconds": time.time() - start,
+            "desk_count": len(response["desks"]),
+            "total_strategies": response["total"],
+        },
+    )
+    return response
 
 
 @router.get("/active")
@@ -76,9 +100,18 @@ async def list_active(
     Reads from app.state.active_strategies (populated at startup by main.py).
     Falls back to querying the DB when app state is not yet populated.
     """
+    start = time.time()
     # Try in-process state first (populated by lifespan at startup)
     active = getattr(request.app.state, "active_strategies", None)
     if active is not None:
+        logger.info(
+            "list_active returned from in-process state",
+            extra={
+                "duration_seconds": time.time() - start,
+                "signal_count": len(active),
+                "pnl": None,
+            },
+        )
         return active
 
     # Fallback: query DB directly with a lightweight column selection
@@ -92,7 +125,7 @@ async def list_active(
             ).where(Strategy.is_enabled.is_(True))
             result = await db.execute(stmt)
             rows = result.mappings().all()
-            return [
+            payload = [
                 {
                     "name": row["name"],
                     "symbols": row["symbols"] if isinstance(row["symbols"], list) else [],
@@ -102,7 +135,20 @@ async def list_active(
                 }
                 for row in rows
             ]
+            logger.info(
+                "list_active fetched from DB",
+                extra={
+                    "duration_seconds": time.time() - start,
+                    "signal_count": len(payload),
+                    "pnl": None,
+                },
+            )
+            return payload
     except Exception:
+        logger.info(
+            "list_active encountered exception, returning empty list",
+            extra={"duration_seconds": time.time() - start, "signal_count": 0, "pnl": None},
+        )
         # Return empty list rather than crashing — frontend must handle this gracefully
         return []
 
@@ -112,8 +158,14 @@ async def list_strategies(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    start = time.time()
     result = await db.execute(select(Strategy))
-    return result.scalars().all()
+    strategies = result.scalars().all()
+    logger.info(
+        "list_strategies completed",
+        extra={"duration_seconds": time.time() - start, "signal_count": len(strategies)},
+    )
+    return strategies
 
 
 @router.patch("/{strategy_id}/toggle")
@@ -123,10 +175,23 @@ async def toggle_strategy(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
 ):
+    start = time.time()
     result = await db.execute(select(Strategy).where(Strategy.id == strategy_id))
     strategy = result.scalar_one_or_none()
     if not strategy:
+        logger.info(
+            "toggle_strategy failed - not found",
+            extra={"duration_seconds": time.time() - start, "strategy_id": strategy_id},
+        )
         raise HTTPException(404, "Strategy not found")
     strategy.is_enabled = body.is_enabled
     await db.commit()
+    logger.info(
+        "toggle_strategy succeeded",
+        extra={
+            "duration_seconds": time.time() - start,
+            "strategy_id": strategy_id,
+            "is_enabled": body.is_enabled,
+        },
+    )
     return {"id": strategy_id, "is_enabled": body.is_enabled}
