@@ -8,6 +8,7 @@ BinanceFundingRateFeatures:
 
 All API calls are async. For sync contexts, use compute_features_sync().
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -175,10 +176,9 @@ class BinanceFundingRateFeatures:
             if loop.is_running():
                 # Already inside an event loop (e.g., FastAPI) — create a task
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor() as pool:
-                    future = pool.submit(
-                        asyncio.run, self.compute_features_async(symbol, df)
-                    )
+                    future = pool.submit(asyncio.run, self.compute_features_async(symbol, df))
                     return future.result(timeout=30)
             else:
                 return loop.run_until_complete(self.compute_features_async(symbol, df))
@@ -214,4 +214,77 @@ def add_alternative_features(df: pd.DataFrame, symbol: str = "") -> pd.DataFrame
     df = df.copy()
     for col in ALTERNATIVE_FEATURE_COLS:
         df[col] = np.nan
+    return df
+
+
+def generate_signal(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Generate trading signals using alternative data features.
+
+    Signal logic (tightened entry conditions):
+      • Long entry (signal = 1):
+          - funding_rate < funding_rate_ma7 (funding cheaper than recent average)
+          - oi_momentum > 0 (open interest rising)
+          - oi_change_pct > 0 (day‑over‑day OI increase)
+          - All three conditions must hold simultaneously.
+
+      • Short entry (signal = -1):
+          - funding_rate > funding_rate_ma7
+          - oi_momentum < 0
+          - oi_change_pct < 0
+          - All three conditions must hold simultaneously.
+
+    Exit logic (signal = 0):
+      • Existing position is closed when any of the entry conditions reverses.
+      • If no position is open, signal remains 0.
+
+    The function adds a ``signal`` column to the DataFrame and returns it.
+    Missing feature values are treated as no‑signal (0).
+    """
+    df = df.copy()
+
+    # Ensure required columns exist
+    required = {"funding_rate", "funding_rate_ma7", "oi_momentum", "oi_change_pct"}
+    for col in required:
+        if col not in df.columns:
+            df[col] = np.nan
+
+    # Boolean masks for entry conditions
+    long_entry = (
+        (df["funding_rate"] < df["funding_rate_ma7"])
+        & (df["oi_momentum"] > 0)
+        & (df["oi_change_pct"] > 0)
+    )
+    short_entry = (
+        (df["funding_rate"] > df["funding_rate_ma7"])
+        & (df["oi_momentum"] < 0)
+        & (df["oi_change_pct"] < 0)
+    )
+
+    # Initialise signal column with zeros
+    df["signal"] = 0
+
+    # Apply entry signals where data is not missing
+    valid_long = long_entry & df[["funding_rate", "funding_rate_ma7", "oi_momentum", "oi_change_pct"]].notna().all(axis=1)
+    valid_short = short_entry & df[["funding_rate", "funding_rate_ma7", "oi_momentum", "oi_change_pct"]].notna().all(axis=1)
+
+    df.loc[valid_long, "signal"] = 1
+    df.loc[valid_short, "signal"] = -1
+
+    # Implement exit logic: when a position exists, close if any condition flips
+    # Forward‑fill the position to know the current exposure
+    df["position"] = df["signal"].replace(to_replace=0, method="ffill").fillna(0)
+
+    exit_condition = (
+        (df["position"] == 1) & ~valid_long
+    ) | (
+        (df["position"] == -1) & ~valid_short
+    )
+
+    df.loc[exit_condition, "signal"] = 0
+    df["position"] = df["signal"].replace(to_replace=0, method="ffill").fillna(0)
+
+    # Clean up intermediate columns
+    df.drop(columns=["position"], inplace=True)
+
     return df

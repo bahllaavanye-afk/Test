@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, List, Tuple
 
 import httpx
 
@@ -72,7 +72,7 @@ async def post(
     channel: str,
     text: str,
     *,
-    blocks: list[dict] | None = None,
+    blocks: List[dict] | None = None,
     color: str | None = None,
 ) -> bool:
     """Post a message to the given channel. Returns True on success."""
@@ -98,29 +98,90 @@ async def post(
         return False
 
 
-# ── High-level helpers used across the codebase ───────────────────────────
+# ── Validation helpers for signal quality ───────────────────────────────────
 
-async def post_standup(squad: str, shipped: list[str], planned: list[str], blockers: list[str]) -> bool:
+_MIN_SHARPE = 0.5          # Minimum Sharpe ratio to consider a strategy worth posting
+_MAX_MAXDD = 0.20         # Maximum acceptable max drawdown (20%)
+
+
+def _validate_alpha_review_params(strategy: str, sharpe: float, maxdd: float, decision: str) -> bool:
+    """Validate alpha review parameters before posting.
+
+    Returns True if the parameters meet quality thresholds; otherwise logs
+    the reason and returns False.
+    """
+    if not strategy:
+        logger.debug("alpha review skipped: empty strategy name")
+        return False
+    if sharpe < _MIN_SHARPE:
+        logger.debug(
+            "alpha review skipped: Sharpe below threshold",
+            strategy=strategy,
+            sharpe=sharpe,
+            threshold=_MIN_SHARPE,
+        )
+        return False
+    if maxdd > _MAX_MAXDD:
+        logger.debug(
+            "alpha review skipped: MaxDD above threshold",
+            strategy=strategy,
+            maxdd=maxdd,
+            threshold=_MAX_MAXDD,
+        )
+        return False
+    if decision not in {"promoted", "iterate", "rejected"}:
+        logger.debug(
+            "alpha review skipped: invalid decision",
+            strategy=strategy,
+            decision=decision,
+        )
+        return False
+    return True
+
+
+# ── High-level helpers used across the codebase ───────────────────────────────
+
+async def post_standup(squad: str, shipped: List[str], planned: List[str], blockers: List[str]) -> bool:
     blocks = [
-        {"type": "header", "text": {"type": "plain_text", "text": f"🌅 {squad} standup — {datetime.now(timezone.utc):%Y-%m-%d}"}},
-        {"type": "section", "fields": [
-            {"type": "mrkdwn", "text": f"*Shipped*\n" + ("\n".join(f"• {x}" for x in shipped) or "_nothing yet_")},
-            {"type": "mrkdwn", "text": f"*Planned*\n" + ("\n".join(f"• {x}" for x in planned) or "_to be set_")},
-        ]},
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": f"🌅 {squad} standup — {datetime.now(timezone.utc):%Y-%m-%d}"},
+        },
+        {
+            "type": "section",
+            "fields": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Shipped*\n" + ("\n".join(f"• {x}" for x in shipped) or "_nothing yet_"),
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Planned*\n" + ("\n".join(f"• {x}" for x in planned) or "_to be set_"),
+                },
+            ],
+        },
     ]
     if blockers:
-        blocks.append({"type": "section", "text": {"type": "mrkdwn",
-            "text": "*🚧 Blockers*\n" + "\n".join(f"• {x}" for x in blockers)}})
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": "*🚧 Blockers*\n" + "\n".join(f"• {x}" for x in blockers)},
+            }
+        )
     return await post(SlackChannel.STANDUP, f"{squad} standup", blocks=blocks)
 
 
 async def post_alpha_review(strategy: str, sharpe: float, maxdd: float, decision: str) -> bool:
+    """Post an alpha review only if the signal passes quality filters."""
+    if not _validate_alpha_review_params(strategy, sharpe, maxdd, decision):
+        return False
+
     color = "good" if decision == "promoted" else "warning" if decision == "iterate" else "danger"
     text = f"📈 *{strategy}* — Sharpe {sharpe:.2f}, MaxDD {maxdd:.1%}, decision: {decision}"
     return await post(SlackChannel.ALPHA, text, color=color)
 
 
-async def post_eod_pnl(date: str, total_pnl: float, top: list[tuple[str, float]], bottom: list[tuple[str, float]]) -> bool:
+async def post_eod_pnl(date: str, total_pnl: float, top: List[Tuple[str, float]], bottom: List[Tuple[str, float]]) -> bool:
     sign = "+" if total_pnl >= 0 else ""
     top_str = "\n".join(f"  🟢 {s}: {sign}${p:,.0f}" for s, p in top[:5])
     bot_str = "\n".join(f"  🔴 {s}: ${p:,.0f}" for s, p in bottom[:5])
@@ -132,13 +193,22 @@ async def post_eod_pnl(date: str, total_pnl: float, top: list[tuple[str, float]]
 async def post_risk_alert(severity: str, message: str, metric: str | None = None, value: float | None = None) -> bool:
     color = {"P0": "danger", "P1": "warning", "P2": "good"}.get(severity, "warning")
     detail = f" ({metric}={value:.4f})" if metric and value is not None else ""
-    return await post(SlackChannel.RISK, f"⚠️ *[{severity}] Risk*: {message}{detail}", color=color)
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+    return await post(
+        SlackChannel.RISK,
+        f"{timestamp} ⚠️ *[{severity}] Risk*: {message}{detail}",
+        color=color,
+    )
 
 
 async def post_deploy(service: str, version: str, status: str, url: str | None = None) -> bool:
     color = "good" if status == "success" else "danger"
     link = f"\n<{url}|View deploy>" if url else ""
-    return await post(SlackChannel.DEPLOYS, f"🚀 *{service}* deploy `{version}` → {status}{link}", color=color)
+    return await post(
+        SlackChannel.DEPLOYS,
+        f"🚀 *{service}* deploy `{version}` → {status}{link}",
+        color=color,
+    )
 
 
 async def post_ci_failure(branch: str, run_url: str, failing_step: str) -> bool:
@@ -148,7 +218,8 @@ async def post_ci_failure(branch: str, run_url: str, failing_step: str) -> bool:
 
 async def post_incident(severity: str, component: str, description: str, oncall: str) -> bool:
     color = {"P0": "danger", "P1": "warning"}.get(severity, "good")
-    text = f"🚨 *[{severity}] Incident* — {component}\n{description}\n_On-call: {oncall}_"
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+    text = f"{timestamp} 🚨 *[{severity}] Incident* — {component}\n{description}\n_On-call: {oncall}_"
     return await post(SlackChannel.INCIDENTS, text, color=color)
 
 
