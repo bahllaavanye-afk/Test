@@ -1,11 +1,5 @@
 {
   "skills": [
-    "Detect deadlocks",
-    "Here are 2-3 concise bullet points of the most important, actionable knowledge:",
-    "docstrings on ml/features/technical.py: success \u2014 tests green",
-    "Refactor predict.py",
-    "- Error messages or exception types",
-    "[continuous_improver @ 2026-07-06T01:14] error_handling on risk/manager.py: tests=pass",
     "Use Temporal Fusion",
     "Verify timezone sync",
     "Log broker responses",
@@ -199,8 +193,14 @@
     "Here are 2-3 concise bullet points of actionable knowledge based on recent agent learnings:",
     "Log UCB1 decisions",
     "Verify config files",
-    "**API Input Validation**: Focus on enhancing `backend/app/api/request_validator.py` to add explicit validation for malformed JSON bodies and ensure endpoints return relevant errors."
+    "**API Input Validation**: Focus on enhancing `backend/app/api/request_validator.py` to add explicit validation for malformed JSON bodies and ensure endpoints return relevant errors.",
+    "Validate timestamps",
+    "Monitor queue sizes",
+    "Track memory usage",
+    "* Implement JSON schema checks",
+    "* Enhance error responses",
+    "* Automate retraining triggers"
   ],
-  "last_updated": "2026-07-22T00:57:35.007641+00:00",
+  "last_updated": "2026-07-22T04:15:23.300176+00:00",
   "total": 200
 }
