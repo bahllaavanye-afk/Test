@@ -12,6 +12,8 @@ The implementation mirrors the original code base and adds no new
 behaviour; it merely enriches the DataFrame with a collection of common
 technical features such as returns, volatility, EMA distance, RSI, MACD,
 Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
+Additional combined signal columns are added to tighten entry conditions,
+provide confirmation filters, and improve exit logic.
 """
 
 from __future__ import annotations
@@ -179,5 +181,36 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             df["adx"] = adx_df["ADX_14"] / 100.0
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute ADX feature", exc_info=exc)
+
+    # --- Combined signal features (tightened entry/exit logic) ---
+    try:
+        # Helper series with fallback to zeros to avoid KeyError if a column is missing
+        ema9 = df.get("ema_9_diff", pd.Series(0, index=df.index))
+        adx = df.get("adx", pd.Series(0, index=df.index))
+        rsi14 = df.get("rsi_14", pd.Series(0, index=df.index))
+        stoch_k = df.get("stoch_k", pd.Series(0, index=df.index))
+        stoch_d = df.get("stoch_d", pd.Series(0, index=df.index))
+        macd_hist = df.get("macd_hist", pd.Series(0, index=df.index))
+        atr_pct = df.get("atr_pct", pd.Series(0, index=df.index))
+
+        # Trend direction: EMA slope + ADX strength
+        df["trend_up"] = ((ema9 > 0) & (adx > 0.2)).astype(int)
+        df["trend_down"] = ((ema9 < 0) & (adx > 0.2)).astype(int)
+
+        # Momentum confirmation using RSI and Stochastic divergence
+        df["momentum_long"] = ((rsi14 > 0.6) & (stoch_k > stoch_d)).astype(int)
+        df["momentum_short"] = ((rsi14 < 0.4) & (stoch_k < stoch_d)).astype(int)
+
+        # Tightened entry signals
+        df["entry_long"] = ((df["trend_up"] == 1) & (df["momentum_long"] == 1)).astype(int)
+        df["entry_short"] = ((df["trend_down"] == 1) & (df["momentum_short"] == 1)).astype(int)
+
+        # Exit signal: MACD histogram crossing zero (trend weakening)
+        df["macd_hist_cross"] = (macd_hist.shift(1) * macd_hist < 0).astype(int)
+
+        # Dynamic stop‑loss based on ATR (1.5 × ATR as a percentage of price)
+        df["stop_loss_pct"] = atr_pct * 1.5
+    except Exception as exc:  # pragma: no cover
+        _logger.error("Failed to compute combined signal features", exc_info=exc)
 
     return df
