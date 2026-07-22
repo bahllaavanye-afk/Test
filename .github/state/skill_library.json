@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Syntax check compiled code before writing to disk \u2014 prevents broken commits",
-    "Handle timeout errors",
-    "Validate trade data",
-    "Track timeout errors",
-    "* Enhance error responses",
     "Check API keys",
     "Check API rate",
     "Test network ping",
@@ -199,8 +194,13 @@
     "Verify timestamp sync",
     "Limit API retries",
     "Enhance type hints",
-    "Refactor LSTM models"
+    "Refactor LSTM models",
+    "Check database connections",
+    "Monitor memory usage",
+    "Track API rate limits",
+    "Validate input logs",
+    "Optimize Sharpe ratios"
   ],
-  "last_updated": "2026-07-22T17:13:49.927496+00:00",
+  "last_updated": "2026-07-22T18:39:22.413372+00:00",
   "total": 200
 }
