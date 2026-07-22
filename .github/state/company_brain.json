@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784733923.176983,
+    "last_updated": 1784734035.8900034,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -108,65 +108,53 @@
       "size_multiplier": 1.0
     },
     "opinion_score": 3,
-    "macro_score": 3,
-    "vix": 17.05,
-    "market_scan_ts": 1784667673.7881093,
+    "macro_score": 2,
+    "vix": 16.88,
+    "market_scan_ts": 1784734035.8669229,
     "sector_leaders": [
       "Energy",
       "Healthcare",
       "Financials"
     ],
     "sector_laggards": [
-      "Cons. Disc.",
+      "Industrials",
       "Materials",
       "Tech"
     ],
     "active_universe": [
-      "TMO",
-      "CRWD",
-      "NFLX",
-      "MPC",
-      "MS",
-      "ABT",
-      "XOM",
-      "PANW",
-      "CVX",
       "NOW",
-      "TSLA",
-      "COP",
-      "EOG",
-      "ADBE",
-      "WFC",
-      "BAC",
-      "BRK-B",
+      "CRWD",
+      "MPC",
+      "PANW",
+      "XOM",
+      "NFLX",
+      "GOOGL",
+      "TMO",
+      "IWM",
+      "ABT",
+      "XLF",
       "NVDA",
+      "META",
+      "TSLA",
+      "CVX",
       "QQQ",
-      "AAPL"
+      "GS",
+      "JNJ",
+      "ORCL",
+      "BAC"
     ],
     "top_momentum": [
       "MPC",
       "ABT",
-      "ADBE",
-      "PANW",
-      "INTU"
+      "XOM",
+      "INTU",
+      "CVX"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1784732568.2211363
   },
   "episodic": [
-    {
-      "source": "market_opinion",
-      "regime": "bull",
-      "score": 4,
-      "gates": {
-        "directional": true,
-        "min_confidence": 0.6,
-        "size_multiplier": 1.0
-      },
-      "lesson": "**Morning Brief:** Markets remain in a bull regime with a strong SPY uptrend, low and stable VIX at 15.95, and broad participation (8/11 sectors above 20-SMA), while tightening credit spreads reinforce risk-on sentiment despite a flat yield curve. **Tactical implication:** Favor trend-following strategies today to capitalize on sustained directional momentum.",
-      "ts": 1784215503.9914606
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -1843,6 +1831,21 @@
       },
       "lesson": "Despite a strong SPY uptrend and tightening credit spreads, the bull regime is tempered by a rising VIX and weak breadth, with only 5 of 11 sectors above their 20-day SMA. We recommend favouring mean-reversion strategies to exploit overextended moves in the context of this narrow leadership.",
       "ts": 1784733923.181216
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 3,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 3, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784734035.8943849
     }
   ],
   "github_insights": [
