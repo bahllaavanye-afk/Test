@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784756156.6522515,
+    "last_updated": 1784760069.6488798,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,61 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784756156.6511595
+    "last_brain_update": 1784760069.6478117
   },
   "episodic": [
-    {
-      "lesson": "Symbol Scout feature blocked by missing specification. Prioritize requirements gathering and write a concrete GitHub issue before attempting automation.",
-      "category": "strategy",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1784225970.622466
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 4,
-      "sector_leaders": [
-        "Financials",
-        "Healthcare",
-        "Energy"
-      ],
-      "gap_count": 6,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=4). Leading: Financials, Healthcare. Gaps: 6, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784228499.5921729
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 4,
-      "sector_leaders": [
-        "Financials",
-        "Healthcare",
-        "Energy"
-      ],
-      "gap_count": 6,
-      "breakout_count": 1,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=4). Leading: Financials, Healthcare. Gaps: 6, Breakouts: 1, Risk flags: 0.",
-      "ts": 1784232256.1980898
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 4,
-      "sector_leaders": [
-        "Financials",
-        "Healthcare",
-        "Energy"
-      ],
-      "gap_count": 6,
-      "breakout_count": 1,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=4). Leading: Financials, Healthcare. Gaps: 6, Breakouts: 1, Risk flags: 0.",
-      "ts": 1784235111.9958022
-    },
     {
       "lesson": "Vercel free tier deployment limit (100/day) is blocking releases; upgrade plan or batch deployments to avoid interruptions.",
       "category": "execution",
@@ -1862,14 +1810,37 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 3, Breakouts: 0, Risk flags: 0.",
       "ts": 1784753961.8292434
+    },
+    {
+      "lesson": "Deployment failed due to Vercel free tier daily limit (100 deployments). This blocks all future deployments and requires either upgrading to a paid plan or reducing deployment frequency.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784760037.5950708
+    },
+    {
+      "lesson": "Multiple GitHub auto-fix attempts failed because issue descriptions lack concrete codebase details and failure points. This wastes CI resources and delays fixes; improve issue templates or require manual resolution.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784760037.601159
+    },
+    {
+      "lesson": "Only 2 of 60 generated signals survived the gate+topK funnel (3.3% conversion), placing just 2 orders. Extremely low throughput may indicate overly conservative filtering or model underperformance.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784760037.6058717
+    },
+    {
+      "lesson": "FX desk placed only 1 of 8 high-confidence signals (\u22650.6) and skipped 2 due to existing positions. This suggests possible over-positioning in certain pairs or insufficient risk capacity for new entries.",
+      "category": "risk",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784760037.610552
     }
   ],
   "github_insights": [
-    {
-      "summary": "The auto-fix bot repeatedly failed to apply a patch to a file, as indicated by three identical error messages.",
-      "item_count": 20,
-      "ts": 1783930447.9351227
-    },
     {
       "summary": "The deployment failed due to a resource limit error, and an automatic patch attempt also failed to apply.",
       "item_count": 20,
@@ -2364,6 +2335,11 @@
       "summary": "The auto-fix bot failed to apply patches in two instances and skipped a third due to excessive complexity, with the reason attributed to the issue description.",
       "item_count": 20,
       "ts": 1784756156.6407783
+    },
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1784760069.6359444
     }
   ],
   "experiment_results": [
@@ -2665,6 +2641,30 @@
       "summary": "*International Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $343 conf=100%  id=`8d72af3e\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $343 conf=100%  id=`6cd8953b\u2026`",
       "source": "desk_run_summary",
       "ts": 1784756146.5579216
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (21:42 UTC)  equity=$22,902.73  regime=sideways/calm\nfunnel: 60 generated \u2192 19 survived gate+topK (1 exploration) \u2192 2 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
+      "source": "desk_run_summary",
+      "ts": 1784760037.6152537
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 8 signal(s) \u2265 0.6: USD_CAD BUY@1.41095, EUR_USD SELL@1.13980, GBP_USD SELL@1.33751 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784760037.6198826
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $396 conf=97%  id=`aa93f8f6\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $344 conf=92%  id=`58a3a307\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784760037.6245604
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*International Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $343 conf=100%  id=`8d72af3e\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $343 conf=100%  id=`6cd8953b\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784760037.6296275
     }
   ]
 }
