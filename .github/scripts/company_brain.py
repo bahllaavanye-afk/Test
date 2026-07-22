@@ -50,6 +50,16 @@ KNOWLEDGE_CHANNELS = [
 
 LOOKBACK_SECONDS = 7200   # 2 hours of Slack history
 
+# Discord channels where the desks post their real run summaries (funnel,
+# orders, P&L, regime). This is where the trading actually reports to — Slack
+# is dead (invalid_auth), so without reading these the company brain never saw
+# a single real desk outcome.
+DESK_CHANNELS = [
+    "pnl-daily", "desk-fx-rates", "desk-crypto", "desk-equities",
+    "desk-options", "desk-commodities", "desk-polymarket", "desk-kalshi",
+    "bot-fleet", "trading-floor",
+]
+
 
 def resolve_channel_ids() -> dict[str, str]:
     """Get channel name → ID mapping."""
@@ -149,6 +159,34 @@ def fetch_github_knowledge() -> list[dict]:
     return items
 
 
+def fetch_desk_knowledge() -> list[dict]:
+    """Pull the latest desk run summary from each Discord desk channel.
+
+    The CONSUME side that was missing: desks post funnel/orders/P&L to Discord
+    every run, but nothing fed those outcomes back into the shared brain, so
+    employees discussed status theater instead of what the desks actually did.
+    This reads the durable Discord history (stateless, via the bot API) and
+    keeps the newest substantive post per channel. Fail-soft → [].
+    """
+    try:
+        import notify
+    except Exception:
+        return []
+    items: list[dict] = []
+    for ch in DESK_CHANNELS:
+        try:
+            msgs = notify.read_channel_recent(ch, limit=8)
+        except Exception:
+            msgs = []
+        for m in msgs:
+            text = (m.get("content") or "").strip()
+            if len(text) < 20:
+                continue
+            items.append({"source": "desk", "channel": ch, "text": text[:300]})
+            break  # one representative (newest) post per channel per cycle
+    return items
+
+
 def fetch_recent_code_reviews() -> list[str]:
     """Pull recent code review insights from docs/agent-reviews/."""
     reviews_dir = Path(os.environ.get("GITHUB_WORKSPACE", ".")) / "docs" / "agent-reviews"
@@ -174,16 +212,22 @@ def synthesize_insights(
     slack_msgs: list[dict],
     github_items: list[dict],
     code_findings: list[str],
+    desk_items: list[dict] | None = None,
 ) -> dict:
     """
     Use LLM to synthesize raw knowledge sources into structured insights.
     This is the company's collective intelligence step.
     """
-    if not slack_msgs and not github_items and not code_findings:
+    desk_items = desk_items or []
+    if not slack_msgs and not github_items and not code_findings and not desk_items:
         return {}
 
     # Build compact synthesis prompt — efficiency first
     parts = []
+
+    if desk_items:
+        desk_text = "\n".join(f"[{d['channel']}] {d['text']}" for d in desk_items[:8])
+        parts.append(f"DESK RESULTS (latest run per desk):\n{desk_text}")
 
     if slack_msgs:
         slack_sample = slack_msgs[:10]
@@ -239,9 +283,12 @@ def update_company_brain():
     code_findings = fetch_recent_code_reviews()
     print(f"Fetched {len(code_findings)} code review findings")
 
+    desk_items = fetch_desk_knowledge()
+    print(f"Fetched {len(desk_items)} desk run summaries")
+
     # 2. Synthesize into structured insights
-    if slack_msgs or github_items or code_findings:
-        synthesis = synthesize_insights(slack_msgs, github_items, code_findings)
+    if slack_msgs or github_items or code_findings or desk_items:
+        synthesis = synthesize_insights(slack_msgs, github_items, code_findings, desk_items)
         insights = synthesis.get("insights", [])
         print(f"Synthesized {len(insights)} insights")
 
@@ -252,6 +299,16 @@ def update_company_brain():
                 "category": insight.get("category", "general"),
                 "priority": insight.get("priority", 2),
                 "source": "company_brain_synthesis",
+            })
+
+        # Desk outcomes are recorded directly (not only via the LLM synthesis),
+        # so the brain stays grounded in real desk activity even when the
+        # free-LLM keys are unset and `insights` comes back empty.
+        for d in desk_items:
+            memory_write("desk_outcomes", {
+                "channel": d.get("channel", ""),
+                "summary": d.get("text", "")[:300],
+                "source": "desk_run_summary",
             })
 
         # Write Slack-derived insights
@@ -302,11 +359,13 @@ def update_company_brain():
     episodic_count = len(brain.get("episodic", []))
     skills_count = len(brain.get("skills", []))
     slack_count = len(brain.get("slack_insights", []))
+    desk_count = len(brain.get("desk_outcomes", []))
 
     print(f"Company brain updated:")
     print(f"  Episodic memory: {episodic_count} entries")
     print(f"  Skills library: {skills_count} entries")
     print(f"  Slack insights: {slack_count} entries")
+    print(f"  Desk outcomes: {desk_count} entries")
     print(f"  Risk status: {risk_status}")
     print(f"  Context size: {len(get_context_preview())} chars")
 

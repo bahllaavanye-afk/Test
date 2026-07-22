@@ -340,6 +340,41 @@ def _is_recent_duplicate(channel: str, text: str, within_last: int = 4) -> bool:
     return False
 
 
+def read_channel_recent(channel: str, limit: int = 15) -> list[dict]:
+    """Read the most recent messages from a Discord channel via the bot API.
+
+    STATELESS — no git-committed state, same mechanism as _is_recent_duplicate.
+    Returns [{content, author, ts}] newest-first; [] when the token/channel is
+    unavailable or the fetch fails (fail-soft, never raises). The leading
+    ``**Name**`` prefix the bot post path adds is stripped so callers get the
+    raw text.
+
+    This is the CONSUME side of desk posts: desk run summaries already land
+    durably in Discord, so the company brain reads them back from there instead
+    of committing desk state to git (which caused the improver-clobber mess).
+    """
+    if not _BOT_TOKEN:
+        return []
+    cid = _load_channel_ids().get(str(channel).lower().lstrip("#"))
+    if not cid:
+        return []
+    n = max(1, min(int(limit), 100))
+    try:
+        msgs = _bot_req("GET", f"/channels/{cid}/messages?limit={n}") or []
+    except Exception:
+        return []
+    out: list[dict] = []
+    for m in msgs if isinstance(msgs, list) else []:
+        body = (m.get("content") or "").strip()
+        if body.startswith("**"):
+            body = body.split("** ", 1)[-1].strip()
+        if not body:
+            continue
+        author = ((m.get("author") or {}).get("username")) or "?"
+        out.append({"content": body, "author": author, "ts": m.get("timestamp", "")})
+    return out
+
+
 def post_dedup(channel: str, text: str, username: str = "QuantEdge",
                within_last: int = 4) -> bool:
     """Like post(), but suppresses a message identical to a recent one in the
