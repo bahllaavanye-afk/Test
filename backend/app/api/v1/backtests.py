@@ -250,6 +250,19 @@ async def _run_walk_forward_task(run_id: str, strategy_name: str, symbol: str,
                 if "max_drawdown" in w and w["max_drawdown"] is not None
             ]
 
+            # Persist the overfit gate verdict alongside the run (JSON params, no
+            # migration) so the leaderboard/UI can refuse to promote overfit runs.
+            run.params = {
+                **(run.params or {}),
+                "overfit": {
+                    "is_robust": wf_result.is_robust,
+                    "verdict": wf_result.verdict,
+                    "deflated_sharpe": wf_result.deflated_sharpe,
+                    "consistency": wf_result.consistency,
+                    "n_windows": wf_result.n_windows,
+                },
+            }
+
             result = BacktestResult(
                 id=str(uuid.uuid4()),
                 run_id=run_id,
