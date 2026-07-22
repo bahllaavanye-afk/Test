@@ -7,9 +7,9 @@ from app.api.deps import get_current_user
 from app.models.account import Account
 from app.models.audit_log import AuditLog
 from app.models.user import User
-from app.utils.security import encrypt_secret, decrypt_secret
+from app.utils.security import encrypt_secret
 from app.utils.logging import logger
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -26,7 +26,8 @@ async def latest_total_equity(db: AsyncSession) -> float:
 
     account_ids = (
         (await db.execute(select(Account.id).where(Account.is_active == True)))  # noqa: E712
-        .scalars().all()
+        .scalars()
+        .all()
     )
     total = 0.0
     for acc_id in account_ids:
@@ -48,7 +49,7 @@ class AccountCreate(BaseModel):
     mode: str = "paper"
     api_key: str
     api_secret: str
-    extra_config: dict = {}
+    extra_config: dict = Field(default_factory=dict)
 
 
 class AccountOut(BaseModel):
@@ -137,6 +138,7 @@ async def get_account_equity(
         raise HTTPException(400, "Live equity is only available for Alpaca accounts with stored credentials")
 
     from app.brokers.alpaca_orders import get_alpaca_account
+
     try:
         data = await get_alpaca_account(account)
     except Exception as e:
@@ -151,7 +153,6 @@ async def get_account_equity(
         day_trade_count=int(data["daytrade_count"]) if data.get("daytrade_count") is not None else None,
         pattern_day_trader=bool(data.get("pattern_day_trader")) if data.get("pattern_day_trader") is not None else None,
     )
-
 
 
 @router.delete("/{account_id}")

@@ -6,9 +6,8 @@ from app.database import get_db, AsyncSessionLocal
 from app.api.deps import get_current_user, get_current_active_superuser
 from app.models.strategy import Strategy
 from app.models.user import User
-from app.strategies import STRATEGY_REGISTRY, desk_of, list_desks, strategies_by_desk
+from app.strategies import STRATEGY_REGISTRY, list_desks, strategies_by_desk
 from pydantic import BaseModel, ConfigDict
-import uuid
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
 
@@ -90,7 +89,7 @@ async def list_active(
                 Strategy.symbols,
                 Strategy.tick_interval_seconds,
                 Strategy.confidence_threshold,
-            ).where(Strategy.is_enabled == True)  # noqa: E712
+            ).where(Strategy.is_enabled.is_(True))
             result = await db.execute(stmt)
             rows = result.mappings().all()
             return [
