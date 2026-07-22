@@ -5,13 +5,134 @@ Runs as a background asyncio task started from main.py lifespan.
 Uses yfinance for free OHLCV data — no broker keys required.
 """
 from __future__ import annotations
+
 import asyncio
 import uuid
-import pandas as pd
 from datetime import datetime, timezone
+from typing import List, Dict, Any
+
+import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from sqlalchemy import select
 from app.utils.logging import logger
+
+
+class BacktestRunSchema(BaseModel):
+    """
+    Schema representing the input parameters for a backtest run.
+    Used for validation, documentation, and IDE assistance.
+    """
+
+    id: str = Field(
+        ...,
+        description="UUID of the backtest run.",
+        example="123e4567-e89b-12d3-a456-426614174000",
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol to backtest.",
+        example="AAPL",
+    )
+    start_date: datetime = Field(
+        ...,
+        description="Start date of the backtest period (UTC).",
+        example="2022-01-01T00:00:00Z",
+    )
+    end_date: datetime = Field(
+        ...,
+        description="End date of the backtest period (UTC).",
+        example="2022-12-31T00:00:00Z",
+    )
+    interval: str = Field(
+        ...,
+        description="Data interval, e.g., '1d', '1h'.",
+        example="1d",
+    )
+    strategy_name: str = Field(
+        ...,
+        description="Name of the strategy registered in STRATEGY_REGISTRY.",
+        example="mean_rev_20_2",
+    )
+    params: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Optional strategy‑specific parameters.",
+        example={"initial_equity": 100_000.0},
+    )
+
+    @validator("end_date")
+    def check_date_order(cls, v: datetime, values: dict) -> datetime:
+        """Ensure that end_date is later than start_date."""
+        start = values.get("start_date")
+        if start is not None and v <= start:
+            raise ValueError("end_date must be after start_date")
+        return v
+
+    @validator("interval")
+    def validate_interval(cls, v: str) -> str:
+        """Validate that the interval follows supported granularity."""
+        allowed = {"1m", "5m", "15m", "30m", "1h", "1d", "1wk", "1mo"}
+        if v not in allowed:
+            raise ValueError(f"interval must be one of {sorted(allowed)}")
+        return v
+
+
+class BacktestResultSchema(BaseModel):
+    """
+    Schema for the backtest result metrics stored in the database.
+    Provides clear documentation and runtime validation.
+    """
+
+    total_return: float = Field(
+        ...,
+        description="Total return expressed as a decimal (e.g., 0.12 for 12%).",
+        example=0.12,
+    )
+    annualized_return: float = Field(
+        ...,
+        description="Annualized return expressed as a decimal.",
+        example=0.15,
+    )
+    sharpe_ratio: float = Field(
+        ...,
+        description="Sharpe ratio of the strategy.",
+        example=1.2,
+    )
+    sortino_ratio: float = Field(
+        ...,
+        description="Sortino ratio of the strategy.",
+        example=1.5,
+    )
+    calmar_ratio: float = Field(
+        ...,
+        description="Calmar ratio of the strategy.",
+        example=0.8,
+    )
+    max_drawdown: float = Field(
+        ...,
+        description="Maximum drawdown expressed as a negative decimal.",
+        example=-0.2,
+    )
+    win_rate: float = Field(
+        ...,
+        description="Proportion of winning trades (0‑1).",
+        example=0.55,
+    )
+    profit_factor: float = Field(
+        ...,
+        description="Profit factor (gross profit / gross loss).",
+        example=1.3,
+    )
+    total_trades: int = Field(
+        ...,
+        description="Total number of trades executed.",
+        example=42,
+    )
+    equity_curve: List[float] = Field(
+        ...,
+        description="Equity curve values over time.",
+        example=[100000.0, 101000.0, 102500.0],
+    )
 
 
 async def run_backtest_job(run_id: str | None) -> None:
