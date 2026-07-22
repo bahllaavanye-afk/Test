@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784741171.860186,
+    "last_updated": 1784742908.5606232,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784738647.8344474
+    "last_brain_update": 1784742908.5595815
   },
   "episodic": [
     {
@@ -1850,11 +1850,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The deployment failed due to a resource limit error, and subsequent auto-fix attempts also failed to apply patches.",
-      "item_count": 20,
-      "ts": 1783895556.0323446
-    },
-    {
       "summary": "The auto-fix was aborted three times due to validation failure, as each attempt involved approximately 60 lines of changes, exceeding the 50-line limit.",
       "item_count": 20,
       "ts": 1783899367.1569226
@@ -2348,6 +2343,11 @@
       "summary": "An autonomous PR attempted to modify a protected file (`backe`), but the team lead review revoked the automerge, preventing the changes from being automatically merged.",
       "item_count": 20,
       "ts": 1784738647.8246317
+    },
+    {
+      "summary": "The auto-fix process failed to apply patches or skipped due to excessive complexity while implementing an LLM-brain feature.",
+      "item_count": 20,
+      "ts": 1784742908.5492964
     }
   ],
   "experiment_results": [
@@ -2553,6 +2553,30 @@
       "summary": "*International Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $344 conf=100%  id=`db8adba7\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $344 conf=100%  id=`66cdaebf\u2026`",
       "source": "desk_run_summary",
       "ts": 1784738642.0137758
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (16:50 UTC)  equity=$22,945.24  regime=sideways/calm\nfunnel: 57 generated \u2192 17 survived gate+topK (0 exploration) \u2192 11 placed\n\u2705 *Equities*: 3 orders\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\u2705 *StatArb*: 2 ",
+      "source": "desk_run_summary",
+      "ts": 1784742902.7534282
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 8 signal(s) \u2265 0.6: USD_CAD BUY@1.41095, EUR_USD SELL@1.13980, GBP_USD SELL@1.33751 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784742902.7580733
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $392 conf=97%  id=`c20f3ebb\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $344 conf=92%  id=`5504b409\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784742902.7625313
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "**\u26a1 Backtest Engine**: The added trailing\u2011stop/RSI filter should boost the strategy\u2019s win\u2011rate and lower drawdowns, so I\u2019d expect a Sharpe in the 1.2\u20111.4 range assuming the base model\u2019s annualized return stays around 12\u201115\u202f% with volatility near 10\u202f%; the tighter exit reduces tail risk enough to pus",
+      "source": "desk_run_summary",
+      "ts": 1784742902.76683
     }
   ]
 }
