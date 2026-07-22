@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784732568.222131,
+    "last_updated": 1784733923.176983,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -62,35 +62,35 @@
     "autopilot_overfit_count": 0,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-07-21T15:27:43.503155+00:00",
+      "generated_at": "2026-07-22T15:25:05.378264+00:00",
       "signals": {
         "vix": {
-          "value": 17.22,
-          "trend": "flat"
+          "value": 16.94,
+          "trend": "rising"
         },
         "spy": {
-          "price": 747.91,
-          "sma50": 743.8,
-          "sma200": 694.27,
+          "price": 749.35,
+          "sma50": 744.08,
+          "sma200": 694.7,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0221,
+          "ratio": 1.0213,
           "median": 1.0517,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 1.482,
+          "hyg_lqd_momentum_20d": 1.695,
           "signal": "tightening"
         },
         "breadth": {
-          "sectors_above_sma20": 4,
+          "sectors_above_sma20": 5,
           "total_sectors": 11,
-          "breadth_pct": 36.4
+          "breadth_pct": 45.5
         },
         "btc": {
-          "price": 66640,
-          "24h_pct": 2.75
+          "price": 65989,
+          "24h_pct": -1.0
         }
       },
       "score": 3,
@@ -100,7 +100,7 @@
         "min_confidence": 0.6,
         "size_multiplier": 1.0
       },
-      "summary": "[LLM unavailable \u2014 all providers failed]"
+      "summary": "Despite a strong SPY uptrend and tightening credit spreads, the bull regime is tempered by a rising VIX and weak breadth, with only 5 of 11 sectors above their 20-day SMA. We recommend favouring mean-reversion strategies to exploit overextended moves in the context of this narrow leadership."
     },
     "strategy_gates": {
       "directional": true,
@@ -155,13 +155,6 @@
     "last_brain_update": 1784732568.2211363
   },
   "episodic": [
-    {
-      "lesson": "Vercel deployment links may indicate environment issues; verify CI/CD stability to avoid production disruptions.",
-      "category": "execution",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1784211684.6477954
-    },
     {
       "source": "market_opinion",
       "regime": "bull",
@@ -1838,6 +1831,18 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784675475.7176871
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 3,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "Despite a strong SPY uptrend and tightening credit spreads, the bull regime is tempered by a rising VIX and weak breadth, with only 5 of 11 sectors above their 20-day SMA. We recommend favouring mean-reversion strategies to exploit overextended moves in the context of this narrow leadership.",
+      "ts": 1784733923.181216
     }
   ],
   "github_insights": [
