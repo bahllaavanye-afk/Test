@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784751667.9620996,
+    "last_updated": 1784753961.8246288,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 3,
     "macro_score": 3,
-    "vix": 16.85,
-    "market_scan_ts": 1784751199.0266712,
+    "vix": 16.64,
+    "market_scan_ts": 1784753961.8004935,
     "sector_leaders": [
       "Energy",
       "Healthcare",
@@ -123,9 +123,9 @@
     ],
     "active_universe": [
       "NOW",
+      "GOOGL",
       "MPC",
       "CRWD",
-      "GOOGL",
       "ABT",
       "NFLX",
       "PANW",
@@ -133,11 +133,11 @@
       "TMO",
       "JNJ",
       "NVDA",
-      "BAC",
+      "ADBE",
       "TSLA",
       "META",
+      "BAC",
       "CVX",
-      "ADBE",
       "EOG",
       "IWM",
       "BLK",
@@ -155,13 +155,6 @@
     "last_brain_update": 1784751667.96129
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix failed to apply a patch. Investigate patch format, CI/CD pipeline, or integration test gaps to prevent future failures.",
-      "category": "risk",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784225970.6195357
-    },
     {
       "lesson": "Symbol Scout feature blocked by missing specification. Prioritize requirements gathering and write a concrete GitHub issue before attempting automation.",
       "category": "strategy",
@@ -1854,6 +1847,21 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1784751660.1710858
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 3,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 3, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784753961.8292434
     }
   ],
   "github_insights": [
