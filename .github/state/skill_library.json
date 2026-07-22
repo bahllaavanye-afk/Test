@@ -1,11 +1,5 @@
 {
   "skills": [
-    "- Timestamps and failure patterns",
-    "Improve disk monitoring",
-    "Limit API bursts",
-    "Reset on crash",
-    "Enhance memory logging",
-    "**API Input Validation**: Focus on enhancing `backend/app/api/request_validator.py` to add explicit validation for malformed JSON bodies and ensure endpoints return relevant errors.",
     "Here are 2-3 concise bullet points of actionable knowledge based on recent agent learnings:",
     "Expected Sharpe ratios for new strategies are 1.1-1.3 for **SPY Earnings-Momentum Convergence** and 1.1-1.3 for **AAPL Earnings-Beat Momentum + 15-min VWAP Pullback**.",
     "Add input validation",
@@ -199,8 +193,14 @@
     "Test API rate limits",
     "Implement JSON schema checks",
     "Enhance model drift detection",
-    "Optimize API error handling"
+    "Optimize API error handling",
+    "Log API timestamps",
+    "Check queue depths",
+    "Verify SSL certs",
+    "Implement JSON schema validation",
+    "Add type hints and docstrings",
+    "Use Temporal Fusion Transformer"
   ],
-  "last_updated": "2026-07-22T07:07:30.282772+00:00",
+  "last_updated": "2026-07-22T09:56:48.312679+00:00",
   "total": 200
 }
