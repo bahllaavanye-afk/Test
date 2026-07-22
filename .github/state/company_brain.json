@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784719166.9896295,
+    "last_updated": 1784724970.1652634,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784719166.9886642
+    "last_brain_update": 1784724970.164261
   },
   "episodic": [
     {
@@ -1842,11 +1842,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The deployment failed due to a resource limitation error, and two consecutive auto-fix attempts also failed to apply a patch to the file.",
-      "item_count": 20,
-      "ts": 1783862118.0586894
-    },
-    {
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1783867132.5806277
@@ -2340,6 +2335,11 @@
       "summary": "The discussions report that automated fixes were skipped due to complexity when implementing a new concept and an LLM-brain, while one fix failed because the patch could not be applied to the file.",
       "item_count": 20,
       "ts": 1784719166.9788222
+    },
+    {
+      "summary": "The Slack agent-team run failed due to a `message_limit_exceeded` quota, indicating posts are not reaching the workspace, and an automated fix was skipped because the issue was too complex to resolve.",
+      "item_count": 20,
+      "ts": 1784724970.1542232
     }
   ],
   "experiment_results": [
@@ -2473,6 +2473,30 @@
       "summary": "**\u26a1 Backtest Engine**: I estimate the proposed hybrid strategy would yield a Sharpe ratio of around 1.5, given the ATR filter's ability to mitigate false positives and the potential for capturing high-conviction buys like NVDA, as seen in `backend/app/ml/models/price_predictor_v2.py`. To validate th",
       "source": "desk_run_summary",
       "ts": 1784719138.850287
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (12:52 UTC)  equity=$22,918.76  regime=sideways/calm\nfunnel: 52 generated \u2192 18 survived gate+topK (0 exploration) \u2192 2 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
+      "source": "desk_run_summary",
+      "ts": 1784724963.3896768
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 quiet: 8 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784724963.3942523
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $344 conf=92%  id=`7d8e5bf4\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $401 conf=90%  id=`75c436de\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784724963.3987892
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "**\u26a1 Backtest Engine**: I estimate the proposed hybrid strategy would yield a Sharpe ratio of around 1.5, given the ATR filter's ability to mitigate false positives and the potential for capturing high-conviction buys like NVDA, as seen in `backend/app/ml/models/price_predictor_v2.py`. To validate th",
+      "source": "desk_run_summary",
+      "ts": 1784724963.4030535
     }
   ]
 }
