@@ -1,10 +1,5 @@
 {
   "skills": [
-    "* The .github/state/agent_memory.json file is referenced in the continuous_improver agent's report for specific code improvements made in the last cycle.",
-    "Strengthen error handling",
-    "* Agent responses should be in first person, concise, and specific, adhering to the format and instructions provided, such as [ml_trainer @ 2026-07-19T16:57].",
-    "Check GPU temps",
-    "Tighten signal-log validation",
     "Syntax check compiled code before writing to disk \u2014 prevents broken commits",
     "Handle timeout errors",
     "Validate trade data",
@@ -199,8 +194,13 @@
     "Log input data",
     "Test API keys",
     "Validate CSV",
-    "Use circuit breaker"
+    "Use circuit breaker",
+    "Check NaN values",
+    "Verify timestamp sync",
+    "Limit API retries",
+    "Enhance type hints",
+    "Refactor LSTM models"
   ],
-  "last_updated": "2026-07-22T15:37:21.057906+00:00",
+  "last_updated": "2026-07-22T17:13:49.927496+00:00",
   "total": 200
 }
