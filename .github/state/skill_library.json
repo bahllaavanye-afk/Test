@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Check API keys",
-    "Check API rate",
-    "Test network ping",
     "* **Performance optimization**: A lightweight memory-profiling decorator will be added to `.github/scripts/monitor_memory.py` to track peak RAM usage before and after specific tasks.",
     "Here are three concise bullet points of the most important, actionable knowledge:",
     "Monitor memory leaks",
@@ -199,8 +196,11 @@
     "Monitor memory usage",
     "Track API rate limits",
     "Validate input logs",
-    "Optimize Sharpe ratios"
+    "Optimize Sharpe ratios",
+    "Use retry backoff timers",
+    "Check for stale data",
+    "Analyze feature drift"
   ],
-  "last_updated": "2026-07-22T18:39:22.413372+00:00",
+  "last_updated": "2026-07-22T20:09:28.908077+00:00",
   "total": 200
 }
