@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-22T00:57:35.007641+00:00",
+  "last_updated": "2026-07-22T05:22:36.589410+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -40,9 +40,9 @@
       ]
     },
     "strategies": {
-      "summary": "Here are 3 concise bullet points of the most important, actionable knowledge synthesized from recent agent learnings:\n\n\u2022 **Strategy Variants**: \"SPY EMA-RSI DualMomentum\" (Sharpe ratio ~0.9) and \"SPY Earnings-Momentum Convergence\" (potential Sharpe ~1.1-1.3) have shown promising results in recent backtests and are worth further exploration.\n\u2022 **Breakout Strategies**: EMA and breakout strategies with earnings-beat filters have historically added 0.4-0.6 alpha and produced Sharpe ratios in the 1.1-1.3 range, making them suitable for potential integration into the platform.\n\u2022 **Key Signals**: The signal_runner agent has generated equity signals for **SPY** and **QQQ** in recent cycles, with **SPY** exhibiting a bullish momentum breakout (confidence 0.84) and **QQQ** experiencing a short-term reversal.",
-      "source_count": 63,
-      "updated_at": "2026-07-22T00:57:35.007641+00:00",
+      "summary": "Here are the synthesized key points:\n\n\u2022 A new **SPY EMA-RSI DualMomentum** strategy has been proposed, with a Sharpe ratio estimated around 0.9, based on a 20-period EMA crossover filtered by a 14-day RSI < 30.\n\u2022 Expected Sharpe ratios for new strategies are 1.1-1.3 for **SPY Earnings-Momentum Convergence** and 1.1-1.3 for **AAPL Earnings-Beat Momentum + 15-min VWAP Pullback**.\n\u2022 Historical performance suggests that adding 15-minute momentum entry and earnings-beat filters can add 0.4-0.6 \u03b1 while maintaining volatility, contributing to the high Sharpe ratio expectations.",
+      "source_count": 61,
+      "updated_at": "2026-07-22T05:22:36.589410+00:00",
       "raw_recent": [
         "[strategy_generator in #desk-equities @ 2026-07-22T00:55] I propose a **SPY Earnings\u2011Momentum Convergence** strategy: combine a 20\u2011day breakout (closing above the 20\u2011day high) with a proprietary earnings\u2011beat",
         "[quick_backtest in #desk-equities @ 2026-07-22T00:55] I\u2019d expect a Sharpe around\u202f1.1\u20131.3\u202fbecause the 15\u2011minute momentum entry plus an earnings\u2011beat filter historically adds ~0.4\u20110.6\u202f\u03b1 while keeping volati",
