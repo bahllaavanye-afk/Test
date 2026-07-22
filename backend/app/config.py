@@ -2,9 +2,22 @@
 # Version: 1.0.0  |  Mode: paper (live trading permanently disabled)
 # Config loaded from environment variables via Pydantic BaseSettings
 # TRADING_MODE defaults to "paper" — live mode is permanently disabled
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, model_validator
+
+"""Configuration module for the QuantEdge backend.
+
+The module defines a :class:`Settings` class that loads configuration values from
+environment variables (optionally via a ``.env`` file).  All settings are typed
+and validated using *pydantic* and provide convenient properties for common
+derived values such as CORS origins and the current trading mode.
+"""
+
+from __future__ import annotations
+
 import os as _os
+from typing import Dict, List
+
+from pydantic import Field, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Resolve .env to the backend/ dir regardless of where uvicorn is launched from.
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
@@ -12,6 +25,13 @@ _BACKEND_ENV = _os.path.join(_HERE, "..", ".env")
 
 
 class Settings(BaseSettings):
+    """Application settings loaded from environment variables.
+
+    The class inherits from :class:`pydantic.BaseSettings`, allowing values to be
+    overridden via a ``.env`` file located at the project root.  Each attribute
+    includes a default value suitable for development or paper‑trading mode.
+    """
+
     model_config = SettingsConfigDict(env_file=_BACKEND_ENV, extra="ignore")
 
     # App
@@ -42,14 +62,27 @@ class Settings(BaseSettings):
 
     @model_validator(mode="before")
     @classmethod
-    def _normalise_database_url(cls, values: dict) -> dict:
-        """Render and Supabase provide postgres:// — SQLAlchemy async needs postgresql+asyncpg://."""
+    def _normalise_database_url(cls, values: Dict[str, object]) -> Dict[str, object]:
+        """Normalize database URLs for async SQLAlchemy.
+
+        Supabase provides a ``postgres://`` URL, but SQLAlchemy's async driver
+        expects ``postgresql+asyncpg://``.  This validator rewrites any supported
+        URL prefix to the required form.
+
+        Args:
+            values: Raw configuration values supplied by pydantic before model
+                creation.
+
+        Returns:
+            The possibly‑modified values dictionary with a corrected ``database_url``
+            entry.
+        """
         url = values.get("database_url", "")
         if isinstance(url, str):
             if url.startswith("postgres://"):
-                url = "postgresql+asyncpg://" + url[len("postgres://"):]
+                url = "postgresql+asyncpg://" + url[len("postgres://") :]
             elif url.startswith("postgresql://"):
-                url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+                url = "postgresql+asyncpg://" + url[len("postgresql://") :]
             values["database_url"] = url
         return values
 
@@ -100,6 +133,18 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_secret_key(self) -> "Settings":
+        """Validate that ``secret_key`` is appropriately set for production.
+
+        In development environments a placeholder value is allowed, but in any
+        non‑development mode the key must be a secure 32‑byte hexadecimal string.
+
+        Raises:
+            ValueError: If the key is a placeholder in a non‑development mode or
+                shorter than 32 characters.
+
+        Returns:
+            The validated ``Settings`` instance.
+        """
         placeholder = "change-me-in-production-32-byte-hex"
         test_placeholder = "test-secret-key-32-bytes-hex-xxxxx"
         if self.secret_key in (placeholder, test_placeholder):
@@ -114,10 +159,12 @@ class Settings(BaseSettings):
 
     @property
     def is_paper(self) -> bool:
+        """Return ``True`` if the current ``trading_mode`` is set to paper."""
         return self.trading_mode == "paper"
 
     @property
-    def cors_origins(self) -> list[str]:
+    def cors_origins(self) -> List[str]:
+        """Parse ``allowed_origins`` into a list of stripped origin strings."""
         return [o.strip() for o in self.allowed_origins.split(",")]
 
 

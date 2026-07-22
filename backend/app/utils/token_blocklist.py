@@ -1,20 +1,34 @@
 """
-Refresh-token revocation via JTI blocklist.
+Token revocation utilities using a JTI blocklist.
 
-Uses Redis (Upstash) when REDIS_URL is set; falls back to an in-memory
-set otherwise (good for testing, resets on restart).
+This module provides helper functions to mark a JWT identifier (JTI) as
+revoked and to query the revocation status.  Revoked JTIs are stored in
+Redis (via Upstash) when a ``REDIS_URL`` is configured; otherwise an
+in‑memory dictionary is used as a fallback, which is suitable for testing
+or environments without Redis.  The in‑memory store is cleared on process
+restart.
 
-Stored keys: "revoked_jti:<jti>" with TTL = token remaining lifetime.
+The Redis keys are of the form ``revoked_jti:<jti>`` and are set with a
+TTL that matches the remaining lifetime of the token, ensuring automatic
+expiration.
 """
+
 from __future__ import annotations
 
 import time
-# In-memory fallback: {jti: expires_at_unix}
+from typing import Any, Optional
+
+# In‑memory fallback: maps JTI to the Unix timestamp at which the entry expires.
 _memory_blocklist: dict[str, float] = {}
 
 
-async def _try_get_redis():
-    """Return aioredis.Redis if REDIS_URL is configured and reachable, else None."""
+async def _try_get_redis() -> Optional[Any]:
+    """Attempt to obtain a Redis client.
+
+    Returns:
+        An ``aioredis.Redis`` instance if ``REDIS_URL`` is configured and the
+        connection succeeds, otherwise ``None``.
+    """
     try:
         from app.config import settings
         if not settings.redis_url:
@@ -28,7 +42,16 @@ async def _try_get_redis():
 
 
 async def revoke_jti(jti: str, ttl_seconds: int) -> None:
-    """Mark this JTI as revoked. TTL should equal the token's remaining lifetime."""
+    """Mark a JTI as revoked.
+
+    The JTI is stored with a TTL equal to the remaining lifetime of the token.
+    If Redis is available, the revocation is persisted there; otherwise the
+    entry is added to the in‑memory blocklist.
+
+    Args:
+        jti: The JWT identifier to revoke.
+        ttl_seconds: Time‑to‑live for the revocation entry, in seconds.
+    """
     r = await _try_get_redis()
     if r is not None:
         try:
@@ -36,19 +59,29 @@ async def revoke_jti(jti: str, ttl_seconds: int) -> None:
             return
         except Exception:
             pass
-    # Fallback to in-memory
+    # Fallback to in‑memory storage
     _memory_blocklist[jti] = time.time() + ttl_seconds
 
 
 async def is_revoked(jti: str) -> bool:
-    """Return True if this JTI has been revoked."""
+    """Check whether a JTI has been revoked.
+
+    The function first queries Redis (if configured).  If Redis is unavailable,
+    it falls back to the in‑memory blocklist and cleans up any expired entries.
+
+    Args:
+        jti: The JWT identifier to check.
+
+    Returns:
+        ``True`` if the JTI is present in the blocklist, otherwise ``False``.
+    """
     r = await _try_get_redis()
     if r is not None:
         try:
             return bool(await r.exists(f"revoked_jti:{jti}"))
         except Exception:
             pass
-    # Fallback to in-memory
+    # Fallback to in‑memory blocklist
     expires = _memory_blocklist.get(jti)
     if expires is None:
         return False
