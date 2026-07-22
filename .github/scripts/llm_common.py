@@ -882,6 +882,7 @@ _DEFAULT_BRAIN: dict = {
     "github_insights": [],   # lessons from PR reviews + issues
     "trade_outcomes": [],    # recent P&L + what worked
     "experiment_results": [], # ML experiment outcomes
+    "desk_outcomes": [],     # latest run summary per trading desk (from Discord)
 }
 
 
@@ -947,6 +948,7 @@ def get_company_context(max_tokens: int = 600) -> str:
     top_skills = brain.get("skills", [])[-3:]
     slack_insights = brain.get("slack_insights", [])[-2:]
     trade_outcomes = brain.get("trade_outcomes", [])[-2:]
+    desk_outcomes = brain.get("desk_outcomes", [])[-3:]
 
     parts = []
 
@@ -965,6 +967,14 @@ def get_company_context(max_tokens: int = 600) -> str:
     if trade_outcomes:
         outcomes_str = " | ".join(f"{o.get('strategy','?')}: {o.get('outcome','?')}" for o in trade_outcomes)
         parts.append(f"Recent trades: {outcomes_str}")
+
+    if desk_outcomes:
+        desk_str = " | ".join(
+            f"{d.get('channel','desk')}: {d.get('summary','')[:120]}"
+            for d in desk_outcomes if d.get("summary")
+        )
+        if desk_str:
+            parts.append(f"Desk results: {desk_str}")
 
     if recent_lessons:
         lessons = [e.get("lesson", "") for e in recent_lessons if e.get("lesson")]
@@ -991,7 +1001,7 @@ def memory_write(category: str, entry: dict) -> None:
     lst.append(entry)
     # Rolling window caps
     caps = {"episodic": 200, "skills": 100, "slack_insights": 100, "github_insights": 100,
-            "trade_outcomes": 200, "experiment_results": 100}
+            "trade_outcomes": 200, "experiment_results": 100, "desk_outcomes": 100}
     if len(lst) > caps.get(category, 200):
         brain[category] = lst[-caps.get(category, 200):]
     _save_brain(brain)
