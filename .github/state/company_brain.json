@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784751199.0456457,
+    "last_updated": 1784751667.9620996,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,60 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784747336.4355125
+    "last_brain_update": 1784751667.96129
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix skipped due to complexity signals growing technical debt in options-related code. Allocate engineering time for refactoring.",
-      "category": "risk",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784221872.387569
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 4,
-      "sector_leaders": [
-        "Financials",
-        "Healthcare",
-        "Energy"
-      ],
-      "gap_count": 6,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=4). Leading: Financials, Healthcare. Gaps: 6, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784222769.1653256
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 4,
-      "sector_leaders": [
-        "Healthcare",
-        "Financials",
-        "Energy"
-      ],
-      "gap_count": 6,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=4). Leading: Healthcare, Financials. Gaps: 6, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784225316.4269829
-    },
-    {
-      "lesson": "Deployment blocked by Vercel free tier limit (100/day). Upgrade to Pro or implement deployment batching to avoid repeated failures.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784225970.6134198
-    },
-    {
-      "lesson": "Auto-fix skipped for per-desk performance attribution due to multi-layer complexity. Break feature into smaller, independently deployable modules to enable automated patching.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784225970.6165838
-    },
     {
       "lesson": "Auto-fix failed to apply a patch. Investigate patch format, CI/CD pipeline, or integration test gaps to prevent future failures.",
       "category": "risk",
@@ -1870,14 +1819,44 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 3, Breakouts: 0, Risk flags: 0.",
       "ts": 1784751199.0492482
+    },
+    {
+      "lesson": "Deployment blocked by Vercel free-tier limit (100/day). Need to upgrade plan or reduce deploy frequency.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784751659.9132729
+    },
+    {
+      "lesson": "Automerge revoked for modifying protected broker base file; previous autonomous edit broke main. Enforce stricter PR review gates.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784751659.9534593
+    },
+    {
+      "lesson": "Only 10 orders placed across all desks despite 57 generated signals; Options/Polymarket/Macro fired none. Sideways regime may require tuning strategy thresholds.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784751660.0728714
+    },
+    {
+      "lesson": "Equities and crypto orders show very high confidence (100%, 97%, 91%) but limited diversification across asset classes. Monitor concentration risk.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784751660.1420207
+    },
+    {
+      "lesson": "Auto-fix CI pipeline failed 3 times consecutively. Investigate patch generation logic or underlying file changes.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784751660.1710858
     }
   ],
   "github_insights": [
-    {
-      "summary": "The deployment failed due to resource limitations, and an automated fix was aborted because the proposed changes (~60 lines) exceeded the allowed limit of 50 lines.",
-      "item_count": 20,
-      "ts": 1783905242.1384006
-    },
     {
       "summary": "The auto-fix bot repeatedly failed to apply patches to a file, with three identical error messages indicating the same issue.",
       "item_count": 20,
@@ -2372,6 +2351,11 @@
       "summary": "The PR/issue discussion reports that an automated fix failed twice, as the system was unable to apply a patch to the file.",
       "item_count": 20,
       "ts": 1784747336.4273717
+    },
+    {
+      "summary": "The deployment failed due to resource limits, the team lead revoked automerge because the PR modified protected files, and the auto-fix attempt also failed.",
+      "item_count": 20,
+      "ts": 1784751667.953088
     }
   ],
   "experiment_results": [
@@ -2625,6 +2609,30 @@
       "summary": "*International Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `cross_sectional_momentum/THD` BUY $558 conf=100%  id=`b9bb9f38\u2026`\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $344 conf=100%  id=`49c4cdd7\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $344 conf=100%  id=`b6d43835\u2026`",
       "source": "desk_run_summary",
       "ts": 1784747320.3966804
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (19:14 UTC)  equity=$22,885.15  regime=sideways/calm\nfunnel: 57 generated \u2192 16 survived gate+topK (0 exploration) \u2192 10 placed\n\u2705 *Equities*: 3 orders\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\u2705 *StatArb*: 2 ",
+      "source": "desk_run_summary",
+      "ts": 1784751660.1819737
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 8 signal(s) \u2265 0.6: USD_CAD BUY@1.41095, EUR_USD SELL@1.13980, GBP_USD SELL@1.33751 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784751660.2006524
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $397 conf=97%  id=`854f3a12\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $343 conf=91%  id=`3207105d\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784751660.211973
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*International Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $343 conf=100%  id=`8d72af3e\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $343 conf=100%  id=`6cd8953b\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784751660.2206483
     }
   ]
 }
