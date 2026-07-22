@@ -12,7 +12,9 @@ Acklam approximation. Deterministic; fully unit-testable.
 """
 from __future__ import annotations
 
+import logging
 import math
+import time
 from dataclasses import dataclass
 
 import numpy as np
@@ -22,6 +24,7 @@ RISK_FREE = 0.04
 MULTIPLIER = 100        # options contract multiplier
 MIN_T = 6.5 / 24 / 365  # 0DTE priced as one trading session
 
+logger = logging.getLogger(__name__)
 
 def norm_cdf(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
@@ -101,6 +104,7 @@ def backtest_template(template: dict, closes: list[float],
     Exits: take_profit/stop_loss as % of entry premium (both credit and debit),
     plus expiry settlement. Returns ranking metrics — see module caveat.
     """
+    start_time = time.time()
     action = template["action"]
     tp_pct = next((r["value"] for r in template.get("exit_rules", [])
                    if r["type"] == "take_profit"), 50) or 50
@@ -175,6 +179,17 @@ def backtest_template(template: dict, closes: list[float],
         cum += t
         peak = max(peak, cum)
         mdd = max(mdd, peak - cum)
+
+    exec_time = time.time() - start_time
+    logger.info(
+        "Synthetic options backtest completed",
+        extra={
+            "signals": n,
+            "execution_time_s": exec_time,
+            "total_pnl": total,
+        }
+    )
+
     return {
         "trades": n,
         "win_rate": round(wins / n, 4) if n else None,

@@ -7,12 +7,16 @@ average across calm and turbulent regimes.
 """
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
 from datetime import date
 
 import pandas as pd
 
 from app.backtest.engine import BacktestMetrics, run_backtest
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -129,6 +133,10 @@ def run_stress_tests(
 
         # Fast check: if the scenario window does not intersect the price index, skip early
         if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
+            logger.info(
+                "Stress test scenario %s skipped: window does not intersect price data",
+                scenario.name,
+            )
             results.append(
                 StressResult(
                     scenario=scenario,
@@ -145,6 +153,11 @@ def run_stress_tests(
         s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
 
         if s_prices is None or len(s_prices) < 5:
+            logger.info(
+                "Stress test scenario %s not covered: data_points=%d",
+                scenario.name,
+                len(s_prices) if s_prices is not None else 0,
+            )
             results.append(
                 StressResult(
                     scenario=scenario,
@@ -155,6 +168,9 @@ def run_stress_tests(
             )
             continue
 
+        signal_count = len(s_signals) if s_signals is not None else 0
+
+        start_time = time.perf_counter()
         metrics = run_backtest(
             signals=s_signals,
             prices=s_prices,
@@ -163,6 +179,16 @@ def run_stress_tests(
             initial_equity=initial_equity,
             commission_pct=commission_pct,
             slippage_pct=slippage_pct,
+        )
+        elapsed = time.perf_counter() - start_time
+
+        # Log key metrics for monitoring
+        logger.info(
+            "Stress test scenario %s completed: signals=%d, execution_time=%.4fs, total_return=%.2f%%",
+            scenario.name,
+            signal_count,
+            elapsed,
+            metrics.total_return * 100 if metrics else 0.0,
         )
 
         results.append(

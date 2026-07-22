@@ -1,10 +1,22 @@
 import uuid
-from datetime import datetime
-from datetime import date
-from sqlalchemy import String, ForeignKey, Numeric, DateTime, Date, Integer, JSON, Index
+import logging
+from datetime import datetime, date
+from sqlalchemy import (
+    String,
+    ForeignKey,
+    Numeric,
+    DateTime,
+    Date,
+    Integer,
+    JSON,
+    Index,
+    event,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin
+
+logger = logging.getLogger(__name__)
 
 
 class Order(Base, TimestampMixin):
@@ -55,6 +67,54 @@ class Order(Base, TimestampMixin):
     account: Mapped["Account"] = relationship("Account", back_populates="orders")
     fills: Mapped[list["Fill"]] = relationship("Fill", back_populates="order")
     slippage: Mapped[list["SlippageRecord"]] = relationship("SlippageRecord", back_populates="order")
+
+
+def _log_order_metrics(order: Order, operation: str) -> None:
+    """Log structured metrics for an Order.
+
+    Args:
+        order: The Order instance being logged.
+        operation: A string describing the operation that triggered the log
+            (e.g., "insert" or "update").
+    """
+    # Signal count – approximated by number of associated fills
+    signal_count = len(order.fills) if order.fills is not None else 0
+
+    # Execution time in seconds (submitted -> filled)
+    exec_time = None
+    if order.submitted_at and order.filled_at:
+        exec_time = (order.filled_at - order.submitted_at).total_seconds()
+
+    # Simple P&L calculation: (filled_qty * avg_fill_price) - notional
+    pnl = None
+    if order.filled_qty and order.avg_fill_price is not None:
+        gross = float(order.filled_qty) * float(order.avg_fill_price)
+        cost = float(order.notional) if order.notional is not None else 0.0
+        pnl = gross - cost
+
+    logger.info(
+        f"Order {operation}",
+        extra={
+            "order_id": order.id,
+            "account_id": order.account_id,
+            "symbol": order.symbol,
+            "side": order.side,
+            "status": order.status,
+            "signal_count": signal_count,
+            "execution_time_seconds": exec_time,
+            "pnl": pnl,
+        },
+    )
+
+
+@event.listens_for(Order, "after_insert")
+def _after_insert(mapper, connection, target):
+    _log_order_metrics(target, "insert")
+
+
+@event.listens_for(Order, "after_update")
+def _after_update(mapper, connection, target):
+    _log_order_metrics(target, "update")
 
 
 class Fill(Base):
