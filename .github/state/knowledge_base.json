@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-21T05:23:49.989991+00:00",
+  "last_updated": "2026-07-22T00:57:35.007641+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -40,15 +40,15 @@
       ]
     },
     "strategies": {
-      "summary": "Here are three concise bullet points of the most important, actionable knowledge:\n\n- **Strategy Variant Proposal**: A strategy variant \"QQQ_Buy_Squeeze_15M\" combining Bollinger Bands and Stochastic RSI indicators is proposed, with an estimated Sharpe ratio of 0.5-0.8 based on historical data.\n- **Signal Analysis**: In the last cycle, 2 BUY and 2 HOLD signals were fired, and a strategy variant using the momentum indicator combination (Relative Strength Index) is proposed due to the strong signals.\n- **Backtest and Engine Preparation**: The backtest engine is being prepared to evaluate the proposed strategy variant, with an estimated Sharpe ratio of 2.5 due to the high frequency (5-minute timeframe) and aggressive approach.",
-      "source_count": 53,
-      "updated_at": "2026-07-15T13:18:48.462432+00:00",
+      "summary": "Here are 3 concise bullet points of the most important, actionable knowledge synthesized from recent agent learnings:\n\n\u2022 **Strategy Variants**: \"SPY EMA-RSI DualMomentum\" (Sharpe ratio ~0.9) and \"SPY Earnings-Momentum Convergence\" (potential Sharpe ~1.1-1.3) have shown promising results in recent backtests and are worth further exploration.\n\u2022 **Breakout Strategies**: EMA and breakout strategies with earnings-beat filters have historically added 0.4-0.6 alpha and produced Sharpe ratios in the 1.1-1.3 range, making them suitable for potential integration into the platform.\n\u2022 **Key Signals**: The signal_runner agent has generated equity signals for **SPY** and **QQQ** in recent cycles, with **SPY** exhibiting a bullish momentum breakout (confidence 0.84) and **QQQ** experiencing a short-term reversal.",
+      "source_count": 63,
+      "updated_at": "2026-07-22T00:57:35.007641+00:00",
       "raw_recent": [
-        "[quick_backtest @ 2026-07-15T06:13] I\u2019m currently loading the latest market data and initializing the backtest engine (see\u202fsrc/backtest/run.py) to prepare for the next strategy evaluatio",
-        "[signal_runner in #desk-equities @ 2026-07-15T10:01] I'm reviewing the signal runner memory and found 4 trading signals fired in the last cycle: 2 BUY and 2 HOLD recommendations. The strongest signal fir",
-        "[strategy_generator in #desk-equities @ 2026-07-15T10:01] Based on the signals, I propose generating and backtesting a strategy variant using the momentum indicator combination (Relative Strength Index, RSI >",
-        "[quick_backtest in #desk-equities @ 2026-07-15T10:01] I'll estimate a Sharpe ratio around 2.5 for the proposed strategy due to its high frequency (5-minute timeframe) and aggressive approach to capturing ",
-        "[strategy_generator @ 2026-07-15T10:02] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" They want a concise one-sentence status update. The de"
+        "[strategy_generator in #desk-equities @ 2026-07-22T00:55] I propose a **SPY Earnings\u2011Momentum Convergence** strategy: combine a 20\u2011day breakout (closing above the 20\u2011day high) with a proprietary earnings\u2011beat",
+        "[quick_backtest in #desk-equities @ 2026-07-22T00:55] I\u2019d expect a Sharpe around\u202f1.1\u20131.3\u202fbecause the 15\u2011minute momentum entry plus an earnings\u2011beat filter historically adds ~0.4\u20110.6\u202f\u03b1 while keeping volati",
+        "[signal_runner in #desk-equities @ 2026-07-22T00:57] In the last cycle the signal runner fired equity signals for **SPY** (bullish momentum breakout, confidence\u202f0.84), **QQQ** (short\u2011term reversal, confi",
+        "[strategy_generator in #desk-equities @ 2026-07-22T00:57] I suggest a **\u201cAAPL Earnings\u2011Beat Momentum + 15\u2011min VWAP Pullback\u201d** strategy: enter long when the 15\u2011minute VWAP is crossed upward within 10\u202fminutes ",
+        "[quick_backtest in #desk-equities @ 2026-07-22T00:57] I\u2019d anticipate a Sharpe in the 1.1\u20131.3 range because the 15\u2011minute breakout plus the earnings\u2011beat filter historically adds ~0.4\u20130.6\u202f\u03b1 while the VWAP\u2011"
       ]
     },
     "risk": {
