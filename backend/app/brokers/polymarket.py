@@ -1,8 +1,15 @@
 """
 Polymarket CLOB broker integration via py-clob-client.
-Supports YES/NO binary market trading and arbitrage scanning.
-Provides tighter entry validation and basic exit confirmation.
+
+This module provides a concrete implementation of the ``AbstractBroker`` interface
+for Polymarket's Central Limit Order Book (CLOB). It supports YES/NO binary market
+trading, basic entry validation, and simple exit confirmation. The broker does not
+expose positions or account balances through the client API, and those methods
+return empty structures accordingly.
 """
+
+from typing import List, Dict, Optional
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.utils.exceptions import BrokerError
 from app.utils.logging import logger
@@ -17,22 +24,42 @@ except ImportError:
 
 
 class PolymarketBroker(AbstractBroker):
-    """Broker implementation for Polymarket CLOB."""
+    """Broker implementation for Polymarket CLOB.
 
-    def __init__(self, private_key: str, chain_id: int = 137):
+    The broker validates entry conditions based on spread and slippage tolerances
+    before submitting orders. It also performs a lightweight poll after order
+    creation to capture rapid status changes.
+    """
+
+    def __init__(self, private_key: str, chain_id: int = 137) -> None:
+        """Create a new ``PolymarketBroker`` instance.
+
+        Args:
+            private_key: Private key used to sign API requests.
+            chain_id: Blockchain chain identifier (default is 137 for Polygon).
+        """
         if not POLY_AVAILABLE:
             raise ImportError("py-clob-client required")
-        self.client = ClobClient(
+        self.client: ClobClient = ClobClient(
             host="https://clob.polymarket.com",
             key=private_key,
             chain_id=chain_id,
         )
         # Configurable thresholds for entry validation
-        self.max_spread = getattr(settings, "POLY_MAX_SPREAD", 0.02)  # 2% default
-        self.price_slippage_tolerance = getattr(settings, "POLY_SLIPPAGE_TOLERANCE", 0.01)  # 1% default
+        self.max_spread: float = getattr(settings, "POLY_MAX_SPREAD", 0.02)  # 2% default
+        self.price_slippage_tolerance: float = getattr(
+            settings, "POLY_SLIPPAGE_TOLERANCE", 0.01
+        )  # 1% default
 
-    async def get_markets(self, min_open_interest: float = 10000) -> list[dict]:
-        """Auto‑discover active markets with sufficient liquidity."""
+    async def get_markets(self, min_open_interest: float = 10000) -> List[Dict]:
+        """Discover active markets that meet a minimum open‑interest threshold.
+
+        Args:
+            min_open_interest: Minimum open interest required for a market to be returned.
+
+        Returns:
+            A list of market dictionaries filtered by ``min_open_interest``.
+        """
         try:
             import asyncio
             markets = await asyncio.to_thread(self.client.get_markets)
@@ -44,18 +71,32 @@ class PolymarketBroker(AbstractBroker):
             logger.error("Polymarket market fetch failed", error=str(e))
             return []
 
-    async def get_order_book(self, token_id: str) -> dict:
-        """Retrieve the current order book for a given market token."""
+    async def get_order_book(self, token_id: str) -> Dict:
+        """Retrieve the current order book for a given market token.
+
+        Args:
+            token_id: The market token identifier.
+
+        Returns:
+            The raw order‑book dictionary from the Polymarket client.
+        """
         import asyncio
         return await asyncio.to_thread(self.client.get_order_book, token_id)
 
-    async def _validate_entry(self, symbol: str, limit_price: float | None) -> bool:
-        """
-        Confirm that the market conditions satisfy tighter entry criteria.
+    async def _validate_entry(self, symbol: str, limit_price: Optional[float]) -> bool:
+        """Validate tighter entry criteria for a market.
 
-        Checks:
-        * Spread between best bid and ask is below ``self.max_spread``.
-        * Provided limit price (if any) is within ``self.price_slippage_tolerance`` of the mid price.
+        The validation checks that:
+        * The spread between the best bid and ask is below ``self.max_spread``.
+        * If a ``limit_price`` is supplied, it lies within
+          ``self.price_slippage_tolerance`` of the mid price.
+
+        Args:
+            symbol: Market token identifier.
+            limit_price: Optional price limit supplied by the caller.
+
+        Returns:
+            ``True`` if the market satisfies the entry criteria; otherwise ``False``.
         """
         ob = await self.get_order_book(symbol)
         bids = ob.get("bids", [])
@@ -95,11 +136,16 @@ class PolymarketBroker(AbstractBroker):
         return True
 
     async def place_order(self, request: OrderRequest) -> OrderResult:
-        """
-        Place an order after confirming entry conditions.
+        """Place an order after confirming entry conditions.
+
+        Args:
+            request: An ``OrderRequest`` containing symbol, quantity, side, and optional limit price.
+
+        Returns:
+            An ``OrderResult`` encapsulating the broker order identifier, final status, and raw payload.
 
         Raises:
-            BrokerError: If the order cannot be placed or validation fails.
+            BrokerError: If validation fails or the order cannot be placed.
         """
         try:
             import asyncio
@@ -143,7 +189,14 @@ class PolymarketBroker(AbstractBroker):
             raise BrokerError(f"Polymarket: {e}")
 
     async def cancel_order(self, broker_order_id: str) -> bool:
-        """Cancel an existing order."""
+        """Cancel an existing order.
+
+        Args:
+            broker_order_id: The identifier of the order to cancel.
+
+        Returns:
+            ``True`` if the cancellation request succeeded; otherwise ``False``.
+        """
         try:
             import asyncio
             await asyncio.to_thread(self.client.cancel, broker_order_id)
@@ -156,21 +209,43 @@ class PolymarketBroker(AbstractBroker):
             )
             return False
 
-    async def get_order(self, broker_order_id: str) -> dict:
-        """Retrieve a specific order's details."""
+    async def get_order(self, broker_order_id: str) -> Dict:
+        """Retrieve a specific order's details.
+
+        Args:
+            broker_order_id: The broker‑specific order identifier.
+
+        Returns:
+            A dictionary with the order's details as returned by the client.
+        """
         import asyncio
         return await asyncio.to_thread(self.client.get_order, broker_order_id)
 
-    async def get_positions(self) -> list[dict]:
-        """Polymarket does not expose positions via the CLOB client."""
+    async def get_positions(self) -> List[Dict]:
+        """Polymarket does not expose positions via the CLOB client.
+
+        Returns:
+            An empty list, indicating that position data is unavailable.
+        """
         return []
 
-    async def get_account(self) -> dict:
-        """Polymarket does not expose account balances via the CLOB client."""
+    async def get_account(self) -> Dict:
+        """Polymarket does not expose account balances via the CLOB client.
+
+        Returns:
+            An empty dictionary, indicating that account information is unavailable.
+        """
         return {}
 
     async def get_quote(self, symbol: str) -> QuoteResult:
-        """Return the best bid, ask, and mid price for a market."""
+        """Return the best bid, ask, and mid price for a market.
+
+        Args:
+            symbol: Market token identifier.
+
+        Returns:
+            A ``QuoteResult`` containing the best bid, best ask, and calculated mid price.
+        """
         ob = await self.get_order_book(symbol)
         bids = ob.get("bids", [])
         asks = ob.get("asks", [])
@@ -179,6 +254,17 @@ class PolymarketBroker(AbstractBroker):
         mid = (best_bid + best_ask) / 2
         return QuoteResult(symbol=symbol, bid=best_bid, ask=best_ask, last=mid)
 
-    async def get_historical(self, symbol: str, interval: str = "1d", limit: int = 500) -> list[dict]:
-        """Polymarket doesn't have traditional OHLCV data."""
+    async def get_historical(
+        self, symbol: str, interval: str = "1d", limit: int = 500
+    ) -> List[Dict]:
+        """Polymarket doesn't have traditional OHLCV data.
+
+        Args:
+            symbol: Market token identifier.
+            interval: Desired time granularity (ignored).
+            limit: Maximum number of data points to return (ignored).
+
+        Returns:
+            An empty list, as historical price data is not provided by this client.
+        """
         return []
