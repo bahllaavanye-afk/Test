@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784737101.1488326,
+    "last_updated": 1784738647.8354657,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784732568.2211363
+    "last_brain_update": 1784738647.8344474
   },
   "episodic": [
     {
@@ -1850,11 +1850,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The Slack agent-team run failed because messages likely exceeded the workspace quota (`message_limit_exceeded`), and two separate auto-fix attempts also failed to apply patches to files.",
-      "item_count": 20,
-      "ts": 1783878153.3481848
-    },
-    {
       "summary": "The deployment failed due to a resource limit error, and subsequent auto-fix attempts also failed to apply patches.",
       "item_count": 20,
       "ts": 1783895556.0323446
@@ -2348,6 +2343,11 @@
       "summary": "An autonomous PR attempted to modify protected files, but the team lead revoked the automerge, requiring manual review.",
       "item_count": 20,
       "ts": 1784732568.2109232
+    },
+    {
+      "summary": "An autonomous PR attempted to modify a protected file (`backe`), but the team lead review revoked the automerge, preventing the changes from being automatically merged.",
+      "item_count": 20,
+      "ts": 1784738647.8246317
     }
   ],
   "experiment_results": [
@@ -2529,6 +2529,30 @@
       "summary": "**\u26a1 Backtest Engine**: I estimate the proposed hybrid strategy would yield a Sharpe ratio of around 1.5, given the ATR filter's ability to mitigate false positives and the potential for capturing high-conviction buys like NVDA, as seen in `backend/app/ml/models/price_predictor_v2.py`. To validate th",
       "source": "desk_run_summary",
       "ts": 1784732540.7006998
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (15:07 UTC)  equity=$22,918.87  regime=sideways/calm\nfunnel: 56 generated \u2192 17 survived gate+topK (1 exploration) \u2192 8 placed\n\u2705 *Equities*: 3 orders\n\ud83d\udca4 *Crypto*: no signals fired\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\u2705 *StatA",
+      "source": "desk_run_summary",
+      "ts": 1784738642.0005803
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 8 signal(s) \u2265 0.6: USD_CAD BUY@1.41095, EUR_USD SELL@1.13980, GBP_USD SELL@1.33751 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784738642.0051074
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $344 conf=92%  id=`7d8e5bf4\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $401 conf=90%  id=`75c436de\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784738642.0094967
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*International Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $344 conf=100%  id=`db8adba7\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $344 conf=100%  id=`66cdaebf\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784738642.0137758
     }
   ]
 }
