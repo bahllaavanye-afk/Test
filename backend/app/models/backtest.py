@@ -1,9 +1,11 @@
 import uuid
+import logging
 from datetime import datetime, date
 from sqlalchemy import String, ForeignKey, Numeric, DateTime, Date, Integer, JSON, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
+logger = logging.getLogger(__name__)
 
 class BacktestRun(Base):
     __tablename__ = "backtest_runs"
@@ -24,6 +26,36 @@ class BacktestRun(Base):
 
     result: Mapped["BacktestResult | None"] = relationship("BacktestResult", back_populates="run", uselist=False)
 
+    def log_metrics(self) -> None:
+        """Log key backtest metrics in a structured format."""
+        if not self.result:
+            logger.info(
+                "BacktestRun completed without result",
+                extra={"run_id": self.id, "status": self.status}
+            )
+            return
+
+        execution_time = None
+        if self.started_at and self.completed_at:
+            execution_time = (self.completed_at - self.started_at).total_seconds()
+
+        logger.info(
+            "BacktestRun metrics",
+            extra={
+                "run_id": self.id,
+                "strategy_name": self.strategy_name,
+                "symbol": self.symbol,
+                "interval": self.interval,
+                "signal_count": self.result.total_trades,
+                "execution_time_seconds": execution_time,
+                "total_return": float(self.result.total_return or 0),
+                "annualized_return": float(self.result.annualized_return or 0),
+                "sharpe_ratio": float(self.result.sharpe_ratio or 0),
+                "max_drawdown": float(self.result.max_drawdown or 0),
+                "status": self.status,
+            },
+        )
+
 
 class BacktestResult(Base):
     __tablename__ = "backtest_results"
@@ -43,3 +75,21 @@ class BacktestResult(Base):
     trades_log: Mapped[list | None] = mapped_column(JSON)     # [{entry, exit, pnl}, ...]
 
     run: Mapped["BacktestRun"] = relationship("BacktestRun", back_populates="result")
+
+    def to_dict(self) -> dict:
+        """Return a dictionary representation of the result for logging or serialization."""
+        return {
+            "id": self.id,
+            "run_id": self.run_id,
+            "total_return": float(self.total_return or 0),
+            "annualized_return": float(self.annualized_return or 0),
+            "sharpe_ratio": float(self.sharpe_ratio or 0),
+            "sortino_ratio": float(self.sortino_ratio or 0),
+            "calmar_ratio": float(self.calmar_ratio or 0),
+            "max_drawdown": float(self.max_drawdown or 0),
+            "win_rate": float(self.win_rate or 0),
+            "profit_factor": float(self.profit_factor or 0),
+            "total_trades": self.total_trades or 0,
+            "equity_curve": self.equity_curve or [],
+            "trades_log": self.trades_log or [],
+        }

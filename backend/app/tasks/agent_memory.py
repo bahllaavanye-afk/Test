@@ -33,20 +33,38 @@ class AgentMemory:
 
     async def write(self, topic: str, data: dict) -> None:
         """Append an observation to a topic list with a timestamp."""
+        start = time.perf_counter()
         payload = json.dumps({"ts": time.time(), **data})
         key = f"{_PREFIX}{topic}"
         try:
             await self._r.lpush(key, payload)
             await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
+            duration_ms = (time.perf_counter() - start) * 1000
+            pnl = data.get("pnl")
+            logger.info(
+                "AgentMemory.write completed topic=%s count=1 duration_ms=%.2f pnl=%s",
+                topic,
+                duration_ms,
+                pnl,
+            )
         except Exception as e:
             logger.warning("AgentMemory.write failed for topic %s: %s", topic, e)
 
     async def set_latest(self, topic: str, data: dict) -> None:
         """Overwrite the latest value for a topic (single-value slot)."""
+        start = time.perf_counter()
         key = f"{_PREFIX}latest:{topic}"
         payload = json.dumps({"ts": time.time(), **data})
         try:
             await self._r.set(key, payload)
+            duration_ms = (time.perf_counter() - start) * 1000
+            pnl = data.get("pnl")
+            logger.info(
+                "AgentMemory.set_latest completed topic=%s duration_ms=%.2f pnl=%s",
+                topic,
+                duration_ms,
+                pnl,
+            )
         except Exception as e:
             logger.warning("AgentMemory.set_latest failed for topic %s: %s", topic, e)
 
@@ -54,30 +72,56 @@ class AgentMemory:
 
     async def read_recent(self, topic: str, n: int = 50) -> list[dict]:
         """Return up to n most-recent observations for a topic."""
+        start = time.perf_counter()
         key = f"{_PREFIX}{topic}"
         try:
             items = await self._r.lrange(key, 0, n - 1)
-            return [json.loads(i) for i in items]
+            observations = [json.loads(i) for i in items]
+            duration_ms = (time.perf_counter() - start) * 1000
+            logger.info(
+                "AgentMemory.read_recent completed topic=%s count=%d duration_ms=%.2f",
+                topic,
+                len(observations),
+                duration_ms,
+            )
+            return observations
         except Exception as e:
             logger.warning("AgentMemory.read_recent failed for topic %s: %s", topic, e)
             return []
 
     async def get_latest(self, topic: str) -> dict | None:
         """Return the latest single-value for a topic."""
+        start = time.perf_counter()
         key = f"{_PREFIX}latest:{topic}"
         try:
             val = await self._r.get(key)
-            return json.loads(val) if val else None
+            result = json.loads(val) if val else None
+            duration_ms = (time.perf_counter() - start) * 1000
+            logger.info(
+                "AgentMemory.get_latest completed topic=%s found=%s duration_ms=%.2f",
+                topic,
+                result is not None,
+                duration_ms,
+            )
+            return result
         except Exception as e:
             logger.warning("AgentMemory.get_latest failed for topic %s: %s", topic, e)
             return None
 
     async def read_all_topics(self) -> list[str]:
         """List all memory topics currently stored."""
+        start = time.perf_counter()
         try:
             pattern = f"{_PREFIX}*"
             keys = await self._r.keys(pattern)
-            return [k.removeprefix(_PREFIX) for k in keys]
+            topics = [k.removeprefix(_PREFIX) for k in keys]
+            duration_ms = (time.perf_counter() - start) * 1000
+            logger.info(
+                "AgentMemory.read_all_topics completed count=%d duration_ms=%.2f",
+                len(topics),
+                duration_ms,
+            )
+            return topics
         except Exception as e:
             logger.warning("AgentMemory.read_all_topics failed: %s", e)
             return []
