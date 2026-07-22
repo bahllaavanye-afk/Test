@@ -3,11 +3,9 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
-import asyncio
 from dataclasses import dataclass, field
 from datetime import date
 
-import numpy as np
 import pandas as pd
 from scipy import stats
 
@@ -53,7 +51,6 @@ class StrategyComparisonEngine:
         benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
         benchmark_stats = get_benchmark_stats()
 
-        # Extract daily return series for t-test
         manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
         ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
         manual_ret = manual_eq.pct_change().dropna()
@@ -70,11 +67,13 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
-        logger.info("Comparison complete",
-                    strategy=strategy_name,
-                    manual_sharpe=manual_metrics.sharpe,
-                    ml_sharpe=ml_metrics.sharpe,
-                    p_value=round(p_val, 4))
+        logger.info(
+            "Comparison complete",
+            strategy=strategy_name,
+            manual_sharpe=manual_metrics.sharpe,
+            ml_sharpe=ml_metrics.sharpe,
+            p_value=round(p_val, 4),
+        )
 
         return ComparisonResult(
             strategy_name=strategy_name,
@@ -89,6 +88,6 @@ class StrategyComparisonEngine:
             ml_improvement_sharpe=round(improvement, 4),
             t_statistic=round(float(t_stat), 4),
             p_value=round(float(p_val), 6),
-            is_significant=(p_val < 0.05),
+            is_significant=p_val < 0.05,
             winner=winner,
         )
