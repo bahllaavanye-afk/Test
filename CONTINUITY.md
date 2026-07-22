@@ -8,24 +8,39 @@
 
 _Last updated: 2026-07-22._
 
-## ⚡ STATE AS OF 2026-07-22 (read this first)
-**Supabase RESTORED to ACTIVE_HEALTHY** (via MCP restore_project) — the durable
-Postgres is back. Before the backend reconnects to it, the schema-drift audit found
-ONE real drift (slippage_records missing 5 implementation-shortfall columns) and
-fixed it: alembic revision k6f7a8b9c0d1 (additive, all-nullable, idempotent). start.sh
-runs `alembic upgrade head` on boot, so the next deploy applies it and the schema
-matches the models (verified: zero drift after the catch-up). blast radius was small
-anyway — slippage_records is only the slippage dashboard, not login/trades/bots.
-**Monday 2026-07-20 post-mortem (PR #857, merged):** desks were fine (410 signals) —
-the daily LOSS CAP tripped at Monday's open on weekend crypto drift vs Friday's
-last_equity and blocked ALL orders incl. exits; now risk-reducing orders stay allowed.
-Bots showed last_run_at=None because APScheduler waits one full interval before the
-first run and every deploy resets it → now `next_run_time` = boot+30–150s stagger.
-**/health/detailed now shows the live scheduler job table** (bot_jobs count + next_run)
-so "are bots even scheduled" is answerable — it was invisible before.
-**USER ACTIONS remaining (dashboard):** (1) suspend the stale `agb8` Render service
-(double-executes vs the same Alpaca account) — STILL the one thing I can't do;
-(2) optional TRADIER_SANDBOX_TOKEN for real greeks. (Supabase unpause = DONE by me.)
+## ⚡ STATE AS OF 2026-07-22 PM (read this first)
+**Merged this session:** PR #878 (schema catch-up migration `k6f7a8b9c0d1` for
+slippage_records IS fields + `/health/detailed` scheduler job-table visibility) and
+PR #879 (desk-posts→shared-brain bridge + a P0 hotfix). af42dc8/2466acb are live.
+**⚠️ SUPABASE DID NOT STAY RESTORED** — last session's MCP restore did NOT hold. The
+fresh af42dc8 boot STILL fell back to SQLite: `database_primary: (ENOTFOUND)
+tenant/user postgres.vexzwnfbmznvxoxxktax not found` (Supavisor "tenant not found" =
+project paused again / restore reverted). `database_primary` is a BOOT-time value, so
+it only clears on a fresh boot that reaches Postgres. The catch-up migration is on
+main and applies automatically the moment Postgres is reachable. **The Supabase MCP
+tools were NOT available this session to re-restore.** USER ACTION: supabase.com/
+dashboard → `vexzwnfbmznvxoxxktax` → Restore/Unpause. Until then the platform runs on
+ephemeral SQLite (works, but bot P&L resets each deploy).
+**🔥 P0 LIVE REGRESSION found + fixed:** autonomous-improver PR #876 wrapped the ENTIRE
+strategies router in a bogus `X-Strategy-Entry/Confirmation` HTTP-header gate → every
+`/api/v1/strategies/*` GET returned 400 (dashboard strategy list + demo session dead;
+verified live 400). Reverted in #879 (router.py); endpoint-smoke + demo-session tests
+green; deploy shipping the fix.
+**🕳️ SYSTEMIC (P1, documented in IMPROVEMENTS.md):** #876 reached main with ONLY a
+Vercel check — GitHub suppresses `pull_request` CI runs for bot-`GITHUB_TOKEN` PRs, so
+"reward gate = full CI green" NEVER runs on improver PRs. They merge unvalidated. Treat
+main as untrusted after any bot merge. Durable fix = branch protection requiring the
+`test`/`test-agents`/`frontend-build` checks (repo-admin setting).
+**SHIPPED — desk posts → shared brain:** the missing consume side. `notify.
+read_channel_recent` reads desk Discord summaries back → `company_brain.
+fetch_desk_knowledge` → `desk_outcomes` brain category + CIO synthesis → `llm_common.
+get_company_context` surfaces `Desk results:` into every employee prompt. Stateless
+(no git-state churn). 13 tests.
+**USER ACTIONS remaining (dashboard):** (1) **Unpause Supabase** (`vexzwnfbmznvxoxxktax`)
+— the durable-DB blocker, and I could NOT do it this session (no Supabase MCP); (2)
+suspend the stale `agb8` Render service (double-executes vs the same Alpaca account);
+(3) optional TRADIER_SANDBOX_TOKEN for real greeks; (4) consider branch protection on
+main (closes the improver-PR CI-bypass hole).
 
 ## Earlier: STATE AS OF 2026-07-20 PM
 **Shipped this session (all merged to main, free stack):** bot exit sweep was
