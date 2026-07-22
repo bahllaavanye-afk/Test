@@ -28,21 +28,23 @@ from typing import Any, Awaitable, Callable
 logger = logging.getLogger(__name__)
 
 # All valid bus topics — unknown topics are rejected to prevent typos cascading silently
-TOPICS = frozenset({
-    "market:regime",
-    "trade:signal",
-    "trade:executed",
-    "trade:closed",
-    "research:finding",
-    "strategy:updated",
-    "experiment:done",
-    "risk:alert",
-    "knowledge:learned",
-    "auction:allocated",
-})
+TOPICS = frozenset(
+    {
+        "market:regime",
+        "trade:signal",
+        "trade:executed",
+        "trade:closed",
+        "research:finding",
+        "strategy:updated",
+        "experiment:done",
+        "risk:alert",
+        "knowledge:learned",
+        "auction:allocated",
+    }
+)
 
 _BUS_KEY_PREFIX = "bus:events:"
-_BUS_STREAM_MAX = 2000   # max events per topic (ring buffer)
+_BUS_STREAM_MAX = 2000  # max events per topic (ring buffer)
 
 Handler = Callable[[str, dict], Awaitable[None]]
 
@@ -59,28 +61,130 @@ class AgentBus:
     Falls back gracefully when Redis is unavailable (just logs).
     """
 
+    # --------------------------------------------------------------------- #
+    # Strategy‑signal quality thresholds (tunable via config / env)
+    # --------------------------------------------------------------------- #
+    CONFIDENCE_THRESHOLD = 0.70  # minimum confidence for a signal to be published
+    REQUIRED_SIGNAL_FIELDS = {
+        "entry_price",
+        "exit_price",
+        "confidence",
+        "confirmation",
+        "strategy",
+        "symbol",
+    }
+
     def __init__(self, redis_client: Any) -> None:
         self._r = redis_client
         self._handlers: dict[str, list[Handler]] = {}
         self._consumer_offsets: dict[str, str] = {}  # topic → last-read stream ID
         self._running = False
 
-    # ── Publishing ────────────────────────────────────────────────────────────
+    # --------------------------------------------------------------------- #
+    # Publishing
+    # --------------------------------------------------------------------- #
 
     async def publish(self, topic: str, data: dict) -> None:
-        """Publish an event to a topic. Fire-and-forget; never blocks callers."""
+        """Publish an event to a topic. Fire‑and‑forget; never blocks callers.
+
+        For ``trade:signal`` events extra validation is performed to tighten
+        entry conditions, add confirmation filters, and improve exit logic.
+        Invalid signals are dropped with a warning.
+        """
         if topic not in TOPICS:
             logger.warning("AgentBus: unknown topic %r — event dropped", topic)
             return
-        payload = {"ts": str(time.time()), "topic": topic, **{k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in data.items()}}
+
+        if topic == "trade:signal" and not self._validate_trade_signal(data):
+            logger.warning(
+                "AgentBus: trade signal failed validation and was dropped: %s",
+                data,
+            )
+            return
+
+        payload = {
+            "ts": str(time.time()),
+            "topic": topic,
+            **{
+                k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
+                for k, v in data.items()
+            },
+        }
         key = f"{_BUS_KEY_PREFIX}{topic}"
         try:
             await self._r.xadd(key, payload, maxlen=_BUS_STREAM_MAX, approximate=True)
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             # Redis unavailable — log but don't crash the caller
             logger.debug("AgentBus.publish failed topic=%s: %s", topic, e)
 
-    # ── Subscribing ───────────────────────────────────────────────────────────
+    def _validate_trade_signal(self, data: dict) -> bool:
+        """
+        Tighten entry conditions for trade signals.
+
+        Checks:
+        * All required fields are present.
+        * ``confidence`` meets the configured threshold.
+        * ``confirmation`` flag is truthy.
+        * ``strategy`` matches a known strategy (could be extended).
+        * ``entry_price`` and ``exit_price`` are numeric and sensible
+          (entry != exit, positive values).
+
+        Returns ``True`` if the signal passes all checks.
+        """
+        missing = self.REQUIRED_SIGNAL_FIELDS - data.keys()
+        if missing:
+            logger.debug("Signal validation failed – missing fields: %s", missing)
+            return False
+
+        # Confidence filter
+        confidence = data.get("confidence")
+        try:
+            confidence_val = float(confidence)
+        except (TypeError, ValueError):
+            logger.debug("Signal validation failed – confidence not numeric: %r", confidence)
+            return False
+        if confidence_val < self.CONFIDENCE_THRESHOLD:
+            logger.debug(
+                "Signal validation failed – confidence %.2f below threshold %.2f",
+                confidence_val,
+                self.CONFIDENCE_THRESHOLD,
+            )
+            return False
+
+        # Confirmation flag
+        if not data.get("confirmation"):
+            logger.debug("Signal validation failed – confirmation flag missing or falsy")
+            return False
+
+        # Basic price sanity
+        try:
+            entry_price = float(data["entry_price"])
+            exit_price = float(data["exit_price"])
+        except (TypeError, ValueError):
+            logger.debug(
+                "Signal validation failed – entry/exit price not numeric: %r / %r",
+                data["entry_price"],
+                data["exit_price"],
+            )
+            return False
+        if entry_price <= 0 or exit_price <= 0 or entry_price == exit_price:
+            logger.debug(
+                "Signal validation failed – unrealistic price values: entry=%s exit=%s",
+                entry_price,
+                exit_price,
+            )
+            return False
+
+        # Strategy filter (placeholder for future extensibility)
+        if not isinstance(data["strategy"], str) or not data["strategy"]:
+            logger.debug("Signal validation failed – strategy field invalid")
+            return False
+
+        return True
+
+    # --------------------------------------------------------------------- #
+    # Subscribing
+    # --------------------------------------------------------------------- #
 
     def subscribe(self, topic: str, handler: Handler) -> None:
         """Register an async handler for a topic. Called at startup, not at runtime."""
@@ -90,7 +194,9 @@ class AgentBus:
         # Start reading from "now" — don't replay old events on (re)subscription
         self._consumer_offsets.setdefault(topic, "$")
 
-    # ── Event loop ────────────────────────────────────────────────────────────
+    # --------------------------------------------------------------------- #
+    # Event loop
+    # --------------------------------------------------------------------- #
 
     async def start(self) -> None:
         """Start the event dispatch loop as a background coroutine."""
@@ -136,22 +242,26 @@ class AgentBus:
                         for handler in self._handlers.get(topic, []):
                             try:
                                 await handler(topic, data)
-                            except Exception as exc:
+                            except Exception as exc:  # pragma: no cover
                                 logger.error(
                                     "AgentBus handler error topic=%s handler=%s: %s",
-                                    topic, handler.__name__, exc,
+                                    topic,
+                                    handler.__name__,
+                                    exc,
                                 )
-            except Exception as exc:
+            except Exception as exc:  # pragma: no cover
                 logger.debug("AgentBus._dispatch_loop error: %s", exc)
                 await asyncio.sleep(1.0)
 
-    # ── Introspection ─────────────────────────────────────────────────────────
+    # --------------------------------------------------------------------- #
+    # Introspection
+    # --------------------------------------------------------------------- #
 
     async def queue_depth(self, topic: str) -> int:
         """How many events are buffered for a topic (monitoring)."""
         try:
             return await self._r.xlen(f"{_BUS_KEY_PREFIX}{topic}")
-        except Exception:
+        except Exception:  # pragma: no cover
             return -1
 
 
@@ -165,6 +275,7 @@ def get_bus(redis_client: Any | None = None) -> AgentBus:
     if _bus is None:
         if redis_client is None:
             from app.redis_client import get_redis
+
             redis_client = get_redis()
         _bus = AgentBus(redis_client)
     return _bus

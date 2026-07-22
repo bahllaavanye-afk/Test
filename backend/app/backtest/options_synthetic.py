@@ -117,6 +117,25 @@ def price_spread(
     return value
 
 
+def _determine_trend_filter(legs: list[SpreadLeg]) -> str | None:
+    """Return a simple directional filter based on leg composition.
+
+    - If the spread is predominantly a *bullish* put sell (sell put, buy put
+      with lower strike), we expect the underlying to be above its moving
+      average.
+    - If the spread is predominantly a *bearish* call sell, we expect the
+      underlying to be below its moving average.
+    - Mixed or neutral spreads return ``None`` (no trend filter applied).
+    """
+    # Identify primary direction from the first leg that has a clear bias.
+    for leg in legs:
+        if leg.kind == "put" and leg.side == "sell":
+            return "above"
+        if leg.kind == "call" and leg.side == "sell":
+            return "below"
+    return None
+
+
 def backtest_spread(
     df: pd.DataFrame,
     legs: list[SpreadLeg],
@@ -124,8 +143,21 @@ def backtest_spread(
     dte: int = 35,
     hold_days: int = 21,
     vol_window: int = 20,
+    vol_min: float = 0.10,
+    vol_max: float = 0.60,
+    loss_cap: float = 0.50,
+    profit_cap: float = 0.50,
 ) -> SpreadBacktestResult:
     """Open the spread on each entry date, close by re‑pricing ``hold_days`` later.
+
+    The entry logic has been tightened:
+    * Volatility must lie inside ``[vol_min, vol_max]``.
+    * Volatility should be decreasing on the entry day (a simple momentum filter).
+    * A crude trend filter checks the underlying price against a 20‑day SMA
+      based on the spread's bias (bullish vs bearish).
+
+    Exit logic now includes optional stop‑loss and profit‑target caps expressed
+    as a fraction of the absolute entry premium.
 
     Parameters
     ----------
@@ -141,6 +173,14 @@ def backtest_spread(
         Holding period in days.
     vol_window: int, optional
         Window for realized volatility.
+    vol_min: float, optional
+        Minimum acceptable volatility for an entry.
+    vol_max: float, optional
+        Maximum acceptable volatility for an entry.
+    loss_cap: float, optional
+        Maximum loss as a fraction of the absolute entry premium (e.g., 0.5 = 50%).
+    profit_cap: float, optional
+        Maximum profit as a fraction of the absolute entry premium.
 
     Returns
     -------
@@ -149,6 +189,12 @@ def backtest_spread(
     """
     close = df["close"].astype(float)
     vol = realized_vol(close, vol_window)
+
+    # Simple 20‑day simple moving average for trend filter
+    sma = close.rolling(20).mean()
+
+    # Determine if we should apply a directional price filter
+    trend_filter = _determine_trend_filter(legs)
 
     if entry_mask is None:
         entry_mask = pd.Series(False, index=df.index)
@@ -161,11 +207,22 @@ def backtest_spread(
         j = i + hold_days
         if j >= n:
             break
+
         sigma_in = float(vol.iloc[i]) if np.isfinite(vol.iloc[i]) else 0.0
-        if sigma_in <= 0:
+        if not (vol_min <= sigma_in <= vol_max):
+            continue
+        # Require decreasing volatility (momentum)
+        if i > 0 and float(vol.iloc[i - 1]) <= sigma_in:
             continue
 
-        spot_in, spot_out = float(close.iloc[i]), float(close.iloc[j])
+        spot_in = float(close.iloc[i])
+        # Apply trend filter if defined
+        if trend_filter == "above" and spot_in < float(sma.iloc[i]):
+            continue
+        if trend_filter == "below" and spot_in > float(sma.iloc[i]):
+            continue
+
+        spot_out = float(close.iloc[j])
         sigma_out = float(vol.iloc[j]) if np.isfinite(vol.iloc[j]) else sigma_in
 
         strikes = [leg.moneyness * spot_in for leg in legs]
@@ -183,7 +240,18 @@ def backtest_spread(
             max(dte - hold_days, 0) / TRADING_DAYS,
             sigma_out,
         )
-        pnls.append(exit_v - entry_v)
+        raw_pnl = exit_v - entry_v
+
+        # Apply stop‑loss and profit‑target caps
+        cap_abs = abs(entry_v)
+        if raw_pnl < -loss_cap * cap_abs:
+            pnl = -loss_cap * cap_abs
+        elif raw_pnl > profit_cap * cap_abs:
+            pnl = profit_cap * cap_abs
+        else:
+            pnl = raw_pnl
+
+        pnls.append(pnl)
 
     wins = sum(1 for p in pnls if p > 0)
     return SpreadBacktestResult(
