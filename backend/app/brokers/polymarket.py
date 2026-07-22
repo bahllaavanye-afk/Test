@@ -10,7 +10,7 @@ from app.config import settings
 
 try:
     from py_clob_client.client import ClobClient
-    from py_clob_client.clob_types import OrderArgs, OrderType
+    from py_clob_client.clob_types import OrderArgs
     POLY_AVAILABLE = True
 except ImportError:
     POLY_AVAILABLE = False

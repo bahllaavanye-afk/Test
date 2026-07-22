@@ -1,8 +1,10 @@
 """ModelRelease ORM — tracks every trained model artifact through its serving lifecycle."""
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Float, Integer, Text, DateTime, JSON, Index
+
+from sqlalchemy import DateTime, Float, Index, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.database import Base
 from app.models.base import TimestampMixin
 
@@ -54,3 +56,9 @@ class ModelRelease(Base, TimestampMixin):
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Who registered this release (email or "system")
     created_by: Mapped[str] = mapped_column(String(128), nullable=False, default="system")
+
+    def __repr__(self) -> str:
+        return (
+            f"<ModelRelease id={self.id!r} model_name={self.model_name!r} "
+            f"version={self.version!r} status={self.status!r}>"
+        )
