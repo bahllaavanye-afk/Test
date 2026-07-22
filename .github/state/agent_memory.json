@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-22T15:41:33.926006+00:00",
+  "last_updated": "2026-07-22T16:49:16.698575+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -4048,7 +4048,7 @@
     "last_discussion": "2026-07-22T15:41:33.926006+00:00",
     "total_discussions": 182,
     "heartbeat_count": 2,
-    "last_watchdog_run": "2026-07-22T15:17:02.880092+00:00",
+    "last_watchdog_run": "2026-07-22T16:49:16.698575+00:00",
     "health_status": "3 failing",
     "watchdog_checks": {
       "Gemini LLM": {
@@ -4073,7 +4073,7 @@
       },
       "Recent commits": {
         "ok": true,
-        "detail": "last commit 8m ago"
+        "detail": "last commit 3m ago"
       },
       "Workflows": {
         "ok": true,
