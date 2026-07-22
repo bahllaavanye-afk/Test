@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Combine MACD with RSI",
-    "* **Monitoring and maintenance**: `/app/services/predict.py` is being scanned for leaks, and dependencies are being checked for updates to ensure the platform's stability.",
-    "Monitor model drift",
-    "Test data feeds",
-    "Check RAM leaks",
     "- Timestamps and failure patterns",
     "Improve disk monitoring",
     "Limit API bursts",
@@ -199,8 +194,13 @@
     "Review code changes",
     "Check DNS resolution",
     "Validate user inputs",
-    "Verify data types"
+    "Verify data types",
+    "Validate market hours",
+    "Test API rate limits",
+    "Implement JSON schema checks",
+    "Enhance model drift detection",
+    "Optimize API error handling"
   ],
-  "last_updated": "2026-07-22T05:22:36.589410+00:00",
+  "last_updated": "2026-07-22T07:07:30.282772+00:00",
   "total": 200
 }
