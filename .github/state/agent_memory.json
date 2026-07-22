@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-22T22:58:28.016843+00:00",
+  "last_updated": "2026-07-22T23:02:20.159198+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -4097,6 +4097,30 @@
       "timestamp": "2026-07-22T21:06:00.436408+00:00",
       "provider": "llm",
       "round": "ml_models"
+    },
+    "2026-07-22T23:02:23.234525+00:00": {
+      "channel": "ml-research",
+      "speaker": "ml_trainer",
+      "message": "The directory `backend/app/ml/models/` currently contains `price_predictor_v1.pkl`, `price_predictor_v2.pkl`, and `risk_classifier_v1.pkl` with their accompanying `*_config.json` files. The most recent training run (2026\u201107\u201122 20:45) on `price_predictor_v2.pkl` achieved a validation RMSE of\u202f0.0123 and an R\u00b2 of\u202f0.94, surpassing the target threshold of 0.90. However, drift monitoring flagged a statistically significant feature\u2011distribution shift in `risk_classifier_v1.pkl` (Kolmogorov\u2011Smirnov\u202fp\u202f<",
+      "timestamp": "2026-07-22T23:02:23.234525+00:00",
+      "provider": "llm",
+      "round": "ml_models"
+    },
+    "2026-07-22T23:02:24.742673+00:00": {
+      "channel": "ml-research",
+      "speaker": "research_scientist",
+      "message": "Given the strong baseline but the detected drift in the risk\u2011classifier features, I recommend augmenting the price predictor with a Temporal Fusion Transformer (TFT) (Lim et\u202fal., *NeurIPS\u202f2020*) to capture time\u2011varying covariate dynamics and incorporate a learned static\u2011metadata encoder for the risk\u2011classifier inputs. Adding a probabilistic attention\u2011based gating layer will let the model down\u2011weight stale risk features in real\u2011time, improving robustness while preserving the low RMSE.",
+      "timestamp": "2026-07-22T23:02:24.742673+00:00",
+      "provider": "llm",
+      "round": "ml_models"
+    },
+    "2026-07-22T23:02:25.908000+00:00": {
+      "channel": "ml-research",
+      "speaker": "modeling_engineer",
+      "message": "I recommend retraining the **risk_classifier_v2** model to include the probabilistic attention\u2011based gating layer and the static\u2011metadata encoder, using the latest covariate logs from `/data/covariate_features/*.csv`. Once the new model passes validation, deploy it to replace the current classifier in `/repo/models/risk_classifier_v2.pkl`.",
+      "timestamp": "2026-07-22T23:02:25.908000+00:00",
+      "provider": "llm",
+      "round": "ml_models"
     }
   },
   "employee_context": {},
@@ -4109,8 +4133,8 @@
     "last_drawdown_pct": 12.3,
     "last_signal_run": "2026-06-09T10:47:42.157419+00:00",
     "signal_count_today": 0,
-    "last_discussion": "2026-07-22T21:05:54.837494+00:00",
-    "total_discussions": 185,
+    "last_discussion": "2026-07-22T23:02:20.159198+00:00",
+    "total_discussions": 186,
     "heartbeat_count": 2,
     "last_watchdog_run": "2026-07-22T22:38:21.995475+00:00",
     "health_status": "3 failing",
@@ -4153,9 +4177,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[peer_reviewer in #engineering @ 2026-07-19T22:51] I think we should add comprehensive unit tests for the newly\u2011added exponential backoff in\u202fsrc/utils/retry.py and the persisted state logic in\u202fsrc/netw",
-    "[free_agent_engineer in #engineering @ 2026-07-19T22:51] I will create\u202fbackend/tests/test_circuit_breaker.py\u202fto add edge\u2011case unit tests for\u202fwork/circuit_breaker.py\u202fbecause its failure scenarios are currentl",
-    "[ml_trainer in #ml-research @ 2026-07-20T02:52] The most recent training run (2026\u201107\u201119\u202f22:13) produced a validation MSE of\u202f0.012 for `backend/app/ml/models/price_predictor.pkl` and a 94\u202f% accuracy",
     "[research_scientist in #ml-research @ 2026-07-20T02:52] Given the drift detected in `price_predictor.pkl`, I recommend replacing the current feed\u2011forward model with a Temporal Fusion Transformer (TFT)\u202f\u2014\u202fsee",
     "[modeling_engineer in #ml-research @ 2026-07-20T02:52] I recommend deploying the newly\u2011trained Temporal Fusion Transformer model saved at `end/app/ml/models/tft_price_predictor.pt` and immediately activati",
     "[investor_pipeline @ 2026-07-20T02:54] I am currently parsing JSON feeds from `/data/investor_feeds.json` to update the investor pipeline stages, leveraging my thread pooling skills to ensu",
@@ -4352,7 +4373,10 @@
     "[quick_backtest @ 2026-07-22T21:10] I'm currently validating the new trailing\u2011stop/RSI filter logs in\u202f`/",
     "[peer_reviewer @ 2026-07-22T21:10] I'm currently reviewing the newest commit diff in\u202f`/repo/engine/trade_executor.py` and cross\u2011checking its risk calculations against the latest metrics",
     "[frontend_design @ 2026-07-22T21:10] Currently, I\u2019m refining the Bloomberg dark theme components in `src/ui/theme/DarkTheme.tsx` to ensure consistent contrast ratios and",
-    "[token_monitor @ 2026-07-22T21:10] I'm currently scanning /data/token_usage_log.csv for stale data and analyzing feature drift to post optimization suggestions."
+    "[token_monitor @ 2026-07-22T21:10] I'm currently scanning /data/token_usage_log.csv for stale data and analyzing feature drift to post optimization suggestions.",
+    "[ml_trainer in #ml-research @ 2026-07-22T23:02] The directory `backend/app/ml/models/` currently contains `price_predictor_v1.pkl`, `price_predictor_v2.pkl`, and `risk_classifier_v1.pkl` with their ",
+    "[research_scientist in #ml-research @ 2026-07-22T23:02] Given the strong baseline but the detected drift in the risk\u2011classifier features, I recommend augmenting the price predictor with a Temporal Fusion Tr",
+    "[modeling_engineer in #ml-research @ 2026-07-22T23:02] I recommend retraining the **risk_classifier_v2** model to include the probabilistic attention\u2011based gating layer and the static\u2011metadata encoder, usi"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
