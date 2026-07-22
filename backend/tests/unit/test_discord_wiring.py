@@ -8,15 +8,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT: Path = Path(__file__).resolve().parents[3]
 
 
-def test_interactions_endpoint_mounted():
+def test_interactions_endpoint_mounted() -> None:
     router = (ROOT / "backend" / "app" / "api" / "v1" / "router.py").read_text()
     assert "discord_interactions" in router, "Discord interactions router must be mounted"
 
 
-def test_unsigned_interaction_is_rejected():
+def test_unsigned_interaction_is_rejected() -> None:
     """Ed25519 gate: a request without valid signature headers must never pass."""
     from starlette.testclient import TestClient
 
@@ -27,17 +27,28 @@ def test_unsigned_interaction_is_rejected():
     assert r.status_code == 401, f"unsigned interaction must 401, got {r.status_code}"
 
 
-def test_channel_structure_covers_notify_channels():
+def test_channel_structure_covers_notify_channels() -> None:
     """Every channel notify.py routes to must exist in the setup structure."""
     setup = (ROOT / ".github" / "scripts" / "discord_setup_channels.py").read_text()
-    for ch in ("desk-equities", "desk-crypto", "desk-options", "desk-polymarket",
-               "desk-fx-rates", "desk-stat-arb", "infra-alerts", "risk-alerts",
-               "pnl-daily", "ci-failures", "engineering", "alpha-research",
-               "leadership-summary"):
+    for ch in (
+        "desk-equities",
+        "desk-crypto",
+        "desk-options",
+        "desk-polymarket",
+        "desk-fx-rates",
+        "desk-stat-arb",
+        "infra-alerts",
+        "risk-alerts",
+        "pnl-daily",
+        "ci-failures",
+        "engineering",
+        "alpha-research",
+        "leadership-summary",
+    ):
         assert f'"{ch}"' in setup, f"channel setup is missing #{ch}"
 
 
-def test_ops_sync_rides_ci_not_cron():
+def test_ops_sync_rides_ci_not_cron() -> None:
     """The cron-starvation fix: channel setup + key relay must run inside CI."""
     ci = (ROOT / ".github" / "workflows" / "test.yml").read_text()
     assert "ops-sync:" in ci, "CI must contain the ops-sync job"
@@ -46,14 +57,14 @@ def test_ops_sync_rides_ci_not_cron():
     assert "continue-on-error: true" in ci, "ops-sync must never block a merge"
 
 
-def test_backend_startup_jobs_registered():
+def test_backend_startup_jobs_registered() -> None:
     sched = (ROOT / "backend" / "app" / "tasks" / "scheduler.py").read_text()
     assert "discord_channel_setup" in sched, "startup channel creation job must exist"
     assert "discord_command_registration" in sched, "startup command registration job must exist"
     assert "hourly_standup" in sched, "hourly standup job must exist"
 
 
-def test_slash_commands_consistent_everywhere():
+def test_slash_commands_consistent_everywhere() -> None:
     """The 4 commands must match across handler, CI sync, and startup sync."""
     handler = (ROOT / "backend" / "app" / "api" / "v1" / "discord_interactions.py").read_text()
     ci = (ROOT / ".github" / "workflows" / "test.yml").read_text()
