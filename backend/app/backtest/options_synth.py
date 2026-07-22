@@ -1,36 +1,61 @@
 """Synthetic options backtester — score option-spread bot templates on history.
 
 We have years of underlying OHLCV but no historical option chains, so spreads
-are repriced with Black-Scholes using realized vol as the IV proxy (HV20 ×
-IV_PREMIUM, the variance-risk-premium markup). This is the standard research
+are repriced with Black‑Scholes using realized vol as the IV proxy (HV20 ×
+IV_PREMIUM, the variance‑risk‑premium markup). This is the standard research
 approximation; it captures theta/delta/vega mechanics and regime behavior but
 NOT skew dynamics or bid/ask — results are for RANKING templates against each
 other, not for promising returns. Every consumer must carry that caveat.
 
 Pure numpy/math (no scipy): norm CDF via math.erf, inverse CDF via the
-Acklam approximation. Deterministic; fully unit-testable.
+Acklam approximation. Deterministic; fully unit‑testable.
 """
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass
+from typing import List
 
 import numpy as np
 
+# --------------------------------------------------------------------------- #
+# Logging configuration (structured)
+# --------------------------------------------------------------------------- #
+logger = logging.getLogger(__name__)
+
+# --------------------------------------------------------------------------- #
+# Constants
+# --------------------------------------------------------------------------- #
 IV_PREMIUM = 1.10       # implied ≈ 1.1 × realized (documented VRP assumption)
 RISK_FREE = 0.04
 MULTIPLIER = 100        # options contract multiplier
 MIN_T = 6.5 / 24 / 365  # 0DTE priced as one trading session
 
+# --------------------------------------------------------------------------- #
+# Custom exception hierarchy
+# --------------------------------------------------------------------------- #
+class OptionPricingError(ValueError):
+    """Raised when inputs to the Black‑Scholes calculators are invalid."""
+    pass
 
+
+class BacktestError(RuntimeError):
+    """Raised for unrecoverable errors during backtest execution."""
+    pass
+
+
+# --------------------------------------------------------------------------- #
+# Helper functions
+# --------------------------------------------------------------------------- #
 def norm_cdf(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
 def norm_ppf(p: float) -> float:
-    """Acklam's inverse-normal approximation (|err| < 1.15e-9)."""
+    """Acklam's inverse‑normal approximation (|err| < 1.15e‑9)."""
     if not 0.0 < p < 1.0:
-        raise ValueError("p must be in (0,1)")
+        raise OptionPricingError("p must be in (0,1)")
     a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
          1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00]
     b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
@@ -54,33 +79,80 @@ def norm_ppf(p: float) -> float:
            (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
 
 
+def _validate_positive(name: str, value: float) -> None:
+    if value <= 0:
+        raise OptionPricingError(f"{name} must be positive, got {value}")
+
+
 def bs_price(S: float, K: float, T: float, sigma: float, option_type: str,
              r: float = RISK_FREE) -> float:
+    """Black‑Scholes price for a European option."""
+    try:
+        _validate_positive("S (spot)", S)
+        _validate_positive("K (strike)", K)
+        _validate_positive("sigma (volatility)", sigma)
+        # T can be very small; we enforce a minimum later.
+        if not isinstance(option_type, str):
+            raise OptionPricingError("option_type must be a string")
+    except OptionPricingError as exc:
+        logger.error("Invalid input to bs_price", extra={"exception": str(exc), "S": S, "K": K,
+                                                       "T": T, "sigma": sigma, "option_type": option_type})
+        raise
+
     T = max(T, MIN_T)
     sigma = max(sigma, 1e-4)
     d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
-    if option_type.startswith("c"):
+    if option_type.lower().startswith("c"):
         return S * norm_cdf(d1) - K * math.exp(-r * T) * norm_cdf(d2)
     return K * math.exp(-r * T) * norm_cdf(-d2) - S * norm_cdf(-d1)
 
 
 def bs_delta(S: float, K: float, T: float, sigma: float, option_type: str,
              r: float = RISK_FREE) -> float:
+    """Black‑Scholes delta."""
+    try:
+        _validate_positive("S (spot)", S)
+        _validate_positive("K (strike)", K)
+        _validate_positive("sigma (volatility)", sigma)
+        if not isinstance(option_type, str):
+            raise OptionPricingError("option_type must be a string")
+    except OptionPricingError as exc:
+        logger.error("Invalid input to bs_delta", extra={"exception": str(exc), "S": S, "K": K,
+                                                       "T": T, "sigma": sigma, "option_type": option_type})
+        raise
+
     T = max(T, MIN_T)
     d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * math.sqrt(T))
-    return norm_cdf(d1) if option_type.startswith("c") else norm_cdf(d1) - 1.0
+    return norm_cdf(d1) if option_type.lower().startswith("c") else norm_cdf(d1) - 1.0
 
 
 def strike_from_delta(S: float, target_delta: float, T: float, sigma: float,
                       option_type: str, r: float = RISK_FREE) -> float:
     """Invert BS delta → strike (calls: Δ=N(d1); puts: |Δ|=N(-d1))."""
+    try:
+        _validate_positive("S (spot)", S)
+        _validate_positive("sigma (volatility)", sigma)
+        if not (0.0 < target_delta < 1.0):
+            raise OptionPricingError("target_delta must be in (0,1)")
+        if not isinstance(option_type, str):
+            raise OptionPricingError("option_type must be a string")
+    except OptionPricingError as exc:
+        logger.error("Invalid input to strike_from_delta", extra={"exception": str(exc), "S": S,
+                                                                "target_delta": target_delta,
+                                                                "T": T, "sigma": sigma,
+                                                                "option_type": option_type})
+        raise
+
     T = max(T, MIN_T)
-    p = target_delta if option_type.startswith("c") else 1.0 - target_delta
+    p = target_delta if option_type.lower().startswith("c") else 1.0 - target_delta
     d1 = norm_ppf(p)
     return S * math.exp((r + sigma ** 2 / 2) * T - d1 * sigma * math.sqrt(T))
 
 
+# --------------------------------------------------------------------------- #
+# Core data structures
+# --------------------------------------------------------------------------- #
 @dataclass
 class _Leg:
     sign: int          # +1 buy, -1 sell
@@ -89,11 +161,17 @@ class _Leg:
     ratio: int
 
 
-def _net_value(legs: list[_Leg], S: float, T: float, sigma: float) -> float:
-    return sum(l.sign * l.ratio * bs_price(S, l.strike, T, sigma, l.option_type) for l in legs)
+def _net_value(legs: List[_Leg], S: float, T: float, sigma: float) -> float:
+    """Aggregate value of a spread."""
+    try:
+        return sum(l.sign * l.ratio * bs_price(S, l.strike, T, sigma, l.option_type) for l in legs)
+    except Exception as exc:
+        logger.error("Failed to compute net value", extra={"exception": str(exc), "S": S,
+                                                          "T": T, "sigma": sigma})
+        raise BacktestError("Error in net value computation") from exc
 
 
-def backtest_template(template: dict, closes: list[float],
+def backtest_template(template: dict, closes: List[float],
                       trading_days_per_entry: int = 1) -> dict:
     """Walk daily closes; open the template's spread whenever flat, manage exits.
 
@@ -101,20 +179,30 @@ def backtest_template(template: dict, closes: list[float],
     Exits: take_profit/stop_loss as % of entry premium (both credit and debit),
     plus expiry settlement. Returns ranking metrics — see module caveat.
     """
-    action = template["action"]
-    tp_pct = next((r["value"] for r in template.get("exit_rules", [])
-                   if r["type"] == "take_profit"), 50) or 50
-    sl_pct = next((r["value"] for r in template.get("exit_rules", [])
-                   if r["type"] == "stop_loss"), None)
+    try:
+        action = template["action"]
+        tp_pct = next((r["value"] for r in template.get("exit_rules", [])
+                       if r["type"] == "take_profit"), 50) or 50
+        sl_pct = next((r["value"] for r in template.get("exit_rules", [])
+                       if r["type"] == "stop_loss"), None)
+    except KeyError as exc:
+        logger.error("Template missing required fields", extra={"exception": str(exc), "template": template})
+        raise BacktestError("Invalid template structure") from exc
+    except Exception as exc:
+        logger.error("Unexpected error parsing template", extra={"exception": str(exc)})
+        raise BacktestError("Error parsing template") from exc
 
-    trades: list[float] = []
-    pos: list[_Leg] | None = None
+    trades: List[float] = []
+    pos: List[_Leg] | None = None
     entry_net = 0.0
     days_held = 0
     dte = max(int(action["legs"][0].get("dte", 30)), 0)
 
     # Pre‑compute rolling statistics using numpy for speed
     closes_arr = np.asarray(closes, dtype=float)
+    if closes_arr.size < 2:
+        logger.error("Insufficient price data for backtest", extra={"closes_len": closes_arr.size})
+        raise BacktestError("Not enough price points")
     log_returns = np.log(closes_arr[1:] / closes_arr[:-1])
     cum = np.concatenate(([0.0], np.cumsum(log_returns)))
     cum_sq = np.concatenate(([0.0], np.cumsum(log_returns ** 2)))
@@ -136,12 +224,17 @@ def backtest_template(template: dict, closes: list[float],
             T0 = max(dte, 1) / 365.0
             pos = []
             for lg in action["legs"]:
-                if lg.get("strike"):
-                    K = float(lg["strike"])
-                else:
-                    K = strike_from_delta(S, float(lg.get("delta") or 0.5), T0, sigma, lg["option_type"])
-                pos.append(_Leg(+1 if lg["side"] == "buy" else -1,
-                                lg["option_type"], K, int(lg.get("ratio", 1))))
+                try:
+                    if lg.get("strike"):
+                        K = float(lg["strike"])
+                    else:
+                        K = strike_from_delta(S, float(lg.get("delta") or 0.5), T0, sigma, lg["option_type"])
+                    leg = _Leg(+1 if lg["side"] == "buy" else -1,
+                               lg["option_type"], K, int(lg.get("ratio", 1)))
+                    pos.append(leg)
+                except Exception as exc:
+                    logger.error("Failed to construct leg", extra={"exception": str(exc), "leg": lg})
+                    raise BacktestError("Error building spread legs") from exc
             entry_net = _net_value(pos, S, T0, sigma)
             days_held = 0
             continue
@@ -153,7 +246,7 @@ def backtest_template(template: dict, closes: list[float],
         else:
             cur = sum(
                 l.sign * l.ratio *
-                max((S - l.strike) if l.option_type.startswith("c")
+                max((S - l.strike) if l.option_type.lower().startswith("c")
                     else (l.strike - S), 0.0)
                 for l in pos
             )
