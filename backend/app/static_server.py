@@ -11,12 +11,15 @@ from main on Render — no separate frontend host or orphaned deployments.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.main import app  # the existing FastAPI app — unchanged
+
+logger = logging.getLogger(__name__)
 
 # frontend/dist relative to repo root (backend/app/static_server.py → ../../frontend/dist)
 _DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
@@ -29,13 +32,47 @@ if _INDEX.is_file():
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def _spa(full_path: str):  # noqa: D401
-        # Never shadow the API/WebSocket namespaces — let unmatched ones 404 as JSON
-        # (this route only runs when no registered API route matched first).
-        if full_path.startswith(("api/", "ws/", "health")):
-            return JSONResponse({"detail": "Not Found"}, status_code=404)
-        # Serve a real static file if it exists (favicon, manifest, robots…),
-        # otherwise return the SPA shell so client-side routing works on any path.
-        candidate = _DIST / full_path
-        if full_path and candidate.is_file():
-            return FileResponse(str(candidate))
-        return FileResponse(str(_INDEX))
+        """Catch‑all route serving the SPA or static assets.
+
+        Returns a JSON 404 for API/WebSocket namespace collisions, serves the
+        requested static file when it exists, otherwise falls back to the SPA
+        index. Unexpected errors are logged and result in a 500 response.
+        """
+        try:
+            # Never shadow the API/WebSocket namespaces — let unmatched ones 404 as JSON
+            # (this route only runs when no registered API route matched first).
+            if full_path.startswith(("api/", "ws/", "health")):
+                return JSONResponse({"detail": "Not Found"}, status_code=404)
+
+            # Serve a real static file if it exists (favicon, manifest, robots…),
+            # otherwise return the SPA shell so client‑side routing works on any path.
+            candidate = _DIST / full_path
+            if full_path and candidate.is_file():
+                return FileResponse(str(candidate))
+
+            return FileResponse(str(_INDEX))
+
+        except FileNotFoundError as exc:
+            # Specific handling for missing files; this should be rare because
+            # existence checks are performed above, but we guard against race
+            # conditions.
+            logger.error(
+                "File not found while serving SPA",
+                extra={"path": full_path, "error": str(exc)},
+            )
+            return JSONResponse({"detail": "File Not Found"}, status_code=404)
+
+        except PermissionError as exc:
+            logger.error(
+                "Permission error while accessing SPA assets",
+                extra={"path": full_path, "error": str(exc)},
+            )
+            return JSONResponse({"detail": "Permission Denied"}, status_code=403)
+
+        except Exception as exc:  # pylint: disable=broad-except
+            # Catch‑all for unexpected runtime errors; log with stack trace.
+            logger.exception(
+                "Unexpected error serving SPA",
+                extra={"path": full_path, "error": str(exc)},
+            )
+            return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
