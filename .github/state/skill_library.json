@@ -1,9 +1,5 @@
 {
   "skills": [
-    "* **Performance optimization**: A lightweight memory-profiling decorator will be added to `.github/scripts/monitor_memory.py` to track peak RAM usage before and after specific tasks.",
-    "Here are three concise bullet points of the most important, actionable knowledge:",
-    "Monitor memory leaks",
-    "Monitor heap usage",
     "**Backtesting and Walk-Forward Analysis Improvements**: There are efforts to standardize logging levels in walk_forward.py and improve backtesting and walk-forward analysis in backtest.py.",
     "Deploy TFT architecture",
     "Validate inputs",
@@ -199,8 +195,12 @@
     "Optimize Sharpe ratios",
     "Use retry backoff timers",
     "Check for stale data",
-    "Analyze feature drift"
+    "Analyze feature drift",
+    "Use timeout exceptions",
+    "Check API keys",
+    "Monitor model performance",
+    "Refine UI components"
   ],
-  "last_updated": "2026-07-22T20:09:28.908077+00:00",
+  "last_updated": "2026-07-22T22:58:28.016843+00:00",
   "total": 200
 }
