@@ -10,11 +10,105 @@ from typing import Dict, List
 
 import httpx
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.config import settings
 from app.utils.logging import logger
 
+# -------------------------------------------------------------------------
+# Pydantic schemas for benchmark data
+# -------------------------------------------------------------------------
+
+class BenchmarkPoint(BaseModel):
+    """A single point on a benchmark equity curve.
+
+    Attributes
+    ----------
+    date: str
+        ISO‑8601 formatted date (YYYY‑MM‑DD). Example: ``"2023-01-31"``.
+    value: float
+        Normalized equity value for the given date. Example: ``102.34``.
+    """
+    date: str = Field(..., description="ISO‑8601 formatted date (YYYY‑MM‑DD)", example="2023-01-31")
+    value: float = Field(..., description="Normalized equity value", example=102.34)
+
+    @validator("date")
+    def validate_date(cls, v: str) -> str:
+        """Ensure the date string is a valid ISO‑8601 date."""
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+        except ValueError as exc:
+            raise ValueError(f"Invalid date format, expected YYYY-MM-DD: {v}") from exc
+        return v
+
+    @validator("value")
+    def validate_value(cls, v: float) -> float:
+        """Value must be a finite number."""
+        if not isinstance(v, (int, float)):
+            raise TypeError("value must be numeric")
+        if pd.isna(v):
+            raise ValueError("value cannot be NaN")
+        return float(v)
+
+
+class BenchmarkCurve(BaseModel):
+    """Mapping of ticker symbols to their equity curves.
+
+    The model validates that each ticker maps to a list of ``BenchmarkPoint`` objects.
+    """
+    __root__: Dict[str, List[BenchmarkPoint]]
+
+    @validator("__root__", pre=True)
+    def ensure_non_empty(cls, v: Dict[str, List[BenchmarkPoint]]) -> Dict[str, List[BenchmarkPoint]]:
+        if not isinstance(v, dict):
+            raise TypeError("BenchmarkCurve root must be a dict")
+        if not v:
+            raise ValueError("BenchmarkCurve cannot be empty")
+        return v
+
+
+class BenchmarkStat(BaseModel):
+    """Static reference statistics for a benchmark.
+
+    Attributes
+    ----------
+    name: str
+        Human‑readable name of the benchmark.
+    annual_return: float
+        Expected annual return expressed as a decimal (e.g., 0.10 for 10 %).
+    sharpe: float
+        Sharpe ratio.
+    max_dd: float
+        Maximum drawdown expressed as a negative decimal (e.g., -0.57 for -57 %).
+    """
+    name: str = Field(..., description="Human‑readable name of the benchmark", example="S&P 500")
+    annual_return: float = Field(..., description="Annual return as a decimal", example=0.10)
+    sharpe: float = Field(..., description="Sharpe ratio", example=0.47)
+    max_dd: float = Field(..., description="Maximum drawdown (negative decimal)", example=-0.57)
+
+    @validator("annual_return")
+    def annual_return_range(cls, v: float) -> float:
+        if not -1.0 <= v <= 1.0:
+            raise ValueError("annual_return should be between -1 and 1")
+        return v
+
+    @validator("sharpe")
+    def sharpe_non_negative(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("sharpe ratio cannot be negative")
+        return v
+
+    @validator("max_dd")
+    def max_dd_negative(cls, v: float) -> float:
+        if v > 0:
+            raise ValueError("max_dd should be negative or zero")
+        return v
+
+
+# -------------------------------------------------------------------------
 # Constants
+# -------------------------------------------------------------------------
+
 ALPACA_DATA_URL = "https://data.alpaca.markets"
 ALPACA_TIMEOUT = 15.0
 HTTP_CLIENT_TIMEOUT = 20.0
@@ -38,6 +132,9 @@ ALL_WEATHER_WEIGHTS = {"TLT": 0.40, "IEF": 0.15, "VTI": 0.30, "GLD": 0.075, "DJP
 # simple in‑memory cache for benchmark results keyed by (start, end)
 _benchmark_cache: dict[tuple[date, date], dict[str, List[dict]]] = {}
 
+# -------------------------------------------------------------------------
+# Helper functions
+# -------------------------------------------------------------------------
 
 @functools.lru_cache(maxsize=1)
 def _alpaca_headers() -> dict:
@@ -46,7 +143,6 @@ def _alpaca_headers() -> dict:
         "APCA-API-KEY-ID": settings.alpaca_api_key,
         "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
     }
-
 
 async def _fetch_ticker_bars(
     client: httpx.AsyncClient, ticker: str, start: date, end: date
@@ -107,7 +203,6 @@ async def _fetch_ticker_bars(
             extra={"ticker": ticker},
         )
         return pd.Series(dtype=float)
-
 
 async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]]:
     """Returns {ticker: [{date, value}, ...]} normalized to 100 at start."""
@@ -179,8 +274,10 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
     _benchmark_cache[cache_key] = {k: v.copy() for k, v in result.items()}
     return result
 
-
+# -------------------------------------------------------------------------
 # Static benchmark reference stats for display.
+# -------------------------------------------------------------------------
+
 BENCHMARK_STATS = {
     "SPY": {"name": "S&P 500", "annual_return": 0.100, "sharpe": 0.47, "max_dd": -0.57},
     "QQQ": {"name": "NASDAQ 100", "annual_return": 0.145, "sharpe": 0.61, "max_dd": -0.83},
@@ -188,7 +285,14 @@ BENCHMARK_STATS = {
     ALL_WEATHER_KEY: {"name": "Ray Dalio All Weather", "annual_return": 0.082, "sharpe": 0.67, "max_dd": -0.20},
 }
 
-
 def get_benchmark_stats() -> dict:
     """Static benchmark reference stats for display."""
     return BENCHMARK_STATS
+
+__all__ = [
+    "BenchmarkPoint",
+    "BenchmarkCurve",
+    "BenchmarkStat",
+    "fetch_benchmark_curves",
+    "get_benchmark_stats",
+]
