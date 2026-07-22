@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784709587.308445,
+    "last_updated": 1784711300.934162,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784675507.7342012
+    "last_brain_update": 1784711300.9331925
   },
   "episodic": [
     {
@@ -1842,11 +1842,6 @@
   ],
   "github_insights": [
     {
-      "summary": "We need to summarize the given GitHub PR/issue discussions in 1-2 sentences. The input appears to be a combination of a base64-encoded string and some text. The text says: \"Deployment failed with the following error: Resource is limited - try again in 24 hours (more th\" and then \":robot: **Auto-fix failed** \u2014 could not apply patch to file.\"\n\nThe base64 string likely contains metadata but we don't need to decode it for summary.",
-      "item_count": 20,
-      "ts": 1783818775.2021267
-    },
-    {
       "summary": "The auto-fix bot repeatedly failed to apply patches to the file, with three identical error messages indicating it could not apply the patch.",
       "item_count": 20,
       "ts": 1783857392.5664952
@@ -2340,6 +2335,11 @@
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1784675507.7236147
+    },
+    {
+      "summary": "The automated fix was skipped because it was too complex, specifically related to implementing an LLM-brain, and another attempt failed to apply a patch to the file.",
+      "item_count": 20,
+      "ts": 1784711300.9237988
     }
   ],
   "experiment_results": [
@@ -2423,6 +2423,32 @@
       },
       "status": "promoted",
       "ts": 1783712649.6249943
+    }
+  ],
+  "desk_outcomes": [
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (01:04 UTC)  equity=$23,038.76  regime=sideways/calm\nfunnel: 25 generated \u2192 11 survived gate+topK (0 exploration) \u2192 0 placed\n\ud83d\udca4 *Equities*: no signals fired\n\ud83d\udca4 *Crypto*: no signals fired\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n",
+      "source": "desk_run_summary",
+      "ts": 1784711278.0413148
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 quiet: 8 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784711278.0458663
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $345 conf=97%  id=`68154fde\u2026`\n\ud83d\udfe2 `vol_of_vol_timing/YFI/USD` BUY $345 conf=88%  id=`39fdf962\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784711278.0499825
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "**\u26a1 Backtest Engine**: I\u2019d anticipate a Sharpe in the 1.1\u20131.3 range because the 15\u2011minute breakout plus the earnings\u2011beat filter historically adds ~0.4\u20130.6\u202f\u03b1 while the VWAP\u2011based exit keeps volatility modest. Test out\u2011of\u2011sample from Q3\u202f2023 through Q2\u202f2025 (post\u2011COVID\u201119 market regime) to capture mu",
+      "source": "desk_run_summary",
+      "ts": 1784711278.0540788
     }
   ]
 }
