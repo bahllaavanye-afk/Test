@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784743778.5104136,
+    "last_updated": 1784747055.642271,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 3,
     "macro_score": 3,
-    "vix": 16.83,
-    "market_scan_ts": 1784743778.4875576,
+    "vix": 16.92,
+    "market_scan_ts": 1784747055.6188157,
     "sector_leaders": [
       "Energy",
       "Healthcare",
@@ -123,25 +123,25 @@
     ],
     "active_universe": [
       "NOW",
-      "CRWD",
       "MPC",
+      "CRWD",
       "ABT",
-      "XOM",
       "NFLX",
+      "XOM",
       "PANW",
       "TMO",
-      "NVDA",
       "GOOGL",
+      "NVDA",
       "CVX",
-      "XLF",
       "BAC",
-      "META",
+      "XLF",
       "ORCL",
       "IWM",
       "TSLA",
-      "GS",
+      "META",
+      "BLK",
       "COP",
-      "JNJ"
+      "GS"
     ],
     "top_momentum": [
       "MPC",
@@ -155,13 +155,6 @@
     "last_brain_update": 1784742908.5595815
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix failures for patches indicate CI/CD pipeline or code quality issues that require manual code review and testing.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784221872.38176
-    },
     {
       "lesson": "Complex architectural change needed: route options-desk income structures through multi-leg order infrastructure. Requires design and implementation of multi-leg execution logic.",
       "category": "strategy",
@@ -1854,6 +1847,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 3, Breakouts: 0, Risk flags: 0.",
       "ts": 1784743778.5147958
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 3,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 3, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784747055.6469228
     }
   ],
   "github_insights": [
