@@ -21,18 +21,20 @@ def _first_run_time() -> datetime:
     """
     return datetime.now(timezone.utc) + timedelta(seconds=random.uniform(30, 150))
 
+
 if TYPE_CHECKING:
     from app.models.bot import Bot
 
+
 # Map interval strings to APScheduler kwargs
 _INTERVAL_MAP: dict[str, dict] = {
-    "1m":  {"minutes": 1},
-    "5m":  {"minutes": 5},
+    "1m": {"minutes": 1},
+    "5m": {"minutes": 5},
     "15m": {"minutes": 15},
     "30m": {"minutes": 30},
-    "1h":  {"hours": 1},
-    "4h":  {"hours": 4},
-    "1d":  {"hours": 24},
+    "1h": {"hours": 1},
+    "4h": {"hours": 4},
+    "1d": {"hours": 24},
 }
 
 
@@ -57,14 +59,23 @@ class BotRunner:
                 )
                 bots = result.scalars().all()
 
+            if not bots:
+                logger.info("BotRunner: no enabled bots to schedule")
+                return
+
             logger.info("BotRunner: scheduling bots", count=len(bots))
             for bot in bots:
+                if bot is None:
+                    continue
                 await self.reschedule(bot)
         except Exception as exc:
             logger.error("BotRunner.start failed", error=str(exc))
 
     async def _run_bot(self, bot_id: str) -> None:
         """Called by scheduler — fetch bot from DB, evaluate, update."""
+        if not bot_id:
+            logger.debug("BotRunner._run_bot called with empty bot_id; skipping")
+            return
         try:
             from app.database import AsyncSessionLocal
             from app.models.bot import Bot
@@ -90,11 +101,18 @@ class BotRunner:
 
     async def reschedule(self, bot: "Bot") -> None:
         """Add or update a bot job in the scheduler."""
+        if bot is None:
+            logger.debug("BotRunner.reschedule called with None bot; skipping")
+            return
         try:
             trigger_cfg: dict = bot.trigger or {}
             trigger_type = trigger_cfg.get("type", "schedule")
 
             job_id = f"bot_{bot.id}"
+
+            if not bot.id:
+                logger.debug("BotRunner.reschedule: bot has no id; skipping", bot=bot)
+                return
 
             if trigger_type == "schedule":
                 interval_str = trigger_cfg.get("interval", "1h")
@@ -126,10 +144,13 @@ class BotRunner:
                 logger.debug("Bot scheduled (poll)", bot_id=bot.id, trigger=trigger_type)
 
         except Exception as exc:
-            logger.error("BotRunner.reschedule failed", bot_id=bot.id, error=str(exc))
+            logger.error("BotRunner.reschedule failed", bot_id=getattr(bot, "id", None), error=str(exc))
 
     async def unschedule(self, bot_id: str) -> None:
         """Remove a bot job from the scheduler."""
+        if not bot_id:
+            logger.debug("BotRunner.unschedule called with empty bot_id; skipping")
+            return
         job_id = f"bot_{bot_id}"
         try:
             self._scheduler.remove_job(job_id)
