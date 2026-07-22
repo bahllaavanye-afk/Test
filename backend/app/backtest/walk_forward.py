@@ -32,6 +32,10 @@ KEY_TOTAL_RETURN = "total_return"
 KEY_NUM_TRADES = "num_trades"
 KEY_ERROR = "error"
 
+DEFAULT_VERDICT_INSUFFICIENT = "insufficient_data"
+VERDICT_ROBUST = "robust"
+VERDICT_OVERFIT_PREFIX = "overfit_or_weak: "
+
 
 @dataclass
 class WalkForwardResult:
@@ -44,7 +48,7 @@ class WalkForwardResult:
     deflated_sharpe: float = 0.0   # DSR over the window Sharpes (multiple-testing haircut)
     consistency: float = 0.0       # fraction of windows with Sharpe ≥ MIN_OOS_SHARPE
     is_robust: bool = False        # passes the full protocol → safe to promote
-    verdict: str = "insufficient_data"
+    verdict: str = DEFAULT_VERDICT_INSUFFICIENT
 
 
 def robustness_verdict(sharpes: list[float]) -> dict:
@@ -57,8 +61,13 @@ def robustness_verdict(sharpes: list[float]) -> dict:
     """
     n = len(sharpes)
     if n == 0:
-        return {"n_windows": 0, "deflated_sharpe": 0.0, "consistency": 0.0,
-                "is_robust": False, "verdict": "insufficient_data"}
+        return {
+            "n_windows": 0,
+            "deflated_sharpe": 0.0,
+            "consistency": 0.0,
+            "is_robust": False,
+            "verdict": DEFAULT_VERDICT_INSUFFICIENT,
+        }
     avg = sum(sharpes) / n
     consistency = sum(1 for s in sharpes if s >= MIN_OOS_SHARPE) / n
     dsr = deflated_sharpe_ratio(sharpes, n_trials=n)
@@ -77,7 +86,7 @@ def robustness_verdict(sharpes: list[float]) -> dict:
         "deflated_sharpe": round(dsr, 4),
         "consistency": round(consistency, 4),
         "is_robust": is_robust,
-        "verdict": "robust" if is_robust else "overfit_or_weak: " + "; ".join(reasons),
+        "verdict": VERDICT_ROBUST if is_robust else VERDICT_OVERFIT_PREFIX + "; ".join(reasons),
     }
 
 

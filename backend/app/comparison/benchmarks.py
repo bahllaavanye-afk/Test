@@ -14,17 +14,33 @@ import pandas as pd
 from app.config import settings
 from app.utils.logging import logger
 
-# Constants
+# API constants
 ALPACA_DATA_URL = "https://data.alpaca.markets"
 ALPACA_TIMEOUT = 15.0
 HTTP_CLIENT_TIMEOUT = 20.0
 TIMEFRAME = "1Day"
 MAX_BARS_LIMIT = 1500
+ALPACA_BARS_ENDPOINT_TEMPLATE = "/v2/stocks/{symbol}/bars"
+ALPACA_HEADERS_KEY_ID = "APCA-API-KEY-ID"
+ALPACA_HEADERS_SECRET_KEY = "APCA-API-SECRET-KEY"
+ALPACA_RESPONSE_BARS_KEY = "bars"
+
+# Normalization constants
 NORMALIZATION_BASE = 100
 NORMALIZATION_PRECISION = 2
+
+# All‑Weather constants
 RESAMPLE_RULE = "ME"
 MIN_AW_TICKERS = 3
 ALL_WEATHER_KEY = "ALL_WEATHER"
+
+# Logging message constants
+LOG_MSG_INVALID_RANGE = "Invalid benchmark date range"
+LOG_MSG_FETCH_FAILED = "Alpaca bars fetch failed"
+LOG_MSG_HTTP_ERROR = "HTTP error while fetching Alpaca bars"
+LOG_MSG_DATA_PARSING_ERROR = "Data parsing error while processing Alpaca response"
+LOG_MSG_UNEXPECTED_ERROR = "Unexpected error while fetching Alpaca bars"
+LOG_MSG_ERROR_FETCH_TICKER = "Error fetching ticker data"
 
 BENCHMARKS = {
     "SPY": {"name": "S&P 500", "color": "#2196F3"},
@@ -43,8 +59,8 @@ _benchmark_cache: dict[tuple[date, date], dict[str, List[dict]]] = {}
 def _alpaca_headers() -> dict:
     """Static Alpaca authentication headers."""
     return {
-        "APCA-API-KEY-ID": settings.alpaca_api_key,
-        "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
+        ALPACA_HEADERS_KEY_ID: settings.alpaca_api_key,
+        ALPACA_HEADERS_SECRET_KEY: settings.alpaca_secret_key,
     }
 
 
@@ -61,7 +77,7 @@ async def _fetch_ticker_bars(
 
     try:
         resp = await client.get(
-            f"{ALPACA_DATA_URL}/v2/stocks/{sym}/bars",
+            f"{ALPACA_DATA_URL}{ALPACA_BARS_ENDPOINT_TEMPLATE.format(symbol=sym)}",
             params={
                 "timeframe": TIMEFRAME,
                 "start": start_str,
@@ -73,12 +89,12 @@ async def _fetch_ticker_bars(
         )
         if resp.status_code != 200:
             logger.warning(
-                "Alpaca bars fetch failed",
+                LOG_MSG_FETCH_FAILED,
                 extra={"ticker": ticker, "status_code": resp.status_code},
             )
             return pd.Series(dtype=float)
 
-        raw_bars = resp.json().get("bars", [])
+        raw_bars = resp.json().get(ALPACA_RESPONSE_BARS_KEY, [])
         if not raw_bars:
             return pd.Series(dtype=float)
 
@@ -91,19 +107,19 @@ async def _fetch_ticker_bars(
 
     except httpx.HTTPError as exc:
         logger.error(
-            "HTTP error while fetching Alpaca bars",
+            LOG_MSG_HTTP_ERROR,
             extra={"ticker": ticker, "error": str(exc)},
         )
         return pd.Series(dtype=float)
     except (ValueError, KeyError) as exc:
         logger.error(
-            "Data parsing error while processing Alpaca response",
+            LOG_MSG_DATA_PARSING_ERROR,
             extra={"ticker": ticker, "error": str(exc)},
         )
         return pd.Series(dtype=float)
     except Exception as exc:  # pragma: no cover
         logger.exception(
-            "Unexpected error while fetching Alpaca bars",
+            LOG_MSG_UNEXPECTED_ERROR,
             extra={"ticker": ticker},
         )
         return pd.Series(dtype=float)
@@ -113,7 +129,7 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
     """Returns {ticker: [{date, value}, ...]} normalized to 100 at start."""
     if start >= end:
         logger.warning(
-            "Invalid benchmark date range",
+            LOG_MSG_INVALID_RANGE,
             extra={"start": start.isoformat(), "end": end.isoformat()},
         )
         return {}
@@ -136,7 +152,7 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
     for ticker, result in zip(all_tickers, raw_series):
         if isinstance(result, Exception):
             logger.error(
-                "Error fetching ticker data",
+                LOG_MSG_ERROR_FETCH_TICKER,
                 extra={"ticker": ticker, "error": str(result)},
             )
             series_list.append(pd.Series(dtype=float))
@@ -156,7 +172,9 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
         series = closes_dict.get(ticker)
         if series is None or series.empty:
             continue
-        normalized = (series.dropna() / series.iloc[0] * NORMALIZATION_BASE).round(NORMALIZATION_PRECISION)
+        normalized = (
+            series.dropna() / series.iloc[0] * NORMALIZATION_BASE
+        ).round(NORMALIZATION_PRECISION)
         result[ticker] = [
             {"date": idx.date().isoformat(), "value": float(v)} for idx, v in normalized.items()
         ]
