@@ -62,7 +62,7 @@ def test_pick_contract_empty_returns_none():
     assert pick_contract_by_delta({}, 0.3, "call") is None
 
 
-# ── submit_alpaca_multileg_order ──────────────────────────────────────────────
+# ── Helpers for multi‑leg tests ───────────────────────────────────────────────
 
 def _account():
     return SimpleNamespace(id="acct-1", mode="paper", broker="alpaca")
@@ -78,67 +78,94 @@ class _Resp:
         return self._body
 
 
-@pytest.mark.asyncio
-async def test_multileg_builds_mleg_payload():
-    captured = {}
-
+def _make_fake_post_capture(captured: dict):
     async def fake_post(self, url, json=None, headers=None):
         captured["url"] = url
         captured["payload"] = json
         return _Resp(200)
+    return fake_post
+
+
+def _make_fake_post_collect(collected: list):
+    async def fake_post(self, url, json=None, headers=None):
+        collected.append(url)
+        return _Resp(200)
+    return fake_post
+
+
+# ── submit_alpaca_multileg_order ──────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_multileg_builds_mleg_payload():
+    captured: dict = {}
 
     legs = [
         {"side": "sell", "option_type": "put", "dte": 30, "delta": 0.16},
         {"side": "buy", "option_type": "put", "dte": 30, "delta": 0.10, "ratio": 1},
     ]
-    with patch("app.brokers.alpaca_orders.resolve_leg_symbol",
-               new=AsyncMock(side_effect=["SPY260814P00580000", "SPY260814P00560000"])), \
-         patch("app.brokers.alpaca_orders._headers", new=AsyncMock(return_value={})), \
-         patch("app.brokers.alpaca_orders._base_url", return_value="https://paper-api.alpaca.markets"), \
-         patch("httpx.AsyncClient.post", new=fake_post):
+
+    with patch(
+        "app.brokers.alpaca_orders.resolve_leg_symbol",
+        new=AsyncMock(side_effect=["SPY260814P00580000", "SPY260814P00560000"]),
+    ), patch(
+        "app.brokers.alpaca_orders._headers", new=AsyncMock(return_value={})
+    ), patch(
+        "app.brokers.alpaca_orders._base_url",
+        return_value="https://paper-api.alpaca.markets",
+    ), patch(
+        "httpx.AsyncClient.post", new=_make_fake_post_capture(captured)
+    ):
         out = await submit_alpaca_multileg_order(_account(), "SPY", legs, quantity=2)
 
     assert out and out["id"] == "mleg-1"
-    p = captured["payload"]
-    assert p["order_class"] == "mleg"
-    assert p["qty"] == "2"
+    payload = captured["payload"]
+    assert payload["order_class"] == "mleg"
+    assert payload["qty"] == "2"
     assert captured["url"].endswith("/v2/orders")
-    assert [l["symbol"] for l in p["legs"]] == ["SPY260814P00580000", "SPY260814P00560000"]
-    assert p["legs"][0]["position_intent"] == "sell_to_open"
-    assert p["legs"][1]["position_intent"] == "buy_to_open"
-    assert p["legs"][0]["ratio_qty"] == "1"
+    assert [leg["symbol"] for leg in payload["legs"]] == [
+        "SPY260814P00580000",
+        "SPY260814P00560000",
+    ]
+    assert payload["legs"][0]["position_intent"] == "sell_to_open"
+    assert payload["legs"][1]["position_intent"] == "buy_to_open"
+    assert payload["legs"][0]["ratio_qty"] == "1"
 
 
 @pytest.mark.asyncio
 async def test_multileg_unresolvable_leg_sends_nothing():
-    posted = []
-
-    async def fake_post(self, url, json=None, headers=None):
-        posted.append(url)
-        return _Resp(200)
+    posted: list = []
 
     legs = [
         {"side": "sell", "option_type": "put", "dte": 30, "delta": 0.16},
         {"side": "buy", "option_type": "put", "dte": 30, "delta": 0.10},
     ]
-    with patch("app.brokers.alpaca_orders.resolve_leg_symbol",
-               new=AsyncMock(side_effect=["SPY260814P00580000", None])), \
-         patch("httpx.AsyncClient.post", new=fake_post):
+
+    with patch(
+        "app.brokers.alpaca_orders.resolve_leg_symbol",
+        new=AsyncMock(side_effect=["SPY260814P00580000", None]),
+    ), patch(
+        "httpx.AsyncClient.post", new=_make_fake_post_collect(posted)
+    ):
         out = await submit_alpaca_multileg_order(_account(), "SPY", legs)
 
     assert out is None
-    assert posted == []          # NEVER send a partial spread
+    assert posted == []  # NEVER send a partial spread
 
 
 @pytest.mark.asyncio
 async def test_multileg_broker_rejection_returns_none():
-    async def fake_post(self, url, json=None, headers=None):
-        return _Resp(422, {"message": "option level too low"})
-
     legs = [{"side": "buy", "option_type": "call", "dte": 30, "delta": 0.5}]
-    with patch("app.brokers.alpaca_orders.resolve_leg_symbol",
-               new=AsyncMock(return_value="SPY260814C00620000")), \
-         patch("app.brokers.alpaca_orders._headers", new=AsyncMock(return_value={})), \
-         patch("app.brokers.alpaca_orders._base_url", return_value="https://paper-api.alpaca.markets"), \
-         patch("httpx.AsyncClient.post", new=fake_post):
+
+    with patch(
+        "app.brokers.alpaca_orders.resolve_leg_symbol",
+        new=AsyncMock(return_value="SPY260814C00620000"),
+    ), patch(
+        "app.brokers.alpaca_orders._headers", new=AsyncMock(return_value={})
+    ), patch(
+        "app.brokers.alpaca_orders._base_url",
+        return_value="https://paper-api.alpaca.markets",
+    ), patch(
+        "httpx.AsyncClient.post",
+        new=AsyncMock(return_value=_Resp(422, {"message": "option level too low"})),
+    ):
         assert await submit_alpaca_multileg_order(_account(), "SPY", legs) is None
