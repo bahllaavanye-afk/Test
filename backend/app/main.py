@@ -402,9 +402,25 @@ def create_app() -> FastAPI:
         except Exception as e:
             checks["redis"] = {"ok": False, "error": str(e)[:120]}
 
-        # Scheduler
+        # Scheduler — include the LIVE job table (id + next run). 2026-07-22:
+        # bots showed last_run_at=None for days while "scheduler: ok" lied by
+        # omission; whether bot_* jobs even EXIST at runtime was invisible.
         sched = getattr(app.state, "scheduler", None)
-        checks["scheduler"] = {"ok": sched is not None and sched.running if sched else False}
+        sched_check: dict = {"ok": sched is not None and sched.running if sched else False}
+        try:
+            if sched is not None:
+                jobs = sched.get_jobs()
+                bot_jobs = [j for j in jobs if str(j.id).startswith("bot_")]
+                sched_check["jobs_total"] = len(jobs)
+                sched_check["bot_jobs"] = len(bot_jobs)
+                sched_check["sample"] = [
+                    {"id": str(j.id)[:40],
+                     "next_run": j.next_run_time.isoformat() if j.next_run_time else None}
+                    for j in (bot_jobs[:3] + [j for j in jobs if not str(j.id).startswith("bot_")][:5])
+                ]
+        except Exception as e:  # noqa: BLE001
+            sched_check["jobs_error"] = str(e)[:120]
+        checks["scheduler"] = sched_check
 
         # AlgoAgent
         agent = getattr(app.state, "algo_agent", None)

@@ -6,9 +6,28 @@
 > lost. Keep it current: when you finish or start something material, update this file in
 > the same commit.
 
-_Last updated: 2026-07-20 (PM)._
+_Last updated: 2026-07-22._
 
-## ⚡ STATE AS OF 2026-07-20 PM (read this first)
+## ⚡ STATE AS OF 2026-07-22 (read this first)
+**Supabase RESTORED to ACTIVE_HEALTHY** (via MCP restore_project) — the durable
+Postgres is back. Before the backend reconnects to it, the schema-drift audit found
+ONE real drift (slippage_records missing 5 implementation-shortfall columns) and
+fixed it: alembic revision k6f7a8b9c0d1 (additive, all-nullable, idempotent). start.sh
+runs `alembic upgrade head` on boot, so the next deploy applies it and the schema
+matches the models (verified: zero drift after the catch-up). blast radius was small
+anyway — slippage_records is only the slippage dashboard, not login/trades/bots.
+**Monday 2026-07-20 post-mortem (PR #857, merged):** desks were fine (410 signals) —
+the daily LOSS CAP tripped at Monday's open on weekend crypto drift vs Friday's
+last_equity and blocked ALL orders incl. exits; now risk-reducing orders stay allowed.
+Bots showed last_run_at=None because APScheduler waits one full interval before the
+first run and every deploy resets it → now `next_run_time` = boot+30–150s stagger.
+**/health/detailed now shows the live scheduler job table** (bot_jobs count + next_run)
+so "are bots even scheduled" is answerable — it was invisible before.
+**USER ACTIONS remaining (dashboard):** (1) suspend the stale `agb8` Render service
+(double-executes vs the same Alpaca account) — STILL the one thing I can't do;
+(2) optional TRADIER_SANDBOX_TOKEN for real greeks. (Supabase unpause = DONE by me.)
+
+## Earlier: STATE AS OF 2026-07-20 PM
 **Shipped this session (all merged to main, free stack):** bot exit sweep was
 silently dead on the SQLite-fallback deploy (naive-datetime TypeError killed the
 5-min sweep → positions never closed) — FIXED + 6 lifecycle tests. Exploration
