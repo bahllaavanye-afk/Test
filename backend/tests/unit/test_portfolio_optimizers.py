@@ -8,6 +8,22 @@ import pytest
 from app.risk.hrp import HRPOptimizer, _corr_to_distance, _get_quasi_diag
 from app.risk.portfolio_optimizer import CVaROptimizer, optimize_portfolio
 
+# ── Constants ───────────────────────────────────────────────────────────────
+TOL_WEIGHT_SUM: float = 1e-9
+TOL_WEIGHT_POS: float = 1e-9
+TOL_WEIGHT_NON_NEG: float = 1e-6
+TOL_REORDER: float = 0.02
+MAX_COMBINED_CORR_WEIGHT: float = 0.75
+TOL_DISTANCE_UPPER: float = 1e-9
+TOL_CVAR_DIFF: float = 0.005
+
+METHOD_HRP: str = "hrp"
+METHOD_CVAR: str = "cvar"
+METHOD_EQUAL: str = "equal"
+UNKNOWN_METHOD: str = "bogus_method_xyz"
+
+CONFIDENCE_95: float = 0.95
+CONFIDENCE_99: float = 0.99
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -46,7 +62,7 @@ class TestHRPOptimizer:
     def test_weights_sum_to_one(self, returns_df):
         opt = HRPOptimizer()
         w = opt.compute_weights(returns_df)
-        assert abs(w.sum() - 1.0) < 1e-9
+        assert abs(w.sum() - 1.0) < TOL_WEIGHT_SUM
 
     def test_weights_all_positive(self, returns_df):
         opt = HRPOptimizer()
@@ -63,7 +79,7 @@ class TestHRPOptimizer:
         df = pd.DataFrame({"A": rng.normal(0, 0.01, 100)})
         opt = HRPOptimizer()
         w = opt.compute_weights(df)
-        assert abs(w["A"] - 1.0) < 1e-9
+        assert abs(w["A"] - 1.0) < TOL_WEIGHT_SUM
 
     def test_two_identical_assets_equal_weight(self):
         rng = np.random.default_rng(7)
@@ -76,7 +92,7 @@ class TestHRPOptimizer:
     def test_large_universe(self, returns_df_large):
         opt = HRPOptimizer()
         w = opt.compute_weights(returns_df_large)
-        assert abs(w.sum() - 1.0) < 1e-9
+        assert abs(w.sum() - 1.0) < TOL_WEIGHT_SUM
         assert len(w) == 20
 
     def test_weights_stable_under_reorder(self, returns_df):
@@ -85,7 +101,7 @@ class TestHRPOptimizer:
         w2 = opt.compute_weights(returns_df[returns_df.columns[::-1]])
         # Weights should be the same regardless of column order
         for col in returns_df.columns:
-            assert abs(w1[col] - w2[col]) < 0.02, f"Weight for {col} differs by reordering"
+            assert abs(w1[col] - w2[col]) < TOL_REORDER, f"Weight for {col} differs by reordering"
 
     def test_high_corr_assets_get_lower_combined_weight(self):
         rng = np.random.default_rng(3)
@@ -100,8 +116,8 @@ class TestHRPOptimizer:
         w = opt.compute_weights(df)
         # The two correlated assets together should not dominate
         combined_corr = w["correlated_1"] + w["correlated_2"]
-        assert combined_corr < 0.75, (
-            f"HRP gave {combined_corr:.2f} to two highly correlated assets (expected < 0.75)"
+        assert combined_corr < MAX_COMBINED_CORR_WEIGHT, (
+            f"HRP gave {combined_corr:.2f} to two highly correlated assets (expected < {MAX_COMBINED_CORR_WEIGHT})"
         )
 
 
@@ -125,7 +141,7 @@ class TestHRPHelpers:
         corr = pd.DataFrame(np.corrcoef(raw.T))
         dist = _corr_to_distance(corr)
         assert (dist >= 0).all(), "Distances must be non-negative"
-        assert (dist <= 1.0 + 1e-9).all(), "Distances must be <= 1"
+        assert (dist <= 1.0 + TOL_DISTANCE_UPPER).all(), "Distances must be <= 1"
 
     def test_perfect_correlation_zero_distance(self):
         corr = pd.DataFrame([[1.0, 1.0], [1.0, 1.0]])
@@ -142,17 +158,17 @@ class TestHRPHelpers:
 
 class TestCVaROptimizer:
     def test_weights_sum_to_one(self, returns_df):
-        opt = CVaROptimizer(confidence=0.95)
+        opt = CVaROptimizer(confidence=CONFIDENCE_95)
         w = opt.compute_weights(returns_df)
-        assert abs(w.sum() - 1.0) < 1e-6
+        assert abs(w.sum() - 1.0) < TOL_WEIGHT_NON_NEG
 
     def test_weights_non_negative(self, returns_df):
-        opt = CVaROptimizer(confidence=0.95)
+        opt = CVaROptimizer(confidence=CONFIDENCE_95)
         w = opt.compute_weights(returns_df)
-        assert (w >= -1e-6).all()
+        assert (w >= -TOL_WEIGHT_NON_NEG).all()
 
     def test_indexed_by_columns(self, returns_df):
-        opt = CVaROptimizer(confidence=0.95)
+        opt = CVaROptimizer(confidence=CONFIDENCE_95)
         w = opt.compute_weights(returns_df)
         assert set(w.index) == set(returns_df.columns)
 
@@ -163,23 +179,23 @@ class TestCVaROptimizer:
             CVaROptimizer(confidence=1.5)
 
     def test_different_confidence_levels(self, returns_df):
-        w95 = CVaROptimizer(confidence=0.95).compute_weights(returns_df)
-        w99 = CVaROptimizer(confidence=0.99).compute_weights(returns_df)
-        assert abs(w95.sum() - 1.0) < 1e-6
-        assert abs(w99.sum() - 1.0) < 1e-6
+        w95 = CVaROptimizer(confidence=CONFIDENCE_95).compute_weights(returns_df)
+        w99 = CVaROptimizer(confidence=CONFIDENCE_99).compute_weights(returns_df)
+        assert abs(w95.sum() - 1.0) < TOL_WEIGHT_NON_NEG
+        assert abs(w99.sum() - 1.0) < TOL_WEIGHT_NON_NEG
 
     def test_min_cvar_less_than_equal_weight(self, returns_df):
-        opt = CVaROptimizer(confidence=0.95)
+        opt = CVaROptimizer(confidence=CONFIDENCE_95)
         w_opt = opt.compute_weights(returns_df)
         n = len(returns_df.columns)
         w_equal = pd.Series(1.0 / n, index=returns_df.columns)
         # Compute CVaR for each
         pnl_opt = (returns_df * w_opt).sum(axis=1).values
         pnl_eq = (returns_df * w_equal).sum(axis=1).values
-        cutoff = int((1 - 0.95) * len(pnl_opt))
+        cutoff = int((1 - CONFIDENCE_95) * len(pnl_opt))
         cvar_opt = -np.sort(pnl_opt)[:cutoff].mean() if cutoff > 0 else 0
         cvar_eq = -np.sort(pnl_eq)[:cutoff].mean() if cutoff > 0 else 0
-        assert cvar_opt <= cvar_eq + 0.005, (
+        assert cvar_opt <= cvar_eq + TOL_CVAR_DIFF, (
             f"CVaR optimizer ({cvar_opt:.4f}) worse than equal weight ({cvar_eq:.4f})"
         )
 
@@ -188,19 +204,19 @@ class TestCVaROptimizer:
 
 class TestOptimizePortfolio:
     def test_hrp_method(self, returns_df):
-        w = optimize_portfolio(returns_df, method="hrp")
-        assert abs(w.sum() - 1.0) < 1e-9
+        w = optimize_portfolio(returns_df, method=METHOD_HRP)
+        assert abs(w.sum() - 1.0) < TOL_WEIGHT_SUM
 
     def test_cvar_method(self, returns_df):
-        w = optimize_portfolio(returns_df, method="cvar")
-        assert abs(w.sum() - 1.0) < 1e-6
+        w = optimize_portfolio(returns_df, method=METHOD_CVAR)
+        assert abs(w.sum() - 1.0) < TOL_WEIGHT_NON_NEG
 
     def test_equal_weight_fallback(self, returns_df):
-        w = optimize_portfolio(returns_df, method="equal")
+        w = optimize_portfolio(returns_df, method=METHOD_EQUAL)
         n = len(returns_df.columns)
         for v in w.values:
-            assert abs(v - 1.0 / n) < 1e-9
+            assert abs(v - 1.0 / n) < TOL_WEIGHT_SUM
 
     def test_unknown_method_raises(self, returns_df):
         with pytest.raises((ValueError, KeyError, NotImplementedError)):
-            optimize_portfolio(returns_df, method="bogus_method_xyz")
+            optimize_portfolio(returns_df, method=UNKNOWN_METHOD)

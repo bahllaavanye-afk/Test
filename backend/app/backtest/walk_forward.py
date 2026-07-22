@@ -1,14 +1,28 @@
 """Walk-forward validation: train on N years, test on M months, roll forward."""
 
 from __future__ import annotations
+
 import pandas as pd
 from dataclasses import dataclass, field
 from app.backtest.engine import run_backtest, BacktestMetrics
 
+# Constants
 TIMEFRAME_TRAIN = 2  # years of training data
 TIMEFRAME_TEST = 6  # months of testing data
 
-MAX_EQUIITY = 100_000
+MAX_EQUITY = 100_000
+
+DAYS_PER_YEAR = 252
+DAYS_PER_MONTH = 21
+
+KEY_START = "start"
+KEY_END = "end"
+KEY_SHARPE = "sharpe"
+KEY_MAX_DRAWDOWN = "max_drawdown"
+KEY_TOTAL_RETURN = "total_return"
+KEY_NUM_TRADES = "num_trades"
+KEY_ERROR = "error"
+
 
 @dataclass
 class WalkForwardResult:
@@ -28,10 +42,10 @@ def walk_forward(
     Rolls a train/test window across entire history.
     signals_fn receives (train_prices, test_prices) and must return signals for test period only.
     """
-    train_bars = (train_years if train_years is not None else TIMEFRAME_TRAIN) * 252
-    test_bars = (test_months if test_months is not None else TIMEFRAME_TEST) * 21
+    train_bars = (train_years if train_years is not None else TIMEFRAME_TRAIN) * DAYS_PER_YEAR
+    test_bars = (test_months if test_months is not None else TIMEFRAME_TEST) * DAYS_PER_MONTH
     result = WalkForwardResult()
-    equity_carry = MAX_EQUIITY
+    equity_carry = MAX_EQUITY
 
     i = train_bars
     while i + test_bars <= len(prices):
@@ -44,21 +58,25 @@ def walk_forward(
             equity_carry = metrics.equity_curve[-1]["equity"] if metrics.equity_curve else equity_carry
 
             result.windows.append({
-                "start": str(test.index[0].date()),
-                "end": str(test.index[-1].date()),
-                "sharpe": metrics.sharpe,
-                "max_drawdown": metrics.max_drawdown,
-                "total_return": metrics.total_return,
-                "num_trades": metrics.num_trades,
+                KEY_START: str(test.index[0].date()),
+                KEY_END: str(test.index[-1].date()),
+                KEY_SHARPE: metrics.sharpe,
+                KEY_MAX_DRAWDOWN: metrics.max_drawdown,
+                KEY_TOTAL_RETURN: metrics.total_return,
+                KEY_NUM_TRADES: metrics.num_trades,
             })
             result.combined_equity.extend(metrics.equity_curve)
         except Exception as e:
-            result.windows.append({"start": str(test.index[0].date()), "end": str(test.index[-1].date()), "error": str(e)})
+            result.windows.append({
+                KEY_START: str(test.index[0].date()),
+                KEY_END: str(test.index[-1].date()),
+                KEY_ERROR: str(e)
+            })
 
         i += test_bars
 
-    sharpes = [w["sharpe"] for w in result.windows if "sharpe" in w]
-    dds = [w["max_drawdown"] for w in result.windows if "max_drawdown" in w]
+    sharpes = [w[KEY_SHARPE] for w in result.windows if KEY_SHARPE in w]
+    dds = [w[KEY_MAX_DRAWDOWN] for w in result.windows if KEY_MAX_DRAWDOWN in w]
     result.avg_sharpe = round(sum(sharpes) / len(sharpes), 4) if sharpes else 0.0
     result.avg_drawdown = round(sum(dds) / len(dds), 4) if dds else 0.0
     return result
