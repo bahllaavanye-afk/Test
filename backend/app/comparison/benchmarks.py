@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import functools
 from datetime import date, datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import httpx
 import pandas as pd
@@ -33,10 +33,16 @@ BENCHMARKS = {
     "GLD": {"name": "Gold", "color": "#FFC107"},
 }
 
-ALL_WEATHER_WEIGHTS = {"TLT": 0.40, "IEF": 0.15, "VTI": 0.30, "GLD": 0.075, "DJP": 0.075}
+ALL_WEATHER_WEIGHTS = {
+    "TLT": 0.40,
+    "IEF": 0.15,
+    "VTI": 0.30,
+    "GLD": 0.075,
+    "DJP": 0.075,
+}
 
 # simple in‑memory cache for benchmark results keyed by (start, end)
-_benchmark_cache: dict[tuple[date, date], dict[str, List[dict]]] = {}
+_benchmark_cache: dict[Tuple[date, date], dict[str, List[dict]]] = {}
 
 
 @functools.lru_cache(maxsize=1)
@@ -85,7 +91,6 @@ async def _fetch_ticker_bars(
         dates = pd.to_datetime([b["t"] for b in raw_bars], utc=True).normalize()
         closes = [float(b["c"]) for b in raw_bars]
         series = pd.Series(closes, index=dates, name=ticker)
-        # De‑duplicate any same‑day entries (take last)
         series = series[~series.index.duplicated(keep="last")]
         return series
 
@@ -109,13 +114,95 @@ async def _fetch_ticker_bars(
         return pd.Series(dtype=float)
 
 
-async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]]:
-    """Returns {ticker: [{date, value}, ...]} normalized to 100 at start."""
+def _validate_date_range(start: date, end: date) -> bool:
+    """Return True if the date range is valid; log a warning otherwise."""
     if start >= end:
         logger.warning(
             "Invalid benchmark date range",
             extra={"start": start.isoformat(), "end": end.isoformat()},
         )
+        return False
+    return True
+
+
+async def _fetch_all_series(
+    tickers: List[str], start: date, end: date
+) -> Dict[str, pd.Series]:
+    """Fetch series for all tickers concurrently and return a dict of non‑empty Series."""
+    async with httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT) as client:
+        raw_results = await asyncio.gather(
+            *[_fetch_ticker_bars(client, t, start, end) for t in tickers],
+            return_exceptions=True,
+        )
+
+    series_dict: Dict[str, pd.Series] = {}
+    for ticker, result in zip(tickers, raw_results):
+        if isinstance(result, Exception):
+            logger.error(
+                "Error fetching ticker data",
+                extra={"ticker": ticker, "error": str(result)},
+            )
+            continue
+        if not result.empty:
+            series_dict[ticker] = result
+    return series_dict
+
+
+def _normalize_series(series: pd.Series) -> List[dict]:
+    """
+    Normalize a price series to start at NORMALIZATION_BASE and round to
+    NORMALIZATION_PRECISION. Return a list of dicts with ISO dates and values.
+    """
+    normalized = (series.dropna() / series.iloc[0] * NORMALIZATION_BASE).round(
+        NORMALIZATION_PRECISION
+    )
+    return [
+        {"date": idx.date().isoformat(), "value": float(v)} for idx, v in normalized.items()
+    ]
+
+
+def _process_benchmarks(closes_dict: Dict[str, pd.Series]) -> Dict[str, List[dict]]:
+    """Process individual benchmark tickers and return their normalized curves."""
+    result: Dict[str, List[dict]] = {}
+    for ticker in BENCHMARKS:
+        series = closes_dict.get(ticker)
+        if series is None or series.empty:
+            continue
+        result[ticker] = _normalize_series(series)
+    return result
+
+
+def _process_all_weather(closes_dict: Dict[str, pd.Series]) -> Dict[str, List[dict]]:
+    """
+    Compute the Ray Dalio All Weather portfolio (monthly rebalanced) and
+    return the equity curve normalized to NORMALIZATION_BASE.
+    """
+    aw_tickers = [t for t in ALL_WEATHER_WEIGHTS if t in closes_dict]
+    if len(aw_tickers) < MIN_AW_TICKERS:
+        return {}
+
+    aw_frames = {t: closes_dict[t].rename(t) for t in aw_tickers}
+    aw_prices = pd.concat(aw_frames.values(), axis=1).dropna()
+    weights = pd.Series({t: ALL_WEATHER_WEIGHTS[t] for t in aw_tickers})
+    weights = weights / weights.sum()  # renormalize if any tickers missing
+
+    monthly_returns = aw_prices.resample(RESAMPLE_RULE).last().pct_change().dropna()
+    aw_ret = (monthly_returns * weights).sum(axis=1)
+    aw_equity = (1 + aw_ret).cumprod() * NORMALIZATION_BASE
+
+    curve = [
+        {
+            "date": idx.date().isoformat(),
+            "value": round(float(v), NORMALIZATION_PRECISION),
+        }
+        for idx, v in aw_equity.items()
+    ]
+    return {ALL_WEATHER_KEY: curve}
+
+
+async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]]:
+    """Return benchmark equity curves normalized to 100 at the start date."""
+    if not _validate_date_range(start, end):
         return {}
 
     cache_key = (start, end)
@@ -124,56 +211,11 @@ async def fetch_benchmark_curves(start: date, end: date) -> dict[str, List[dict]
         return {k: v.copy() for k, v in cached.items()}
 
     all_tickers = list(BENCHMARKS.keys()) + list(ALL_WEATHER_WEIGHTS.keys())
-
-    async with httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT) as client:
-        raw_series = await asyncio.gather(
-            *[_fetch_ticker_bars(client, t, start, end) for t in all_tickers],
-            return_exceptions=True,
-        )
-
-    # Convert any exceptions returned by gather into empty Series and log them
-    series_list: List[pd.Series] = []
-    for ticker, result in zip(all_tickers, raw_series):
-        if isinstance(result, Exception):
-            logger.error(
-                "Error fetching ticker data",
-                extra={"ticker": ticker, "error": str(result)},
-            )
-            series_list.append(pd.Series(dtype=float))
-        else:
-            series_list.append(result)
-
-    closes_dict: dict[str, pd.Series] = {
-        ticker: series
-        for ticker, series in zip(all_tickers, series_list)
-        if not series.empty
-    }
+    closes_dict = await _fetch_all_series(all_tickers, start, end)
 
     result: dict[str, List[dict]] = {}
-
-    # Process individual benchmarks
-    for ticker in BENCHMARKS:
-        series = closes_dict.get(ticker)
-        if series is None or series.empty:
-            continue
-        normalized = (series.dropna() / series.iloc[0] * NORMALIZATION_BASE).round(NORMALIZATION_PRECISION)
-        result[ticker] = [
-            {"date": idx.date().isoformat(), "value": float(v)} for idx, v in normalized.items()
-        ]
-
-    # All Weather: monthly rebalanced weighted portfolio
-    aw_tickers = [t for t in ALL_WEATHER_WEIGHTS if t in closes_dict]
-    if len(aw_tickers) >= MIN_AW_TICKERS:
-        aw_frames = {t: closes_dict[t].rename(t) for t in aw_tickers}
-        aw_prices = pd.concat(aw_frames.values(), axis=1).dropna()
-        weights = pd.Series({t: ALL_WEATHER_WEIGHTS[t] for t in aw_tickers})
-        weights = weights / weights.sum()  # renormalize if any tickers missing
-        monthly_returns = aw_prices.resample(RESAMPLE_RULE).last().pct_change().dropna()
-        aw_ret = (monthly_returns * weights).sum(axis=1)
-        aw_equity = (1 + aw_ret).cumprod() * NORMALIZATION_BASE
-        result[ALL_WEATHER_KEY] = [
-            {"date": idx.date().isoformat(), "value": round(float(v), NORMALIZATION_PRECISION)} for idx, v in aw_equity.items()
-        ]
+    result.update(_process_benchmarks(closes_dict))
+    result.update(_process_all_weather(closes_dict))
 
     # Cache the result for future identical requests
     _benchmark_cache[cache_key] = {k: v.copy() for k, v in result.items()}
