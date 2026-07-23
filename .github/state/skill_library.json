@@ -1,7 +1,5 @@
 {
   "skills": [
-    "docstrings on execution/vwap.py: success \u2014 tests green",
-    "* **Real-time updates**: Agents are required to provide concise, first-person status updates, referencing specific tasks and file paths, to keep stakeholders informed about their progress.",
     "Log API response codes",
     "Refactor model loaders",
     "Log API errors",
@@ -199,8 +197,10 @@
     "Check config files",
     "Test dependencies",
     "Add type hints",
-    "Enforce rate limits"
+    "Enforce rate limits",
+    "Implement idempotence",
+    "Apply retry mechanism"
   ],
-  "last_updated": "2026-07-23T19:54:40.378302+00:00",
+  "last_updated": "2026-07-23T20:59:13.074950+00:00",
   "total": 200
 }
