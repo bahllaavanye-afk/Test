@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784823802.865743,
+    "last_updated": 1784828295.2767951,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,15 +109,15 @@
     },
     "opinion_score": 0,
     "macro_score": 1,
-    "vix": 19.54,
-    "market_scan_ts": 1784823802.8377948,
+    "vix": 19.31,
+    "market_scan_ts": 1784828295.2511344,
     "sector_leaders": [
       "Energy",
       "Healthcare",
       "Financials"
     ],
     "sector_laggards": [
-      "Comm.",
+      "Materials",
       "Tech",
       "Cons. Disc."
     ],
@@ -125,43 +125,36 @@
       "TMO",
       "XLE",
       "GLD",
-      "IWM",
-      "XLI",
-      "XOM",
-      "QQQ",
-      "DIA",
-      "CVX",
       "TLT",
+      "IWM",
+      "XOM",
       "COP",
-      "WMT",
+      "XLI",
+      "QQQ",
+      "CVX",
+      "DIA",
       "SPY",
+      "WMT",
       "XLP",
-      "MSFT",
       "MPC",
-      "KO",
+      "MSFT",
       "JNJ",
-      "GS",
-      "SLB"
+      "KO",
+      "EOG",
+      "XLK"
     ],
     "top_momentum": [
       "MPC",
       "TMO",
       "XOM",
-      "COP",
-      "CVX"
+      "CVX",
+      "COP"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1784807332.7956257
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix patch failures indicate code conflicts or environment mismatches; consider manual review and CI pipeline improvements for complex features.",
-      "category": "risk",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1784238298.251716
-    },
     {
       "lesson": "Slack agent run failed due to message_limit_exceeded or dead token \u2014 posts not reaching workspace; investigate Slack API quota and rotate tokens immediately.",
       "category": "execution",
@@ -1859,6 +1852,21 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784823802.8717191
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 1,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784828295.2817006
     }
   ],
   "github_insights": [
