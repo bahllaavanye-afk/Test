@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784828295.2767951,
+    "last_updated": 1784830555.617481,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 0,
     "macro_score": 1,
-    "vix": 19.31,
-    "market_scan_ts": 1784828295.2511344,
+    "vix": 19.6,
+    "market_scan_ts": 1784830555.5915468,
     "sector_leaders": [
       "Energy",
       "Healthcare",
@@ -132,36 +132,29 @@
       "XLI",
       "QQQ",
       "CVX",
-      "DIA",
       "SPY",
+      "DIA",
       "WMT",
       "XLP",
       "MPC",
       "MSFT",
       "JNJ",
-      "KO",
       "EOG",
-      "XLK"
+      "KO",
+      "MRK"
     ],
     "top_momentum": [
       "MPC",
       "TMO",
       "XOM",
-      "CVX",
-      "COP"
+      "COP",
+      "CVX"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1784807332.7956257
   },
   "episodic": [
-    {
-      "lesson": "Slack agent run failed due to message_limit_exceeded or dead token \u2014 posts not reaching workspace; investigate Slack API quota and rotate tokens immediately.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784250677.972796
-    },
     {
       "lesson": "Deployment blocked by Vercel free tier daily limit (100 deploys/day); upgrade to Pro plan or implement deployment batching to avoid interruption.",
       "category": "strategy",
@@ -1867,6 +1860,21 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784828295.2817006
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 1,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784830555.6224108
     }
   ],
   "github_insights": [
