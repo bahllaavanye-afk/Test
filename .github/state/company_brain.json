@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784830555.617481,
+    "last_updated": 1784833544.9566395,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,15 +109,15 @@
     },
     "opinion_score": 0,
     "macro_score": 1,
-    "vix": 19.6,
-    "market_scan_ts": 1784830555.5915468,
+    "vix": 19.43,
+    "market_scan_ts": 1784833544.9313881,
     "sector_leaders": [
       "Energy",
       "Healthcare",
       "Financials"
     ],
     "sector_laggards": [
-      "Materials",
+      "Comm.",
       "Tech",
       "Cons. Disc."
     ],
@@ -132,16 +132,16 @@
       "XLI",
       "QQQ",
       "CVX",
-      "SPY",
       "DIA",
+      "SPY",
       "WMT",
       "XLP",
       "MPC",
       "MSFT",
-      "JNJ",
       "EOG",
+      "JNJ",
       "KO",
-      "MRK"
+      "SLB"
     ],
     "top_momentum": [
       "MPC",
@@ -155,13 +155,6 @@
     "last_brain_update": 1784807332.7956257
   },
   "episodic": [
-    {
-      "lesson": "Deployment blocked by Vercel free tier daily limit (100 deploys/day); upgrade to Pro plan or implement deployment batching to avoid interruption.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784250677.9760506
-    },
     {
       "lesson": "Auto-fix skipped for per-desk performance attribution feature because it required changes across multiple modules exceeding 50-line limit; decompose into smaller, incremental PRs.",
       "category": "code",
@@ -1875,6 +1868,21 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784830555.6224108
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 1,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784833544.9614913
     }
   ],
   "github_insights": [
