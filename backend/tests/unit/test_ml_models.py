@@ -1,5 +1,4 @@
 """Unit tests for TFT, LightGBM, and Foundation model."""
-import numpy as np
 import pytest
 
 pytest.importorskip("torch")  # skip this module when the optional [ml] extra (torch) isn't installed

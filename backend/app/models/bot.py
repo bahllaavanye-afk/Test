@@ -1,13 +1,15 @@
 """Bot model — declarative trading bot definitions."""
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Boolean, JSON, Integer, DateTime
+
+from sqlalchemy import Boolean, DateTime, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.database import Base
 from app.models.base import TimestampMixin
 
 # Canonical market types / desks a bot can trade. The column stays a free string for
-# forward-compat, but this is the supported set the API advertises and the builder offers.
+# forward‑compat, but this is the supported set the API advertises and the builder offers.
 # equity/crypto/polymarket were the originals; options/macro/rates added in desk consolidation.
 MARKET_TYPES: list[str] = ["equity", "crypto", "polymarket", "options", "macro", "rates"]
 
@@ -30,7 +32,7 @@ class Bot(Base, TimestampMixin):
     exit_rules: Mapped[list] = mapped_column(JSON, default=list)
 
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Soft-delete / retire: archived bots are hidden from active lists, the desk
+    # Soft‑delete / retire: archived bots are hidden from active lists, the desk
     # summary, and the scheduler, but their row + config + linked trades are preserved
     # so they can be restored or audited later.
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
