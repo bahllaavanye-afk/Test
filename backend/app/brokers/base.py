@@ -1,6 +1,13 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
+import logging
+import time
+
+
+# Configure a module‑level logger; concrete broker implementations can adjust handlers/formatters as needed.
+_logger = logging.getLogger("quantedge.broker")
+_logger.setLevel(logging.INFO)
 
 
 @dataclass(slots=True)
@@ -70,3 +77,31 @@ class AbstractBroker(ABC):
         self, symbol: str, interval: str, limit: int = 500
     ) -> list[dict]:
         """Return OHLCV bars. Each dict: {ts, open, high, low, close, volume}."""
+
+    # ---------------------------------------------------------------------
+    # Monitoring utilities
+    # ---------------------------------------------------------------------
+    def _log_trade_metrics(self, signal_count: int, exec_time_seconds: float, pnl: float) -> None:
+        """
+        Emit a structured INFO‑level log entry containing key trade‑related metrics.
+
+        Parameters
+        ----------
+        signal_count: int
+            Number of signals processed for the current batch or strategy run.
+        exec_time_seconds: float
+            Total execution time (in seconds) for the operation being logged.
+        pnl: float
+            Profit‑and‑loss realized (positive for profit, negative for loss).
+        """
+        # Using the ``extra`` dict enables downstream log processors to treat the
+        # fields as structured data rather than a plain string.
+        _logger.info(
+            "Trade metrics",
+            extra={
+                "signal_count": signal_count,
+                "execution_time_seconds": exec_time_seconds,
+                "pnl": pnl,
+            },
+        )
+    # End of class AbstractBroker
