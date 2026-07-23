@@ -17,10 +17,30 @@ from dataclasses import dataclass
 
 import numpy as np
 
-IV_PREMIUM = 1.10       # implied ≈ 1.1 × realized (documented VRP assumption)
+# ----- Constants -----
+IV_PREMIUM = 1.10                # implied ≈ 1.1 × realized (documented VRP assumption)
 RISK_FREE = 0.04
-MULTIPLIER = 100        # options contract multiplier
-MIN_T = 6.5 / 24 / 365  # 0DTE priced as one trading session
+MULTIPLIER = 100                 # options contract multiplier
+MIN_T = 6.5 / 24 / 365           # 0DTE priced as one trading session
+MIN_IV = 1e-4                    # floor for sigma in BS pricing
+MIN_SIGMA = 0.05                # floor for implied sigma from HV
+DEFAULT_DTE = 30
+WINDOW_LENGTH = 20
+SQRT_252 = math.sqrt(252)
+DEFAULT_TAKE_PROFIT_PCT = 50
+DEFAULT_T0_DAYS = 365.0
+
+# JSON/key strings
+KEY_ACTION = "action"
+KEY_LEGS = "legs"
+KEY_STRIKE = "strike"
+KEY_DELTA = "delta"
+KEY_OPTION_TYPE = "option_type"
+KEY_SIDE = "side"
+KEY_EXIT_RULES = "exit_rules"
+KEY_TAKE_PROFIT = "take_profit"
+KEY_STOP_LOSS = "stop_loss"
+VALUE_BUY = "buy"
 
 
 def norm_cdf(x: float) -> float:
@@ -57,7 +77,7 @@ def norm_ppf(p: float) -> float:
 def bs_price(S: float, K: float, T: float, sigma: float, option_type: str,
              r: float = RISK_FREE) -> float:
     T = max(T, MIN_T)
-    sigma = max(sigma, 1e-4)
+    sigma = max(sigma, MIN_IV)
     d1 = (math.log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
     if option_type.startswith("c"):
@@ -101,25 +121,25 @@ def backtest_template(template: dict, closes: list[float],
     Exits: take_profit/stop_loss as % of entry premium (both credit and debit),
     plus expiry settlement. Returns ranking metrics — see module caveat.
     """
-    action = template["action"]
-    tp_pct = next((r["value"] for r in template.get("exit_rules", [])
-                   if r["type"] == "take_profit"), 50) or 50
-    sl_pct = next((r["value"] for r in template.get("exit_rules", [])
-                   if r["type"] == "stop_loss"), None)
+    action = template[KEY_ACTION]
+    tp_pct = next((r["value"] for r in template.get(KEY_EXIT_RULES, [])
+                   if r["type"] == KEY_TAKE_PROFIT), DEFAULT_TAKE_PROFIT_PCT) or DEFAULT_TAKE_PROFIT_PCT
+    sl_pct = next((r["value"] for r in template.get(KEY_EXIT_RULES, [])
+                   if r["type"] == KEY_STOP_LOSS), None)
 
     trades: list[float] = []
     pos: list[_Leg] | None = None
     entry_net = 0.0
     days_held = 0
-    dte = max(int(action["legs"][0].get("dte", 30)), 0)
+    dte = max(int(action[KEY_LEGS][0].get("dte", DEFAULT_DTE)), 0)
 
     # Pre‑compute rolling statistics using numpy for speed
     closes_arr = np.asarray(closes, dtype=float)
     log_returns = np.log(closes_arr[1:] / closes_arr[:-1])
     cum = np.concatenate(([0.0], np.cumsum(log_returns)))
     cum_sq = np.concatenate(([0.0], np.cumsum(log_returns ** 2)))
-    window_len = 20
-    sqrt_252 = math.sqrt(252)
+    window_len = WINDOW_LENGTH
+    sqrt_252 = SQRT_252
 
     for i in range(21, len(closes)):
         S = closes[i]
@@ -130,24 +150,30 @@ def backtest_template(template: dict, closes: list[float],
         mean = sum_ret / window_len
         var = (sum_sq - (sum_ret ** 2) / window_len) / (window_len - 1)
         hv = math.sqrt(var) * sqrt_252
-        sigma = max(hv * IV_PREMIUM, 0.05)
+        sigma = max(hv * IV_PREMIUM, MIN_SIGMA)
 
         if pos is None:
-            T0 = max(dte, 1) / 365.0
+            T0 = max(dte, 1) / DEFAULT_T0_DAYS
             pos = []
-            for lg in action["legs"]:
-                if lg.get("strike"):
-                    K = float(lg["strike"])
+            for lg in action[KEY_LEGS]:
+                if lg.get(KEY_STRIKE):
+                    K = float(lg[KEY_STRIKE])
                 else:
-                    K = strike_from_delta(S, float(lg.get("delta") or 0.5), T0, sigma, lg["option_type"])
-                pos.append(_Leg(+1 if lg["side"] == "buy" else -1,
-                                lg["option_type"], K, int(lg.get("ratio", 1))))
+                    K = strike_from_delta(
+                        S,
+                        float(lg.get(KEY_DELTA) or 0.5),
+                        T0,
+                        sigma,
+                        lg[KEY_OPTION_TYPE]
+                    )
+                pos.append(_Leg(+1 if lg[KEY_SIDE] == VALUE_BUY else -1,
+                                lg[KEY_OPTION_TYPE], K, int(lg.get("ratio", 1))))
             entry_net = _net_value(pos, S, T0, sigma)
             days_held = 0
             continue
 
         days_held += 1
-        T_rem = max(dte - days_held, 0) / 365.0
+        T_rem = max(dte - days_held, 0) / DEFAULT_T0_DAYS
         if T_rem > 0:
             cur = _net_value(pos, S, T_rem, sigma)
         else:
