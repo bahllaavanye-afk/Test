@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 import pandas as pd
+import time
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -51,6 +52,7 @@ async def run_backtest_job(run_id: str | None) -> None:
         initial_equity = (run.params or {}).get("initial_equity", 100_000.0)
 
     try:
+        start_time = time.perf_counter()
         df = await fetch_ohlcv(symbol=symbol, start=start_date, end=end_date, interval=interval)
         if df.empty:
             raise ValueError(f"No OHLCV data for {symbol} ({start_date}–{end_date})")
@@ -101,6 +103,19 @@ async def run_backtest_job(run_id: str | None) -> None:
             volume=df["volume"],
             initial_equity=initial_equity,
         )
+        end_time = time.perf_counter()
+
+        # Structured logging of key metrics
+        signal_count = int((signals_series != 0).sum())
+        execution_time = end_time - start_time
+        logger.info(
+            "Backtest completed",
+            run_id=run_id,
+            signal_count=signal_count,
+            execution_time=round(execution_time, 3),
+            total_return=metrics.total_return,
+            sharpe=round(metrics.sharpe, 2),
+        )
 
         async with AsyncSessionLocal() as db:
             run = await db.get(BacktestRun, run_id)
@@ -123,12 +138,6 @@ async def run_backtest_job(run_id: str | None) -> None:
                 )
                 db.add(result)
                 await db.commit()
-        logger.info(
-            f"Backtest {run_id} complete",
-            sharpe=round(metrics.sharpe, 2),
-            ret=f"{metrics.total_return:.1%}",
-        )
-
     except Exception as exc:
         logger.error(f"Backtest {run_id} failed: {exc}")
         async with AsyncSessionLocal() as db:

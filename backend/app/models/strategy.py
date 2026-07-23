@@ -1,9 +1,11 @@
 import uuid
+import logging
 from sqlalchemy import String, ForeignKey, Boolean, JSON, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin
 
+logger = logging.getLogger(__name__)
 
 class Strategy(Base, TimestampMixin):
     __tablename__ = "strategies"
@@ -22,3 +24,22 @@ class Strategy(Base, TimestampMixin):
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
 
     account: Mapped["Account"] = relationship("Account", back_populates="strategies")
+
+    def log_metrics(self, signal_count: int, execution_time: float, pnl: float) -> None:
+        """Log key execution metrics for the strategy.
+
+        Args:
+            signal_count: Number of signals generated in the run.
+            execution_time: Execution duration in seconds.
+            pnl: Profit and loss for the run.
+        """
+        logger.info(
+            "Strategy execution metrics",
+            extra={
+                "strategy_id": self.id,
+                "strategy_name": self.name,
+                "signal_count": signal_count,
+                "execution_time_seconds": execution_time,
+                "pnl": pnl,
+            },
+        )
