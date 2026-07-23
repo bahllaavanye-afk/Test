@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784837644.4486542,
+    "last_updated": 1784840141.631961,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 0,
     "macro_score": 1,
-    "vix": 18.96,
-    "market_scan_ts": 1784837644.4238172,
+    "vix": 18.7,
+    "market_scan_ts": 1784840141.6061625,
     "sector_leaders": [
       "Energy",
       "Healthcare",
@@ -155,13 +155,6 @@
     "last_brain_update": 1784836890.3559291
   },
   "episodic": [
-    {
-      "lesson": "Duplicate Vercel deployment links suggest possible race condition or repeated triggers; audit deployment pipeline for redundant invocations.",
-      "category": "risk",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1784250677.9833527
-    },
     {
       "lesson": "Auto-fix failures indicate a systemic issue in patch application logic or the CI/CD pipeline; investigate and fix the auto-fix mechanism to prevent repeated failures.",
       "category": "code",
@@ -1891,6 +1884,21 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784837644.4533277
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 1,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784840141.6368773
     }
   ],
   "github_insights": [
