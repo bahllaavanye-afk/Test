@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784800551.4122074,
+    "last_updated": 1784807332.7967653,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784800551.411091
+    "last_brain_update": 1784807332.7956257
   },
   "episodic": [
     {
@@ -1842,11 +1842,6 @@
   ],
   "github_insights": [
     {
-      "summary": "[LLM unavailable \u2014 all providers failed]",
-      "item_count": 20,
-      "ts": 1784013649.1432981
-    },
-    {
       "summary": "An automated weekly security scan using Bandit found high-severity issues, but the auto-fix attempt failed and could not apply the patch.",
       "item_count": 20,
       "ts": 1784021062.138227
@@ -2340,6 +2335,11 @@
       "summary": "The auto-fix bot attempted to apply a patch but failed twice, indicating an issue with the patch application.",
       "item_count": 20,
       "ts": 1784800551.4002233
+    },
+    {
+      "summary": "The automated fix was skipped due to complexity, and a subsequent attempt to apply a patch failed.",
+      "item_count": 20,
+      "ts": 1784807332.7848277
     }
   ],
   "experiment_results": [
@@ -2737,6 +2737,30 @@
       "summary": "*International Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $343 conf=100%  id=`8d72af3e\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $343 conf=100%  id=`6cd8953b\u2026`",
       "source": "desk_run_summary",
       "ts": 1784800543.5436678
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (11:09 UTC)  equity=$22,783.54  regime=sideways/calm\nfunnel: 46 generated \u2192 18 survived gate+topK (0 exploration) \u2192 2 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
+      "source": "desk_run_summary",
+      "ts": 1784807325.5594778
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784807325.5659947
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $342 conf=74%  id=`6e8dacbf\u2026`\n\ud83d\udfe2 `vol_of_vol_timing/BTC/USD` BUY $639 conf=68%  id=`81bf4008\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784807325.570791
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*International Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $343 conf=100%  id=`8d72af3e\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $343 conf=100%  id=`6cd8953b\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784807325.575549
     }
   ]
 }
