@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784845826.717721,
+    "last_updated": 1784849459.9861147,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784845826.7165225
+    "last_brain_update": 1784849459.9849036
   },
   "episodic": [
     {
@@ -1903,11 +1903,6 @@
   ],
   "github_insights": [
     {
-      "summary": "A deployment failed due to resource limits, advising a retry in 24 hours. Separately, an autonomous PR modifying protected files had its automerge revoked, and an auto-fix attempt failed to apply a patch.",
-      "item_count": 20,
-      "ts": 1784062598.1136024
-    },
-    {
       "summary": "The deployment failed due to a resource limitation, and two automated attempts to apply a fix were unsuccessful.",
       "item_count": 20,
       "ts": 1784066164.949511
@@ -2401,6 +2396,11 @@
       "summary": "A Slack agent-team run failed due to a message limit quota (`message_limit_exce`), likely preventing posts from reaching the workspace. Additionally, two separate auto-fix attempts failed because the system could not apply patches to the file.",
       "item_count": 20,
       "ts": 1784845826.7054296
+    },
+    {
+      "summary": "The discussion reports that an LLM response could not be parsed due to an invalid escape character, causing an auto-fix attempt to fail and preventing a patch from being applied to the file.",
+      "item_count": 20,
+      "ts": 1784849459.973776
     }
   ],
   "experiment_results": [
@@ -2894,6 +2894,30 @@
       "summary": "*Equities Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `realized_vol_asymmetry/LLY` BUY $372 conf=100%  id=`b1ae65e1\u2026`\n\ud83d\udfe2 `realized_vol_asymmetry/UNH` BUY $477 conf=100%  id=`b36cd365\u2026`",
       "source": "desk_run_summary",
       "ts": 1784845824.4892228
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (22:43 UTC)  equity=$22,516.70  regime=sideways/calm\nfunnel: 47 generated \u2192 17 survived gate+topK (0 exploration) \u2192 0 placed\n\ud83d\udca4 *Equities*: no signals fired\n\ud83d\udca4 *Crypto*: no signals fired\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n",
+      "source": "desk_run_summary",
+      "ts": 1784849445.0904474
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784849445.0957031
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `vol_of_vol_timing/YFI/USD` BUY $91 conf=88%  id=`9e0fd131\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784849445.1006784
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*Equities Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `realized_vol_asymmetry/LLY` BUY $372 conf=100%  id=`b1ae65e1\u2026`\n\ud83d\udfe2 `realized_vol_asymmetry/UNH` BUY $477 conf=100%  id=`b36cd365\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784849445.105605
     }
   ]
 }
