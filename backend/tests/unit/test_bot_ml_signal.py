@@ -18,47 +18,49 @@ from app.schemas.bot import ConditionConfig  # noqa: E402
 
 
 def _df(n: int = 50) -> pd.DataFrame:
+    """Create a simple DataFrame with a 'close' price series."""
     return pd.DataFrame({"close": [100.0 + i * 0.1 for i in range(n)]})
 
 
 def _cond(**kw) -> ConditionConfig:
+    """Helper to build a ConditionConfig for the ml_signal type."""
     return ConditionConfig(type="ml_signal", **kw)
 
 
-def test_passes_when_model_confirms_direction():
+def test_passes_when_model_confirms_direction() -> None:
     ml = {"prediction": "up", "confidence": 0.80}
     assert evaluate_condition(_cond(direction="up", min_confidence=0.65), _df(), 105.0, ml_result=ml)
 
 
-def test_fails_when_confidence_below_threshold():
+def test_fails_when_confidence_below_threshold() -> None:
     ml = {"prediction": "up", "confidence": 0.60}
     assert not evaluate_condition(_cond(direction="up", min_confidence=0.65), _df(), 105.0, ml_result=ml)
 
 
-def test_fails_on_wrong_direction():
+def test_fails_on_wrong_direction() -> None:
     ml = {"prediction": "down", "confidence": 0.90}
     assert not evaluate_condition(_cond(direction="up"), _df(), 105.0, ml_result=ml)
 
 
-def test_down_direction_supported():
+def test_down_direction_supported() -> None:
     ml = {"prediction": "down", "confidence": 0.71}
     assert evaluate_condition(_cond(direction="down", min_confidence=0.7), _df(), 105.0, ml_result=ml)
 
 
-def test_defaults_direction_up_and_065_confidence():
+def test_defaults_direction_up_and_065_confidence() -> None:
     assert evaluate_condition(_cond(), _df(), 105.0, ml_result={"prediction": "up", "confidence": 0.66})
     assert not evaluate_condition(_cond(), _df(), 105.0, ml_result={"prediction": "up", "confidence": 0.64})
 
 
-def test_no_model_is_false_not_error():
+def test_no_model_is_false_not_error() -> None:
     # No trained model / inference failed → ml_result None → condition simply False.
     assert not evaluate_condition(_cond(direction="up"), _df(), 105.0, ml_result=None)
 
 
-def test_malformed_confidence_is_false_not_error():
+def test_malformed_confidence_is_false_not_error() -> None:
     assert not evaluate_condition(_cond(), _df(), 105.0, ml_result={"prediction": "up", "confidence": "bad"})
 
 
-def test_schema_accepts_ml_signal_type():
+def test_schema_accepts_ml_signal_type() -> None:
     c = ConditionConfig(type="ml_signal", direction="up", min_confidence=0.7)
     assert c.type == "ml_signal" and c.min_confidence == 0.7
