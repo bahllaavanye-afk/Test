@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784821741.7787871,
+    "last_updated": 1784823802.865743,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -108,9 +108,9 @@
       "size_multiplier": 0.75
     },
     "opinion_score": 0,
-    "macro_score": 0,
-    "vix": 20.14,
-    "market_scan_ts": 1784821741.7517314,
+    "macro_score": 1,
+    "vix": 19.54,
+    "market_scan_ts": 1784823802.8377948,
     "sector_leaders": [
       "Energy",
       "Healthcare",
@@ -123,13 +123,13 @@
     ],
     "active_universe": [
       "TMO",
-      "GLD",
       "XLE",
+      "GLD",
       "IWM",
-      "DIA",
-      "XOM",
       "XLI",
+      "XOM",
       "QQQ",
+      "DIA",
       "CVX",
       "TLT",
       "COP",
@@ -138,9 +138,9 @@
       "XLP",
       "MSFT",
       "MPC",
-      "GS",
-      "JNJ",
       "KO",
+      "JNJ",
+      "GS",
       "SLB"
     ],
     "top_momentum": [
@@ -155,13 +155,6 @@
     "last_brain_update": 1784807332.7956257
   },
   "episodic": [
-    {
-      "lesson": "Per-desk performance attribution and auto-pruning require new data models, APIs, frontend components, and background jobs \u2014 plan phased rollout with clear milestones.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784238298.247727
-    },
     {
       "lesson": "Auto-fix patch failures indicate code conflicts or environment mismatches; consider manual review and CI pipeline improvements for complex features.",
       "category": "risk",
@@ -1851,6 +1844,21 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=0). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784821741.7840018
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 1,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784823802.8717191
     }
   ],
   "github_insights": [
