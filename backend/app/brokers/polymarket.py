@@ -3,6 +3,12 @@ Polymarket CLOB broker integration via py-clob-client.
 Supports YES/NO binary market trading and arbitrage scanning.
 Provides tighter entry validation and basic exit confirmation.
 """
+from __future__ import annotations
+
+import asyncio
+import time
+from typing import Any, Dict, List
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.utils.exceptions import BrokerError
 from app.utils.logging import logger
@@ -12,7 +18,7 @@ try:
     from py_clob_client.client import ClobClient
     from py_clob_client.clob_types import OrderArgs, OrderType
     POLY_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     POLY_AVAILABLE = False
 
 
@@ -28,25 +34,26 @@ class PolymarketBroker(AbstractBroker):
             chain_id=chain_id,
         )
         # Configurable thresholds for entry validation
-        self.max_spread = getattr(settings, "POLY_MAX_SPREAD", 0.02)  # 2% default
-        self.price_slippage_tolerance = getattr(settings, "POLY_SLIPPAGE_TOLERANCE", 0.01)  # 1% default
+        self.max_spread: float = getattr(settings, "POLY_MAX_SPREAD", 0.02)  # 2% default
+        self.price_slippage_tolerance: float = getattr(
+            settings, "POLY_SLIPPAGE_TOLERANCE", 0.01
+        )  # 1% default
 
-    async def get_markets(self, min_open_interest: float = 10000) -> list[dict]:
+    async def get_markets(self, min_open_interest: float = 10000) -> List[Dict[str, Any]]:
         """Auto‑discover active markets with sufficient liquidity."""
         try:
-            import asyncio
             markets = await asyncio.to_thread(self.client.get_markets)
             return [
-                m for m in markets
+                m
+                for m in markets
                 if float(m.get("openInterest", 0)) >= min_open_interest
             ]
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             logger.error("Polymarket market fetch failed", error=str(e))
             return []
 
-    async def get_order_book(self, token_id: str) -> dict:
+    async def get_order_book(self, token_id: str) -> Dict[str, Any]:
         """Retrieve the current order book for a given market token."""
-        import asyncio
         return await asyncio.to_thread(self.client.get_order_book, token_id)
 
     async def _validate_entry(self, symbol: str, limit_price: float | None) -> bool:
@@ -94,6 +101,45 @@ class PolymarketBroker(AbstractBroker):
                 return False
         return True
 
+    async def _ensure_entry_valid(self, request: OrderRequest) -> None:
+        """Raise ``BrokerError`` if entry validation fails."""
+        is_valid = await self._validate_entry(
+            symbol=request.symbol, limit_price=request.limit_price
+        )
+        if not is_valid:
+            raise BrokerError(
+                f"Polymarket: Entry validation failed for {request.symbol}"
+            )
+
+    def _build_order_args(self, request: OrderRequest) -> OrderArgs:
+        """Construct ``OrderArgs`` from an ``OrderRequest``."""
+        price = request.limit_price if request.limit_price is not None else 0.5
+        return OrderArgs(
+            token_id=request.symbol,
+            price=price,
+            size=request.quantity,
+            side=request.side.upper(),
+        )
+
+    async def _submit_order(self, args: OrderArgs) -> Dict[str, Any]:
+        """Submit the order to the Polymarket client."""
+        return await asyncio.to_thread(self.client.create_and_post_order, args)
+
+    async def _finalize_order_status(self, order: Dict[str, Any]) -> str:
+        """
+        Ensure the order status is final.
+
+        If the initial status is not final, poll once after a short delay.
+        """
+        status = order.get("status", "pending")
+        if status in {"filled", "canceled", "rejected"}:
+            return status
+
+        # Small pause before a second status check
+        time.sleep(0.2)
+        refreshed = await self.get_order(order.get("orderID", ""))
+        return refreshed.get("status", status)
+
     async def place_order(self, request: OrderRequest) -> OrderResult:
         """
         Place an order after confirming entry conditions.
@@ -102,53 +148,29 @@ class PolymarketBroker(AbstractBroker):
             BrokerError: If the order cannot be placed or validation fails.
         """
         try:
-            import asyncio
+            await self._ensure_entry_valid(request)
 
-            # Validate entry conditions before sending the order
-            is_valid = await self._validate_entry(
-                symbol=request.symbol,
-                limit_price=request.limit_price,
-            )
-            if not is_valid:
-                raise BrokerError(
-                    f"Polymarket: Entry validation failed for {request.symbol}"
-                )
+            args = self._build_order_args(request)
+            order = await self._submit_order(args)
 
-            args = OrderArgs(
-                token_id=request.symbol,
-                price=request.limit_price or 0.5,
-                size=request.quantity,
-                side=request.side.upper(),
-            )
-            order = await asyncio.to_thread(self.client.create_and_post_order, args)
-
-            # Basic exit confirmation: ensure order status is final before returning
-            status = order.get("status", "pending")
-            if status not in {"filled", "canceled", "rejected"}:
-                # Poll once more to capture any rapid status change
-                import time
-
-                time.sleep(0.2)
-                refreshed = await self.get_order(order.get("orderID", ""))
-                status = refreshed.get("status", status)
+            final_status = await self._finalize_order_status(order)
 
             return OrderResult(
                 broker_order_id=str(order.get("orderID", "")),
-                status=status,
+                status=final_status,
                 raw_payload=order,
             )
         except BrokerError:
             raise
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             raise BrokerError(f"Polymarket: {e}")
 
     async def cancel_order(self, broker_order_id: str) -> bool:
         """Cancel an existing order."""
         try:
-            import asyncio
             await asyncio.to_thread(self.client.cancel, broker_order_id)
             return True
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             logger.warning(
                 "Polymarket cancel_order failed",
                 order_id=broker_order_id,
@@ -156,16 +178,15 @@ class PolymarketBroker(AbstractBroker):
             )
             return False
 
-    async def get_order(self, broker_order_id: str) -> dict:
+    async def get_order(self, broker_order_id: str) -> Dict[str, Any]:
         """Retrieve a specific order's details."""
-        import asyncio
         return await asyncio.to_thread(self.client.get_order, broker_order_id)
 
-    async def get_positions(self) -> list[dict]:
+    async def get_positions(self) -> List[Dict[str, Any]]:
         """Polymarket does not expose positions via the CLOB client."""
         return []
 
-    async def get_account(self) -> dict:
+    async def get_account(self) -> Dict[str, Any]:
         """Polymarket does not expose account balances via the CLOB client."""
         return {}
 
@@ -179,6 +200,8 @@ class PolymarketBroker(AbstractBroker):
         mid = (best_bid + best_ask) / 2
         return QuoteResult(symbol=symbol, bid=best_bid, ask=best_ask, last=mid)
 
-    async def get_historical(self, symbol: str, interval: str = "1d", limit: int = 500) -> list[dict]:
+    async def get_historical(
+        self, symbol: str, interval: str = "1d", limit: int = 500
+    ) -> List[Dict[str, Any]]:
         """Polymarket doesn't have traditional OHLCV data."""
         return []
