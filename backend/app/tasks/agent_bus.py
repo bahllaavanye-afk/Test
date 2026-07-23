@@ -28,21 +28,23 @@ from typing import Any, Awaitable, Callable
 logger = logging.getLogger(__name__)
 
 # All valid bus topics — unknown topics are rejected to prevent typos cascading silently
-TOPICS = frozenset({
-    "market:regime",
-    "trade:signal",
-    "trade:executed",
-    "trade:closed",
-    "research:finding",
-    "strategy:updated",
-    "experiment:done",
-    "risk:alert",
-    "knowledge:learned",
-    "auction:allocated",
-})
+TOPICS = frozenset(
+    {
+        "market:regime",
+        "trade:signal",
+        "trade:executed",
+        "trade:closed",
+        "research:finding",
+        "strategy:updated",
+        "experiment:done",
+        "risk:alert",
+        "knowledge:learned",
+        "auction:allocated",
+    }
+)
 
 _BUS_KEY_PREFIX = "bus:events:"
-_BUS_STREAM_MAX = 2000   # max events per topic (ring buffer)
+_BUS_STREAM_MAX = 2000  # max events per topic (ring buffer)
 
 Handler = Callable[[str, dict], Awaitable[None]]
 
@@ -72,7 +74,14 @@ class AgentBus:
         if topic not in TOPICS:
             logger.warning("AgentBus: unknown topic %r — event dropped", topic)
             return
-        payload = {"ts": str(time.time()), "topic": topic, **{k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in data.items()}}
+        payload = {
+            "ts": str(time.time()),
+            "topic": topic,
+            **{
+                k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
+                for k, v in data.items()
+            },
+        }
         key = f"{_BUS_KEY_PREFIX}{topic}"
         try:
             await self._r.xadd(key, payload, maxlen=_BUS_STREAM_MAX, approximate=True)
@@ -119,7 +128,7 @@ class AgentBus:
                 if not results:
                     continue
 
-                for stream_key, messages in (results or []):
+                for stream_key, messages in results:
                     topic = stream_key.removeprefix(_BUS_KEY_PREFIX)
                     for msg_id, fields in messages:
                         # Advance consumer offset so we don't re-read this message
@@ -139,7 +148,9 @@ class AgentBus:
                             except Exception as exc:
                                 logger.error(
                                     "AgentBus handler error topic=%s handler=%s: %s",
-                                    topic, handler.__name__, exc,
+                                    topic,
+                                    handler.__name__,
+                                    exc,
                                 )
             except Exception as exc:
                 logger.debug("AgentBus._dispatch_loop error: %s", exc)
@@ -165,6 +176,7 @@ def get_bus(redis_client: Any | None = None) -> AgentBus:
     if _bus is None:
         if redis_client is None:
             from app.redis_client import get_redis
+
             redis_client = get_redis()
         _bus = AgentBus(redis_client)
     return _bus
