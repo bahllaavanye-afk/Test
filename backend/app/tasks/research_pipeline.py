@@ -11,23 +11,21 @@ Pipeline:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-import os
 import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
-from app.tasks.free_llm_router import call_race, call_consensus
+from app.tasks.free_llm_router import call_race
 from app.tasks.agent_memory import AgentMemory
 
 logger = logging.getLogger(__name__)
 
 EXPERIMENTS_DIR = Path(__file__).parent.parent.parent.parent / "experiments"
 CONFIGS_DIR = EXPERIMENTS_DIR / "configs"
-RESULTS_DIR = EXPERIMENTS_DIR / "results"
 
 
 class ResearchPipeline:
@@ -42,11 +40,14 @@ class ResearchPipeline:
             configs = await self._ideas_to_experiment_configs(ideas)
             await self._queue_experiments(configs)
             if self._memory:
-                await self._memory.write("research_findings", {
-                    "ideas_count": len(ideas),
-                    "configs_queued": len(configs),
-                    "ideas": ideas[:3],
-                })
+                await self._memory.write(
+                    "research_findings",
+                    {
+                        "ideas_count": len(ideas),
+                        "configs_queued": len(configs),
+                        "ideas": ideas[:3],
+                    },
+                )
             logger.info("ResearchPipeline: queued %d experiments", len(configs))
         except Exception as e:
             logger.exception("ResearchPipeline error: %s", e)
@@ -92,7 +93,6 @@ Respond as JSON array:
 
         try:
             content = response.content.strip()
-            # Extract JSON array
             start = content.find("[")
             end = content.rfind("]") + 1
             if start >= 0 and end > start:
