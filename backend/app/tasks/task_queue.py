@@ -85,6 +85,12 @@ class TaskQueue:
 
     def register(self, task_type: str, handler: TaskFn) -> None:
         """Register an async handler for a task type."""
+        if not isinstance(task_type, str) or not task_type:
+            raise ValueError("task_type must be a non-empty string")
+        if not callable(handler):
+            raise ValueError("handler must be callable")
+        if not asyncio.iscoroutinefunction(handler):
+            raise ValueError("handler must be an async function")
         self._handlers[task_type] = handler
 
     # ── Enqueuing ─────────────────────────────────────────────────────────────
@@ -97,6 +103,17 @@ class TaskQueue:
         max_retries: int = 3,
         delay_seconds: float = 0,
     ) -> str:
+        if not isinstance(task_type, str) or not task_type:
+            raise ValueError("task_type must be a non-empty string")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be a dict")
+        if not isinstance(priority, int) or priority not in (PRIORITY_CRITICAL, PRIORITY_HIGH, PRIORITY_NORMAL, PRIORITY_LOW):
+            raise ValueError(f"priority must be one of {PRIORITY_CRITICAL}, {PRIORITY_HIGH}, {PRIORITY_NORMAL}, {PRIORITY_LOW}")
+        if not isinstance(max_retries, int) or max_retries < 0:
+            raise ValueError("max_retries must be a non-negative integer")
+        if not isinstance(delay_seconds, (int, float)) or delay_seconds < 0:
+            raise ValueError("delay_seconds must be a non-negative number")
+
         task_id = str(uuid.uuid4())
         task = Task(
             task_id=task_id,
@@ -137,6 +154,8 @@ class TaskQueue:
 
     async def run_worker(self, poll_interval: float = 0.5) -> None:
         """Continuous worker loop. Run as background task."""
+        if not isinstance(poll_interval, (int, float)) or poll_interval < 0:
+            raise ValueError("poll_interval must be a non-negative number")
         logger.info("TaskQueue worker started")
         while True:
             try:
