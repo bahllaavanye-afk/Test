@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784816573.4419425,
+    "last_updated": 1784821637.0659227,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -60,54 +60,54 @@
     "autopilot_best_oos_sharpe": 1.0996,
     "autopilot_best_blended": 0.3955,
     "autopilot_overfit_count": 0,
-    "market_regime": "bull",
+    "market_regime": "neutral",
     "market_opinion": {
-      "generated_at": "2026-07-22T15:25:05.378264+00:00",
+      "generated_at": "2026-07-23T15:46:40.233131+00:00",
       "signals": {
         "vix": {
-          "value": 16.94,
+          "value": 20.31,
           "trend": "rising"
         },
         "spy": {
-          "price": 749.35,
-          "sma50": 744.08,
-          "sma200": 694.7,
-          "trend": "strong_uptrend"
+          "price": 736.51,
+          "sma50": 744.02,
+          "sma200": 695.06,
+          "trend": "above_200sma"
         },
         "yield_curve": {
-          "ratio": 1.0213,
+          "ratio": 1.0164,
           "median": 1.0517,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 1.695,
+          "hyg_lqd_momentum_20d": 2.306,
           "signal": "tightening"
         },
         "breadth": {
-          "sectors_above_sma20": 5,
+          "sectors_above_sma20": 6,
           "total_sectors": 11,
-          "breadth_pct": 45.5
+          "breadth_pct": 54.5
         },
         "btc": {
-          "price": 65989,
-          "24h_pct": -1.0
+          "price": 64892,
+          "24h_pct": -1.69
         }
       },
-      "score": 3,
-      "regime": "bull",
+      "score": 0,
+      "regime": "neutral",
       "strategy_gates": {
         "directional": true,
-        "min_confidence": 0.6,
-        "size_multiplier": 1.0
+        "min_confidence": 0.68,
+        "size_multiplier": 0.75
       },
-      "summary": "Despite a strong SPY uptrend and tightening credit spreads, the bull regime is tempered by a rising VIX and weak breadth, with only 5 of 11 sectors above their 20-day SMA. We recommend favouring mean-reversion strategies to exploit overextended moves in the context of this narrow leadership."
+      "summary": "[LLM unavailable \u2014 all providers failed]"
     },
     "strategy_gates": {
       "directional": true,
-      "min_confidence": 0.6,
-      "size_multiplier": 1.0
+      "min_confidence": 0.68,
+      "size_multiplier": 0.75
     },
-    "opinion_score": 3,
+    "opinion_score": 0,
     "macro_score": 3,
     "vix": 16.64,
     "market_scan_ts": 1784753961.8004935,
@@ -155,13 +155,6 @@
     "last_brain_update": 1784807332.7956257
   },
   "episodic": [
-    {
-      "lesson": "Vercel free tier deployment limit (100/day) is blocking releases; upgrade plan or batch deployments to avoid interruptions.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784238298.241488
-    },
     {
       "lesson": "Automated fixes fail on multi-module changes; break per-desk attribution feature into smaller, single-module PRs to stay under auto-fix limits.",
       "category": "code",
@@ -1838,6 +1831,18 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784760037.610552
+    },
+    {
+      "source": "market_opinion",
+      "regime": "neutral",
+      "score": 0,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.68,
+        "size_multiplier": 0.75
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1784821637.0706966
     }
   ],
   "github_insights": [
