@@ -11,6 +11,7 @@ Or import and call directly:
 import asyncio
 import logging
 from pathlib import Path
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -26,8 +27,16 @@ _CHECKPOINT_DIR = Path(__file__).parents[3] / "checkpoints"
 # Feature builder (mirrors rl_trader.py feature construction)
 _SEQ_LEN = 30
 
+# Confirmation thresholds for entry signals
+_RSI_OVERSOLD = 30
+_RSI_OVERBOUGHT = 70
+
+# Transaction cost as a proportion of trade size (e.g., 0.1% per trade)
+_TRANSACTION_COST = 0.001
+
 
 def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    """Relative Strength Index."""
     delta = series.diff()
     gain = delta.clip(lower=0).ewm(com=period - 1, adjust=False).mean()
     loss = (-delta.clip(upper=0)).ewm(com=period - 1, adjust=False).mean()
@@ -45,21 +54,51 @@ def _build_features(df: pd.DataFrame) -> np.ndarray:
     return np.stack([returns.values, log_vol.values, rsi_norm.values], axis=1)
 
 
-def _step_reward(df: pd.DataFrame, action: int, t: int) -> float:
+def _entry_allowed(action: int, rsi_value: float) -> bool:
     """
-    Simple reward: profit/loss of the action taken at step t.
-    Action 0=buy, 1=hold, 2=sell.
-    Returns the next-bar return scaled by direction.
+    Apply confirmation filters to entry actions.
+    - Buy (action 0) only if RSI indicates oversold.
+    - Sell (action 2) only if RSI indicates overbought.
+    Hold (action 1) is always allowed.
+    """
+    if action == 0 and rsi_value > _RSI_OVERSOLD:
+        return False
+    if action == 2 and rsi_value < _RSI_OVERBOUGHT:
+        return False
+    return True
+
+
+def _step_reward(
+    df: pd.DataFrame,
+    action: int,
+    t: int,
+    rsi_series: pd.Series,
+) -> float:
+    """
+    Reward shaping:
+    - Profit/loss of the action taken at step t.
+    - Apply transaction cost on any position change.
+    - Enforce entry confirmation via RSI; disallowed entries yield a small penalty.
     """
     if t + 1 >= len(df):
         return 0.0
+
+    rsi_val = rsi_series.iloc[t]
+
+    # Check entry confirmation; if not allowed, treat as hold with a small penalty
+    if not _entry_allowed(action, rsi_val):
+        return -0.0005  # small penalty to discourage noisy entries
+
     next_ret = float(df["close"].iloc[t + 1] / df["close"].iloc[t] - 1.0)
-    if action == 0:    # buy — reward is positive return
-        return next_ret
-    elif action == 2:  # sell — reward is negative return (profit from short)
-        return -next_ret
-    else:              # hold
-        return 0.0
+
+    # Apply transaction cost when opening or closing a position
+    cost = _TRANSACTION_COST if action in (0, 2) else 0.0
+
+    if action == 0:  # buy — reward is positive return minus cost
+        return next_ret - cost
+    if action == 2:  # sell — reward is negative return (profit from short) minus cost
+        return -next_ret - cost
+    return 0.0  # hold
 
 
 async def train_rl_agent(
@@ -81,15 +120,15 @@ async def train_rl_agent(
     then performs one gradient update per episode.
 
     Args:
-        ohlcv_df:         DataFrame with columns [open, high, low, close, volume]
-        n_episodes:       Number of training episodes
-        gamma:            Discount factor
-        lr:               Adam learning rate
-        grad_clip:        Gradient clipping max norm
+        ohlcv_df: DataFrame with columns [open, high, low, close, volume]
+        n_episodes: Number of training episodes
+        gamma: Discount factor
+        lr: Adam learning rate
+        grad_clip: Gradient clipping max norm
         checkpoint_every: Save checkpoint every N episodes
-        n_features:       Feature dimension (must match model architecture)
-        hidden_size:      LSTM hidden size
-        model_path:       Where to save the final model; defaults to checkpoints dir
+        n_features: Feature dimension (must match model architecture)
+        hidden_size: LSTM hidden size
+        model_path: Where to save the final model; defaults to checkpoints dir
 
     Returns:
         Trained A3CLSTMAgent
@@ -113,12 +152,15 @@ async def train_rl_agent(
 
     save_path = model_path or str(_CHECKPOINT_DIR / "a3c_lstm_latest.pt")
 
-    total_rewards: list[float] = []
+    total_rewards: List[float] = []
+
+    # Pre-compute RSI series for reward shaping
+    rsi_series = _rsi(ohlcv_df["close"]).fillna(50.0)
 
     for episode in range(1, n_episodes + 1):
-        states: list[torch.Tensor] = []
-        actions: list[int] = []
-        rewards: list[float] = []
+        states: List[torch.Tensor] = []
+        actions: List[int] = []
+        rewards: List[float] = []
 
         agent.eval()
         with torch.no_grad():
@@ -126,7 +168,7 @@ async def train_rl_agent(
                 window = features[t - _SEQ_LEN : t]  # (seq_len, n_features)
                 x = torch.tensor(window, dtype=torch.float32).unsqueeze(0)  # (1, seq_len, n_feat)
                 action = agent.select_action(x)
-                reward = _step_reward(ohlcv_df, action, t)
+                reward = _step_reward(ohlcv_df, action, t, rsi_series)
 
                 states.append(x.squeeze(0))  # (seq_len, n_features)
                 actions.append(action)
@@ -136,7 +178,7 @@ async def train_rl_agent(
             continue
 
         # Stack trajectory
-        states_tensor = torch.stack(states)           # (T', seq_len, n_features)
+        states_tensor = torch.stack(states)  # (T', seq_len, n_features)
         actions_tensor = torch.tensor(actions, dtype=torch.long)
         dones = [False] * len(rewards)
 
