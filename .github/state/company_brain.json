@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784836890.3568134,
+    "last_updated": 1784837644.4486542,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 0,
     "macro_score": 1,
-    "vix": 19.43,
-    "market_scan_ts": 1784833544.9313881,
+    "vix": 18.96,
+    "market_scan_ts": 1784837644.4238172,
     "sector_leaders": [
       "Energy",
       "Healthcare",
@@ -125,43 +125,36 @@
       "TMO",
       "XLE",
       "GLD",
-      "TLT",
-      "IWM",
       "XOM",
-      "COP",
+      "TLT",
+      "WMT",
       "XLI",
+      "COP",
+      "IWM",
       "QQQ",
+      "SPY",
+      "XLP",
       "CVX",
       "DIA",
-      "SPY",
-      "WMT",
-      "XLP",
-      "MPC",
       "MSFT",
-      "EOG",
+      "SHY",
+      "MPC",
       "JNJ",
-      "KO",
-      "SLB"
+      "EOG",
+      "XLF"
     ],
     "top_momentum": [
       "MPC",
       "TMO",
       "XOM",
-      "COP",
-      "CVX"
+      "CVX",
+      "COP"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1784836890.3559291
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix skipped for per-desk performance attribution feature because it required changes across multiple modules exceeding 50-line limit; decompose into smaller, incremental PRs.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784250677.9791431
-    },
     {
       "lesson": "Duplicate Vercel deployment links suggest possible race condition or repeated triggers; audit deployment pipeline for redundant invocations.",
       "category": "risk",
@@ -1883,6 +1876,21 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784833544.9614913
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 1,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784837644.4533277
     }
   ],
   "github_insights": [
