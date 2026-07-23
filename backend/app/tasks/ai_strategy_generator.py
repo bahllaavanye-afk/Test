@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -85,11 +84,14 @@ class AIStrategyGenerator:
                     written.append(p)
 
             if self._memory and written:
-                await self._memory.write("strategy_proposals", {
-                    "count": len(written),
-                    "proposals": [w.get("name", "?") for w in written],
-                    "status": "staging",
-                })
+                await self._memory.write(
+                    "strategy_proposals",
+                    {
+                        "count": len(written),
+                        "proposals": [w.get("name", "?") for w in written],
+                        "status": "staging",
+                    },
+                )
             logger.info("AIStrategyGenerator: wrote %d staging strategies", len(written))
         except Exception as e:
             logger.exception("AIStrategyGenerator error: %s", e)
