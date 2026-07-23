@@ -5,13 +5,67 @@ Runs as a background asyncio task started from main.py lifespan.
 Uses yfinance for free OHLCV data — no broker keys required.
 """
 from __future__ import annotations
+
 import asyncio
 import uuid
-import pandas as pd
 from datetime import datetime, timezone
+from typing import Any
+
+import numpy as np
+import pandas as pd
 
 from sqlalchemy import select
 from app.utils.logging import logger
+
+
+def _apply_confirmation_filters(
+    signals: pd.Series,
+    closes: pd.Series,
+    opens: pd.Series,
+    volume: pd.Series,
+    price_move_thresh: float = 0.001,
+) -> pd.Series:
+    """
+    Tighten entry conditions with simple confirmation filters.
+
+    - Require the next bar to move in the direction of the entry by at least
+      ``price_move_thresh`` (default 0.1%).
+    - Require the next bar volume to be at least the median volume of the
+      series (helps filter low‑liquidity false signals).
+    - The last bar cannot be confirmed and is therefore cleared.
+
+    The function preserves exit signals (0) but clears unconfirmed entries.
+    """
+    filtered = signals.copy()
+
+    if len(signals) < 2:
+        # Not enough data to apply filters
+        return filtered * 0
+
+    median_vol = volume.median()
+
+    # Iterate over all but the final row; the final entry cannot be confirmed
+    for i in range(len(signals) - 1):
+        sig = signals.iloc[i]
+        if sig == 0:
+            continue
+
+        # Next‑bar price move relative to open
+        price_move = (closes.iloc[i + 1] - opens.iloc[i + 1]) / opens.iloc[i + 1]
+        vol_ok = volume.iloc[i + 1] >= median_vol
+
+        if sig == 1:
+            # Long entry: need upward move and sufficient volume
+            if price_move < price_move_thresh or not vol_ok:
+                filtered.iloc[i] = 0
+        elif sig == -1:
+            # Short entry: need downward move and sufficient volume
+            if price_move > -price_move_thresh or not vol_ok:
+                filtered.iloc[i] = 0
+
+    # Ensure the final row does not contain an entry signal
+    filtered.iloc[-1] = 0
+    return filtered.astype(int)
 
 
 async def run_backtest_job(run_id: str | None) -> None:
@@ -69,8 +123,6 @@ async def run_backtest_job(run_id: str | None) -> None:
 
         # Convert BacktestSignals → pd.Series[int] expected by run_backtest
         if isinstance(raw_signals, _BSig):
-            import numpy as np
-
             # Ensure entries/exits are not None and have matching index
             entries = raw_signals.entries
             exits = raw_signals.exits
@@ -93,6 +145,14 @@ async def run_backtest_job(run_id: str | None) -> None:
             else:
                 # Align index if needed
                 signals_series = raw_signals.reindex(df.index, fill_value=0).astype(int)
+
+        # Apply confirmation filters to tighten entry quality
+        signals_series = _apply_confirmation_filters(
+            signals=signals_series,
+            closes=df["close"],
+            opens=df["open"],
+            volume=df["volume"],
+        )
 
         metrics = run_backtest(
             signals=signals_series,
