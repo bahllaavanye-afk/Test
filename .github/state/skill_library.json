@@ -1,8 +1,5 @@
 {
   "skills": [
-    "**Backtesting and Walk-Forward Analysis Improvements**: There are efforts to standardize logging levels in walk_forward.py and improve backtesting and walk-forward analysis in backtest.py.",
-    "Deploy TFT architecture",
-    "Validate inputs",
     "Here are the 3 concise bullet points:",
     "Check firewall rules",
     "schemas on strategies/manual/vix_mean_reversion.py: success \u2014 tests green",
@@ -199,8 +196,11 @@
     "Use timeout exceptions",
     "Check API keys",
     "Monitor model performance",
-    "Refine UI components"
+    "Refine UI components",
+    "Log trade confirmations",
+    "Test market holidays",
+    "Retrain models regularly"
   ],
-  "last_updated": "2026-07-22T22:58:28.016843+00:00",
+  "last_updated": "2026-07-23T00:04:28.327902+00:00",
   "total": 200
 }
