@@ -1,8 +1,7 @@
 import uuid
-from datetime import datetime
-from datetime import date
+from datetime import datetime, date
 from sqlalchemy import String, ForeignKey, Numeric, DateTime, Date, Integer, JSON, Index
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from app.database import Base
 from app.models.base import TimestampMixin
 
@@ -56,6 +55,72 @@ class Order(Base, TimestampMixin):
     fills: Mapped[list["Fill"]] = relationship("Fill", back_populates="order")
     slippage: Mapped[list["SlippageRecord"]] = relationship("SlippageRecord", back_populates="order")
 
+    # ---------------------------
+    # Validation helpers
+    # ---------------------------
+    _VALID_SIDES = {"buy", "sell"}
+    _VALID_ORDER_TYPES = {"market", "limit", "stop"}
+    _VALID_STATUSES = {"pending", "filled", "cancelled", "rejected", "partial"}
+    _VALID_TIF = {"GTC", "IOC", "FOK"}
+    _VALID_EXEC_ALGOS = {"market", "limit_first", "twap", "vwap", None}
+    _VALID_ASSET_CLASSES = {"equity", "crypto", "option", "future", "forex"}
+    _VALID_OPTION_RIGHTS = {"call", "put", None}
+
+    @validates("side")
+    def _validate_side(self, key: str, value: str) -> str:
+        if value not in self._VALID_SIDES:
+            raise ValueError(f"Invalid side '{value}'. Expected one of {self._VALID_SIDES}.")
+        return value
+
+    @validates("order_type")
+    def _validate_order_type(self, key: str, value: str) -> str:
+        if value not in self._VALID_ORDER_TYPES:
+            raise ValueError(f"Invalid order_type '{value}'. Expected one of {self._VALID_ORDER_TYPES}.")
+        return value
+
+    @validates("status")
+    def _validate_status(self, key: str, value: str) -> str:
+        if value not in self._VALID_STATUSES:
+            raise ValueError(f"Invalid status '{value}'. Expected one of {self._VALID_STATUSES}.")
+        return value
+
+    @validates("time_in_force")
+    def _validate_time_in_force(self, key: str, value: str) -> str:
+        if value not in self._VALID_TIF:
+            raise ValueError(f"Invalid time_in_force '{value}'. Expected one of {self._VALID_TIF}.")
+        return value
+
+    @validates("execution_algo")
+    def _validate_execution_algo(self, key: str, value: str | None) -> str | None:
+        if value not in self._VALID_EXEC_ALGOS:
+            raise ValueError(f"Invalid execution_algo '{value}'. Expected one of {self._VALID_EXEC_ALGOS}.")
+        return value
+
+    @validates("asset_class")
+    def _validate_asset_class(self, key: str, value: str) -> str:
+        if value not in self._VALID_ASSET_CLASSES:
+            raise ValueError(f"Invalid asset_class '{value}'. Expected one of {self._VALID_ASSET_CLASSES}.")
+        return value
+
+    @validates("option_right")
+    def _validate_option_right(self, key: str, value: str | None) -> str | None:
+        if value not in self._VALID_OPTION_RIGHTS:
+            raise ValueError(f"Invalid option_right '{value}'. Expected one of {self._VALID_OPTION_RIGHTS}.")
+        return value
+
+    @validates("contract_multiplier")
+    def _validate_contract_multiplier(self, key: str, value: int) -> int:
+        if not isinstance(value, int) or value <= 0:
+            raise ValueError("contract_multiplier must be a positive integer.")
+        return value
+
+    @validates("quantity", "limit_price", "stop_price", "take_profit_price", "stop_loss_price",
+               "trailing_stop_pct", "notional", "risk_reward_ratio", "strike")
+    def _validate_non_negative(self, key: str, value: float | None) -> float | None:
+        if value is not None and value < 0:
+            raise ValueError(f"{key} must be non‑negative.")
+        return value
+
 
 class Fill(Base):
     __tablename__ = "fills"
@@ -70,3 +135,21 @@ class Fill(Base):
     raw_payload: Mapped[dict] = mapped_column(JSON, default=dict)
 
     order: Mapped["Order"] = relationship("Order", back_populates="fills")
+
+    @validates("quantity")
+    def _validate_quantity(self, key: str, value: float) -> float:
+        if value <= 0:
+            raise ValueError("Fill quantity must be greater than zero.")
+        return value
+
+    @validates("price")
+    def _validate_price(self, key: str, value: float) -> float:
+        if value <= 0:
+            raise ValueError("Fill price must be greater than zero.")
+        return value
+
+    @validates("fee")
+    def _validate_fee(self, key: str, value: float) -> float:
+        if value < 0:
+            raise ValueError("Fill fee cannot be negative.")
+        return value
