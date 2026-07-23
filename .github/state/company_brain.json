@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784777600.0903509,
+    "last_updated": 1784791092.2984605,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784769154.8086107
+    "last_brain_update": 1784791092.2973442
   },
   "episodic": [
     {
@@ -1842,11 +1842,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The deployment failed due to resource limitations, and two attempts at automatic fixes also failed to apply patches.",
-      "item_count": 20,
-      "ts": 1783979572.445035
-    },
-    {
       "summary": "The deployment failed due to resource limits, with an error suggesting a 24-hour wait, and automated patch fixes were unsuccessful.",
       "item_count": 20,
       "ts": 1783986694.174028
@@ -2340,6 +2335,11 @@
       "summary": "The automated fix bot failed twice to apply a patch to the file, indicating a persistent issue with the auto-fix process.",
       "item_count": 20,
       "ts": 1784769154.79745
+    },
+    {
+      "summary": "The auto-fix bot failed to apply patches to files in two instances and skipped a third due to excessive complexity, all while implementing an LLM-brain.",
+      "item_count": 20,
+      "ts": 1784791092.2867239
     }
   ],
   "experiment_results": [
@@ -2689,6 +2689,30 @@
       "summary": "*International Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $343 conf=100%  id=`8d72af3e\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $343 conf=100%  id=`6cd8953b\u2026`",
       "source": "desk_run_summary",
       "ts": 1784769147.6723638
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (23:46 UTC)  equity=$22,858.46  regime=sideways/calm\nfunnel: 56 generated \u2192 18 survived gate+topK (0 exploration) \u2192 2 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
+      "source": "desk_run_summary",
+      "ts": 1784791081.7847466
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784791081.7915862
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $400 conf=97%  id=`a4dd18b7\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $343 conf=92%  id=`3ace4a13\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784791081.7963712
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*International Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $343 conf=100%  id=`8d72af3e\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $343 conf=100%  id=`6cd8953b\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784791081.8010552
     }
   ]
 }
