@@ -23,7 +23,6 @@ from app.api.v1 import (
     pipeline,
     leaderboard,
     releases,
-    bots,
 )
 from app.api.v1.scanners import router as scanners_router
 from app.api.v1.options import router as options_router
