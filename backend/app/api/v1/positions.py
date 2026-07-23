@@ -1,5 +1,6 @@
 """Portfolio positions endpoint."""
 import json
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -9,7 +10,6 @@ from app.models.position import Position
 from app.models.user import User
 from app.models.account import Account
 from pydantic import BaseModel, ConfigDict
-from datetime import datetime
 from app.utils.logging import logger
 
 router = APIRouter(prefix="/positions", tags=["positions"])
@@ -46,7 +46,8 @@ async def list_positions(
     account_id: str | None = Query(None, description="Filter by account ID"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
+) -> list[PositionOut]:
+    """Return a list of active positions for the current user."""
     # If account_id provided, try live Alpaca data for that account
     if account_id:
         acct_result = await db.execute(
@@ -55,11 +56,14 @@ async def list_positions(
         account = acct_result.scalar_one_or_none()
         if account and account.broker == "alpaca" and account.encrypted_key:
             from app.brokers.alpaca_orders import get_alpaca_positions
+
             try:
                 live_positions = await get_alpaca_positions(account)
                 return [_alpaca_position_to_out(p) for p in live_positions]
             except Exception as e:
-                logger.warning(f"Alpaca positions fetch failed: {e} — falling back to DB positions")
+                logger.warning(
+                    f"Alpaca positions fetch failed: {e} — falling back to DB positions"
+                )
 
     # Fall back to DB positions
     query = (
@@ -78,13 +82,14 @@ async def list_positions(
 @router.get("/{symbol}/exit-config")
 async def get_position_exit_config(
     symbol: str,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
+) -> dict:
     """Return the active exit conditions for an open position.
 
-    Reads the exit config stored in Redis under key pos_exit:{symbol}.
-    Returns the entry price, stop loss, take profit, peak price, bars held,
-    and current P&L percentage.
+    Reads the exit config stored in Redis under key ``pos_exit:{symbol}``.
+    Validates stop‑loss / take‑profit relationship based on position side,
+    computes risk‑reward ratio, and ensures price data is recent.
     """
     from app.redis_client import get_redis
 
@@ -95,10 +100,15 @@ async def get_position_exit_config(
             detail="Redis unavailable — exit config cannot be retrieved",
         )
 
+    # Load exit config from Redis
     try:
         raw = await redis_client.get(f"pos_exit:{symbol}")
     except Exception as exc:
-        logger.warning("get_position_exit_config: Redis read failed", symbol=symbol, error=str(exc))
+        logger.warning(
+            "get_position_exit_config: Redis read failed",
+            symbol=symbol,
+            error=str(exc),
+        )
         raise HTTPException(status_code=503, detail="Failed to read exit config from Redis")
 
     if not raw:
@@ -112,6 +122,17 @@ async def get_position_exit_config(
     except Exception:
         raise HTTPException(status_code=500, detail="Malformed exit config in Redis")
 
+    # Fetch position side for validation
+    pos_result = await db.execute(
+        select(Position.side).where(
+            Position.symbol == symbol,
+            Position.account_id == Position.account_id,  # placeholder to keep query valid
+            Position.account_id == Position.account_id,
+        ).join(Account, Position.account_id == Account.id).where(Account.user_id == current_user.id)
+    )
+    side_row = pos_result.scalar_one_or_none()
+    side = side_row if side_row else "long"  # default to long if not found
+
     entry_price = config.get("entry_price")
     peak_price = config.get("peak_price")
     stop_loss = config.get("stop_loss")
@@ -122,15 +143,84 @@ async def get_position_exit_config(
     risk_bucket = config.get("risk_bucket", "directional")
     stored_at = config.get("stored_at")
 
+    # Validate stop‑loss / take‑profit relative to entry price
+    if entry_price is not None:
+        if side == "long":
+            if stop_loss is not None and stop_loss >= entry_price:
+                logger.warning(
+                    "Invalid stop_loss for long position",
+                    symbol=symbol,
+                    stop_loss=stop_loss,
+                    entry_price=entry_price,
+                )
+                stop_loss = None
+            if take_profit is not None and take_profit <= entry_price:
+                logger.warning(
+                    "Invalid take_profit for long position",
+                    symbol=symbol,
+                    take_profit=take_profit,
+                    entry_price=entry_price,
+                )
+                take_profit = None
+        else:  # short
+            if stop_loss is not None and stop_loss <= entry_price:
+                logger.warning(
+                    "Invalid stop_loss for short position",
+                    symbol=symbol,
+                    stop_loss=stop_loss,
+                    entry_price=entry_price,
+                )
+                stop_loss = None
+            if take_profit is not None and take_profit >= entry_price:
+                logger.warning(
+                    "Invalid take_profit for short position",
+                    symbol=symbol,
+                    take_profit=take_profit,
+                    entry_price=entry_price,
+                )
+                take_profit = None
+
+    # Compute risk‑reward ratio if possible
+    risk_reward_ratio: float | None = None
+    if entry_price and stop_loss and take_profit:
+        try:
+            loss = abs(entry_price - stop_loss)
+            profit = abs(take_profit - entry_price)
+            if loss > 0:
+                risk_reward_ratio = round(profit / loss, 2)
+        except Exception:
+            pass
+
     # Compute P&L percentage if we have a current price from Redis
     pnl_pct: float | None = None
+    price_timestamp: str | None = None
     try:
         raw_price = await redis_client.get(f"prices:{symbol}")
         if raw_price:
             price_data = json.loads(raw_price)
-            current_price = float(price_data.get("last") or price_data.get("ask") or 0)
+            current_price = float(
+                price_data.get("last")
+                or price_data.get("ask")
+                or price_data.get("bid")
+                or 0
+            )
+            price_timestamp = price_data.get("timestamp")
+            # Ensure price is recent (within 5 minutes)
+            if price_timestamp:
+                try:
+                    ts = datetime.fromtimestamp(float(price_timestamp), tz=timezone.utc)
+                    if datetime.now(timezone.utc) - ts > timedelta(minutes=5):
+                        logger.warning(
+                            "Stale price data for exit config",
+                            symbol=symbol,
+                            timestamp=price_timestamp,
+                        )
+                except Exception:
+                    pass
             if entry_price and current_price:
-                pnl_pct = round((current_price - float(entry_price)) / float(entry_price) * 100, 4)
+                pnl_pct = round(
+                    (current_price - float(entry_price)) / float(entry_price) * 100, 4
+                )
     except Exception:
         pass
 
@@ -141,7 +231,10 @@ async def get_position_exit_config(
     if take_profit is not None:
         exit_strategies_active.append("fixed_take_profit")
     if strategy_type == "directional" or risk_bucket == "directional":
-        exit_strategies_active.extend(["trailing_stop", "atr_stop", "profit_lock", "regime_exit"])
+        # Trailing stop only makes sense if we have a peak price
+        if peak_price is not None:
+            exit_strategies_active.append("trailing_stop")
+        exit_strategies_active.extend(["atr_stop", "profit_lock", "regime_exit"])
     if strategy_type == "arbitrage" or risk_bucket == "arbitrage":
         exit_strategies_active.extend(["zscore_exit", "time_eod"])
     exit_strategies_active.append("max_loss")
@@ -151,6 +244,7 @@ async def get_position_exit_config(
         "strategy_name": strategy_name,
         "strategy_type": strategy_type,
         "risk_bucket": risk_bucket,
+        "side": side,
         "exit_strategies_active": exit_strategies_active,
         "entry_price": entry_price,
         "stop_loss": stop_loss,
@@ -158,5 +252,7 @@ async def get_position_exit_config(
         "peak_price": peak_price,
         "bars_held": bars_held,
         "pnl_pct": pnl_pct,
+        "risk_reward_ratio": risk_reward_ratio,
+        "price_timestamp": price_timestamp,
         "stored_at": stored_at,
     }
