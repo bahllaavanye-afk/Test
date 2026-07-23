@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784835423.6488461,
+    "last_updated": 1784836890.3568134,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784807332.7956257
+    "last_brain_update": 1784836890.3559291
   },
   "episodic": [
     {
@@ -1887,11 +1887,6 @@
   ],
   "github_insights": [
     {
-      "summary": "An automated weekly security scan using Bandit found high-severity issues, but the auto-fix attempt failed and could not apply the patch.",
-      "item_count": 20,
-      "ts": 1784021062.138227
-    },
-    {
       "summary": "Deployment failed due to resource limits (try again in 24 hours), and an automated fix attempt also failed to apply a patch.",
       "item_count": 20,
       "ts": 1784032814.9995453
@@ -2385,6 +2380,11 @@
       "summary": "The automated fix was skipped due to complexity, and a subsequent attempt to apply a patch failed.",
       "item_count": 20,
       "ts": 1784807332.7848277
+    },
+    {
+      "summary": "The team lead revoked automerge for an autonomous PR that modifies protected files, and an auto-fix attempt failed to apply a patch.",
+      "item_count": 20,
+      "ts": 1784836890.3470752
     }
   ],
   "experiment_results": [
@@ -2806,6 +2806,30 @@
       "summary": "*International Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $343 conf=100%  id=`8d72af3e\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $343 conf=100%  id=`6cd8953b\u2026`",
       "source": "desk_run_summary",
       "ts": 1784807325.575549
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (19:52 UTC)  equity=$22,495.32  regime=sideways/calm\nfunnel: 51 generated \u2192 15 survived gate+topK (0 exploration) \u2192 3 placed\n\u2705 *Equities*: 2 orders\n\ud83d\udca4 *Crypto*: no signals fired\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\u2705 *StatA",
+      "source": "desk_run_summary",
+      "ts": 1784836868.25239
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784836868.2565207
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `vol_of_vol_timing/YFI/USD` BUY $91 conf=88%  id=`9e0fd131\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784836868.2603495
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*Equities Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `realized_vol_asymmetry/LLY` BUY $372 conf=100%  id=`b1ae65e1\u2026`\n\ud83d\udfe2 `realized_vol_asymmetry/UNH` BUY $477 conf=100%  id=`b36cd365\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784836868.2640913
     }
   ]
 }
