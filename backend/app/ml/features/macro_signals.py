@@ -8,6 +8,7 @@ Free macro signal sources (no API key required for basic use):
 from __future__ import annotations
 import asyncio
 import aiohttp
+import time
 from datetime import datetime, timezone, date, timedelta
 from typing import Optional
 from app.utils.logging import logger
@@ -39,6 +40,7 @@ async def get_macro_snapshot() -> dict:
     Fetch key macro indicators. All free, no API key.
     Returns dict with latest values + derived signals.
     """
+    start_time = time.monotonic()
     # Fetch in parallel
     results = await asyncio.gather(
         _fred_latest("T10Y2Y"),       # 10Y-2Y yield curve spread (negative = inverted = recession risk)
@@ -60,7 +62,13 @@ async def get_macro_snapshot() -> dict:
     if yield_spread is not None:
         signals["yield_curve_inverted"] = yield_spread < 0
         signals["yield_spread_bps"] = round(yield_spread * 100, 1)
-        signals["yield_curve_signal"] = "risk_off" if yield_spread < -0.5 else "neutral" if yield_spread < 0.5 else "risk_on"
+        signals["yield_curve_signal"] = (
+            "risk_off"
+            if yield_spread < -0.5
+            else "neutral"
+            if yield_spread < 0.5
+            else "risk_on"
+        )
 
     if vix is not None:
         signals["vix_regime"] = "fear" if vix > 30 else "elevated" if vix > 20 else "complacent"
@@ -78,17 +86,32 @@ async def get_macro_snapshot() -> dict:
     if hy_spread is not None:
         macro_score += 1 if hy_spread < 3.5 else -1 if hy_spread > 6.0 else 0
 
-    return {
+    result = {
         "yield_spread_10y2y": yield_spread,
         "vix": vix,
         "fed_funds_rate": fed_funds,
         "hy_credit_spread": hy_spread,
         "usd_index": usd_index,
         "signals": signals,
-        "macro_score": macro_score,           # -3 to +3: positive = risk-on environment
-        "macro_bias": "risk_on" if macro_score >= 1 else "risk_off" if macro_score <= -1 else "neutral",
+        "macro_score": macro_score,  # -3 to +3: positive = risk-on environment
+        "macro_bias": "risk_on"
+        if macro_score >= 1
+        else "risk_off"
+        if macro_score <= -1
+        else "neutral",
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
+
+    elapsed = time.monotonic() - start_time
+    logger.info(
+        "macro_snapshot_fetched",
+        extra={
+            "signal_count": len(signals),
+            "macro_score": macro_score,
+            "execution_time_sec": round(elapsed, 3),
+        },
+    )
+    return result
 
 
 async def get_reddit_sentiment(tickers: list[str] | None = None) -> dict:
@@ -96,10 +119,15 @@ async def get_reddit_sentiment(tickers: list[str] | None = None) -> dict:
     Fetch WallStreetBets / Reddit sentiment from Apewisdom (free, no key required).
     Returns top mentioned tickers + mention count + sentiment score.
     """
+    start_time = time.monotonic()
     try:
         async with aiohttp.ClientSession() as sess:
             async with sess.get(APEWISDOM_URL, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                 if resp.status != 200:
+                    logger.info(
+                        "apewisdom_fetch_failed",
+                        extra={"status_code": resp.status, "url": APEWISDOM_URL},
+                    )
                     return {"error": "Apewisdom unavailable", "results": []}
                 data = await resp.json()
                 results = data.get("results", [])
@@ -107,6 +135,14 @@ async def get_reddit_sentiment(tickers: list[str] | None = None) -> dict:
                 if tickers:
                     ticker_set = {t.upper() for t in tickers}
                     results = [r for r in results if r.get("ticker", "").upper() in ticker_set]
+                elapsed = time.monotonic() - start_time
+                logger.info(
+                    "apewisdom_sentiment_fetched",
+                    extra={
+                        "result_count": len(results),
+                        "execution_time_sec": round(elapsed, 3),
+                    },
+                )
                 return {
                     "results": results[:20],
                     "fetched_at": datetime.now(timezone.utc).isoformat(),
@@ -114,6 +150,10 @@ async def get_reddit_sentiment(tickers: list[str] | None = None) -> dict:
                 }
     except Exception as e:
         logger.debug(f"Apewisdom fetch error: {e}")
+        logger.info(
+            "apewisdom_fetch_exception",
+            extra={"error": str(e)},
+        )
         return {"error": str(e), "results": []}
 
 
@@ -127,7 +167,12 @@ async def get_macro_snapshot_cached() -> dict:
     global _macro_cache, _macro_cache_time
     now = datetime.now(timezone.utc)
     if _macro_cache_time and (now - _macro_cache_time).total_seconds() < MACRO_CACHE_SECONDS:
+        logger.info(
+            "macro_snapshot_cache_hit",
+            extra={"cache_age_sec": (now - _macro_cache_time).total_seconds()},
+        )
         return _macro_cache
+    logger.info("macro_snapshot_cache_miss")
     _macro_cache = await get_macro_snapshot()
     _macro_cache_time = now
     return _macro_cache
