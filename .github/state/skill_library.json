@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Test DNS resolution",
-    "Log trade confirmations",
-    "- System state at failure (CPU, network, market conditions)",
     "Retrain LSTM models",
     "Here are the synthesized key points:",
     "Check clock sync",
@@ -199,8 +196,11 @@
     "Check data feeds",
     "Handle NaN values",
     "Set max trade size",
-    "Log system errors"
+    "Log system errors",
+    "Limit order retries",
+    "Verify trade confirms",
+    "Centralize error handling"
   ],
-  "last_updated": "2026-07-23T06:27:22.896882+00:00",
+  "last_updated": "2026-07-23T09:07:49.651515+00:00",
   "total": 200
 }
