@@ -8,6 +8,8 @@ from app.utils.exceptions import BrokerError
 from app.utils.logging import logger
 from app.config import settings
 
+import time
+
 try:
     from py_clob_client.client import ClobClient
     from py_clob_client.clob_types import OrderArgs, OrderType
@@ -30,24 +32,40 @@ class PolymarketBroker(AbstractBroker):
         # Configurable thresholds for entry validation
         self.max_spread = getattr(settings, "POLY_MAX_SPREAD", 0.02)  # 2% default
         self.price_slippage_tolerance = getattr(settings, "POLY_SLIPPAGE_TOLERANCE", 0.01)  # 1% default
+        # Monitoring metrics
+        self._signal_count = 0
 
     async def get_markets(self, min_open_interest: float = 10000) -> list[dict]:
         """Auto‑discover active markets with sufficient liquidity."""
+        start_time = time.time()
         try:
             import asyncio
             markets = await asyncio.to_thread(self.client.get_markets)
-            return [
+            result = [
                 m for m in markets
                 if float(m.get("openInterest", 0)) >= min_open_interest
             ]
+            logger.info(
+                "Polymarket get_markets completed",
+                count=len(result),
+                execution_time=time.time() - start_time,
+            )
+            return result
         except Exception as e:
             logger.error("Polymarket market fetch failed", error=str(e))
             return []
 
     async def get_order_book(self, token_id: str) -> dict:
         """Retrieve the current order book for a given market token."""
+        start_time = time.time()
         import asyncio
-        return await asyncio.to_thread(self.client.get_order_book, token_id)
+        ob = await asyncio.to_thread(self.client.get_order_book, token_id)
+        logger.info(
+            "Polymarket get_order_book completed",
+            token_id=token_id,
+            execution_time=time.time() - start_time,
+        )
+        return ob
 
     async def _validate_entry(self, symbol: str, limit_price: float | None) -> bool:
         """
@@ -101,6 +119,8 @@ class PolymarketBroker(AbstractBroker):
         Raises:
             BrokerError: If the order cannot be placed or validation fails.
         """
+        start_time = time.time()
+        self._signal_count += 1
         try:
             import asyncio
 
@@ -126,17 +146,29 @@ class PolymarketBroker(AbstractBroker):
             status = order.get("status", "pending")
             if status not in {"filled", "canceled", "rejected"}:
                 # Poll once more to capture any rapid status change
-                import time
+                import time as _time
 
-                time.sleep(0.2)
+                _time.sleep(0.2)
                 refreshed = await self.get_order(order.get("orderID", ""))
                 status = refreshed.get("status", status)
 
-            return OrderResult(
+            result = OrderResult(
                 broker_order_id=str(order.get("orderID", "")),
                 status=status,
                 raw_payload=order,
             )
+
+            # Monitoring log
+            logger.info(
+                "Polymarket place_order executed",
+                signal_count=self._signal_count,
+                symbol=request.symbol,
+                execution_time=time.time() - start_time,
+                broker_order_id=result.broker_order_id,
+                status=result.status,
+                pnl=None,  # P&L not computed at order placement
+            )
+            return result
         except BrokerError:
             raise
         except Exception as e:
@@ -144,9 +176,16 @@ class PolymarketBroker(AbstractBroker):
 
     async def cancel_order(self, broker_order_id: str) -> bool:
         """Cancel an existing order."""
+        start_time = time.time()
         try:
             import asyncio
             await asyncio.to_thread(self.client.cancel, broker_order_id)
+            logger.info(
+                "Polymarket cancel_order executed",
+                broker_order_id=broker_order_id,
+                execution_time=time.time() - start_time,
+                success=True,
+            )
             return True
         except Exception as e:
             logger.warning(
@@ -158,8 +197,15 @@ class PolymarketBroker(AbstractBroker):
 
     async def get_order(self, broker_order_id: str) -> dict:
         """Retrieve a specific order's details."""
+        start_time = time.time()
         import asyncio
-        return await asyncio.to_thread(self.client.get_order, broker_order_id)
+        order = await asyncio.to_thread(self.client.get_order, broker_order_id)
+        logger.info(
+            "Polymarket get_order completed",
+            broker_order_id=broker_order_id,
+            execution_time=time.time() - start_time,
+        )
+        return order
 
     async def get_positions(self) -> list[dict]:
         """Polymarket does not expose positions via the CLOB client."""
@@ -171,12 +217,21 @@ class PolymarketBroker(AbstractBroker):
 
     async def get_quote(self, symbol: str) -> QuoteResult:
         """Return the best bid, ask, and mid price for a market."""
+        start_time = time.time()
         ob = await self.get_order_book(symbol)
         bids = ob.get("bids", [])
         asks = ob.get("asks", [])
         best_bid = float(bids[0].get("price", 0)) if bids else 0.0
         best_ask = float(asks[0].get("price", 1)) if asks else 1.0
         mid = (best_bid + best_ask) / 2
+        logger.info(
+            "Polymarket get_quote completed",
+            symbol=symbol,
+            execution_time=time.time() - start_time,
+            bid=best_bid,
+            ask=best_ask,
+            mid=mid,
+        )
         return QuoteResult(symbol=symbol, bid=best_bid, ask=best_ask, last=mid)
 
     async def get_historical(self, symbol: str, interval: str = "1d", limit: int = 500) -> list[dict]:
