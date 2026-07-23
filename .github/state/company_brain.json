@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784821637.0659227,
+    "last_updated": 1784821741.7787871,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -108,60 +108,53 @@
       "size_multiplier": 0.75
     },
     "opinion_score": 0,
-    "macro_score": 3,
-    "vix": 16.64,
-    "market_scan_ts": 1784753961.8004935,
+    "macro_score": 0,
+    "vix": 20.14,
+    "market_scan_ts": 1784821741.7517314,
     "sector_leaders": [
       "Energy",
       "Healthcare",
       "Financials"
     ],
     "sector_laggards": [
-      "Materials",
-      "Industrials",
-      "Tech"
+      "Comm.",
+      "Tech",
+      "Cons. Disc."
     ],
     "active_universe": [
-      "NOW",
-      "GOOGL",
-      "MPC",
-      "CRWD",
-      "ABT",
-      "NFLX",
-      "PANW",
-      "XOM",
       "TMO",
-      "JNJ",
-      "NVDA",
-      "ADBE",
-      "TSLA",
-      "META",
-      "BAC",
-      "CVX",
-      "EOG",
+      "GLD",
+      "XLE",
       "IWM",
-      "BLK",
-      "COP"
+      "DIA",
+      "XOM",
+      "XLI",
+      "QQQ",
+      "CVX",
+      "TLT",
+      "COP",
+      "WMT",
+      "SPY",
+      "XLP",
+      "MSFT",
+      "MPC",
+      "GS",
+      "JNJ",
+      "KO",
+      "SLB"
     ],
     "top_momentum": [
       "MPC",
-      "ABT",
+      "TMO",
       "XOM",
-      "CVX",
-      "COP"
+      "COP",
+      "CVX"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1784807332.7956257
   },
   "episodic": [
-    {
-      "lesson": "Automated fixes fail on multi-module changes; break per-desk attribution feature into smaller, single-module PRs to stay under auto-fix limits.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784238298.244674
-    },
     {
       "lesson": "Per-desk performance attribution and auto-pruning require new data models, APIs, frontend components, and background jobs \u2014 plan phased rollout with clear milestones.",
       "category": "strategy",
@@ -1843,6 +1836,21 @@
       },
       "lesson": "[LLM unavailable \u2014 all providers failed]",
       "ts": 1784821637.0706966
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 0,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=0). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784821741.7840018
     }
   ],
   "github_insights": [
