@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Here are the 3 concise bullet points:",
-    "Check firewall rules",
-    "schemas on strategies/manual/vix_mean_reversion.py: success \u2014 tests green",
-    "Verify thread counts",
-    "Validate date formats",
     "Log algo errors",
     "Log market holidays",
     "Log API response codes",
@@ -199,8 +194,13 @@
     "Refine UI components",
     "Log trade confirmations",
     "Test market holidays",
-    "Retrain models regularly"
+    "Retrain models regularly",
+    "Handle network failures",
+    "Verify trading hours",
+    "Sanitize market data",
+    "Refactor model loaders",
+    "Monitor feature drift"
   ],
-  "last_updated": "2026-07-23T00:04:28.327902+00:00",
+  "last_updated": "2026-07-23T03:52:46.290501+00:00",
   "total": 200
 }
