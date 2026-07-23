@@ -1,12 +1,5 @@
 {
   "skills": [
-    "Limit API retries",
-    "Check RAM allocation",
-    "Restart on crash",
-    "**Code Review Queue**: The current review queue includes files such as `handle_quote` from `.github/scripts/batches/run_batch.py` and `backend/app/batch.py` for proper type hints implementation.",
-    "Based on the agent learnings, the following are the most important and actionable takeaways:",
-    "**Run Experiments Status**: The run_experiments agent is currently idle, awaiting new tasks or instructions.",
-    "Check DNS resolution",
     "Implement JSON schema checks",
     "* Automate retraining triggers",
     "Track latency spikes",
@@ -199,8 +192,15 @@
     "Check API rates",
     "Verify db connections",
     "Add unit tests",
-    "Monitor model drift"
+    "Monitor model drift",
+    "Implement timeout for API calls",
+    "Validate user input data",
+    "Check for duplicate orders",
+    "Use circuit breaker pattern",
+    "Refactor error handling",
+    "Centralize logging",
+    "Enforce type hints"
   ],
-  "last_updated": "2026-07-23T12:57:04.731983+00:00",
+  "last_updated": "2026-07-23T15:09:38.928894+00:00",
   "total": 200
 }
