@@ -45,6 +45,48 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = 100_000,
     ) -> ComparisonResult:
+        # Input validation
+        if not isinstance(manual_signals, pd.Series):
+            raise ValueError("manual_signals must be a pandas Series.")
+        if not isinstance(ml_signals, pd.Series):
+            raise ValueError("ml_signals must be a pandas Series.")
+        if not isinstance(prices, pd.Series):
+            raise ValueError("prices must be a pandas Series.")
+
+        if manual_signals.empty:
+            raise ValueError("manual_signals series cannot be empty.")
+        if ml_signals.empty:
+            raise ValueError("ml_signals series cannot be empty.")
+        if prices.empty:
+            raise ValueError("prices series cannot be empty.")
+
+        if not isinstance(strategy_name, str) or not strategy_name.strip():
+            raise ValueError("strategy_name must be a non-empty string.")
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("symbol must be a non-empty string.")
+        if not isinstance(interval, str) or not interval.strip():
+            raise ValueError("interval must be a non-empty string.")
+
+        if not isinstance(start_date, date):
+            raise ValueError("start_date must be a datetime.date instance.")
+        if not isinstance(end_date, date):
+            raise ValueError("end_date must be a datetime.date instance.")
+        if start_date > end_date:
+            raise ValueError("start_date cannot be later than end_date.")
+
+        if not isinstance(initial_equity, (int, float)):
+            raise ValueError("initial_equity must be a numeric type.")
+        if initial_equity <= 0:
+            raise ValueError("initial_equity must be a positive number.")
+
+        # Ensure series are aligned on the same index (optional but helps consistency)
+        common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
+        if common_index.empty:
+            raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
+        manual_signals = manual_signals.loc[common_index]
+        ml_signals = ml_signals.loc[common_index]
+        prices = prices.loc[common_index]
+
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 

@@ -138,6 +138,8 @@ async def _cmd_health() -> str:
 
 
 async def _cmd_run_bot(name_query: str) -> str:
+    if not isinstance(name_query, str):
+        raise ValueError("name_query must be a string")
     from app.bots.engine import BotEngine
     from app.database import AsyncSessionLocal
     from app.models.bot import Bot
@@ -199,6 +201,8 @@ async def _dispatch_command(name: str, options: dict) -> dict:
 @router.post("/interactions")
 async def discord_interactions(request: Request):
     """Discord interactions webhook: signature-verified, 3s response budget."""
+    if not isinstance(request, Request):
+        raise ValueError("request must be an instance of fastapi.Request")
     signature = request.headers.get("X-Signature-Ed25519", "")
     timestamp = request.headers.get("X-Signature-Timestamp", "")
     body = await request.body()
