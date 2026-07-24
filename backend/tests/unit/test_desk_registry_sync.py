@@ -54,3 +54,63 @@ def test_fx_desk_strategies_exist_in_registry():
     spec.loader.exec_module(m)  # type: ignore[union-attr]
     missing = [s for s in m.STRATEGIES if STRATEGY_REGISTRY.get(s) is None]
     assert not missing, f"FX desk references unknown strategies: {missing}"
+
+
+def test_unknown_strategy_detection(monkeypatch):
+    """Ensure missing‑strategy detection flags unknown strategy names."""
+    from app.strategies import STRATEGY_REGISTRY
+
+    dop = _load_desks()
+
+    class DummyDesk:
+        name = "dummy"
+        strategy_names = ["nonexistent_strategy"]
+
+    original_desks = getattr(dop, "DESKS", [])
+    monkeypatch.setattr(dop, "DESKS", list(original_desks) + [DummyDesk()])
+
+    missing = {
+        f"{d.name}/{s}"
+        for d in dop.DESKS
+        for s in d.strategy_names
+        if STRATEGY_REGISTRY.get(s) is None
+    }
+    assert "dummy/nonexistent_strategy" in missing
+
+
+def test_duplicate_strategy_names(monkeypatch):
+    """Duplicate strategy names on a desk should not produce false missing entries."""
+    from app.strategies import STRATEGY_REGISTRY
+
+    dop = _load_desks()
+    if not STRATEGY_REGISTRY:
+        pytest.skip("No strategies in registry to test duplicates")
+
+    existing_strategy = next(iter(STRATEGY_REGISTRY.keys()))
+
+    class DummyDesk:
+        name = "dupdesk"
+        strategy_names = [existing_strategy, existing_strategy]
+
+    original_desks = getattr(dop, "DESKS", [])
+    monkeypatch.setattr(dop, "DESKS", list(original_desks) + [DummyDesk()])
+
+    missing = {
+        f"{d.name}/{s}"
+        for d in dop.DESKS
+        for s in d.strategy_names
+        if STRATEGY_REGISTRY.get(s) is None
+    }
+    assert not missing, "Duplicate known strategies incorrectly reported as missing"
+
+
+def test_fx_desk_strategies_unique():
+    """FX desk strategy list should contain no duplicate entries."""
+    fx_mod = _DESK_MOD.parent / "fx_desk.py"
+    if not fx_mod.exists():
+        pytest.skip("fx_desk.py not present")
+    spec = importlib.util.spec_from_file_location("fx_sync_test_unique", fx_mod)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)  # type: ignore[union-attr]
+    strategies = getattr(m, "STRATEGIES", [])
+    assert len(strategies) == len(set(strategies)), "FX desk STRATEGIES contains duplicates"
