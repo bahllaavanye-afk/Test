@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784901675.124388,
+    "last_updated": 1784904749.44787,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,57 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784892274.0746298
+    "last_brain_update": 1784904749.446562
   },
   "episodic": [
-    {
-      "lesson": "Feature request for per-desk performance attribution requires new schema, engine changes, and pruning logic \u2013 prioritize as a strategic enhancement and break into incremental deliverables.",
-      "category": "strategy",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784296892.2831216
-    },
-    {
-      "lesson": "Deployment blocked by Vercel free-tier rate limit (100/day). Upgrade to Pro plan or consolidate deployments to avoid critical path delays.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784296892.2873454
-    },
-    {
-      "source": "market_opinion",
-      "regime": "bull",
-      "score": 4,
-      "gates": {
-        "directional": true,
-        "min_confidence": 0.6,
-        "size_multiplier": 1.0
-      },
-      "lesson": "[LLM unavailable \u2014 all providers failed]",
-      "ts": 1784300691.5859373
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Healthcare",
-        "Financials",
-        "Energy"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Healthcare, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784300878.6139417
-    },
-    {
-      "lesson": "Auto-fix patch application failures are recurring, indicating a need to improve patch generation or validate target file state before applying.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784302704.005565
-    },
     {
       "lesson": "Complex features like per-desk performance attribution are being skipped by auto-fix, delaying critical functionality and requiring human intervention.",
       "category": "strategy",
@@ -1907,14 +1859,44 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784866842.3026104
+    },
+    {
+      "lesson": "Options desk placed high-confidence short orders on QQQ and SPY. Monitor for concentrated short exposure in major ETFs during sideways regime.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784904717.3739507
+    },
+    {
+      "lesson": "Crypto desk aggressively bought UNI, AAVE, YFI with confidence >88%. Validate these signals against current market conditions and position sizing limits.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784904717.379458
+    },
+    {
+      "lesson": "Two autonomous PRs modifying protected model files were automerge-revoked, and three auto-fixes failed. Human review required; risk of introducing bugs into model layer.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784904717.3846834
+    },
+    {
+      "lesson": "Signal funnel conversion: 51 generated \u2192 12 placed (23.5%) with 0 exploration. Evaluate whether exploration parameter should be increased to improve signal diversity.",
+      "category": "strategy",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784904717.389847
+    },
+    {
+      "lesson": "Multiple auto-fix failures indicate systematic issue with automated patching pipeline. Investigate root cause to prevent recurring code instability.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784904717.394951
     }
   ],
   "github_insights": [
-    {
-      "summary": "The deployment failed due to a resource limit error, advising a retry in 24 hours, and two automatic patch attempts also failed.",
-      "item_count": 20,
-      "ts": 1784141141.4434936
-    },
     {
       "summary": "The auto-fix process repeatedly failed to apply a patch to the file, as indicated by three identical error messages.",
       "item_count": 20,
@@ -2409,6 +2391,11 @@
       "summary": "The auto-fix process encountered two failures: one where the patch could not be applied to the file, and another where automated resolution was skipped due to complexity, with the reason being implementation of the content.",
       "item_count": 20,
       "ts": 1784892274.0630364
+    },
+    {
+      "summary": "[LLM unavailable \u2014 all providers failed]",
+      "item_count": 20,
+      "ts": 1784904749.4337823
     }
   ],
   "experiment_results": [
@@ -3022,6 +3009,42 @@
       "summary": "**\u26a1 Backtest Engine**: I\u2019d expect a Sharpe ratio in the 1.3\u20111.5 range because the 14\u2011period RSI combined with a momentum filter typically yields a modestly positive expectancy on 15\u2011minute equity bars while keeping drawdowns low, especially after excluding the higher\u2011noise stocks (QQQ, MSFT, NVDA). ",
       "source": "desk_run_summary",
       "ts": 1784892255.0400152
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (14:28 UTC)  equity=$22,321.42  regime=sideways/calm\nfunnel: 51 generated \u2192 17 survived gate+topK (0 exploration) \u2192 12 placed\n\u2705 *Equities*: 1 orders\n\u2705 *Crypto*: 3 orders\n\u2705 *Options*: 2 orders\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\u2705 *StatArb*: 3 orders\n\u2705",
+      "source": "desk_run_summary",
+      "ts": 1784904717.4001756
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784904717.405421
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $386 conf=97%  id=`d1d7dabf\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $335 conf=92%  id=`718d0170\u2026`\n\ud83d\udfe2 `vol_of_vol_timing/YFI/USD` BUY $335 conf=88%  id=`9c5dd1ac\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784904717.4109719
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*International Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $335 conf=100%  id=`bbf0f216\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784904717.416247
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 2 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/QQQ` SELL $566 conf=100%  id=`9c3cc904\u2026`\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1175 conf=99%  id=`3f033111\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784904717.4215386
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $335 conf=98%  id=`b5052769\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $922 conf=80%  id=`a520f27b\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784904717.426819
     }
   ]
 }
