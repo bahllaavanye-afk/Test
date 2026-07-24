@@ -33,6 +33,12 @@ def test_occ_symbol_put_fractional_strike():
     assert build_occ_symbol("qqq", date(2026, 12, 18), 462.5, "put") == "QQQ261218P00462500"
 
 
+def test_occ_symbol_none_inputs():
+    # All parameters are required; passing None should raise a TypeError
+    with pytest.raises(TypeError):
+        build_occ_symbol(None, None, None, None)
+
+
 # ── Delta-nearest contract picking ────────────────────────────────────────────
 
 def _snap(delta):
@@ -60,6 +66,20 @@ def test_pick_contract_uses_abs_for_puts_and_skips_missing_greeks():
 
 def test_pick_contract_empty_returns_none():
     assert pick_contract_by_delta({}, 0.3, "call") is None
+
+
+def test_pick_contract_none_inputs_returns_none():
+    # Gracefully handle None as the snaps dictionary
+    assert pick_contract_by_delta(None, 0.3, "call") is None
+
+
+def test_pick_contract_exact_match():
+    snaps = {
+        "A..C00100000": _snap(0.30),
+        "A..C00110000": _snap(0.31),
+    }
+    # Exact delta match should select the contract with that delta
+    assert pick_contract_by_delta(snaps, 0.30, "call") == "A..C00100000"
 
 
 # ── submit_alpaca_multileg_order ──────────────────────────────────────────────
@@ -142,3 +162,19 @@ async def test_multileg_broker_rejection_returns_none():
          patch("app.brokers.alpaca_orders._base_url", return_value="https://paper-api.alpaca.markets"), \
          patch("httpx.AsyncClient.post", new=fake_post):
         assert await submit_alpaca_multileg_order(_account(), "SPY", legs) is None
+
+
+@pytest.mark.asyncio
+async def test_multileg_empty_legs_returns_none():
+    posted = []
+
+    async def fake_post(self, url, json=None, headers=None):
+        posted.append(url)
+        return _Resp(200)
+
+    # No legs supplied – function should exit early without making a request
+    with patch("app.brokers.alpaca_orders.resolve_leg_symbol", new=AsyncMock()), \
+         patch("httpx.AsyncClient.post", new=fake_post):
+        out = await submit_alpaca_multileg_order(_account(), "SPY", [])
+    assert out is None
+    assert posted == []
