@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784926181.3851721,
+    "last_updated": 1784926642.5896015,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 2,
     "macro_score": 2,
-    "vix": 18.62,
-    "market_scan_ts": 1784924515.7897956,
+    "vix": 18.58,
+    "market_scan_ts": 1784926642.5606334,
     "sector_leaders": [
       "Energy",
       "Healthcare",
@@ -132,16 +132,16 @@
       "QQQ",
       "ADBE",
       "XOM",
-      "CVX",
       "META",
       "AMZN",
       "NVDA",
       "CRWD",
       "XLI",
-      "ABT",
       "IWM",
       "HD",
-      "SPY"
+      "SPY",
+      "XLF",
+      "CVX"
     ],
     "top_momentum": [
       "AAPL",
@@ -155,13 +155,6 @@
     "last_brain_update": 1784926181.384115
   },
   "episodic": [
-    {
-      "lesson": "Deployment blocked by free-tier rate limit (100/day); upgrade to Pro or reduce deployment frequency to avoid blocking.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784311296.7249784
-    },
     {
       "lesson": "'Symbol Scout' feature lacks context for automated resolution; assign developer to clarify requirements and fix missing/broken functionality.",
       "category": "strategy",
@@ -1923,6 +1916,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 5, Breakouts: 1, Risk flags: 0.",
       "ts": 1784924515.812338
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 5,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 5, Breakouts: 1, Risk flags: 0.",
+      "ts": 1784926642.5951219
     }
   ],
   "github_insights": [
