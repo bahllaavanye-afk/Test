@@ -7,16 +7,58 @@ normal allow path. Pure/offline.
 """
 from __future__ import annotations
 
+import numbers
 import pytest
 
 from app.brokers.base import OrderRequest
 from app.risk.manager import RiskManager
 
 
-def _order(qty=10.0, price=100.0, bucket="directional", symbol="AAPL") -> OrderRequest:
+def _order(
+    qty: float = 10.0,
+    price: float = 100.0,
+    bucket: str = "directional",
+    symbol: str = "AAPL",
+) -> OrderRequest:
+    """Create an OrderRequest with basic validation.
+
+    Parameters
+    ----------
+    qty: float
+        Quantity of the order. Must be a positive number.
+    price: float
+        Limit price. Must be a positive number.
+    bucket: str
+        Risk bucket name. Must be a non‑empty string.
+    symbol: str
+        Trading symbol. Must be a non‑empty string.
+
+    Returns
+    -------
+    OrderRequest
+        Constructed order request.
+
+    Raises
+    ------
+    ValueError
+        If any argument is invalid.
+    """
+    if not isinstance(qty, numbers.Real) or qty <= 0:
+        raise ValueError("qty must be a positive number")
+    if not isinstance(price, numbers.Real) or price <= 0:
+        raise ValueError("price must be a positive number")
+    if not isinstance(bucket, str) or not bucket:
+        raise ValueError("bucket must be a non‑empty string")
+    if not isinstance(symbol, str) or not symbol:
+        raise ValueError("symbol must be a non‑empty string")
+
     return OrderRequest(
-        symbol=symbol, side="buy", order_type="limit",
-        quantity=qty, limit_price=price, risk_bucket=bucket,
+        symbol=symbol,
+        side="buy",
+        order_type="limit",
+        quantity=qty,
+        limit_price=price,
+        risk_bucket=bucket,
     )
 
 
