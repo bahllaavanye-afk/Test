@@ -125,3 +125,37 @@ def test_record_interaction_records_and_shares(state: Path):
     # the shared line is visible to a peer
     peers = eb.brain_for("risk_eng", state).learn_from_peers(10)
     assert any("d_model 64" in p["text"] for p in peers)
+
+
+# ── in-memory (mem=) mode: shared dict, caller owns persistence ──────────────
+
+def test_mem_mode_operates_in_place_and_save_is_noop():
+    mem: dict = {}
+    b = eb.brain_for("vp_eng", mem=mem)
+    b.remember("discussion", "flaky Kelly test in test_risk_engine.py:45")
+    b.share("flagged flaky Kelly test")
+    # external mem → save() must NOT write a file, just report success
+    assert b.save() is True
+    assert mem["employee_context"]["vp_eng"]["history"][-1]["text"].startswith("flaky Kelly")
+    assert any("vp_eng" in x for x in mem["peer_learnings"])
+
+
+def test_mem_mode_shares_bus_across_employees_same_dict():
+    mem: dict = {}
+    eb.brain_for("vp_eng", mem=mem).share("ci is green on main")
+    peers = eb.brain_for("risk_eng", mem=mem).learn_from_peers(5)
+    assert any(p["from"] == "vp_eng" and "ci is green" in p["text"] for p in peers)
+
+
+def test_mem_mode_does_not_touch_disk(tmp_path: Path):
+    # a real file exists but mem= must never read/write it
+    f = tmp_path / "agent_memory.json"
+    f.write_text('{"employee_context": {"vp_eng": {"history": [{"kind":"old","text":"stale"}], "facts": {}}}}')
+    mem: dict = {}
+    b = eb.brain_for("vp_eng", path=f, mem=mem)
+    b.remember("discussion", "fresh entry")
+    b.save()
+    # the on-disk file is untouched (still only the stale entry)
+    on_disk = json.loads(f.read_text())
+    hist = on_disk["employee_context"]["vp_eng"]["history"]
+    assert len(hist) == 1 and hist[0]["text"] == "stale"
