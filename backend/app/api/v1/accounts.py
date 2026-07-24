@@ -1,7 +1,11 @@
 """Account management endpoints."""
+
+from typing import List, Dict, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.account import Account
@@ -15,12 +19,18 @@ router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 
 async def latest_total_equity(db: AsyncSession) -> float:
-    """Sum of each active account's most recent snapshot equity.
+    """Calculate the sum of the most recent snapshot equity for all active accounts.
 
-    The Account model itself has NO equity column — equity is a time series on
-    AccountSnapshot (written hourly from live broker data). Every caller that
-    wants "current equity" must read the latest snapshot, not the account row;
-    reading `account.total_equity` is an AttributeError.
+    The `Account` model does not contain an equity column; equity is stored in
+    `AccountSnapshot` rows that are written hourly from live broker data. This
+    function iterates over each active account, retrieves its latest snapshot,
+    and aggregates the equity values.
+
+    Args:
+        db: An active asynchronous SQLAlchemy session.
+
+    Returns:
+        The total equity across all active accounts as a float.
     """
     from app.models.account import AccountSnapshot
 
@@ -44,6 +54,8 @@ async def latest_total_equity(db: AsyncSession) -> float:
 
 
 class AccountCreate(BaseModel):
+    """Schema for creating a new trading account."""
+
     broker: str
     label: str
     mode: str = "paper"
@@ -53,6 +65,8 @@ class AccountCreate(BaseModel):
 
 
 class AccountOut(BaseModel):
+    """Response model representing an account's public details."""
+
     id: str
     broker: str
     label: str
@@ -63,19 +77,30 @@ class AccountOut(BaseModel):
 
 
 class AccountEquityOut(BaseModel):
+    """Response model for live equity information of an account."""
+
     equity: float
     cash: float
     buying_power: float
     portfolio_value: float
-    day_trade_count: int | None
-    pattern_day_trader: bool | None
+    day_trade_count: Optional[int] = None
+    pattern_day_trader: Optional[bool] = None
 
 
-@router.get("/", response_model=list[AccountOut])
+@router.get("/", response_model=List[AccountOut])
 async def list_accounts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
+) -> List[AccountOut]:
+    """List all accounts owned by the current user.
+
+    Args:
+        db: Asynchronous database session.
+        current_user: The authenticated user requesting the accounts.
+
+    Returns:
+        A list of `AccountOut` objects representing the user's accounts.
+    """
     result = await db.execute(select(Account).where(Account.user_id == current_user.id))
     return result.scalars().all()
 
@@ -85,8 +110,19 @@ async def create_account(
     body: AccountCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    request: Request = None,
-):
+    request: Optional[Request] = None,
+) -> AccountOut:
+    """Create a new trading account and log the creation event.
+
+    Args:
+        body: The payload containing account creation details.
+        db: Asynchronous database session.
+        current_user: The authenticated user creating the account.
+        request: The incoming HTTP request (optional, used for logging).
+
+    Returns:
+        The newly created `AccountOut` object.
+    """
     account = Account(
         user_id=current_user.id,
         broker=body.broker,
@@ -125,8 +161,22 @@ async def get_account_equity(
     account_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
-    """Return live equity, buying power, and day-trade count from Alpaca."""
+) -> AccountEquityOut:
+    """Return live equity, buying power, and day‑trade count from Alpaca.
+
+    Args:
+        account_id: Identifier of the account to query.
+        db: Asynchronous database session.
+        current_user: The authenticated user requesting the data.
+
+    Returns:
+        An `AccountEquityOut` object containing the latest equity data.
+
+    Raises:
+        HTTPException: 404 if the account does not exist, 400 if the account is
+            not an Alpaca account with stored credentials, or 502 if fetching
+            data from Alpaca fails.
+    """
     result = await db.execute(
         select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
     )
@@ -160,7 +210,17 @@ async def delete_account(
     account_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
+) -> Dict[str, str]:
+    """Delete an account owned by the current user.
+
+    Args:
+        account_id: Identifier of the account to delete.
+        db: Asynchronous database session.
+        current_user: The authenticated user performing the deletion.
+
+    Returns:
+        A dictionary confirming the deletion of the specified account.
+    """
     result = await db.execute(select(Account).where(Account.id == account_id, Account.user_id == current_user.id))
     account = result.scalar_one_or_none()
     if not account:
