@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Retrain models with new datasets",
-    "Based on the collective knowledge from the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
-    "Apply rate limits",
-    "Test dependencies",
     "Refactor LSTM models",
     "Check DB connections",
     "Capture model drift",
@@ -199,8 +195,12 @@
     "Limit order retries",
     "Validate timestamps",
     "Here are the key takeaways:",
-    "**Investor Pipeline Monitoring**: The investor pipeline queue (src/pipeline/investor_pipeline.py) is actively being monitored to ensure timely processing of investor pipeline tasks."
+    "**Investor Pipeline Monitoring**: The investor pipeline queue (src/pipeline/investor_pipeline.py) is actively being monitored to ensure timely processing of investor pipeline tasks.",
+    "Log API response codes",
+    "Track thread timeouts",
+    "Verify queue lengths",
+    "Monitor API tokens"
   ],
-  "last_updated": "2026-07-24T05:23:16.071702+00:00",
+  "last_updated": "2026-07-24T07:04:57.240058+00:00",
   "total": 200
 }
