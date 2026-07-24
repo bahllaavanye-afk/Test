@@ -14,10 +14,9 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, List
 
 from app.tasks.free_llm_router import call_consensus, available_providers
 from app.tasks.agent_memory import AgentMemory
@@ -94,7 +93,7 @@ class AIStrategyGenerator:
         except Exception as e:
             logger.exception("AIStrategyGenerator error: %s", e)
 
-    async def _generate_proposals(self) -> list[dict]:
+    async def _generate_proposals(self) -> List[dict]:
         system = """You are a senior quantitative analyst. Propose trading strategy parameters.
 Output ONLY a JSON array of exactly 2 strategies, no other text."""
 
@@ -123,7 +122,7 @@ For each strategy, provide:
         if not responses:
             return []
 
-        all_proposals: list[dict] = []
+        all_proposals: List[dict] = []
         seen = set()
         for resp in responses:
             try:
@@ -154,23 +153,52 @@ For each strategy, provide:
         entry_conditions = proposal.get("entry_conditions", ["rsi < 30"])
         exit_conditions = proposal.get("exit_conditions", ["rsi > 70"])
 
-        # Build simple backtest body from entry/exit conditions
+        # Helper to transform a condition string into a pandas expression
+        def _expr(cond: str) -> str:
+            # Normalise common aliases
+            cond = cond.replace("price", "close")
+            cond = cond.replace("volume", "volume")
+            # Ensure logical operators are Pythonic
+            cond = cond.replace("&&", "&").replace("||", "|")
+            return f"({cond})"
+
+        entry_expr = " & ".join(_expr(c) for c in entry_conditions)
+        exit_expr = " | ".join(_expr(c) for c in exit_conditions)
+
+        # Build backtest body with required indicators and confirmation filters
         backtest_body = "        close = df['close']\n"
+        backtest_body += "        volume = df['volume'] if 'volume' in df.columns else pd.Series(0, index=df.index)\n"
+        # Common indicators
         backtest_body += "        rsi = ta.rsi(close, length=14).fillna(50)\n"
+        backtest_body += "        ema_8 = ta.ema(close, length=8).fillna(close)\n"
         backtest_body += "        ema_21 = ta.ema(close, length=21).fillna(close)\n"
+        backtest_body += "        ema_55 = ta.ema(close, length=55).fillna(close)\n"
+        backtest_body += "        atr = ta.atr(df['high'], df['low'], close, length=14).fillna(0)\n"
         backtest_body += "        entries = pd.Series(False, index=df.index)\n"
         backtest_body += "        exits = pd.Series(False, index=df.index)\n"
-        backtest_body += f"        # Entry: {', '.join(entry_conditions)}\n"
-        backtest_body += "        entries = (rsi < 35) & (close > ema_21)\n"
-        backtest_body += f"        # Exit: {', '.join(exit_conditions)}\n"
-        backtest_body += "        exits = rsi > 65\n"
+        # Confirmation filter: require volume above 20‑period median
+        backtest_body += "        vol_median = volume.rolling(20).median().replace(0, 1)\n"
+        backtest_body += "        vol_filter = volume > vol_median\n"
+        # Apply entry conditions with volume confirmation
+        backtest_body += f"        entries = ({entry_expr}) & vol_filter\n"
+        # Exit conditions plus a simple trailing stop using ATR
+        backtest_body += f"        exits = ({exit_expr}) | (close < (close.shift(1) - 2 * atr))\n"
 
+        # Build analyze body mirroring backtest logic
         analyze_body = "        close = data['close']\n"
+        analyze_body += "        volume = data['volume'] if 'volume' in data.columns else pd.Series([0])\n"
         analyze_body += "        rsi = ta.rsi(close, length=14)\n"
-        analyze_body += "        if rsi is None or rsi.empty: return None\n"
-        analyze_body += "        last_rsi = rsi.iloc[-1]\n"
-        analyze_body += "        ema_21 = ta.ema(close, length=21).iloc[-1]\n"
-        analyze_body += "        if last_rsi < 35 and close.iloc[-1] > ema_21:\n"
+        analyze_body += "        ema_8 = ta.ema(close, length=8)\n"
+        analyze_body += "        ema_21 = ta.ema(close, length=21)\n"
+        analyze_body += "        ema_55 = ta.ema(close, length=55)\n"
+        analyze_body += "        atr = ta.atr(data['high'], data['low'], close, length=14)\n"
+        analyze_body += "        if rsi.empty or ema_21.empty:\n"
+        analyze_body += "            return None\n"
+        analyze_body += "        # Volume confirmation\n"
+        analyze_body += "        vol_median = volume.rolling(20).median().replace(0, 1)\n"
+        analyze_body += "        vol_filter = volume.iloc[-1] > vol_median.iloc[-1]\n"
+        analyze_body += f"        entry_ok = {entry_expr}\n"
+        analyze_body += "        if entry_ok and vol_filter:\n"
         analyze_body += "            return Signal(symbol=symbol, side='buy', confidence=0.65, strategy=self.name)\n"
 
         code = _STRATEGY_TEMPLATE.format(
