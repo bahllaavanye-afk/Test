@@ -27,11 +27,36 @@ def test_ci_ignores_the_reward_gate_own_check():
     assert G.ci_conclusion(runs, []) == "success"
 
 
+def test_ci_conclusion_mixed_and_empty_cases():
+    # Pending status should dominate over completed successes
+    runs = [
+        {"status": "completed", "conclusion": "success"},
+        {"status": "in_progress"},
+    ]
+    assert G.ci_conclusion(runs, []) == "pending"
+
+    # Mixed commit states: any failure should cause overall failure
+    commits = [{"state": "success"}, {"state": "failure"}]
+    assert G.ci_conclusion([], commits) == "failure"
+
+    # No runs and no commit statuses – treat as success (no failures)
+    assert G.ci_conclusion([], []) == "success"
+
+
 def test_parse_judge_fail_closed():
     assert G.parse_judge("reasoning\nREWARD: PASS") is True
     assert G.parse_judge("reasoning\nREWARD: FAIL") is False
     assert G.parse_judge("no verdict at all") is False          # fail-closed
     assert G.parse_judge("[LLM unavailable — all tiers failed]") is False  # fail-closed
+
+
+def test_parse_judge_whitespace_and_case():
+    # Extra spaces before the verdict are tolerated
+    assert G.parse_judge("REWARD:   PASS") is True
+    # Case sensitivity – only uppercase 'REWARD' is recognized
+    assert G.parse_judge("reward: PASS") is False
+    # Verdict not at the very end but still present should be accepted
+    assert G.parse_judge("REWARD: PASS\nadditional info") is True
 
 
 def test_decide_merges_only_on_full_reward():
@@ -41,3 +66,8 @@ def test_decide_merges_only_on_full_reward():
     assert G.decide("success", True, False, True)[0] is False   # coverage regressed
     assert G.decide("pending", True, True, True)[0] is False    # CI running
     assert G.decide("success", True, True, False)[0] is False   # not labelled
+
+
+def test_decide_unknown_ci_state():
+    # Any CI state other than 'success' should result in no merge
+    assert G.decide("unknown", True, True, True)[0] is False
