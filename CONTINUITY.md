@@ -6,10 +6,20 @@
 > lost. Keep it current: when you finish or start something material, update this file in
 > the same commit.
 
-_Last updated: 2026-07-22._
+_Last updated: 2026-07-24._
 
 ## ⚡ STATE AS OF 2026-07-24 (read this first)
-**🟢 DURABLE POSTGRES — ROOT-CAUSED + AUTONOMOUS FIX SHIPPED (no user action needed).**
+**🟢 DURABLE POSTGRES — ROOT-CAUSED + AUTONOMOUS FIX SHIPPED + MERGED (no user action needed).**
+The region-autofix now runs from TWO triggers, both on `main`: the standalone
+`db-url-region-autofix.yml` (cron `27 */3`, but GitHub still shows 0 runs — brand-new cron
+not yet activated) AND `db-keepalive.yml` (PR #962, MERGED 2026-07-24) which is already
+registered and fires 3×/day (`17 3,11,19` UTC). Scheduled workflows run the file from `main`
+HEAD, so the **next db-keepalive run (~03:17 UTC, historically lands 04–06 UTC on the free
+tier)** executes the region-fix step → patches the Render `DATABASE_URL` region → redeploys →
+Postgres reconnects. I cannot force it earlier: `workflow_dispatch` via the agent token is
+403 ("Resource not accessible by integration"). Live check at 21:45 UTC: still
+`database.fallback=sqlite`, `primary.error=tenant/user postgres.vexzwnfbmznvxoxxktax not
+found` — expected until the scheduled run fires.
 The real cause was NOT a stale boot — it's that the Render `DATABASE_URL` points at the
 **WRONG Supabase pooler region**. The project is `us-west-1`; the URL used a different
 region's pooler host, so Supavisor answered "tenant/user postgres.vexzwnfbmznvxoxxktax
