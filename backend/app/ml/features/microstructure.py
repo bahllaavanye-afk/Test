@@ -17,6 +17,21 @@ import numpy as np
 import pandas as pd
 from functools import lru_cache
 
+# Constants
+DEFAULT_LEVELS: int = 5
+BASIS_POINTS_MULTIPLIER: float = 10_000.0
+MIN_SAMPLE_SIZE: int = 5
+VAR_VOLUME_EPS: float = 1e-12
+
+COL_HIGH: str = "high"
+COL_LOW: str = "low"
+COL_CLOSE: str = "close"
+COL_OPEN: str = "open"
+COL_LOB_IMBALANCE: str = "lob_imbalance"
+COL_SPREAD_BPS: str = "spread_bps"
+
+MICROSTRUCTURE_FEATURE_COLS = [COL_LOB_IMBALANCE, COL_SPREAD_BPS]
+
 
 class OrderBookFeatures:
     """Compute LOB features from real-time bid/ask depth."""
@@ -28,7 +43,6 @@ class OrderBookFeatures:
         levels: int,
     ) -> np.ndarray:
         """Extract volumes up to `levels` and return as NumPy array."""
-        # Convert to NumPy array of shape (n, 2) and slice volumes
         arr = np.fromiter((sz for _, sz in data[:levels]), dtype=float, count=levels)
         return arr
 
@@ -36,7 +50,7 @@ class OrderBookFeatures:
         self,
         bids: list[tuple[float, float]],
         asks: list[tuple[float, float]],
-        levels: int = 5,
+        levels: int = DEFAULT_LEVELS,
     ) -> float:
         """
         Order book imbalance: (bid_vol - ask_vol) / (bid_vol + ask_vol).
@@ -50,7 +64,6 @@ class OrderBookFeatures:
         if not bids or not asks:
             return 0.0
 
-        # Convert to immutable tuple for caching
         bid_tuple = tuple(bids)
         ask_tuple = tuple(asks)
 
@@ -66,13 +79,13 @@ class OrderBookFeatures:
 
     def compute_spread_bps(self, best_bid: float, best_ask: float) -> float:
         """
-        Bid-ask spread in basis points: (ask - bid) / mid * 10_000.
+        Bid-ask spread in basis points: (ask - bid) / mid * BASIS_POINTS_MULTIPLIER.
         Returns 0.0 for invalid inputs.
         """
         if best_bid <= 0.0 or best_ask <= 0.0 or best_ask <= best_bid:
             return 0.0
         mid = (best_bid + best_ask) * 0.5
-        return float((best_ask - best_bid) / mid * 10_000.0)
+        return float((best_ask - best_bid) / mid * BASIS_POINTS_MULTIPLIER)
 
     def compute_depth_ratio(
         self,
@@ -115,17 +128,16 @@ class OrderBookFeatures:
         Returns lambda (bps per unit volume). Higher = less liquid.
         Returns 0.0 if insufficient data.
         """
-        if price_changes.size < 5 or signed_volumes.size < 5:
+        if price_changes.size < MIN_SAMPLE_SIZE or signed_volumes.size < MIN_SAMPLE_SIZE:
             return 0.0
         try:
             vol = np.asarray(signed_volumes, dtype=float)
             dp = np.asarray(price_changes, dtype=float)
 
             var_vol = np.var(vol)
-            if var_vol < 1e-12:
+            if var_vol < VAR_VOLUME_EPS:
                 return 0.0
 
-            # Covariance via means to avoid np.cov overhead
             cov = np.mean(dp * vol) - np.mean(dp) * np.mean(vol)
             lam = float(cov / var_vol)
             return lam
@@ -138,7 +150,7 @@ class OrderBookFeatures:
         asks: list[tuple[float, float]],
         buy_volume: float = 0.0,
         sell_volume: float = 0.0,
-        levels: int = 5,
+        levels: int = DEFAULT_LEVELS,
     ) -> dict[str, float]:
         """
         Compute all microstructure features from a single LOB snapshot.
@@ -167,24 +179,21 @@ def add_microstructure_features(
 
     If real-time LOB series are provided they are aligned and added.
     Otherwise, proxy features are computed from OHLCV:
-      - volume_imbalance_proxy: (close - open) / (high - low + 1e-9)  — approximates buy/sell pressure
-      - spread_bps_proxy: (high - low) / close * 10_000               — proxy for intraday spread
+      - volume_imbalance_proxy: (close - open) / (high - low)  — approximates buy/sell pressure
+      - spread_bps_proxy: (high - low) / close * BASIS_POINTS_MULTIPLIER — proxy for intraday spread
     """
     df = df.copy()
 
     if imbalance_series is not None:
-        df["lob_imbalance"] = imbalance_series.reindex(df.index).fillna(0.0)
+        df[COL_LOB_IMBALANCE] = imbalance_series.reindex(df.index).fillna(0.0)
     else:
-        rng = (df["high"] - df["low"]).replace(0, np.nan)
-        df["lob_imbalance"] = ((df["close"] - df["open"]) / rng).clip(-1, 1).fillna(0.0)
+        rng = (df[COL_HIGH] - df[COL_LOW]).replace(0, np.nan)
+        df[COL_LOB_IMBALANCE] = ((df[COL_CLOSE] - df[COL_OPEN]) / rng).clip(-1, 1).fillna(0.0)
 
     if spread_bps_series is not None:
-        df["spread_bps"] = spread_bps_series.reindex(df.index).fillna(0.0)
+        df[COL_SPREAD_BPS] = spread_bps_series.reindex(df.index).fillna(0.0)
     else:
-        close_nonzero = df["close"].replace(0, np.nan)
-        df["spread_bps"] = ((df["high"] - df["low"]) / close_nonzero * 10_000).fillna(0.0)
+        close_nonzero = df[COL_CLOSE].replace(0, np.nan)
+        df[COL_SPREAD_BPS] = ((df[COL_HIGH] - df[COL_LOW]) / close_nonzero * BASIS_POINTS_MULTIPLIER).fillna(0.0)
 
     return df
-
-
-MICROSTRUCTURE_FEATURE_COLS = ["lob_imbalance", "spread_bps"]
