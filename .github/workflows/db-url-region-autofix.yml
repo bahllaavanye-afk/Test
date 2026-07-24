@@ -1,0 +1,71 @@
+name: DB URL region autofix (scheduled)
+
+# Autonomous fix for the weeks-long "tenant/user postgres.<ref> not found" DB
+# failure. The project (Supabase "Trade") is ACTIVE_HEALTHY in us-west-1, but the
+# Render DATABASE_URL points at the WRONG pooler region → Supavisor rejects the
+# tenant → the backend falls back to ephemeral SQLite every boot.
+#
+# render_fix_db_url.py now rewrites an already-pooler URL to the correct region
+# (us-west-1) and redeploys — and ONLY when it actually changes the value
+# (idempotent: once the region is right, this is a clean no-op, no redeploy).
+#
+# This runs on a SCHEDULE because the one-shot fix workflows are workflow_dispatch
+# only, and dispatch/push triggers are not reachable from the agent's token.
+# Schedule events fire server-side and are not suppressed.
+
+on:
+  schedule:
+    - cron: "27 */3 * * *"    # every 3 hours
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "Supabase region"
+        required: false
+        default: "us-west-1"
+
+concurrency:
+  group: db-url-region-autofix
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install httpx --quiet
+      - name: Guard — Render secrets present?
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "::warning::RENDER_API_KEY / RENDER_SERVICE_ID not set — skipping."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+      - name: Correct DATABASE_URL pooler region (+ redeploy only if changed)
+        if: env.SKIP != '1'
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_WORKER_SERVICE_ID: ${{ secrets.RENDER_WORKER_SERVICE_ID }}
+          SUPABASE_REGION: ${{ github.event.inputs.region || 'us-west-1' }}
+          SUPABASE_POOLER_PORT: "6543"
+        run: python .github/scripts/render_fix_db_url.py
+      - name: Report live DB status after the run
+        if: env.SKIP != '1'
+        run: |
+          sleep 20
+          curl -sS --max-time 30 https://quantedge-api-9jz0.onrender.com/health/detailed \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); c=d['checks']; print('db.fallback=', c.get('database',{}).get('fallback'), 'primary_ok=', c.get('database_primary',{}).get('ok'))" || true
