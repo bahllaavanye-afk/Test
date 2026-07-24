@@ -87,6 +87,23 @@ jobs:
               // Neither gates correctness — only real CI jobs do.
               const IGNORE = ['automerge', 'ops-sync', 'Vercel Preview Comments'];
               const runs = checks.check_runs.filter(c => !IGNORE.includes(c.name));
+
+              // REQUIRED checks must be PRESENT, not merely non-failing. Without
+              // this, a PR whose CI never ran (GitHub suppresses pull_request
+              // workflows for bot-GITHUB_TOKEN branches — every improver/run-* PR)
+              // has an EMPTY `runs` array → zero unfinished + zero failed → the
+              // gate reads "no checks" as "all green" and merges it UNVALIDATED.
+              // That hole broke main repeatedly (#876 strategy-router 400; #929
+              // PIPELINE_DEFS + boot crashes). Refuse to merge until the real CI
+              // jobs have actually run and passed on this head sha.
+              const REQUIRED_CHECKS = ['test', 'test-agents', 'frontend-build'];
+              const present = new Set(runs.map(c => c.name));
+              const missing = REQUIRED_CHECKS.filter(n => !present.has(n));
+              if (missing.length) {
+                core.info(`#${number}: required CI never ran (${missing.join(', ')}) — refusing to merge unvalidated PR`);
+                continue;
+              }
+
               const unfinished = runs.filter(c => c.status !== 'completed');
               if (unfinished.length) { core.info(`#${number}: ${unfinished.length} check(s) still running`); continue; }
               const failed = runs.filter(c => !['success', 'neutral', 'skipped'].includes(c.conclusion));
