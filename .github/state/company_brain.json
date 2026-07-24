@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784863737.4073262,
+    "last_updated": 1784866849.9929514,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,37 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784854820.8592386
+    "last_brain_update": 1784866849.9918816
   },
   "episodic": [
-    {
-      "lesson": "Investigate root cause of repeated auto-fix failures (patch format or environment mismatch) to stabilize CI/CD pipeline.",
-      "category": "code",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784289958.8054123
-    },
-    {
-      "lesson": "Enforce structured issue templates to ensure sufficient details for automated fixes and reduce skipped patches.",
-      "category": "execution",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784289958.8095112
-    },
-    {
-      "lesson": "Implement manual review process for complex issues that automated fixes cannot resolve to prevent stalled deployments.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784289958.8170526
-    },
-    {
-      "lesson": "Automated patch application is failing repeatedly; investigate root cause (e.g., merge conflicts, syntax changes) and consider manual review or improving patch generation logic.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784296892.2797935
-    },
     {
       "lesson": "Feature request for per-desk performance attribution requires new schema, engine changes, and pruning logic \u2013 prioritize as a strategic enhancement and break into incremental deliverables.",
       "category": "strategy",
@@ -1907,14 +1879,37 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1784859426.2519786
+    },
+    {
+      "lesson": "GitHub automerge revoked for PR modifying protected file `bot.py`. Previous similar edit broke main. Require explicit human review and additional automated tests for all PRs touching protected paths (risk manager, broker/strategy bases, models, app factory).",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784866842.2891185
+    },
+    {
+      "lesson": "Auto-fix CI pipeline failed multiple times: patch could not be applied and validation exceeded 50-line limit. Investigate patch generation logic and consider increasing line limit or splitting changes into smaller PRs.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784866842.2939792
+    },
+    {
+      "lesson": "Crypto desk placed 3 high-confidence orders (89-97%) in a sideways/calm regime. Monitor for regime shift to avoid adverse moves; consider tightening stop-losses or adding volatility-based position sizing.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784866842.2983904
+    },
+    {
+      "lesson": "Equities desk fired no signals despite backtest engine suggesting Sharpe 1.3-1.5 with RSI+momentum on 15-min bars. Re-evaluate strategy parameters for current calm regime; consider lowering entry thresholds or switching to intraday mean-reversion.",
+      "category": "strategy",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784866842.3026104
     }
   ],
   "github_insights": [
-    {
-      "summary": "An automated fix attempt repeatedly failed because the system could not apply the patch to the file.",
-      "item_count": 20,
-      "ts": 1784113787.5654473
-    },
     {
       "summary": "The auto-fix tool repeatedly failed three times, each time unable to apply a patch to the file.",
       "item_count": 20,
@@ -2409,6 +2404,11 @@
       "summary": "The provided text appears to be a corrupted or malformed reference (possibly an encoded link or error output) rather than a readable GitHub PR or issue discussion. I cannot summarize from this input. Please share the actual discussion content or a valid GitHub URL.",
       "item_count": 20,
       "ts": 1784854820.8475556
+    },
+    {
+      "summary": "An autonomous PR modifying protected files had its automerge revoked by a team lead, and auto-fix attempts failed because the proposed changes exceeded the allowed line limit (56 lines vs. 50).",
+      "item_count": 20,
+      "ts": 1784866849.9821131
     }
   ],
   "experiment_results": [
@@ -2950,6 +2950,30 @@
       "summary": "*Equities Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `realized_vol_asymmetry/LLY` BUY $372 conf=100%  id=`b1ae65e1\u2026`\n\ud83d\udfe2 `realized_vol_asymmetry/UNH` BUY $477 conf=100%  id=`b36cd365\u2026`",
       "source": "desk_run_summary",
       "ts": 1784854792.2603157
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (02:21 UTC)  equity=$22,515.11  regime=sideways/calm\nfunnel: 41 generated \u2192 17 survived gate+topK (0 exploration) \u2192 3 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 3 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
+      "source": "desk_run_summary",
+      "ts": 1784866842.306711
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784866842.310983
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $389 conf=97%  id=`aaeeca73\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $338 conf=92%  id=`ca313d37\u2026`\n\ud83d\udfe2 `vol_of_vol_timing/YFI/USD` BUY $338 conf=89%  id=`412554fb\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784866842.3150651
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "**\u26a1 Backtest Engine**: I\u2019d expect a Sharpe ratio in the 1.3\u20111.5 range because the 14\u2011period RSI combined with a momentum filter typically yields a modestly positive expectancy on 15\u2011minute equity bars while keeping drawdowns low, especially after excluding the higher\u2011noise stocks (QQQ, MSFT, NVDA). ",
+      "source": "desk_run_summary",
+      "ts": 1784866842.3227818
     }
   ]
 }
