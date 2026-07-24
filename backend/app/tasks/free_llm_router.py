@@ -19,17 +19,19 @@ Modes:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
 # ── Provider definitions ──────────────────────────────────────────────────────
+
 
 @dataclass
 class LLMProvider:
@@ -39,10 +41,10 @@ class LLMProvider:
     model: str
     max_tokens: int = 2048
     timeout: float = 30.0
-    headers_extra: dict = field(default_factory=dict)
+    headers_extra: Dict[str, Any] = field(default_factory=dict)
 
 
-PROVIDERS: list[LLMProvider] = [
+PROVIDERS: List[LLMProvider] = [
     LLMProvider(
         name="gemini",
         env_key="GEMINI_API_KEY",
@@ -103,14 +105,20 @@ class LLMResponse:
     tokens_used: int = 0
 
 
-# ── Core caller ───────────────────────────────────────────────────────────────
+# ── Caching layer ─────────────────────────────────────────────────────────────
 
-async def _call_provider(
+# Cache key: (provider_name, serialized_messages)
+_response_cache: Dict[Tuple[str, str], asyncio.Future[LLMResponse | None]] = {}
+_cache_lock = asyncio.Lock()
+
+
+async def _fetch_provider(
     provider: LLMProvider,
-    messages: list[dict],
-    temperature: float = 0.3,
-    max_tokens: int | None = None,
+    messages: List[dict],
+    temperature: float,
+    max_tokens: int | None,
 ) -> LLMResponse | None:
+    """Actual network call to the provider."""
     api_key = os.getenv(provider.env_key, "")
     if not api_key or api_key in ("disabled", ""):
         return None
@@ -127,7 +135,11 @@ async def _call_provider(
         async with httpx.AsyncClient(timeout=provider.timeout) as client:
             resp = await client.post(
                 f"{provider.base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    **provider.headers_extra,
+                },
                 json=payload,
             )
             resp.raise_for_status()
@@ -135,16 +147,57 @@ async def _call_provider(
             content = data["choices"][0]["message"]["content"]
             tokens = data.get("usage", {}).get("total_tokens", 0)
             latency = (time.monotonic() - t0) * 1000
-            return LLMResponse(provider=provider.name, content=content, latency_ms=latency, tokens_used=tokens)
+            return LLMResponse(
+                provider=provider.name,
+                content=content,
+                latency_ms=latency,
+                tokens_used=tokens,
+            )
     except Exception as e:
         logger.debug("Provider %s failed: %s", provider.name, e)
         return None
 
 
+async def _call_provider(
+    provider: LLMProvider,
+    messages: List[dict],
+    temperature: float = 0.3,
+    max_tokens: int | None = None,
+) -> LLMResponse | None:
+    """Cached wrapper around _fetch_provider."""
+    if not messages:
+        return None
+
+    # Serialize messages for a deterministic cache key
+    try:
+        messages_key = json.dumps(messages, sort_keys=True, separators=(",", ":"))
+    except (TypeError, ValueError) as e:
+        logger.debug("Failed to serialize messages for caching: %s", e)
+        messages_key = str(messages)
+
+    cache_key = (provider.name, messages_key)
+
+    async with _cache_lock:
+        cached_future = _response_cache.get(cache_key)
+        if cached_future is None:
+            # Create a task to fetch the result and store it immediately
+            future = asyncio.create_task(
+                _fetch_provider(provider, messages, temperature, max_tokens)
+            )
+            _response_cache[cache_key] = future
+        else:
+            future = cached_future
+
+    # Await the (new or existing) future outside the lock
+    result = await future
+    return result
+
+
 # ── Public API ─────────────────────────────────────────────────────────────────
 
+
 async def call_race(
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int = 2048,
     timeout: float = 30.0,
@@ -170,17 +223,19 @@ async def call_race(
     for t in done:
         result = t.result()
         if result:
-            logger.info("LLM race winner: %s (%.0fms)", result.provider, result.latency_ms)
+            logger.info(
+                "LLM race winner: %s (%.0fms)", result.provider, result.latency_ms
+            )
             return result
     return None
 
 
 async def call_consensus(
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int = 512,
     timeout: float = 40.0,
-) -> list[LLMResponse]:
+) -> List[LLMResponse]:
     """Call all providers and return all successful responses for consensus analysis."""
     tasks = [
         _call_provider(p, messages, temperature, max_tokens)
@@ -193,6 +248,10 @@ async def call_consensus(
     return [r for r in results if isinstance(r, LLMResponse)]
 
 
-def available_providers() -> list[str]:
+def available_providers() -> List[str]:
     """Return names of providers with configured API keys."""
-    return [p.name for p in PROVIDERS if os.getenv(p.env_key, "") not in ("", "disabled")]
+    return [
+        p.name
+        for p in PROVIDERS
+        if os.getenv(p.env_key, "") not in ("", "disabled")
+    ]
