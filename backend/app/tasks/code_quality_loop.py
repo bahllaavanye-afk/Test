@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -101,10 +102,23 @@ class CodeQualityLoop:
         self._running = True
         logger.info("CodeQualityLoop started", interval=self.interval_seconds)
         while self._running:
+            start_time = time.perf_counter()
             try:
                 snapshot = await self._snapshot()
                 self._persist(snapshot)
                 logger.debug("Code quality snapshot", **snapshot)
+
+                # Structured INFO logging with key metrics
+                execution_time = time.perf_counter() - start_time
+                signal_count = snapshot.get("files", 0)
+                # P&L is not directly applicable here; default to 0
+                pnl = 0
+                logger.info(
+                    "CodeQualityLoop iteration completed",
+                    execution_time=round(execution_time, 4),
+                    signal_count=signal_count,
+                    pnl=pnl,
+                )
             except asyncio.CancelledError:
                 return
             except Exception as e:
