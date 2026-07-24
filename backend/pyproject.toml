@@ -120,9 +120,10 @@ test = [
     "psycopg2-binary>=2.9.10",
 ]
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
+# NOTE: pytest configuration lives in pytest.ini (the single source of truth).
+# A [tool.pytest.ini_options] block here would be SILENTLY IGNORED — pytest.ini
+# takes precedence — and pytest prints "ignoring pytest config in pyproject.toml".
+# Do not re-add pytest settings here; edit pytest.ini instead.
 
 [tool.ruff]
 line-length = 100
