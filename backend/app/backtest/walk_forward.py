@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import numpy as np
 from dataclasses import dataclass, field
 
 from app.backtest.engine import run_backtest, BacktestMetrics
@@ -92,6 +93,69 @@ def robustness_verdict(sharpes: list[float]) -> dict:
     }
 
 
+def _apply_signal_filters(
+    train: pd.Series,
+    test: pd.Series,
+    raw_signals: pd.Series,
+    max_holding_days: int = 10,
+) -> pd.Series:
+    """Tighten entry conditions and add simple confirmation / exit filters.
+
+    - **Trend confirmation**: Use 20‑day and 50‑day simple moving averages
+      computed on the concatenated train+test series. Long entries are kept only
+      when the 20‑day SMA is above the 50‑day SMA; short entries require the
+      opposite.
+    - **Persistence filter**: Require the same signal direction to appear for
+      at least two consecutive days before a trade is opened.
+    - **Maximum holding period**: After an entry, force an exit (signal = 0)
+      after ``max_holding_days`` to avoid excessively long positions.
+
+    The function returns a signal series aligned with ``test`` where any
+    disallowed signal is replaced by 0.
+    """
+    # Align raw signals to test index and fill missing values with 0
+    signals = raw_signals.reindex(test.index).fillna(0)
+
+    # --- Trend confirmation -------------------------------------------------
+    combined = pd.concat([train, test])
+    sma20 = combined.rolling(window=20, min_periods=1).mean()
+    sma50 = combined.rolling(window=50, min_periods=1).mean()
+    sma20_test = sma20.reindex(test.index)
+    sma50_test = sma50.reindex(test.index)
+
+    trend_ok = ((signals > 0) & (sma20_test > sma50_test)) | (
+        (signals < 0) & (sma20_test < sma50_test)
+    ) | (signals == 0)
+
+    # --- Persistence filter -------------------------------------------------
+    persistence = (signals == signals.shift(1)) | (signals == 0)
+
+    # Combine filters
+    allowed = trend_ok & persistence
+
+    filtered = signals.where(allowed, other=0)
+
+    # --- Maximum holding period ---------------------------------------------
+    # Convert to positions: 1 for long, -1 for short, 0 for flat
+    position = filtered.copy()
+    holding_counter = 0
+    for idx in range(len(position)):
+        sig = position.iloc[idx]
+        if sig != 0:
+            if holding_counter == 0:
+                # New entry
+                holding_counter = 1
+            else:
+                holding_counter += 1
+            if holding_counter > max_holding_days:
+                # Force exit
+                position.iloc[idx] = 0
+                holding_counter = 0
+        else:
+            holding_counter = 0
+    return position
+
+
 def _run_window(
     train: pd.Series,
     test: pd.Series,
@@ -106,8 +170,11 @@ def _run_window(
     - updated equity carry for the next window
     """
     try:
-        test_signals = signals_fn(train, test)
-        metrics: BacktestMetrics = run_backtest(test_signals, test, initial_equity=equity_carry)
+        raw_signals = signals_fn(train, test)
+        signals = _apply_signal_filters(train, test, raw_signals)
+
+        metrics: BacktestMetrics = run_backtest(signals, test, initial_equity=equity_carry)
+
         new_carry = (
             metrics.equity_curve[-1]["equity"]
             if metrics.equity_curve
