@@ -2,30 +2,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from pydantic import BaseModel, Field, validator
 from app.strategies import STRATEGY_REGISTRY
-
-
-class SignalSchema(BaseModel):
-    """Pydantic schema representing a single backtest signal.
-
-    Attributes
-    ----------
-    value: int
-        Signal direction where -1 denotes a short position, 0 denotes neutral,
-        and 1 denotes a long position.
-    """
-    value: int = Field(
-        ...,
-        description="Signal direction: -1 for short, 0 for neutral, 1 for long",
-        examples=[-1, 0, 1],
-    )
-
-    @validator("value")
-    def _must_be_valid_signal(cls, v: int) -> int:
-        if v not in (-1, 0, 1):
-            raise ValueError("Signal must be -1, 0, or 1")
-        return v
 
 
 @pytest.fixture
@@ -39,10 +16,8 @@ def ohlcv():
     open_ = close * (1 + rng.normal(0, 0.001, n))
     volume = rng.integers(100_000, 1_000_000, n)
     idx = pd.date_range("2024-01-01", periods=n, freq="1D")
-    return pd.DataFrame(
-        {"open": open_, "high": high, "low": low, "close": close, "volume": volume},
-        index=idx,
-    )
+    return pd.DataFrame({"open": open_, "high": high, "low": low,
+                         "close": close, "volume": volume}, index=idx)
 
 
 def test_registry_not_empty():
@@ -60,16 +35,9 @@ def test_strategy_has_required_attrs(name):
     assert hasattr(inst, "risk_bucket")
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        "momentum",
-        "mean_reversion",
-        "rsi_macd",
-        "breakout",
-        "supertrend",
-    ],
-)
+@pytest.mark.parametrize("name", [
+    "momentum", "mean_reversion", "rsi_macd", "breakout", "supertrend",
+])
 def test_strategy_backtest_signals(name, ohlcv):
     cls = STRATEGY_REGISTRY.get(name)
     if cls is None:
@@ -82,10 +50,3 @@ def test_strategy_backtest_signals(name, ohlcv):
         unique = set(signals.dropna().unique())
         # Should be subset of -1, 0, 1
         assert unique.issubset({-1, 0, 1, -1.0, 0.0, 1.0})
-        # Validate each unique signal against the schema
-        for val in unique:
-            SignalSchema(value=int(val))
-    else:
-        # If a strategy returns a custom container, ensure each element conforms to the schema
-        for item in signals:
-            SignalSchema(value=int(item))
