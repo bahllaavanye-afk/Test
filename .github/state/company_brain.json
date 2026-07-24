@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784904749.44787,
+    "last_updated": 1784906413.8148034,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -60,27 +60,27 @@
     "autopilot_best_oos_sharpe": 1.1414,
     "autopilot_best_blended": 0.4001,
     "autopilot_overfit_count": 0,
-    "market_regime": "neutral",
+    "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-07-23T15:46:40.233131+00:00",
+      "generated_at": "2026-07-24T15:19:38.340541+00:00",
       "signals": {
         "vix": {
-          "value": 20.31,
-          "trend": "rising"
+          "value": 18.64,
+          "trend": "flat"
         },
         "spy": {
-          "price": 736.51,
-          "sma50": 744.02,
-          "sma200": 695.06,
+          "price": 738.25,
+          "sma50": 744.1,
+          "sma200": 695.43,
           "trend": "above_200sma"
         },
         "yield_curve": {
-          "ratio": 1.0164,
+          "ratio": 1.0206,
           "median": 1.0517,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 2.306,
+          "hyg_lqd_momentum_20d": 2.188,
           "signal": "tightening"
         },
         "breadth": {
@@ -89,25 +89,25 @@
           "breadth_pct": 54.5
         },
         "btc": {
-          "price": 64892,
-          "24h_pct": -1.69
+          "price": 64060,
+          "24h_pct": -1.17
         }
       },
-      "score": 0,
-      "regime": "neutral",
+      "score": 2,
+      "regime": "bull",
       "strategy_gates": {
         "directional": true,
-        "min_confidence": 0.68,
-        "size_multiplier": 0.75
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
       },
       "summary": "[LLM unavailable \u2014 all providers failed]"
     },
     "strategy_gates": {
       "directional": true,
-      "min_confidence": 0.68,
-      "size_multiplier": 0.75
+      "min_confidence": 0.6,
+      "size_multiplier": 1.0
     },
-    "opinion_score": 0,
+    "opinion_score": 2,
     "macro_score": 1,
     "vix": 18.7,
     "market_scan_ts": 1784859426.219654,
@@ -155,13 +155,6 @@
     "last_brain_update": 1784904749.446562
   },
   "episodic": [
-    {
-      "lesson": "Complex features like per-desk performance attribution are being skipped by auto-fix, delaying critical functionality and requiring human intervention.",
-      "category": "strategy",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784302704.010062
-    },
     {
       "lesson": "Frequent auto-fix failures risk accumulating unresolved issues, increasing technical debt and operational overhead.",
       "category": "risk",
@@ -1894,6 +1887,18 @@
       "priority": 1,
       "source": "company_brain_synthesis",
       "ts": 1784904717.394951
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 2,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1784906413.8201408
     }
   ],
   "github_insights": [
