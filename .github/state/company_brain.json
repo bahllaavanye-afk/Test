@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784911507.6279998,
+    "last_updated": 1784915043.5342283,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,15 +109,15 @@
     },
     "opinion_score": 2,
     "macro_score": 2,
-    "vix": 18.12,
-    "market_scan_ts": 1784906504.3191612,
+    "vix": 17.97,
+    "market_scan_ts": 1784915043.5061774,
     "sector_leaders": [
       "Energy",
       "Healthcare",
       "Financials"
     ],
     "sector_laggards": [
-      "Materials",
+      "Cons. Staples",
       "Tech",
       "Cons. Disc."
     ],
@@ -126,42 +126,35 @@
       "TSLA",
       "NOW",
       "ORCL",
+      "TMO",
       "GOOGL",
       "HD",
-      "TMO",
       "QQQ",
       "XOM",
-      "XLI",
-      "IWM",
-      "AMZN",
-      "ADBE",
-      "PANW",
-      "XLV",
-      "CVX",
-      "BAC",
       "NVDA",
-      "JPM",
-      "MSFT"
+      "IWM",
+      "PANW",
+      "ADBE",
+      "XLI",
+      "AMZN",
+      "ABT",
+      "XLF",
+      "CVX",
+      "META",
+      "BAC"
     ],
     "top_momentum": [
-      "MPC",
       "AAPL",
-      "INTU",
+      "MPC",
       "SLB",
-      "XOM"
+      "XOM",
+      "COP"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1784910817.1728635
   },
   "episodic": [
-    {
-      "lesson": "The auto-fix system's complexity threshold should be recalibrated to better handle multi-layer changes and reduce manual triage.",
-      "category": "execution",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784302704.0167615
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -1907,6 +1900,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 5, Breakouts: 0, Risk flags: 0.",
       "ts": 1784906504.3486722
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 4,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 4, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784915043.5396104
     }
   ],
   "github_insights": [
