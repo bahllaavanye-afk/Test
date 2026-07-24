@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Monitor CPU usage",
-    "Implement heartbeat checks",
-    "Validate user input data",
-    "Log input data",
     "Validate config files",
     "Test market holidays",
     "Verify clock sync",
@@ -199,8 +195,12 @@
     "Test network ping",
     "Check dependency updates",
     "Monitor thread timeouts",
-    "Track queue lengths"
+    "Track queue lengths",
+    "Validate SSL certs",
+    "Check file permissions",
+    "Test CPU load",
+    "Verify config hash"
   ],
-  "last_updated": "2026-07-24T15:13:43.153965+00:00",
+  "last_updated": "2026-07-24T17:03:01.700910+00:00",
   "total": 200
 }
