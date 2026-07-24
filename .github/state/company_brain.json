@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784854820.860449,
+    "last_updated": 1784859426.246815,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -110,7 +110,7 @@
     "opinion_score": 0,
     "macro_score": 1,
     "vix": 18.7,
-    "market_scan_ts": 1784840141.6061625,
+    "market_scan_ts": 1784859426.219654,
     "sector_leaders": [
       "Energy",
       "Healthcare",
@@ -123,25 +123,25 @@
     ],
     "active_universe": [
       "TMO",
+      "XOM",
+      "COP",
       "XLE",
       "GLD",
-      "XOM",
-      "TLT",
       "WMT",
+      "CVX",
+      "TLT",
+      "EOG",
       "XLI",
-      "COP",
       "IWM",
+      "DIA",
       "QQQ",
       "SPY",
-      "XLP",
-      "CVX",
-      "DIA",
-      "MSFT",
-      "SHY",
-      "MPC",
       "JNJ",
-      "EOG",
-      "XLF"
+      "JPM",
+      "XLP",
+      "MPC",
+      "KO",
+      "MRK"
     ],
     "top_momentum": [
       "MPC",
@@ -155,13 +155,6 @@
     "last_brain_update": 1784854820.8592386
   },
   "episodic": [
-    {
-      "lesson": "Free tier deployment limit reached; consider upgrading to Vercel Pro or batching deployments to avoid daily cap.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784289958.8021662
-    },
     {
       "lesson": "Investigate root cause of repeated auto-fix failures (patch format or environment mismatch) to stabilize CI/CD pipeline.",
       "category": "code",
@@ -1899,6 +1892,21 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1784854792.2392597
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 1,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784859426.2519786
     }
   ],
   "github_insights": [
