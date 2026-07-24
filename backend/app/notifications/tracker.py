@@ -10,6 +10,12 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+# Constants
+DEFAULT_MAX_SIZE: int = 5000
+DEFAULT_RECENT_LIMIT: int = 100
+LOG_MESSAGE: str = "Tracked event recorded"
+METRIC_KEYS: tuple[str, ...] = ("signal_count", "execution_time", "pnl")
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,7 +40,7 @@ class TrackedEvent:
 class ActivityTracker:
     """Bounded in-memory event log (last N events). Thread-safe via append."""
 
-    def __init__(self, max_size: int = 5000):
+    def __init__(self, max_size: int = DEFAULT_MAX_SIZE):
         self._events: deque[TrackedEvent] = deque(maxlen=max_size)
         self._counts: dict[str, int] = {}
 
@@ -58,15 +64,15 @@ class ActivityTracker:
             "summary": summary,
         }
         # Include optional metrics if present
-        for metric in ("signal_count", "execution_time", "pnl"):
+        for metric in METRIC_KEYS:
             if metric in metadata:
                 log_payload[metric] = metadata[metric]
 
-        logger.info("Tracked event recorded", extra=log_payload)
+        logger.info(LOG_MESSAGE, extra=log_payload)
 
         return event
 
-    def recent(self, limit: int = 100, category: str | None = None) -> list[dict]:
+    def recent(self, limit: int = DEFAULT_RECENT_LIMIT, category: str | None = None) -> list[dict]:
         events = list(self._events)
         if category:
             events = [e for e in events if e.category == category]
