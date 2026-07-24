@@ -1,6 +1,5 @@
 {
   "skills": [
-    "Log UCB1 decisions",
     "Set memory limits",
     "Verify trade confirms",
     "Verify disk space",
@@ -199,8 +198,9 @@
     "Monitor JVM heap size",
     "Check OS version",
     "Validate config hash",
-    "Estimate Sharpe ratio"
+    "Estimate Sharpe ratio",
+    "Verify DB connections"
   ],
-  "last_updated": "2026-07-24T20:19:10.693174+00:00",
+  "last_updated": "2026-07-24T21:35:55.505357+00:00",
   "total": 200
 }
