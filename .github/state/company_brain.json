@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784924515.8087475,
+    "last_updated": 1784926181.3851721,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784921869.25955
+    "last_brain_update": 1784926181.384115
   },
   "episodic": [
     {
@@ -1927,11 +1927,6 @@
   ],
   "github_insights": [
     {
-      "summary": "Multiple automated attempts to apply a patch to a file failed, with the auto-fix tool reporting each time that it could not apply the patch.",
-      "item_count": 20,
-      "ts": 1784172917.6988258
-    },
-    {
       "summary": "The PR aimed to scale up to 103 strategies, but the automated fix failed to apply the patch to the file.",
       "item_count": 20,
       "ts": 1784190823.526366
@@ -2425,6 +2420,11 @@
       "summary": "Two automated fix attempts were skipped due to complexity: one involved implementing an LLM-brain, and the other involved an issue related to numerical data.",
       "item_count": 20,
       "ts": 1784921869.2472794
+    },
+    {
+      "summary": "The auto-fix bot attempted to apply a patch but failed, and this failure was reported twice.",
+      "item_count": 20,
+      "ts": 1784926181.374166
     }
   ],
   "experiment_results": [
@@ -2511,42 +2511,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "desk-crypto",
-      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/DOT/USD` BUY $343 conf=97%  id=`a6c24b16\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $343 conf=92%  id=`5e0cea77\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784719138.8461254
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "**\u26a1 Backtest Engine**: I estimate the proposed hybrid strategy would yield a Sharpe ratio of around 1.5, given the ATR filter's ability to mitigate false positives and the potential for capturing high-conviction buys like NVDA, as seen in `backend/app/ml/models/price_predictor_v2.py`. To validate th",
-      "source": "desk_run_summary",
-      "ts": 1784719138.850287
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (12:52 UTC)  equity=$22,918.76  regime=sideways/calm\nfunnel: 52 generated \u2192 18 survived gate+topK (0 exploration) \u2192 2 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
-      "source": "desk_run_summary",
-      "ts": 1784724963.3896768
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 quiet: 8 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1784724963.3942523
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $344 conf=92%  id=`7d8e5bf4\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $401 conf=90%  id=`75c436de\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784724963.3987892
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "**\u26a1 Backtest Engine**: I estimate the proposed hybrid strategy would yield a Sharpe ratio of around 1.5, given the ATR filter's ability to mitigate false positives and the potential for capturing high-conviction buys like NVDA, as seen in `backend/app/ml/models/price_predictor_v2.py`. To validate th",
-      "source": "desk_run_summary",
-      "ts": 1784724963.4030535
-    },
     {
       "channel": "pnl-daily",
       "summary": "*QuantEdge Desk Run* (12:52 UTC)  equity=$22,918.76  regime=sideways/calm\nfunnel: 52 generated \u2192 18 survived gate+topK (0 exploration) \u2192 2 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
@@ -3110,6 +3074,42 @@
       "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $336 conf=98%  id=`e4d035f7\u2026`\n\ud83d\udfe2 `time_series_momentum/WEAT` BUY $475 conf=82%  id=`ce5c7461\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $938 conf=81%  id=`25df14ee\u2026`",
       "source": "desk_run_summary",
       "ts": 1784921864.2230976
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (20:22 UTC)  equity=$22,370.90  regime=sideways/calm\nfunnel: 46 generated \u2192 16 survived gate+topK (0 exploration) \u2192 3 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 3 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
+      "source": "desk_run_summary",
+      "ts": 1784926179.0444841
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784926179.0494213
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $384 conf=97%  id=`a92c9c7d\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $336 conf=92%  id=`466a4cb7\u2026`\n\ud83d\udfe2 `vol_of_vol_timing/YFI/USD` BUY $336 conf=88%  id=`74dfe973\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784926179.072322
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "**\u26a1 Backtest Engine**: We need to respond as quick_backtest autonomous agent. Must be concise, specific, 2 sentences. Must comment on proposed strategy: estimate Sharpe ratio and why, and out-of-sample period to test. Should reference real file paths? Possibly mention config path. Provide estimate. ",
+      "source": "desk_run_summary",
+      "ts": 1784926179.0765793
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1170 conf=98%  id=`4dbeea7b\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784926179.0808036
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $336 conf=98%  id=`e4d035f7\u2026`\n\ud83d\udfe2 `time_series_momentum/WEAT` BUY $475 conf=82%  id=`ce5c7461\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $938 conf=81%  id=`25df14ee\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784926179.0849996
     }
   ]
 }
