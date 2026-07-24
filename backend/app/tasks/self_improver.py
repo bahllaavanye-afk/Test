@@ -47,6 +47,10 @@ PARAM_SPACES = {
 
 class SelfImprover:
     def __init__(self, algo_agent=None, interval_seconds: int = 900):
+        if not isinstance(interval_seconds, int):
+            raise ValueError("interval_seconds must be an integer")
+        if interval_seconds <= 0:
+            raise ValueError("interval_seconds must be a positive integer")
         self.algo_agent = algo_agent
         self.interval_seconds = interval_seconds
         self._best_params: dict[str, dict] = {}    # strategy → best params dict
@@ -72,8 +76,14 @@ class SelfImprover:
             loop = asyncio.get_running_loop()
             hist = await loop.run_in_executor(
                 None,
-                lambda: yf.download(symbol, start=str(start.date()), end=str(end.date()),
-                                    interval="1d", auto_adjust=True, progress=False)
+                lambda: yf.download(
+                    symbol,
+                    start=str(start.date()),
+                    end=str(end.date()),
+                    interval="1d",
+                    auto_adjust=True,
+                    progress=False,
+                ),
             )
             if hist is None or len(hist) < 60:
                 return 0.0
@@ -130,7 +140,9 @@ class SelfImprover:
                 "params": best_iter_params,
                 "new_sharpe": round(best_iter_sharpe, 4),
                 "previous_sharpe": round(current_best, 4),
-                "improvement_pct": round((best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4),
+                "improvement_pct": round(
+                    (best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4
+                ),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             self._persist(promotion)
@@ -148,6 +160,10 @@ class SelfImprover:
             logger.debug("self_improver persist failed", error=str(exc))
 
     def get_best_params(self, strategy: str, symbol: str) -> dict | None:
+        if not isinstance(strategy, str) or not strategy:
+            raise ValueError("strategy must be a non-empty string")
+        if not isinstance(symbol, str) or not symbol:
+            raise ValueError("symbol must be a non-empty string")
         return self._best_params.get(f"{strategy}:{symbol}")
 
     def get_history(self) -> list[dict]:
@@ -163,8 +179,14 @@ class SelfImprover:
         logger.info("SelfImprover started", interval=self.interval_seconds)
 
         # Symbol coverage
-        TARGETS = [("momentum", "SPY"), ("momentum", "QQQ"), ("mean_reversion", "AAPL"),
-                   ("rsi_macd", "MSFT"), ("breakout", "NVDA"), ("supertrend", "SPY")]
+        TARGETS = [
+            ("momentum", "SPY"),
+            ("momentum", "QQQ"),
+            ("mean_reversion", "AAPL"),
+            ("rsi_macd", "MSFT"),
+            ("breakout", "NVDA"),
+            ("supertrend", "SPY"),
+        ]
 
         while self._running:
             self._iteration += 1
@@ -175,7 +197,12 @@ class SelfImprover:
                 except asyncio.CancelledError:
                     return
                 except Exception as e:
-                    logger.warning("Self-improver target failed", strategy=strategy, symbol=symbol, error=str(e))
+                    logger.warning(
+                        "Self-improver target failed",
+                        strategy=strategy,
+                        symbol=symbol,
+                        error=str(e),
+                    )
             await asyncio.sleep(self.interval_seconds)
 
     async def stop(self) -> None:
