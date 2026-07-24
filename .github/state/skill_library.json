@@ -1,12 +1,5 @@
 {
   "skills": [
-    "Implement JSON schema",
-    "Enhance error handling",
-    "Log trade errors",
-    "Based on the agent learnings, the following are the most important and actionable takeaways:",
-    "Enforce type hints",
-    "error_handling on brokers/alpaca.py: success \u2014 tests green",
-    "Log trade volumes",
     "Monitor CPU usage",
     "Implement heartbeat checks",
     "Validate user input data",
@@ -199,8 +192,15 @@
     "Validate CSV logic",
     "Check DB connections",
     "Handle API rate limits",
-    "Detect duplicate trades"
+    "Detect duplicate trades",
+    "Check clock sync",
+    "Verify JSON schema",
+    "Log memory usage",
+    "Test network ping",
+    "Check dependency updates",
+    "Monitor thread timeouts",
+    "Track queue lengths"
   ],
-  "last_updated": "2026-07-24T11:38:51.551152+00:00",
+  "last_updated": "2026-07-24T13:28:31.648647+00:00",
   "total": 200
 }
