@@ -60,7 +60,7 @@ async def receive_tradingview_alert(request: Request) -> dict:
         if not isinstance(payload, dict):
             raise ValueError("payload must be a JSON object")
     except Exception:  # noqa: BLE001 — malformed body is a client error
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                             detail="Body must be a JSON object.")
 
     if str(payload.get("secret") or "") != secret:

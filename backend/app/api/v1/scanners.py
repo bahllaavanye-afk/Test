@@ -5,7 +5,7 @@ import json
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, validator
 
 from app.api.deps import get_current_user
 
@@ -51,8 +51,8 @@ class ScanResultOut(BaseModel):
             raise ValueError("signals list cannot be empty")
         return v
 
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "symbol": "AAPL",
                 "desk": "equity",
@@ -62,6 +62,7 @@ class ScanResultOut(BaseModel):
                 "data": {"ma20": 150.3, "volume": 2500000},
             }
         }
+    )
 
 
 class ScanResponse(BaseModel):
@@ -73,8 +74,8 @@ class ScanResponse(BaseModel):
         example=True,
     )
 
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "desk": "equity",
                 "results": [
@@ -90,6 +91,7 @@ class ScanResponse(BaseModel):
                 "cached": False,
             }
         }
+    )
 
 
 async def _get_redis():
