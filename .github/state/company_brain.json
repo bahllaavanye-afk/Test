@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784882216.529673,
+    "last_updated": 1784885629.867664,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784866849.9918816
+    "last_brain_update": 1784885629.8664224
   },
   "episodic": [
     {
@@ -1911,11 +1911,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The auto-fix tool repeatedly failed three times, each time unable to apply a patch to the file.",
-      "item_count": 20,
-      "ts": 1784131324.1069217
-    },
-    {
       "summary": "The auto-fix process repeatedly failed to apply a patch to the file, as indicated by three identical error messages.",
       "item_count": 20,
       "ts": 1784137103.108393
@@ -2409,6 +2404,11 @@
       "summary": "An autonomous PR modifying protected files had its automerge revoked by a team lead, and auto-fix attempts failed because the proposed changes exceeded the allowed line limit (56 lines vs. 50).",
       "item_count": 20,
       "ts": 1784866849.9821131
+    },
+    {
+      "summary": "A team lead revoked the automerge for an autonomous PR because it modifies protected files, and an auto-fix attempt failed to apply a patch to a file.",
+      "item_count": 20,
+      "ts": 1784885629.8553538
     }
   ],
   "experiment_results": [
@@ -2974,6 +2974,30 @@
       "summary": "**\u26a1 Backtest Engine**: I\u2019d expect a Sharpe ratio in the 1.3\u20111.5 range because the 14\u2011period RSI combined with a momentum filter typically yields a modestly positive expectancy on 15\u2011minute equity bars while keeping drawdowns low, especially after excluding the higher\u2011noise stocks (QQQ, MSFT, NVDA). ",
       "source": "desk_run_summary",
       "ts": 1784866842.3227818
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (02:21 UTC)  equity=$22,515.11  regime=sideways/calm\nfunnel: 41 generated \u2192 17 survived gate+topK (0 exploration) \u2192 3 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 3 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
+      "source": "desk_run_summary",
+      "ts": 1784885613.2842102
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784885613.2895877
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $389 conf=97%  id=`aaeeca73\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $338 conf=92%  id=`ca313d37\u2026`\n\ud83d\udfe2 `vol_of_vol_timing/YFI/USD` BUY $338 conf=89%  id=`412554fb\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784885613.2948084
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "**\u26a1 Backtest Engine**: I\u2019d expect a Sharpe ratio in the 1.3\u20111.5 range because the 14\u2011period RSI combined with a momentum filter typically yields a modestly positive expectancy on 15\u2011minute equity bars while keeping drawdowns low, especially after excluding the higher\u2011noise stocks (QQQ, MSFT, NVDA). ",
+      "source": "desk_run_summary",
+      "ts": 1784885613.2999127
     }
   ]
 }
