@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import random
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
@@ -21,18 +20,20 @@ def _first_run_time() -> datetime:
     """
     return datetime.now(timezone.utc) + timedelta(seconds=random.uniform(30, 150))
 
+
 if TYPE_CHECKING:
     from app.models.bot import Bot
 
+
 # Map interval strings to APScheduler kwargs
 _INTERVAL_MAP: dict[str, dict] = {
-    "1m":  {"minutes": 1},
-    "5m":  {"minutes": 5},
+    "1m": {"minutes": 1},
+    "5m": {"minutes": 5},
     "15m": {"minutes": 15},
     "30m": {"minutes": 30},
-    "1h":  {"hours": 1},
-    "4h":  {"hours": 4},
-    "1d":  {"hours": 24},
+    "1h": {"hours": 1},
+    "4h": {"hours": 4},
+    "1d": {"hours": 24},
 }
 
 
