@@ -11,6 +11,25 @@ from sqlalchemy import select
 
 from app.utils.logging import logger
 
+# Constants
+FIRST_RUN_DELAY_MIN = 30
+FIRST_RUN_DELAY_MAX = 150
+DEFAULT_INTERVAL = "1h"
+DEFAULT_INTERVAL_KWARGS = {"hours": 1}
+POLL_INTERVAL_MINUTES = 5
+JOB_ID_PREFIX = "bot_"
+
+# Map interval strings to APScheduler kwargs
+_INTERVAL_MAP: dict[str, dict] = {
+    "1m": {"minutes": 1},
+    "5m": {"minutes": 5},
+    "15m": {"minutes": 15},
+    "30m": {"minutes": 30},
+    "1h": {"hours": 1},
+    "4h": {"hours": 4},
+    "1d": {"hours": 24},
+}
+
 
 def _first_run_time() -> datetime:
     """First evaluation shortly after boot (staggered 30–150s so 61 bots don't
@@ -19,21 +38,11 @@ def _first_run_time() -> datetime:
     merge reset that clock, so 1h/1d bots NEVER got to run (every bot showed
     last_run_at=None). Found 2026-07-21 diagnosing 'OA doesn't work / 0 trades'.
     """
-    return datetime.now(timezone.utc) + timedelta(seconds=random.uniform(30, 150))
+    return datetime.now(timezone.utc) + timedelta(seconds=random.uniform(FIRST_RUN_DELAY_MIN, FIRST_RUN_DELAY_MAX))
+
 
 if TYPE_CHECKING:
     from app.models.bot import Bot
-
-# Map interval strings to APScheduler kwargs
-_INTERVAL_MAP: dict[str, dict] = {
-    "1m":  {"minutes": 1},
-    "5m":  {"minutes": 5},
-    "15m": {"minutes": 15},
-    "30m": {"minutes": 30},
-    "1h":  {"hours": 1},
-    "4h":  {"hours": 4},
-    "1d":  {"hours": 24},
-}
 
 
 class BotRunner:
@@ -94,11 +103,11 @@ class BotRunner:
             trigger_cfg: dict = bot.trigger or {}
             trigger_type = trigger_cfg.get("type", "schedule")
 
-            job_id = f"bot_{bot.id}"
+            job_id = f"{JOB_ID_PREFIX}{bot.id}"
 
             if trigger_type == "schedule":
-                interval_str = trigger_cfg.get("interval", "1h")
-                interval_kwargs = _INTERVAL_MAP.get(interval_str, {"hours": 1})
+                interval_str = trigger_cfg.get("interval", DEFAULT_INTERVAL)
+                interval_kwargs = _INTERVAL_MAP.get(interval_str, DEFAULT_INTERVAL_KWARGS)
                 self._scheduler.add_job(
                     self._run_bot,
                     "interval",
@@ -121,7 +130,7 @@ class BotRunner:
                     replace_existing=True,
                     max_instances=1,
                     next_run_time=_first_run_time(),
-                    minutes=5,
+                    minutes=POLL_INTERVAL_MINUTES,
                 )
                 logger.debug("Bot scheduled (poll)", bot_id=bot.id, trigger=trigger_type)
 
@@ -130,7 +139,7 @@ class BotRunner:
 
     async def unschedule(self, bot_id: str) -> None:
         """Remove a bot job from the scheduler."""
-        job_id = f"bot_{bot_id}"
+        job_id = f"{JOB_ID_PREFIX}{bot_id}"
         try:
             self._scheduler.remove_job(job_id)
             logger.debug("Bot unscheduled", bot_id=bot_id)
