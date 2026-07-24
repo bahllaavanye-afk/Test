@@ -3,6 +3,7 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+import time
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -79,13 +80,16 @@ class StrategyComparisonEngine:
         if initial_equity <= 0:
             raise ValueError("initial_equity must be a positive number.")
 
-        # Ensure series are aligned on the same index (optional but helps consistency)
+        # Align series on common index
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
             raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
         manual_signals = manual_signals.loc[common_index]
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
+
+        # Start timing for monitoring
+        start_time = time.perf_counter()
 
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
@@ -109,12 +113,27 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
+        # End timing
+        end_time = time.perf_counter()
+        exec_time = round(end_time - start_time, 4)
+
+        # Compute P&L
+        manual_final_eq = manual_metrics.equity_curve[-1]["equity"] if manual_metrics.equity_curve else initial_equity
+        ml_final_eq = ml_metrics.equity_curve[-1]["equity"] if ml_metrics.equity_curve else initial_equity
+        manual_pnl = round(manual_final_eq - initial_equity, 2)
+        ml_pnl = round(ml_final_eq - initial_equity, 2)
+
         logger.info(
             "Comparison complete",
             strategy=strategy_name,
             manual_sharpe=manual_metrics.sharpe,
             ml_sharpe=ml_metrics.sharpe,
             p_value=round(p_val, 4),
+            signal_count_manual=len(manual_signals),
+            signal_count_ml=len(ml_signals),
+            execution_time_seconds=exec_time,
+            manual_pnl=manual_pnl,
+            ml_pnl=ml_pnl,
         )
 
         return ComparisonResult(
