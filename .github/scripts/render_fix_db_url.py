@@ -45,6 +45,23 @@ SERVICE_IDS = [s for s in [
 ] if s]
 
 DIRECT_RE = re.compile(r"db\.([a-z0-9]+)\.supabase\.co", re.IGNORECASE)
+# aws-0-<region>.pooler.supabase.com — an ALREADY-pooler host. If <region> is
+# not the project's region, Supavisor answers "Tenant or user not found" (the
+# tenant lives only in its own region's pooler). That is the exact failure the
+# live backend has shown for weeks while the DB is ACTIVE_HEALTHY.
+POOLER_RE = re.compile(r"aws-0-([a-z0-9-]+)\.pooler\.supabase\.com", re.IGNORECASE)
+
+
+def to_pooler_region(url: str) -> str | None:
+    """Rewrite a pooler URL that is in the WRONG region to the target REGION.
+    Returns the corrected url, or None if it is not a pooler url or is already
+    the target region (nothing to do)."""
+    m = POOLER_RE.search(url)
+    if not m:
+        return None
+    if m.group(1).lower() == REGION.lower():
+        return None
+    return POOLER_RE.sub(f"aws-0-{REGION}.pooler.supabase.com", url, count=1)
 
 
 def headers() -> dict:
@@ -152,7 +169,16 @@ def main() -> None:
             if not val:
                 continue
             if not DIRECT_RE.search(val):
-                print(f"  {key}: already pooler/clean — skipping")
+                # Already pooler-form — but is it the RIGHT region? A wrong-region
+                # pooler is what returns Supavisor "Tenant or user not found".
+                fixed = to_pooler_region(val)
+                if fixed:
+                    old_region = POOLER_RE.search(val).group(1)
+                    print(f"  {key}: pooler region {old_region} → {REGION} (fixes tenant-not-found)")
+                    if patch_env_var(sid, key, fixed):
+                        any_changed = True
+                else:
+                    print(f"  {key}: already pooler in region {REGION} — OK")
                 continue
             # Check for placeholder password (e.g. [YOUR-PASSWORD] or %5BYOUR-PASSWORD%5D)
             from urllib.parse import unquote
