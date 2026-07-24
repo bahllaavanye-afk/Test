@@ -1,8 +1,10 @@
 """Monitoring and health check endpoints for the QA subsystem."""
 from __future__ import annotations
+
 import asyncio
 import json
 from pathlib import Path
+from typing import List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -24,6 +26,39 @@ QA_CYCLE_STARTED_MESSAGE = "QA cycle started — poll /monitoring/health for res
 router = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
 
 
+def _load_health_report() -> Dict[str, Any]:
+    """Load the health report JSON from disk.
+
+    Returns a dictionary with the report contents. Raises HTTPException if the
+    file exists but cannot be parsed.
+    """
+    if not HEALTH_REPORT_PATH.exists():
+        return {"status": DEFAULT_HEALTH_STATUS, "message": DEFAULT_HEALTH_MESSAGE}
+    try:
+        return json.loads(HEALTH_REPORT_PATH.read_text())
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=HEALTH_REPORT_CORRUPTED_DETAIL) from exc
+
+
+def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
+    """Read the fix log file and return the most recent *limit* entries.
+
+    The log is stored as newline‑delimited JSON. Empty or missing files result in
+    an empty list. Any parsing error raises an HTTPException.
+    """
+    if not FIX_LOG_PATH.exists():
+        return []
+    try:
+        raw_text = FIX_LOG_PATH.read_text().strip()
+        if not raw_text:
+            return []
+        lines = raw_text.splitlines()
+        recent_lines = lines[-limit:]
+        return [json.loads(line) for line in recent_lines]
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=FIX_LOG_READ_ERROR_DETAIL.format(exc)) from exc
+
+
 @router.get("/health")
 async def get_health_report():
     """Public health status (no auth required).
@@ -31,12 +66,7 @@ async def get_health_report():
     Returns the most recent QA health report written by the QAMonitor background
     task, or a placeholder if the monitor has not yet completed its first cycle.
     """
-    if HEALTH_REPORT_PATH.exists():
-        try:
-            return json.loads(HEALTH_REPORT_PATH.read_text())
-        except Exception:
-            raise HTTPException(status_code=500, detail=HEALTH_REPORT_CORRUPTED_DETAIL)
-    return {"status": DEFAULT_HEALTH_STATUS, "message": DEFAULT_HEALTH_MESSAGE}
+    return _load_health_report()
 
 
 @router.get("/fixes")
@@ -44,20 +74,11 @@ async def get_fix_log(
     limit: int = DEFAULT_FIX_LOG_LIMIT,
     current_user: User = Depends(get_current_user),
 ):
-    """Recent auto-fixes applied by the QA monitor (requires auth).
+    """Recent auto‑fixes applied by the QA monitor (requires auth).
 
     Returns the last *limit* entries from the fix log (newest last).
     """
-    if not FIX_LOG_PATH.exists():
-        return []
-    try:
-        text = FIX_LOG_PATH.read_text().strip()
-        if not text:
-            return []
-        lines = text.splitlines()
-        return [json.loads(line) for line in lines[-limit:]]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=FIX_LOG_READ_ERROR_DETAIL.format(e))
+    return _read_fix_log(limit)
 
 
 @router.post("/run-now")

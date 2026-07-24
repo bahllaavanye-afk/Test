@@ -26,33 +26,95 @@ except ImportError:
     _HMM_AVAILABLE = False
 
 
-def _fit_regime(returns: np.ndarray) -> int:
+def _compute_features(returns: np.ndarray) -> np.ndarray:
     """
-    Fit Gaussian HMM and return the current regime (0/1/2).
-    Falls back to vol-rank heuristic if hmmlearn is unavailable.
-    """
-    n = len(returns)
-    if n < 60:
-        return 1  # insufficient data → sideways
+    Build feature matrix for HMM: [return, rolling 20‑day volatility].
 
+    Parameters
+    ----------
+    returns: np.ndarray
+        Daily returns series.
+
+    Returns
+    -------
+    np.ndarray
+        2‑column feature array.
+    """
     vol_20 = pd.Series(returns).rolling(20).std().bfill().values
-    features = np.column_stack([returns, vol_20])
+    return np.column_stack([returns, vol_20])
 
-    if _HMM_AVAILABLE:
-        try:
-            model = GaussianHMM(n_components=3, covariance_type="diag",
-                                n_iter=200, random_state=42)
-            model.fit(features)
-            states = model.predict(features)
-            # Label states by mean return: highest → bull(2), lowest → bear(0)
-            means = [features[states == s, 0].mean() for s in range(3)]
-            order = np.argsort(means)  # indices sorted by mean return ascending
-            label = {int(order[0]): 0, int(order[1]): 1, int(order[2]): 2}
-            return int(label[int(states[-1])])
-        except Exception as exc:
-            logger.warning("HMM fit failed, using heuristic", error=str(exc))
 
-    # Heuristic: vol rank + recent momentum
+def _fit_hmm(features: np.ndarray) -> np.ndarray | None:
+    """
+    Fit a Gaussian HMM with 3 components and return the inferred state
+    sequence. Returns ``None`` if fitting fails.
+
+    Parameters
+    ----------
+    features: np.ndarray
+        Feature matrix for the HMM.
+
+    Returns
+    -------
+    np.ndarray | None
+        Predicted state indices, or ``None`` on error.
+    """
+    if not _HMM_AVAILABLE:
+        return None
+    try:
+        model = GaussianHMM(
+            n_components=3,
+            covariance_type="diag",
+            n_iter=200,
+            random_state=42,
+        )
+        model.fit(features)
+        return model.predict(features)
+    except Exception as exc:  # pragma: no cover
+        logger.warning("HMM fit failed, using heuristic", error=str(exc))
+        return None
+
+
+def _label_states(states: np.ndarray, features: np.ndarray) -> int:
+    """
+    Map raw HMM state indices to regime labels (0 = bear, 1 = sideways, 2 = bull)
+    based on the mean return of each state.
+
+    Parameters
+    ----------
+    states: np.ndarray
+        HMM state sequence.
+    features: np.ndarray
+        Feature matrix (first column is return).
+
+    Returns
+    -------
+    int
+        Regime label for the most recent observation.
+    """
+    # Compute mean return per state
+    means = [features[states == s, 0].mean() for s in range(3)]
+    # Order states by ascending mean return
+    order = np.argsort(means)
+    # Create mapping: lowest mean → bear (0), middle → sideways (1), highest → bull (2)
+    label_map = {int(order[0]): 0, int(order[1]): 1, int(order[2]): 2}
+    return int(label_map[int(states[-1])])
+
+
+def _heuristic_regime(returns: np.ndarray) -> int:
+    """
+    Simple fallback heuristic based on recent volatility rank and momentum.
+
+    Parameters
+    ----------
+    returns: np.ndarray
+        Daily returns series.
+
+    Returns
+    -------
+    int
+        Regime label (0, 1, or 2).
+    """
     recent_vol = float(np.std(returns[-20:]))
     long_vol = float(np.std(returns[-252:]))
     vol_rank = recent_vol / max(long_vol, 1e-8)
@@ -65,14 +127,48 @@ def _fit_regime(returns: np.ndarray) -> int:
     return 1  # sideways
 
 
+def _fit_regime(returns: np.ndarray) -> int:
+    """
+    Determine the current market regime from a returns series.
+
+    The function first attempts a Gaussian HMM fit; if that fails or the
+    required library is missing, it falls back to a lightweight heuristic.
+
+    Parameters
+    ----------
+    returns: np.ndarray
+        Daily returns series.
+
+    Returns
+    -------
+    int
+        Regime label (0 = bear, 1 = sideways, 2 = bull).
+    """
+    if len(returns) < 60:
+        return 1  # insufficient data → sideways
+
+    features = _compute_features(returns)
+    states = _fit_hmm(features)
+
+    if states is not None:
+        return _label_states(states, features)
+
+    return _heuristic_regime(returns)
+
+
 def _fetch_spy_returns_sync() -> np.ndarray | None:
     """Sync yfinance fetch — must be called via run_in_executor."""
     try:
         import yfinance as yf  # type: ignore
         end = datetime.now(timezone.utc).date()
         start = end - timedelta(days=400)
-        df = yf.download("SPY", start=str(start), end=str(end),
-                          progress=False, auto_adjust=True)
+        df = yf.download(
+            "SPY",
+            start=str(start),
+            end=str(end),
+            progress=False,
+            auto_adjust=True,
+        )
         if df is None or len(df) < 60:
             return None
         closes = df["Close"].dropna()
@@ -84,13 +180,21 @@ def _fetch_spy_returns_sync() -> np.ndarray | None:
 
 def _synthetic_spy_returns(n: int = 300) -> np.ndarray:
     """
-    GBM synthetic SPY returns when yfinance is unreachable (network policy,
-    offline dev container). Keeps the regime monitor functional 24/7.
-    Deterministic per-day seed so the regime is stable within a session.
+    Generate deterministic synthetic SPY returns using a geometric Brownian
+    motion model. Useful when live data cannot be fetched.
+
+    Parameters
+    ----------
+    n: int, default 300
+        Number of synthetic daily returns to produce.
+
+    Returns
+    -------
+    np.ndarray
+        Synthetic returns array.
     """
     seed = int(datetime.now(timezone.utc).strftime("%Y%m%d"))
     rng = np.random.default_rng(seed)
-    # Mild positive drift, ~16% annualised vol — a neutral "sideways/bull" market
     daily_mu = 0.0003
     daily_sigma = 0.01
     return rng.normal(daily_mu, daily_sigma, n).astype(float)
@@ -106,9 +210,9 @@ async def run_once(redis_client) -> int | None:
     """Fit regime, write to Redis, return regime int or None on failure."""
     returns = await _fetch_spy_returns()
     if returns is None:
-        # Network blocked / offline — fall back to synthetic returns so the
-        # regime signal stays live instead of going stale at 'unknown'.
-        logger.info("Regime monitor: using synthetic SPY returns (live data unavailable)")
+        logger.info(
+            "Regime monitor: using synthetic SPY returns (live data unavailable)"
+        )
         returns = _synthetic_spy_returns()
 
     regime = _fit_regime(returns)
@@ -141,6 +245,7 @@ class RegimeMonitor:
 
     async def _loop(self) -> None:
         from app.redis_client import get_redis
+
         redis = get_redis()
         while True:
             try:
