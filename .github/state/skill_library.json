@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Validate config files",
-    "Test market holidays",
     "Verify clock sync",
     "Review system logs",
     "Set connection timeouts",
@@ -199,8 +197,10 @@
     "Validate SSL certs",
     "Check file permissions",
     "Test CPU load",
-    "Verify config hash"
+    "Verify config hash",
+    "Test disk space",
+    "Log system calls"
   ],
-  "last_updated": "2026-07-24T17:03:01.700910+00:00",
+  "last_updated": "2026-07-24T18:56:30.263476+00:00",
   "total": 200
 }
