@@ -9,6 +9,27 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Literal
 
+# Constants
+DEFAULT_DAYS_AHEAD: int = 90
+MONTHS_AHEAD: int = 4
+CPI_DAY: int = 10
+PPI_DAY: int = 13
+YEAR_AHEAD: int = 1
+
+FOMC_TITLE: str = "FOMC Rate Decision"
+FOMC_DESCRIPTION: str = (
+    "Federal Reserve interest rate decision. Markets move ±1-2% on surprises."
+)
+
+CPI_TITLE: str = "CPI Report"
+CPI_DESCRIPTION: str = "Consumer Price Index — key inflation gauge"
+
+NFP_TITLE: str = "Non-Farm Payrolls"
+NFP_DESCRIPTION: str = "Monthly jobs report — key Fed policy driver"
+
+PPI_TITLE: str = "PPI Report"
+PPI_DESCRIPTION: str = "Producer Price Index"
+
 
 @dataclass
 class MacroEvent:
@@ -60,9 +81,9 @@ MONTHLY_EVENTS_2025 = [
 ]
 
 
-def get_upcoming_events(days_ahead: int = 90) -> list[dict]:
+def get_upcoming_events(days_ahead: int = DEFAULT_DAYS_AHEAD) -> list[dict]:
     today = date.today()
-    cutoff = date(today.year + 1, today.month, today.day)
+    cutoff = date(today.year + YEAR_AHEAD, today.month, today.day)
     events: list[MacroEvent] = []
 
     for fomc_date in FOMC_2025 + FOMC_2026:
@@ -70,28 +91,28 @@ def get_upcoming_events(days_ahead: int = 90) -> list[dict]:
             events.append(
                 MacroEvent(
                     date=fomc_date,
-                    title="FOMC Rate Decision",
+                    title=FOMC_TITLE,
                     category="fomc",
                     importance="high",
-                    description="Federal Reserve interest rate decision. Markets move ±1-2% on surprises.",
+                    description=FOMC_DESCRIPTION,
                 )
             )
 
-    # Add approximate monthly events for next 4 months
-    for month_offset in range(4):
+    # Add approximate monthly events for next months
+    for month_offset in range(MONTHS_AHEAD):
         m = ((today.month - 1 + month_offset) % 12) + 1
         y = today.year + ((today.month - 1 + month_offset) // 12)
 
         # CPI: ~2nd week
-        cpi_date = date(y, m, 10)
+        cpi_date = date(y, m, CPI_DAY)
         if today <= cpi_date <= cutoff:
             events.append(
                 MacroEvent(
                     date=cpi_date,
-                    title="CPI Report",
+                    title=CPI_TITLE,
                     category="cpi",
                     importance="high",
-                    description="Consumer Price Index — key inflation gauge",
+                    description=CPI_DESCRIPTION,
                 )
             )
 
@@ -103,23 +124,23 @@ def get_upcoming_events(days_ahead: int = 90) -> list[dict]:
             events.append(
                 MacroEvent(
                     date=nfp_date,
-                    title="Non-Farm Payrolls",
+                    title=NFP_TITLE,
                     category="nfp",
                     importance="high",
-                    description="Monthly jobs report — key Fed policy driver",
+                    description=NFP_DESCRIPTION,
                 )
             )
 
         # PPI: ~mid month
-        ppi_date = date(y, m, 13)
+        ppi_date = date(y, m, PPI_DAY)
         if today <= ppi_date <= cutoff:
             events.append(
                 MacroEvent(
                     date=ppi_date,
-                    title="PPI Report",
+                    title=PPI_TITLE,
                     category="ppi",
                     importance="medium",
-                    description="Producer Price Index",
+                    description=PPI_DESCRIPTION,
                 )
             )
 
@@ -135,6 +156,6 @@ def get_next_fomc() -> dict | None:
             return {
                 "date": d.isoformat(),
                 "days_away": (d - today).days,
-                "title": "FOMC Rate Decision",
+                "title": FOMC_TITLE,
             }
     return None
