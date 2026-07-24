@@ -42,4 +42,4 @@ class ComparisonResult(Base):
     # Full equity curves for chart rendering
     equity_curves: Mapped[dict | None] = mapped_column(JSON)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
