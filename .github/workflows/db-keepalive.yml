@@ -14,8 +14,30 @@ on:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
+      # Belt-and-suspenders trigger for the DB region autofix. The standalone
+      # db-url-region-autofix.yml schedule can take a while for GitHub to activate
+      # after it's first committed; this workflow is already registered and fires
+      # 3x/day, so it guarantees the fix runs. Idempotent — only redeploys when the
+      # Render DATABASE_URL region actually changes, so on a correct URL it no-ops.
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Correct DATABASE_URL pooler region if wrong (+ redeploy if changed)
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_WORKER_SERVICE_ID: ${{ secrets.RENDER_WORKER_SERVICE_ID }}
+          SUPABASE_REGION: us-west-1
+          SUPABASE_POOLER_PORT: "6543"
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "render creds absent — skipping db-url fix"; exit 0
+          fi
+          pip install httpx --quiet
+          python .github/scripts/render_fix_db_url.py || echo "db-url fix step failed (fail-soft)"
       - name: Touch the database through the live backend
         run: |
           # /health/detailed runs SELECT 1 against the configured DATABASE_URL —
