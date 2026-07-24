@@ -36,36 +36,69 @@ from app.api.v1.webhooks import router as webhooks_router
 
 api_router = APIRouter()
 
-api_router.include_router(auth.router)
-api_router.include_router(accounts.router)
-api_router.include_router(orders.router)
-api_router.include_router(positions.router)
-api_router.include_router(trades.router)
 
-api_router.include_router(strategies.router)
+def _safe_include(module, attr_name: str = "router") -> None:
+    """
+    Safely include a sub‑router into the main router.
 
-api_router.include_router(backtests.router)
-api_router.include_router(comparison.router)
-api_router.include_router(experiments.router)
-api_router.include_router(ml.router)
-api_router.include_router(risk.router)
-api_router.include_router(market_data.router)
-# Underscore-prefix alias so /market_data/* and /market-data/* both resolve
-api_router.include_router(market_data.router_underscore)
-api_router.include_router(analytics.router)
-api_router.include_router(agents.router)
-api_router.include_router(notifications.router)
-api_router.include_router(archive.router)
-api_router.include_router(improvements.router)
-api_router.include_router(monitoring.router)
-api_router.include_router(options_router)
-api_router.include_router(regime_router)
-api_router.include_router(audit_log_router)
-api_router.include_router(integrations.router)
-api_router.include_router(pipeline.router)
-api_router.include_router(leaderboard.router)
-api_router.include_router(releases.router)
-api_router.include_router(bots_router)
-api_router.include_router(scanners_router)
-api_router.include_router(discord_router)
-api_router.include_router(webhooks_router)
+    This helper guards against:
+    * ``module`` being ``None``.
+    * The requested attribute missing or being ``None``.
+    * Empty collections that could raise errors in FastAPI (unlikely but defensive).
+
+    Parameters
+    ----------
+    module: Any
+        The imported module that should expose a FastAPI router.
+    attr_name: str, optional
+        Name of the attribute containing the router (default ``"router"``).
+
+    Returns
+    -------
+    None
+    """
+    if module is None:
+        return
+    router_obj = getattr(module, attr_name, None)
+    if router_obj is None:
+        return
+    # FastAPI's include_router tolerates empty routers, but we defensively skip None.
+    api_router.include_router(router_obj)
+
+
+# Core sub‑routers
+_safe_include(auth)
+_safe_include(accounts)
+_safe_include(orders)
+_safe_include(positions)
+_safe_include(trades)
+
+# Strategy‑related routers
+_safe_include(strategies)
+
+# Additional feature routers
+_safe_include(backtests)
+_safe_include(comparison)
+_safe_include(experiments)
+_safe_include(ml)
+_safe_include(risk)
+_safe_include(market_data)
+# Underscore‑prefix alias so /market_data/* and /market-data/* both resolve
+_safe_include(market_data, "router_underscore")
+_safe_include(analytics)
+_safe_include(agents)
+_safe_include(notifications)
+_safe_include(archive)
+_safe_include(improvements)
+_safe_include(monitoring)
+_safe_include(options_router, "router")
+_safe_include(regime_router, "router")
+_safe_include(audit_log_router, "router")
+_safe_include(integrations)
+_safe_include(pipeline)
+_safe_include(leaderboard)
+_safe_include(releases)
+_safe_include(bots_router, "router")
+_safe_include(scanners_router, "router")
+_safe_include(discord_router, "router")
+_safe_include(webhooks_router, "router")
