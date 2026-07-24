@@ -191,3 +191,138 @@ def get_ab_router() -> ABRouter:
         from app.database import AsyncSessionLocal
         _router = ABRouter(AsyncSessionLocal)
     return _router
+
+
+# ─── Unit tests for edge cases ─────────────────────────────────────────────────
+
+import pytest
+from unittest import mock
+
+
+class DummyAsyncSession:
+    """A minimal async context manager mimicking the DB session used by ABRouter."""
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def execute(self, *_, **__):
+        class Result:
+            def all(self):
+                return []
+        return Result()
+
+
+@pytest.mark.asyncio
+async def test_route_returns_none_when_no_champion():
+    """When the snapshot contains no champion for the model, route should return None."""
+    router = ABRouter(db_factory=lambda: DummyAsyncSession())
+    # Directly set an empty snapshot for the model.
+    router._snapshot = {"my_model": []}
+    decision = await router.route("my_model")
+    assert decision is None
+
+
+@pytest.mark.asyncio
+async def test_route_always_selects_champion_when_challenger_traffic_is_zero():
+    """If challenger traffic_pct is 0, route must always pick the champion regardless of randomness."""
+    router = ABRouter(db_factory=lambda: DummyAsyncSession())
+    router._snapshot = {
+        "model_x": [
+            {
+                "id": "champ1",
+                "model_name": "model_x",
+                "version": "v1",
+                "artifact_path": "/path/champ",
+                "framework": "tf",
+                "status": "champion",
+                "traffic_pct": 0.0,
+            },
+            {
+                "id": "chall1",
+                "model_name": "model_x",
+                "version": "v2",
+                "artifact_path": "/path/chall",
+                "framework": "tf",
+                "status": "challenger",
+                "traffic_pct": 0.0,
+            },
+        ]
+    }
+    with mock.patch.object(random, "random", return_value=0.99):
+        decision = await router.route("model_x")
+    assert decision is not None
+    assert decision.ab_group == "champion"
+    assert decision.release_id == "champ1"
+
+
+@pytest.mark.asyncio
+async def test_route_always_selects_challenger_when_traffic_is_hundred():
+    """If challenger traffic_pct is 100, route must always pick the challenger."""
+    router = ABRouter(db_factory=lambda: DummyAsyncSession())
+    router._snapshot = {
+        "model_y": [
+            {
+                "id": "champ2",
+                "model_name": "model_y",
+                "version": "v1",
+                "artifact_path": "/path/champ",
+                "framework": "pt",
+                "status": "champion",
+                "traffic_pct": 0.0,
+            },
+            {
+                "id": "chall2",
+                "model_name": "model_y",
+                "version": "v2",
+                "artifact_path": "/path/chall",
+                "framework": "pt",
+                "status": "challenger",
+                "traffic_pct": 100.0,
+            },
+        ]
+    }
+    # random.random() returns any value in [0,1); multiplied by 100 is <100 for all.
+    with mock.patch.object(random, "random", return_value=0.0):
+        decision = await router.route("model_y")
+    assert decision is not None
+    assert decision.ab_group == "challenger"
+    assert decision.release_id == "chall2"
+
+
+@pytest.mark.asyncio
+async def test_route_boundary_condition_random_equals_threshold():
+    """
+    Verify the '<' comparison: when random*100 equals challenger traffic_pct,
+    the champion should be selected (because the condition is strict less-than).
+    """
+    router = ABRouter(db_factory=lambda: DummyAsyncSession())
+    router._snapshot = {
+        "model_z": [
+            {
+                "id": "champ3",
+                "model_name": "model_z",
+                "version": "v1",
+                "artifact_path": "/path/champ",
+                "framework": "tf",
+                "status": "champion",
+                "traffic_pct": 0.0,
+            },
+            {
+                "id": "chall3",
+                "model_name": "model_z",
+                "version": "v2",
+                "artifact_path": "/path/chall",
+                "framework": "tf",
+                "status": "challenger",
+                "traffic_pct": 50.0,
+            },
+        ]
+    }
+    # Force random.random() to return exactly 0.5, making random*100 == 50.
+    with mock.patch.object(random, "random", return_value=0.5):
+        decision = await router.route("model_z")
+    assert decision is not None
+    assert decision.ab_group == "champion"
+    assert decision.release_id == "champ3"
