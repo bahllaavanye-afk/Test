@@ -118,49 +118,76 @@ class AgentBus:
         """Continuously poll all subscribed topics and call handlers."""
         while self._running:
             try:
-                streams = {
-                    f"{BUS_KEY_PREFIX}{topic}": offset
-                    for topic, offset in self._consumer_offsets.items()
-                    if topic in self._handlers
-                }
+                streams = self._build_streams()
                 if not streams:
                     await asyncio.sleep(SLEEP_NO_TOPICS)
                     continue
 
-                # XREAD with block — yields when events arrive, not on a fixed interval
                 results = await self._r.xread(
                     streams, block=DISPATCH_BLOCK_MS, count=DISPATCH_COUNT
                 )
                 if not results:
                     continue
 
-                for stream_key, messages in (results or []):
-                    topic = stream_key.removeprefix(BUS_KEY_PREFIX)
-                    for msg_id, fields in messages:
-                        # Advance consumer offset so we don't re-read this message
-                        self._consumer_offsets[topic] = msg_id
-
-                        # Deserialize fields back to dict
-                        data: dict = {}
-                        for k, v in fields.items():
-                            try:
-                                data[k] = json.loads(v)
-                            except (json.JSONDecodeError, TypeError):
-                                data[k] = v
-
-                        for handler in self._handlers.get(topic, []):
-                            try:
-                                await handler(topic, data)
-                            except Exception as exc:
-                                logger.error(
-                                    "AgentBus handler error topic=%s handler=%s: %s",
-                                    topic,
-                                    handler.__name__,
-                                    exc,
-                                )
+                await self._process_results(results)
             except Exception as exc:
                 logger.debug("AgentBus._dispatch_loop error: %s", exc)
                 await asyncio.sleep(SLEEP_ERROR_RETRY)
+
+    def _build_streams(self) -> dict[str, str]:
+        """
+        Build the dictionary of stream keys to consumer offsets for topics that have
+        registered handlers.
+        """
+        return {
+            f"{BUS_KEY_PREFIX}{topic}": offset
+            for topic, offset in self._consumer_offsets.items()
+            if topic in self._handlers
+        }
+
+    async def _process_results(self, results: list[tuple[bytes, list[tuple[bytes, dict[bytes, bytes]]]]]) -> None:
+        """
+        Iterate over XREAD results, deserialize messages and dispatch them to registered handlers.
+        """
+        for stream_key, messages in results:
+            topic = stream_key.removeprefix(BUS_KEY_PREFIX)
+            for msg_id, fields in messages:
+                await self._handle_message(topic, msg_id, fields)
+
+    async def _handle_message(self, topic: str, msg_id: bytes, fields: dict[bytes, bytes]) -> None:
+        """
+        Update consumer offset, deserialize the payload, and invoke all handlers for the topic.
+        """
+        # Advance consumer offset so we don't re-read this message
+        self._consumer_offsets[topic] = msg_id
+
+        data = self._deserialize_fields(fields)
+
+        for handler in self._handlers.get(topic, []):
+            try:
+                await handler(topic, data)
+            except Exception as exc:
+                logger.error(
+                    "AgentBus handler error topic=%s handler=%s: %s",
+                    topic,
+                    getattr(handler, "__name__", repr(handler)),
+                    exc,
+                )
+
+    @staticmethod
+    def _deserialize_fields(fields: dict[bytes, bytes]) -> dict:
+        """
+        Convert raw Redis stream fields back to a Python dict, attempting JSON deserialization
+        when possible.
+        """
+        data: dict = {}
+        for k, v in fields.items():
+            try:
+                data[k.decode()] = json.loads(v)
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                # Fallback to raw string representation
+                data[k.decode()] = v.decode() if isinstance(v, (bytes, bytearray)) else v
+        return data
 
     # ── Introspection ─────────────────────────────────────────────────────────
 
