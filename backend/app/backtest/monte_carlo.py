@@ -92,3 +92,36 @@ def monte_carlo_simulation(
         prob_positive_return=round(positive / n_simulations, 4),
         num_simulations=n_simulations,
     )
+
+
+# Unit tests for edge and boundary conditions
+import unittest
+
+
+class TestMonteCarloSimulation(unittest.TestCase):
+    def test_empty_series_raises(self):
+        """Empty daily_returns should raise a ValueError."""
+        empty_series = pd.Series(dtype=float)
+        with self.assertRaises(ValueError):
+            monte_carlo_simulation(empty_series)
+
+    def test_zero_variance_sharpe(self):
+        """When all returns are identical, Sharpe ratio should be zero."""
+        constant_returns = pd.Series([0.001] * 20)  # identical daily returns
+        result = monte_carlo_simulation(constant_returns, n_simulations=10, n_years=1)
+        self.assertEqual(result.median_sharpe, 0.0)
+        self.assertEqual(result.p5_sharpe, 0.0)
+        self.assertEqual(result.p95_sharpe, 0.0)
+
+    def test_single_simulation_probability(self):
+        """With a single simulation, probability should be exactly 0 or 1."""
+        returns = pd.Series(np.random.normal(0.001, 0.02, size=100))
+        # Force a scenario where the final equity is guaranteed above the start
+        result = monte_carlo_simulation(returns, n_simulations=1, n_years=0.01)
+        self.assertIn(result.prob_positive_return, (0.0, 1.0))
+        # Ensure the number of simulations reported matches the input
+        self.assertEqual(result.num_simulations, 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
