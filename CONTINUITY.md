@@ -9,29 +9,32 @@
 _Last updated: 2026-07-24._
 
 ## ⚡ STATE AS OF 2026-07-24 (read this first)
-**🟢 DURABLE POSTGRES — ROOT-CAUSED + AUTONOMOUS FIX SHIPPED + MERGED (no user action needed).**
-The region-autofix now runs from TWO triggers, both on `main`: the standalone
-`db-url-region-autofix.yml` (cron `27 */3`, but GitHub still shows 0 runs — brand-new cron
-not yet activated) AND `db-keepalive.yml` (PR #962, MERGED 2026-07-24) which is already
-registered and fires 3×/day (`17 3,11,19` UTC). Scheduled workflows run the file from `main`
-HEAD, so the **next db-keepalive run (~03:17 UTC, historically lands 04–06 UTC on the free
-tier)** executes the region-fix step → patches the Render `DATABASE_URL` region → redeploys →
-Postgres reconnects. I cannot force it earlier: `workflow_dispatch` via the agent token is
-403 ("Resource not accessible by integration"). Live check at 21:45 UTC: still
-`database.fallback=sqlite`, `primary.error=tenant/user postgres.vexzwnfbmznvxoxxktax not
-found` — expected until the scheduled run fires.
-The real cause was NOT a stale boot — it's that the Render `DATABASE_URL` points at the
-**WRONG Supabase pooler region**. The project is `us-west-1`; the URL used a different
-region's pooler host, so Supavisor answered "tenant/user postgres.vexzwnfbmznvxoxxktax
-not found" on every boot → SQLite fallback. `render_fix_db_url.py` had a blind spot: it
-rewrote only the IPv6-DIRECT host → pooler and **skipped any already-pooler URL** ("already
-pooler/clean — skipping"), so a wrong-REGION pooler URL was never corrected.
-FIX (shipped): `render_fix_db_url.to_pooler_region()` now rewrites an already-pooler URL to
-`aws-0-us-west-1.pooler.supabase.com` (idempotent — only patches + redeploys when the value
-actually changes). New scheduled workflow `db-url-region-autofix.yml` runs it every 3h
-(schedule events aren't suppressed like the agent's dispatch/push are), so within ~3h it
-corrects the env var on Render + redeploys → the boot reaches Postgres → `alembic upgrade
-head` provisions the 22-table schema (incl. catch-up `k6f7a8b9c0d1`) → durable state. 5 tests.
+**🟠 DURABLE POSTGRES — WRONG-REGION HYPOTHESIS DISPROVEN; ONE MANUAL ACTION NOW NEEDED.**
+The `db-url-region-autofix.yml` schedule FINALLY activated and ran 2026-07-24 22:31 UTC
+(conclusion=success). Its log is definitive — **Render creds were present** (RENDER_API_KEY/
+RENDER_SERVICE_ID both set, guard passed) and the script reported:
+> `DATABASE_URL: already pooler in region us-west-1 — OK` / `No changes made`.
+So the Render `DATABASE_URL` is ALREADY a correct-region (`aws-0-us-west-1.pooler.supabase.com`)
+pooler URL with the right project ref — **the wrong-region theory is wrong**, and because
+nothing changed, the autofix (correctly) did NOT trigger a redeploy. Yet Supavisor still answers
+`tenant/user postgres.vexzwnfbmznvxoxxktax not found`. On a correctly-formatted, correct-region
+pooler URL that error means one of exactly two things, and I can resolve NEITHER autonomously
+this session (no Supabase MCP tools loaded; `workflow_dispatch`/Render deploy both 403 for the
+agent token):
+  1. **Supabase project is PAUSED** (free-tier 7-day idle auto-pause). The keep-alive can't
+     revive it because it never reaches Postgres (always SQLite fallback → no real DB activity
+     recorded → stays paused). **FIX (≈30s): supabase.com/dashboard → project
+     `vexzwnfbmznvxoxxktax` → Restore/Resume.** This is the most likely cause.
+  2. **Stale boot** (less likely): DB reachable now but the running Render instance cached the
+     SQLite fallback from a boot when it wasn't. `database_primary` in /health is a BOOT-time
+     value so health alone can't distinguish this. **FIX (≈30s): Render dashboard →
+     `quantedge-api` → Manual Deploy → "Deploy latest commit".** Do NOT auto-loop this — a
+     redeploy every 3h resets the ephemeral SQLite + APScheduler clocks and breaks bot/desk
+     continuity, so it must stay a deliberate one-shot, not an automated retry.
+The region-autofix stays in place (harmless no-op now, `db-url-region-autofix.yml` cron `27 */3`
++ `db-keepalive.yml`); it will auto-correct if the URL ever drifts to a wrong region again.
+Everything downstream is READY: once Postgres is reachable, the next boot runs `alembic upgrade
+head` → 22-table schema (incl. catch-up `k6f7a8b9c0d1`) → durable state.
 - Supabase "Trade" (`vexzwnfbmznvxoxxktax`, us-west-1, pg17) is ACTIVE_HEALTHY; `public`
   schema still empty until the first good boot lands.
 - **How to verify it worked:** `/health/detailed` → `database.fallback` gone / `status` not
