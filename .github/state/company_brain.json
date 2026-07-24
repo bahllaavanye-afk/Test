@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784926642.5896015,
+    "last_updated": 1784934932.3342717,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,68 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784926181.384115
+    "last_brain_update": 1784934932.3329413
   },
   "episodic": [
-    {
-      "lesson": "'Symbol Scout' feature lacks context for automated resolution; assign developer to clarify requirements and fix missing/broken functionality.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784311296.7276437
-    },
-    {
-      "lesson": "Auto-fix skipped due to complexity suggests need for improved automated tooling or manual code review process.",
-      "category": "code",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1784311296.7303367
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Healthcare",
-        "Energy",
-        "Financials"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784311684.9955494
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Healthcare",
-        "Energy",
-        "Financials"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784314777.0252442
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "neutral",
-      "score": 1,
-      "sector_leaders": [
-        "Healthcare",
-        "Energy",
-        "Financials"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=neutral (score=1). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784318843.4900236
-    },
     {
       "lesson": "Deployment failing due to Vercel free-tier daily limit of 100 deploys. Upgrade to Pro or implement deploy batching to avoid blocking.",
       "category": "execution",
@@ -1931,14 +1872,44 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 5, Breakouts: 1, Risk flags: 0.",
       "ts": 1784926642.5951219
+    },
+    {
+      "lesson": "Equities desk backtest engine request requires immediate response: estimate Sharpe ratio (~0.8-1.2 given sideways regime) and propose out-of-sample period (e.g., last 6 months) referencing real file paths like `/data/backtests/equities/strategy_v3.csv`.",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784934923.5516407
+    },
+    {
+      "lesson": "Multiple GitHub auto-fix failures indicate code maintenance debt; manual engineering needed to patch files. Prioritize resolving these to prevent pipeline degradation.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784934923.5574265
+    },
+    {
+      "lesson": "Low signal generation across most desks (only 6 orders placed out of 42 generated signals) suggests funnel inefficiency or overly strict gate criteria; review threshold tuning and exploration rate.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784934923.5630648
+    },
+    {
+      "lesson": "Options desk placed high-conviction SPY sell (98% conf, $1170) via PCR reversal strategy; monitor for tail risk given sideways/calm regime and potential volatility spike.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784934923.5686588
+    },
+    {
+      "lesson": "Commodities desk activated three time-series momentum buys (USO, WEAT, DBA) with conf >80%; verify trend strength and correlation to avoid overconcentration in commodity beta.",
+      "category": "strategy",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1784934923.5742037
     }
   ],
   "github_insights": [
-    {
-      "summary": "The PR aimed to scale up to 103 strategies, but the automated fix failed to apply the patch to the file.",
-      "item_count": 20,
-      "ts": 1784190823.526366
-    },
     {
       "summary": "The automated fix attempts were either skipped due to complexity (e.g., implementing per-desk logic or the issue description) or failed because the patch could not be applied.",
       "item_count": 20,
@@ -2433,6 +2404,11 @@
       "summary": "The auto-fix bot attempted to apply a patch but failed, and this failure was reported twice.",
       "item_count": 20,
       "ts": 1784926181.374166
+    },
+    {
+      "summary": "The automated fix system encountered three failures: two patches could not be applied to the file, and one issue was skipped entirely due to excessive complexity for automated resolution.",
+      "item_count": 20,
+      "ts": 1784934932.3203166
     }
   ],
   "experiment_results": [
@@ -2519,42 +2495,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (12:52 UTC)  equity=$22,918.76  regime=sideways/calm\nfunnel: 52 generated \u2192 18 survived gate+topK (0 exploration) \u2192 2 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
-      "source": "desk_run_summary",
-      "ts": 1784732540.6872377
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 1 order(s) placed of 8 signal(s) \u2265 0.6: USD_CAD BUY@1.41095, EUR_USD SELL@1.13980, GBP_USD SELL@1.33751 | 2 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1784732540.6919153
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $344 conf=92%  id=`7d8e5bf4\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $401 conf=90%  id=`75c436de\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784732540.6963868
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "**\u26a1 Backtest Engine**: I estimate the proposed hybrid strategy would yield a Sharpe ratio of around 1.5, given the ATR filter's ability to mitigate false positives and the potential for capturing high-conviction buys like NVDA, as seen in `backend/app/ml/models/price_predictor_v2.py`. To validate th",
-      "source": "desk_run_summary",
-      "ts": 1784732540.7006998
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (15:07 UTC)  equity=$22,918.87  regime=sideways/calm\nfunnel: 56 generated \u2192 17 survived gate+topK (1 exploration) \u2192 8 placed\n\u2705 *Equities*: 3 orders\n\ud83d\udca4 *Crypto*: no signals fired\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\u2705 *StatA",
-      "source": "desk_run_summary",
-      "ts": 1784738642.0005803
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 1 order(s) placed of 8 signal(s) \u2265 0.6: USD_CAD BUY@1.41095, EUR_USD SELL@1.13980, GBP_USD SELL@1.33751 | 2 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1784738642.0051074
-    },
     {
       "channel": "desk-crypto",
       "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $344 conf=92%  id=`7d8e5bf4\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $401 conf=90%  id=`75c436de\u2026`",
@@ -3118,6 +3058,42 @@
       "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $336 conf=98%  id=`e4d035f7\u2026`\n\ud83d\udfe2 `time_series_momentum/WEAT` BUY $475 conf=82%  id=`ce5c7461\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $938 conf=81%  id=`25df14ee\u2026`",
       "source": "desk_run_summary",
       "ts": 1784926179.0849996
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (22:45 UTC)  equity=$22,310.71  regime=sideways/calm\nfunnel: 42 generated \u2192 14 survived gate+topK (0 exploration) \u2192 0 placed\n\ud83d\udca4 *Equities*: no signals fired\n\ud83d\udca4 *Crypto*: no signals fired\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n",
+      "source": "desk_run_summary",
+      "ts": 1784934923.5796661
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784934923.5851026
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $386 conf=97%  id=`c40a1f0e\u2026`\n\ud83d\udfe2 `vol_of_vol_timing/YFI/USD` BUY $336 conf=88%  id=`322f21a6\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784934923.5908296
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "**\u26a1 Backtest Engine**: We need to respond as quick_backtest autonomous agent, concise, specific, 2 sentences. Must comment on proposed strategy: estimate Sharpe ratio and why, and out-of-sample period to test. Also need to reference real file paths? The instruction says \"reference real file paths.\" ",
+      "source": "desk_run_summary",
+      "ts": 1784934923.5963178
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1170 conf=98%  id=`4dbeea7b\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784934923.6018353
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $336 conf=98%  id=`e4d035f7\u2026`\n\ud83d\udfe2 `time_series_momentum/WEAT` BUY $475 conf=82%  id=`ce5c7461\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $938 conf=81%  id=`25df14ee\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784934923.6073177
     }
   ]
 }
