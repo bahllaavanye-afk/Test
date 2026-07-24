@@ -224,7 +224,7 @@ def pipeline_status_latest():
 
 
 @router.get("/status/{run_id}", response_model=PipelineRun)
-def pipeline_run_detail(run_id: str = Path(..., description="Unique run identifier.", example="run-2024-01-01-001")):
+def pipeline_run_detail(run_id: str):
     """Return full detail for a specific pipeline run."""
     for run in _load_runs(100):
         if run.get("run_id") == run_id:
