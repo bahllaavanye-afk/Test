@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Capture model drift",
-    "Monitor model performance",
-    "monitoring on risk/var.py: success \u2014 tests green",
     "Implement JSON schema",
     "Enhance error handling",
     "Log trade errors",
@@ -199,8 +196,11 @@
     "Verify queue lengths",
     "Monitor API tokens",
     "Test API endpoints",
-    "Validate CSV logic"
+    "Validate CSV logic",
+    "Check DB connections",
+    "Handle API rate limits",
+    "Detect duplicate trades"
   ],
-  "last_updated": "2026-07-24T09:42:48.949369+00:00",
+  "last_updated": "2026-07-24T11:38:51.551152+00:00",
   "total": 200
 }
