@@ -2,6 +2,7 @@
 Unified ML inference service. Loaded once at app startup.
 Provides ensemble predictions for any symbol.
 """
+import time
 import pandas as pd
 from typing import Any
 from app.ml.features.engineer import engineer_features, create_sequences, FEATURE_COLS
@@ -92,6 +93,7 @@ class InferenceService:
         if not self.models:
             return None
 
+        start_time = time.perf_counter()
         try:
             # Feature engineering
             feat_df = engineer_features(data, normalize=False)
@@ -152,14 +154,31 @@ class InferenceService:
             else:
                 prediction = "neutral"
 
-            return {
+            result = {
                 "prediction": prediction,
                 "probability": round(ensemble_prob, 4),
                 "confidence": round(confidence, 4),
                 "individual": {k: round(v, 4) for k, v in predictions.items()},
             }
+
+            exec_time = time.perf_counter() - start_time
+            logger.info(
+                "Inference completed",
+                symbol=symbol,
+                signal_count=len(predictions),
+                execution_time=exec_time,
+                pnl=None,
+                result=result,
+            )
+            return result
         except Exception as e:
-            logger.error("Inference error", symbol=symbol, error=str(e))
+            exec_time = time.perf_counter() - start_time
+            logger.error(
+                "Inference error",
+                symbol=symbol,
+                error=str(e),
+                execution_time=exec_time,
+            )
             return None
 
 

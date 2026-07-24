@@ -1,5 +1,10 @@
 """API v1 router — mounts all sub-routers."""
-from fastapi import APIRouter
+import logging
+import time
+import json
+from fastapi import APIRouter, Request, Response
+from fastapi.responses import JSONResponse
+
 from app.api.v1 import (
     auth,
     accounts,
@@ -33,7 +38,55 @@ from app.api.v1.bots import router as bots_router
 from app.api.v1.discord_interactions import router as discord_router
 from app.api.v1.webhooks import router as webhooks_router
 
+# Configure structured logger
+_logger = logging.getLogger("quantedge.api")
+if not _logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        fmt='{"timestamp":"%(asctime)s","level":"%(levelname)s","message":%(message)s}',
+        datefmt="%Y-%m-%dT%H:%M:%S%z",
+    )
+    handler.setFormatter(formatter)
+    _logger.addHandler(handler)
+_logger.setLevel(logging.INFO)
+
+
 api_router = APIRouter()
+
+
+@api_router.middleware("http")
+async def log_request(request: Request, call_next):
+    """Log key metrics for each request."""
+    start_time = time.time()
+    response: Response = await call_next(request)
+    duration = time.time() - start_time
+
+    # Prepare base log payload
+    log_payload = {
+        "path": request.url.path,
+        "method": request.method,
+        "status_code": response.status_code,
+        "duration_ms": round(duration * 1000, 2),
+    }
+
+    # Attempt to extract signal count and P&L from JSON responses
+    if isinstance(response, JSONResponse):
+        try:
+            body = json.loads(response.body)
+            # Expected keys; adapt if different naming conventions are used elsewhere
+            if isinstance(body, dict):
+                if "signal_count" in body:
+                    log_payload["signal_count"] = body["signal_count"]
+                if "pnl" in body:
+                    log_payload["pnl"] = body["pnl"]
+        except Exception:
+            # Silently ignore parsing errors – logging should not interfere with request handling
+            pass
+
+    _logger.info(json.dumps(log_payload))
+    return response
+
+
 api_router.include_router(auth.router)
 api_router.include_router(accounts.router)
 api_router.include_router(orders.router)
