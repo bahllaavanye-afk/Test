@@ -1,17 +1,7 @@
 {
-  "last_run_ts": 1784824913,
-  "last_commit_sha": "50d4efc",
+  "last_run_ts": 1784930978,
+  "last_commit_sha": "92ed6fe",
   "posted_hashes": [
-    "16053f3ffd7b",
-    "16f24a08aab2",
-    "839df248c959",
-    "46647644b437",
-    "443f977c39f3",
-    "436fbeedc5ee",
-    "4b96806eb655",
-    "e2ce8670d408",
-    "bd6692bbc27f",
-    "0f5980d4dfc2",
     "7e8f0c050fc7",
     "c251fcc0bc55",
     "40a4df1a6bf5",
@@ -1001,7 +991,17 @@
     "afc0f3edc493",
     "11ee76ecab7d",
     "0d34fbba00a5",
-    "d1c1bbd6a9f2"
+    "d1c1bbd6a9f2",
+    "639c963857e2",
+    "78208f0a4641",
+    "7edd0e70be43",
+    "22e74eb302fc",
+    "047ea0dddcc3",
+    "d50a6a67cad1",
+    "8fae2dcac92c",
+    "b7577628e323",
+    "98df5b9d73e3",
+    "fdc74062b0a3"
   ],
   "replied_to": [],
   "post_dedup": {
@@ -1021,52 +1021,52 @@
   },
   "response_cache": {},
   "posted_today": [
-    "Alpha Research Director",
-    "Compliance Engineer",
-    "Quant ML Researcher",
     "VP Engineering",
-    "Frontend Lead",
-    "Backend Lead",
-    "PnL bot",
-    "Rates desk bot",
-    "Laavanye Bahl \u2014 CEO/Founder",
-    "Data Engineer",
-    "ML Modeling Lead (MP)",
     "VP Engineering (CR)",
-    "Kalshi desk bot",
-    "Director of QA",
-    "Incident Bot",
-    "Deep Learning Engineer",
-    "Options desk bot",
-    "Alpha Research Director (SR)",
-    "Polymarket Researcher",
-    "CEO/Founder",
-    "Equity desk bot",
-    "Director of DevOps",
-    "Execution Engineer",
-    "CEO / Founder",
-    "Frontend Bot",
-    "Quant Researcher",
-    "ML Modeling Lead",
-    "Polymarket desk bot",
     "StatArb desk bot",
-    "ML Infrastructure Engineer",
-    "Macro/FX desk bot",
+    "Quant Researcher",
+    "Incident Bot",
+    "Laavanye Bahl \u2014 CEO/Founder",
+    "Equity desk bot",
+    "Execution Engineer",
+    "Compliance Engineer",
+    "ML Research Lead",
     "Junior Engineer",
     "Futures desk bot",
-    "Risk Engineer",
+    "CEO/Founder",
     "Crypto desk bot",
-    "VP Research",
-    "Options Researcher",
-    "Commodities desk bot",
     "Feature Engineering Lead",
+    "Macro/FX desk bot",
+    "Polymarket desk bot",
+    "Commodities desk bot",
     "Wins bot",
-    "ML Research Lead",
-    "Security Engineer",
+    "Quant ML Researcher",
+    "VP Research",
     "Research Scientist",
+    "Data Engineer",
     "Finance Engineer",
+    "ML Modeling Lead",
+    "CEO / Founder",
+    "Backend Lead",
+    "Risk Engineer",
+    "Director of QA",
+    "Director of DevOps",
+    "Deep Learning Engineer",
+    "Options Researcher",
+    "ML Infrastructure Engineer",
+    "PnL bot",
+    "Frontend Bot",
+    "Polymarket Researcher",
+    "Frontend Lead",
+    "Security Engineer",
+    "Rates desk bot",
+    "Kalshi desk bot",
+    "Options desk bot",
+    "ML Modeling Lead (MP)",
+    "Chief Risk Officer",
+    "Alpha Research Director (SR)",
     "Standup bot",
-    "Chief Risk Officer"
+    "Alpha Research Director"
   ],
   "last_post_ts": {
     "vp_eng": 1784680462.75456,
@@ -1079,7 +1079,7 @@
     "exec_eng": 1784680462.75456,
     "poly_desk": 1784617210.8670454,
     "ml_researcher": 1784617210.8670454,
-    "vp_research": 1784648967.476252,
+    "vp_research": 1784930856.0737462,
     "quant_researcher": 1784617210.8670454,
     "cro": 1784617210.8670454,
     "frontend": 1784617210.8670454,
@@ -1109,7 +1109,7 @@
     "commodities_desk_bot": 1784674879.755741,
     "data_engineer": 1784642293.1239827,
     "wins_bot": 1784498211.8456523,
-    "polymarket_researcher": 1784824781.354244,
+    "polymarket_researcher": 1784930866.3532212,
     "kalshi_desk_bot": 1784548113.9412513,
     "polymarket_desk_bot": 1784824789.712393,
     "statarb_desk_bot": 1784634569.3142326,
@@ -1117,7 +1117,7 @@
     "deep_learning_engineer": 1784443554.9964104,
     "equity_desk_bot": 1784824804.748713,
     "risk_engineer": 1784522239.6670141,
-    "standup_bot": 1784648987.737719,
+    "standup_bot": 1784930886.826215,
     "alpha_research_director_(sr)": 1784654748.3904397,
     "director_of_qa": 1784615521.7873528,
     "finance_engineer": 1784648940.6152158,
@@ -1142,7 +1142,7 @@
     "wei": 1784543948.343804,
     "helena": 1784543948.343804,
     "incident_bot": 1784460941.6101623,
-    "vp_engineering": 1784648951.2963514,
+    "vp_engineering": 1784930872.207769,
     "sina": 1784465158.845894,
     "tomas": 1784543948.343804,
     "kenji": 1783564228.6755908,
@@ -1242,79 +1242,79 @@
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-23"
+        "date": "2026-07-24"
       },
       "alpha_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-23"
+        "date": "2026-07-24"
       },
       "ml_lead": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-23"
+        "date": "2026-07-24"
       },
       "risk_eng": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-23"
+        "date": "2026-07-24"
       },
       "backend_lead": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-23"
+        "date": "2026-07-24"
       },
       "qa_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-23"
+        "date": "2026-07-24"
       },
       "devops_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-23"
+        "date": "2026-07-24"
       },
       "exec_eng": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-23"
+        "date": "2026-07-24"
       },
       "poly_desk": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-23"
+        "date": "2026-07-24"
       },
       "ml_researcher": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-23"
+        "date": "2026-07-24"
       },
       "vp_research": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-23"
+        "date": "2026-07-24"
       },
       "quant_researcher": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-23"
+        "date": "2026-07-24"
       },
       "cro": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-23"
+        "date": "2026-07-24"
       }
     }
   },
@@ -3223,6 +3223,6 @@
       "GEMINI_API_KEY_3": 300
     }
   },
-  "posted_today_date": "2026-07-23",
+  "posted_today_date": "2026-07-24",
   "skip_wave": false
 }
