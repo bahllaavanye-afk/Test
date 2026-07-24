@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, List, Tuple
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,11 +45,13 @@ class SelfImprovingLoop:
 
     # ── Metric collection ─────────────────────────────────────────────────────
 
-    async def _collect_strategy_metrics(self) -> list[dict]:
+    async def _collect_strategy_metrics(self) -> List[dict]:
         """Pull per-strategy Sharpe + win-rate from trade history (last 30d)."""
         cutoff = datetime.now(timezone.utc) - timedelta(days=30)
         async with self._factory() as session:
-            result = await session.execute(text("""
+            result = await session.execute(
+                text(
+                    """
                 SELECT
                     strategy_name,
                     COUNT(*) AS num_trades,
@@ -60,26 +62,31 @@ class SelfImprovingLoop:
                 FROM trades
                 WHERE closed_at >= :cutoff AND strategy_name IS NOT NULL
                 GROUP BY strategy_name
-            """), {"cutoff": cutoff})
+                """
+                ),
+                {"cutoff": cutoff},
+            )
             rows = result.fetchall()
 
-        metrics = []
+        metrics: List[dict] = []
         for row in rows:
             std = row.std_pnl or 1e-9
             sharpe = (row.avg_pnl / std) * (252 ** 0.5) if std > 0 else 0
-            metrics.append({
-                "strategy": row.strategy_name,
-                "num_trades": row.num_trades,
-                "total_pnl": float(row.total_pnl or 0),
-                "avg_pnl": float(row.avg_pnl or 0),
-                "win_rate": float(row.win_rate or 0),
-                "sharpe": round(sharpe, 3),
-            })
+            metrics.append(
+                {
+                    "strategy": row.strategy_name,
+                    "num_trades": row.num_trades,
+                    "total_pnl": float(row.total_pnl or 0),
+                    "avg_pnl": float(row.avg_pnl or 0),
+                    "win_rate": float(row.win_rate or 0),
+                    "sharpe": round(sharpe, 3),
+                }
+            )
         return metrics
 
     # ── Auto-disable ──────────────────────────────────────────────────────────
 
-    async def _auto_disable_underperformers(self, metrics: list[dict]) -> None:
+    async def _auto_disable_underperformers(self, metrics: List[dict]) -> None:
         """Disable strategies with Sharpe < 0 and >= 10 trades in the last 30 days."""
         underperformers = [m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10]
         if not underperformers:
@@ -87,13 +94,18 @@ class SelfImprovingLoop:
 
         async with self._factory() as session:
             for m in underperformers:
-                await session.execute(text("""
+                await session.execute(
+                    text(
+                        """
                     UPDATE strategies SET is_active = false, disabled_reason = :reason
                     WHERE name = :name AND is_active = true
-                """), {
-                    "name": m["strategy"],
-                    "reason": f"auto-disabled: Sharpe={m['sharpe']:.2f} (30d)",
-                })
+                    """
+                    ),
+                    {
+                        "name": m["strategy"],
+                        "reason": f"auto-disabled: Sharpe={m['sharpe']:.2f} (30d)",
+                    },
+                )
             await session.commit()
 
         names = [m["strategy"] for m in underperformers]
@@ -102,14 +114,30 @@ class SelfImprovingLoop:
 
     # ── LLM improvement pass ──────────────────────────────────────────────────
 
-    async def _llm_improvement_pass(self, metrics: list[dict]) -> None:
+    async def _llm_improvement_pass(self, metrics: List[dict]) -> None:
         if not metrics:
             return
 
+        top, bottom = self._select_top_bottom_strategies(metrics)
+        prompt = self._build_llm_prompt(top, bottom)
+
+        response = await call_race(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4,
+            max_tokens=512,
+        )
+        if response:
+            await self._store_llm_suggestion(response)
+
+    def _select_top_bottom_strategies(self, metrics: List[dict]) -> Tuple[List[dict], List[dict]]:
+        """Return the top 5 and bottom 3 strategies based on Sharpe."""
         top = sorted(metrics, key=lambda m: m["sharpe"], reverse=True)[:5]
         bottom = sorted(metrics, key=lambda m: m["sharpe"])[:3]
+        return top, bottom
 
-        prompt = f"""You are a quantitative trading researcher.
+    def _build_llm_prompt(self, top: List[dict], bottom: List[dict]) -> str:
+        """Create the prompt sent to the LLM with formatted strategy data."""
+        return f"""You are a quantitative trading researcher.
 
 Top performing strategies (last 30d):
 {json.dumps(top, indent=2)}
@@ -124,32 +152,34 @@ Suggest 3 specific, actionable improvements:
 
 Be concise. Each suggestion under 2 sentences."""
 
-        response = await call_race(
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.4,
-            max_tokens=512,
-        )
-        if response:
-            await self._memory.write("llm_suggestions", {
+    async def _store_llm_suggestion(self, response: Any) -> None:
+        """Persist LLM suggestion to AgentMemory and log the provider."""
+        await self._memory.write(
+            "llm_suggestions",
+            {
                 "provider": response.provider,
                 "suggestion": response.content,
-            })
-            logger.info("SelfImprovingLoop: LLM suggestion from %s stored", response.provider)
+            },
+        )
+        logger.info("SelfImprovingLoop: LLM suggestion from %s stored", response.provider)
 
     # ── Regime broadcast ──────────────────────────────────────────────────────
 
-    async def _broadcast_regime(self, metrics: list[dict]) -> None:
+    async def _broadcast_regime(self, metrics: List[dict]) -> None:
         profitable = sum(1 for m in metrics if m["sharpe"] > 0.5)
         total = len(metrics) or 1
         health = profitable / total
 
         regime = "bull" if health > 0.6 else ("bear" if health < 0.3 else "sideways")
-        await self._memory.set_latest("platform_health", {
-            "regime": regime,
-            "health_ratio": round(health, 3),
-            "profitable_strategies": profitable,
-            "total_strategies": total,
-        })
+        await self._memory.set_latest(
+            "platform_health",
+            {
+                "regime": regime,
+                "health_ratio": round(health, 3),
+                "profitable_strategies": profitable,
+                "total_strategies": total,
+            },
+        )
 
         try:
             await self._redis.publish("platform:regime", json.dumps({"regime": regime, "health": health}))
