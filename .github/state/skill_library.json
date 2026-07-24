@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Check for stale data",
-    "Track config changes",
-    "Cache market data",
     "Use retry mechanism",
     "Refactor nested logic",
     "Implement retry logic",
@@ -199,8 +196,11 @@
     "Log error stacks",
     "Validate CSV",
     "* Implement JSON schema checks",
-    "Verify SSL certs"
+    "Verify SSL certs",
+    "Refactor constants files",
+    "Implement type hints",
+    "Use retry decorators"
   ],
-  "last_updated": "2026-07-24T02:16:29.487369+00:00",
+  "last_updated": "2026-07-24T04:12:10.916005+00:00",
   "total": 200
 }
