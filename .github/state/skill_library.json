@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Refactor LSTM models",
-    "Check DB connections",
     "Capture model drift",
     "Monitor model performance",
     "monitoring on risk/var.py: success \u2014 tests green",
@@ -199,8 +197,10 @@
     "Log API response codes",
     "Track thread timeouts",
     "Verify queue lengths",
-    "Monitor API tokens"
+    "Monitor API tokens",
+    "Test API endpoints",
+    "Validate CSV logic"
   ],
-  "last_updated": "2026-07-24T07:04:57.240058+00:00",
+  "last_updated": "2026-07-24T09:42:48.949369+00:00",
   "total": 200
 }
