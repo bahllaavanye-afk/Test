@@ -118,14 +118,29 @@ async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_IN
         from app.ml.training.train_lstm import train
 
         experiment_name = f"{model_name}_{symbol.lower()}_{datetime.now(timezone.utc).strftime(DATE_FORMAT)}"
+
+        train_start = datetime.now(timezone.utc)
         result = await train(hist, experiment_name=experiment_name, max_epochs=MAX_EPOCHS)
+        train_end = datetime.now(timezone.utc)
+
+        # Attach execution time metric
+        exec_seconds = (train_end - train_start).total_seconds()
+        result["execution_time_seconds"] = exec_seconds
 
         result["symbol"] = symbol
         result["model"] = model_name
         result["retrained_at"] = datetime.now(timezone.utc).isoformat()
+
+        # Structured logging with key metrics
         logger.info(
             "Model retrained",
-            **{k: v for k, v in result.items() if k != "best_model_path"},
+            model=model_name,
+            symbol=symbol,
+            interval=interval,
+            execution_time_seconds=exec_seconds,
+            signal_count=result.get("signal_count"),
+            pnl=result.get("pnl"),
+            **{k: v for k, v in result.items() if k not in {"best_model_path", "execution_time_seconds"}},
         )
         return result
 
@@ -195,13 +210,28 @@ async def nightly_retrain() -> None:
         return
 
     logger.info("Nightly retrain starting", configs=len(retrain_configs))
+    start_time = datetime.now(timezone.utc)
+
     results = await asyncio.gather(
         *(retrain_model(m, s, i) for m, s, i in retrain_configs),
         return_exceptions=True,
     )
     successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
+
+    # Aggregate key metrics across all models
+    total_signal_count = sum(
+        r.get("signal_count", 0) for r in results if isinstance(r, dict) and r.get("signal_count") is not None
+    )
+    total_pnl = sum(
+        r.get("pnl", 0) for r in results if isinstance(r, dict) and r.get("pnl") is not None
+    )
+    elapsed_seconds = (datetime.now(timezone.utc) - start_time).total_seconds()
+
     logger.info(
         "Nightly retrain complete",
         total=len(retrain_configs),
         succeeded=successes,
+        execution_time_seconds=elapsed_seconds,
+        total_signal_count=total_signal_count,
+        total_pnl=total_pnl,
     )
