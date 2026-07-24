@@ -1,9 +1,9 @@
 """Inbound webhook receivers — TradingView alerts.
 
 IMPROVEMENTS P2 (2026-06-29 review): TradingView has no public trade API, but
-its alerts can POST here (charts → webhook-IN). This endpoint RECEIVES and
-records alerts for visibility — it does NOT auto-trade them (paper-first;
-alerts are unauthenticated third-party input and only ever advisory).
+its alerts can POST here (charts → webhook‑IN). This endpoint RECEIVES and
+records alerts for visibility — it does NOT auto‑trade them (paper‑first;
+alerts are unauthenticated third‑party input and only ever advisory).
 
 Security model: TradingView webhooks can't send custom headers, so the shared
 secret rides in the JSON body ("secret"). With TRADINGVIEW_WEBHOOK_SECRET
@@ -21,14 +21,14 @@ from app.utils.logging import logger
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
-# Ring buffer of the most recent alerts (process-local; visibility, not storage
+# Ring buffer of the most recent alerts (process‑local; visibility, not storage
 # of record). A dead Redis must not break the receiver.
 _RECENT_ALERTS: list[dict] = []
 _MAX_RECENT = 200
 
 
 def _normalize(payload: dict[str, Any]) -> dict[str, Any]:
-    """Best-effort normalization of TradingView's free-form alert JSON."""
+    """Best‑effort normalization of TradingView's free‑form alert JSON."""
     return {
         "symbol": str(payload.get("ticker") or payload.get("symbol") or "").upper() or None,
         "side": (str(payload.get("action") or payload.get("side") or "").lower() or None),
@@ -46,6 +46,40 @@ def _float_or_none(v: Any) -> float | None:
         return None
 
 
+def _validate_payload(payload: dict[str, Any]) -> None:
+    """Validate incoming TradingView payload.
+
+    Raises:
+        ValueError: If required fields are missing or have invalid types.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a JSON object")
+
+    # Secret validation is performed separately; ensure it exists.
+    if "secret" not in payload:
+        raise ValueError("missing required field: secret")
+
+    # Symbol / ticker validation – optional but must be string if present.
+    if payload.get("ticker") is not None and not isinstance(payload.get("ticker"), (str, int)):
+        raise ValueError("field 'ticker' must be a string or numeric")
+    if payload.get("symbol") is not None and not isinstance(payload.get("symbol"), (str, int)):
+        raise ValueError("field 'symbol' must be a string or numeric")
+
+    # Side / action validation – optional but must be string if present.
+    if payload.get("action") is not None and not isinstance(payload.get("action"), str):
+        raise ValueError("field 'action' must be a string")
+    if payload.get("side") is not None and not isinstance(payload.get("side"), str):
+        raise ValueError("field 'side' must be a string")
+
+    # Price validation – optional but must be convertible to float.
+    price_val = payload.get("price") or payload.get("close")
+    if price_val is not None:
+        try:
+            float(price_val)
+        except (TypeError, ValueError):
+            raise ValueError("field 'price' must be numeric")
+
+
 @router.post("/tradingview")
 async def receive_tradingview_alert(request: Request) -> dict:
     secret = os.environ.get("TRADINGVIEW_WEBHOOK_SECRET", "").strip()
@@ -57,28 +91,46 @@ async def receive_tradingview_alert(request: Request) -> dict:
 
     try:
         payload = await request.json()
-        if not isinstance(payload, dict):
-            raise ValueError("payload must be a JSON object")
     except Exception:  # noqa: BLE001 — malformed body is a client error
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            detail="Body must be a JSON object.")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Body must be a valid JSON object.",
+        )
+
+    # Validate payload structure and content.
+    try:
+        _validate_payload(payload)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
 
     if str(payload.get("secret") or "") != secret:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Bad or missing webhook secret.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Bad or missing webhook secret.",
+        )
 
     alert = _normalize(payload)
     _RECENT_ALERTS.append(alert)
+    # Keep only the most recent _MAX_RECENT entries.
     del _RECENT_ALERTS[:-_MAX_RECENT]
-    logger.info("tradingview alert received",
-                symbol=alert["symbol"], side=alert["side"], strategy=str(alert["strategy"])[:40])
+    logger.info(
+        "tradingview alert received",
+        symbol=alert["symbol"],
+        side=alert["side"],
+        strategy=str(alert["strategy"])[:40],
+    )
 
-    # Best-effort fan-out to Redis subscribers (strategies/dashboards may listen).
+    # Best‑effort fan‑out to Redis subscribers (strategies/dashboards may listen).
     try:
         from app.redis_client import get_redis
+
         r = get_redis()
         if r is not None:
             import json as _json
+
             await r.publish("tradingview:alerts", _json.dumps(alert))
     except Exception as exc:  # noqa: BLE001 — receiver must not depend on Redis
         logger.debug("tradingview alert: redis publish skipped", error=str(exc))
@@ -88,6 +140,11 @@ async def receive_tradingview_alert(request: Request) -> dict:
 
 @router.get("/tradingview/recent")
 async def recent_tradingview_alerts(limit: int = 50) -> dict:
-    """Most recent received alerts (process-local ring buffer)."""
+    """Most recent received alerts (process‑local ring buffer)."""
+    if not isinstance(limit, int):
+        raise ValueError("limit must be an integer")
+    if limit <= 0:
+        raise ValueError("limit must be a positive integer")
+
     limit = max(1, min(limit, _MAX_RECENT))
     return {"alerts": _RECENT_ALERTS[-limit:][::-1], "count": len(_RECENT_ALERTS)}
