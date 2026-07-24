@@ -48,10 +48,16 @@ def _norm(emp: str) -> str:
 class EmployeeBrain:
     """One employee's slice of the shared memory file. Load, mutate, save()."""
 
-    def __init__(self, employee_id: str, path: Path | str = _STATE) -> None:
+    def __init__(self, employee_id: str, path: Path | str = _STATE,
+                 mem: dict | None = None) -> None:
         self.emp = _norm(employee_id)
         self.path = Path(path)
-        self._mem = self._load()
+        # When a caller passes its already-loaded memory dict, operate on THAT
+        # in place (shared) and let the caller own persistence — this avoids a
+        # save() here clobbering the caller's other in-flight changes to the
+        # same agent_memory.json (e.g. the multi-agent discussion's conversations).
+        self._external = mem is not None
+        self._mem = mem if mem is not None else self._load()
         ctx = self._mem.setdefault("employee_context", {})
         self.brain = ctx.setdefault(self.emp, {"history": [], "facts": {}, "updated_at": None})
         self.brain.setdefault("history", [])
@@ -67,8 +73,14 @@ class EmployeeBrain:
             return {}
 
     def save(self) -> bool:
-        """Atomically write the whole memory file back. Never raises."""
+        """Atomically write the whole memory file back. Never raises.
+
+        No-op when this brain was built on a caller-owned in-memory dict
+        (``mem=`` was passed) — the caller persists the shared dict itself.
+        """
         self.brain["updated_at"] = _now()
+        if self._external:
+            return True
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             fd, tmp = tempfile.mkstemp(dir=str(self.path.parent), suffix=".tmp")
@@ -163,8 +175,9 @@ class EmployeeBrain:
                 + "\n=== end memory ===\n")
 
 
-def brain_for(employee_id: str, path: Path | str = _STATE) -> EmployeeBrain:
-    return EmployeeBrain(employee_id, path)
+def brain_for(employee_id: str, path: Path | str = _STATE,
+              mem: dict | None = None) -> EmployeeBrain:
+    return EmployeeBrain(employee_id, path, mem=mem)
 
 
 def record_interaction(employee_id: str, task: str, output: str,

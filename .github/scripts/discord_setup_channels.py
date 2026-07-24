@@ -19,17 +19,28 @@ import urllib.request
 TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
 API = "https://discord.com/api/v10"
 
-# category -> channels (matches the Slack channel map the code posts to)
+# category -> channels. MUST cover every channel any script posts to / reads,
+# else notify.discord_post falls back to dumping into #general with a [#channel]
+# prefix (the "why is everything in #general" symptom). Audited 2026-07-24
+# against grep of discord_post/post_dedup/post + company_brain KNOWLEDGE_CHANNELS
+# + the desk order placers + bot lifecycle + multi-agent discussion.
 STRUCTURE: dict[str, list[str]] = {
     "TRADING DESKS": [
-        "desk-equities", "desk-crypto", "desk-options",
-        "desk-polymarket", "desk-fx-rates", "desk-stat-arb",
+        "desk-equities", "desk-crypto", "desk-options", "desk-polymarket",
+        "desk-fx-rates", "desk-stat-arb", "desk-commodities", "desk-kalshi",
+    ],
+    "RESEARCH": [
+        "alpha-research", "ml-research", "desk-research", "desk-lead-review",
+        "desk-tv-indicators", "market-analysis", "strategy-lab",
+        "strategy-performance", "signals",
     ],
     "OPS & ALERTS": [
         "infra-alerts", "risk-alerts", "pnl-daily", "ci-failures",
+        "incidents", "bot-fleet",
     ],
     "COMPANY": [
-        "engineering", "alpha-research", "leadership-summary", "okrs",
+        "engineering", "squad-backend", "leadership-summary", "okrs",
+        "trading-floor", "bot-research",
     ],
 }
 

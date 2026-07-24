@@ -320,20 +320,34 @@ def run_discussion(mem: dict, skills: list[str], force_channel: str = "") -> lis
     thread_ts = post_slack(channel, opening, username="QuantEdge Multi-Agent", icon="speech_balloon")
     _discord_post(channel, opening, "QuantEdge Multi-Agent")  # Discord is the live surface
 
+    # Per-employee brains operate on THIS mem dict (shared, no separate file
+    # write) so each speaker recalls its own private memory + what peers shared,
+    # and its contribution is recorded back to its growing profile.
+    try:
+        from employee_brain import brain_for as _brain_for
+    except Exception:  # noqa: BLE001
+        _brain_for = None
+
     # Each agent speaks in turn
     real_replies = 0
     prev_content = opening
     for agent_name, display_name, icon, task_prompt in round_config["speakers"]:
         agent_stats = stats.get(agent_name, {})
 
+        brain = _brain_for(agent_name, mem=mem) if _brain_for else None
+        mem_block = brain.context_block() if brain else ""
+
         system = (
             f"You are the {agent_name} autonomous agent on QuantEdge, an institutional-grade "
             f"quantitative trading platform. You're in a team discussion on #{channel}.\n\n"
+            f"{mem_block}"
             f"{context_block}"
             f"Recent commits:\n{log}\n\n"
             f"Your stats: {agent_stats.get('runs', 0)} runs, {agent_stats.get('successes', 0)} successes.\n"
             f"Last task: {agent_stats.get('last_summary', 'N/A')[:100]}\n\n"
-            "Be concise, specific, and reference real file paths. No disclaimers. First person."
+            "Build on what your teammates said above — agree, challenge, or add a concrete next step, "
+            "don't just restate your area. Be concise, specific, reference real file paths. "
+            "No disclaimers. First person."
         )
         user_msg = (
             f"Previous discussion so far:\n{prev_content[-300:]}\n\n"
@@ -350,6 +364,13 @@ def run_discussion(mem: dict, skills: list[str], force_channel: str = "") -> lis
             real_replies += 1
             # Only real LLM replies go to Discord — no canned filler in the channel.
             _discord_post(channel, f"**{display_name}**: {reply}", display_name)
+            # Record into this employee's private brain (history) so next run it
+            # recalls what it said; no save() — main() persists the shared mem.
+            if brain:
+                try:
+                    brain.remember("discussion", reply, meta={"channel": channel, "topic": topic})
+                except Exception:  # noqa: BLE001
+                    pass
         else:
             reply = f"[{agent_name}] LLM unavailable — set API keys in GitHub Secrets to enable real collaboration."
 
