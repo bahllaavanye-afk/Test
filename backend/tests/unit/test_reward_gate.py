@@ -1,12 +1,87 @@
 """Unit tests for the reward gate's pure decision logic (no network)."""
 import sys
 from pathlib import Path
+from typing import List, Literal, Optional
+
+from pydantic import BaseModel, Field, validator
 
 SCRIPTS = Path(__file__).resolve().parents[3] / ".github" / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 import reward_gate as G
+
+
+class CIRun(BaseModel):
+    """Schema representing a CI run entry."""
+
+    status: Literal["in_progress", "completed"] = Field(
+        ...,
+        description="Current status of the CI run.",
+        examples=["completed", "in_progress"],
+    )
+    conclusion: Optional[Literal["success", "failure", "skipped", "neutral"]] = Field(
+        None,
+        description="Final conclusion of the CI run when status is 'completed'.",
+        examples=["success", "failure"],
+    )
+    name: Optional[str] = Field(
+        None,
+        description="Human‑readable identifier of the CI job.",
+        examples=["test", "Reward Gate"],
+    )
+
+    @validator("conclusion", always=True)
+    def check_conclusion_for_completed(cls, v, values):
+        """Validate that a conclusion is present when status is completed."""
+        if values.get("status") == "completed" and v is None:
+            raise ValueError("conclusion must be set for completed runs")
+        return v
+
+    @validator("name")
+    def name_must_not_be_empty(cls, v):
+        """Ensure that a provided name is not an empty string."""
+        if v is not None and not v.strip():
+            raise ValueError("name cannot be empty")
+        return v
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "status": "completed",
+                "conclusion": "success",
+                "name": "test",
+            }
+        }
+
+
+class CommitStatus(BaseModel):
+    """Schema representing a commit status entry."""
+
+    state: Literal["success", "failure", "pending", "error"] = Field(
+        ...,
+        description="Overall state of the commit status.",
+        examples=["failure"],
+    )
+    description: Optional[str] = Field(
+        None,
+        description="Optional human‑readable description of the state.",
+        examples=["Unit tests failed"],
+    )
+    context: Optional[str] = Field(
+        None,
+        description="Context string used by the status API.",
+        examples=["ci/build"],
+    )
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "state": "failure",
+                "description": "Unit tests failed",
+                "context": "ci/build",
+            }
+        }
 
 
 def test_ci_conclusion_pending_failure_success():
