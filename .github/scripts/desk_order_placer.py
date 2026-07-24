@@ -332,6 +332,44 @@ async def _alpaca_get(path: str, params: dict | None = None, data_api: bool = Fa
     return await asyncio.to_thread(_alpaca_get_sync, path, params, data_api)
 
 
+_tradable_crypto_cache: "set[str] | None" = None
+
+
+async def _tradable_crypto_symbols() -> "set[str] | None":
+    """Set of Alpaca-tradable crypto symbols ('BTC/USD' form), cached per process.
+
+    Returns None when the lookup fails — callers must then NOT filter (fail-soft:
+    a lookup blip must never shrink the universe). Fixes the wasted-signal class
+    where a DELISTED pair (e.g. MKR/USD, 422 'asset not active') still had bars,
+    generated a signal, and only failed at order time every single run.
+    """
+    global _tradable_crypto_cache
+    if _tradable_crypto_cache is not None:
+        return _tradable_crypto_cache
+    try:
+        assets = await _alpaca_get("/v2/assets", {"asset_class": "crypto", "status": "active"})
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(assets, list):
+        return None
+    out = {a["symbol"] for a in assets
+           if isinstance(a, dict) and a.get("symbol") and a.get("tradable", True)}
+    _tradable_crypto_cache = out
+    return out or None
+
+
+def _filter_tradable_crypto(symbols: list[str], tradable: "set[str] | None") -> "tuple[list[str], list[str]]":
+    """(kept, dropped). Non-crypto symbols (no '/') always pass through. Crypto
+    pairs are dropped only when `tradable` is present AND clearly in the desk's
+    'SYM/USD' format (the majors are in it) — otherwise keep everything, so a
+    format mismatch or empty/failed lookup can never nuke the universe."""
+    if not tradable or not ({"BTC/USD", "ETH/USD"} & tradable):
+        return list(symbols), []
+    kept = [s for s in symbols if "/" not in s or s in tradable]
+    dropped = [s for s in symbols if "/" in s and s not in tradable]
+    return (kept or list(symbols)), dropped
+
+
 def _alpaca_post_sync(path: str, body: dict) -> dict:
     import urllib.error
     import urllib.request
@@ -1219,7 +1257,13 @@ async def run_desk(desk: DeskConfig, account: dict) -> list[dict]:
         print(f"  ✗ no valid strategies for {desk.name}", flush=True)
         return []
 
-    for symbol in desk.symbols:
+    # Drop crypto pairs Alpaca no longer lists as tradable (fail-soft: keeps all
+    # on any lookup issue). Non-crypto desks pass through untouched.
+    run_symbols, dropped = _filter_tradable_crypto(desk.symbols, await _tradable_crypto_symbols())
+    if dropped:
+        print(f"  ⓘ skipping {len(dropped)} non-tradable pair(s): {', '.join(dropped)}", flush=True)
+
+    for symbol in run_symbols:
         df = await _get_bars(symbol)
         if df is None or len(df) < 50:
             print(f"  ⚠ {symbol}: insufficient data", flush=True)
