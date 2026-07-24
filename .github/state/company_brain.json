@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784917274.1971874,
+    "last_updated": 1784920605.167376,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 2,
     "macro_score": 2,
-    "vix": 18.03,
-    "market_scan_ts": 1784917274.1683578,
+    "vix": 18.6,
+    "market_scan_ts": 1784920605.1393597,
     "sector_leaders": [
       "Energy",
       "Healthcare",
@@ -124,52 +124,37 @@
     "active_universe": [
       "SLB",
       "TSLA",
-      "NOW",
       "ORCL",
+      "NOW",
       "TMO",
       "GOOGL",
-      "HD",
       "QQQ",
-      "XOM",
       "PANW",
-      "ADBE",
+      "HD",
+      "XOM",
       "IWM",
-      "NVDA",
-      "XLI",
       "AMZN",
+      "XLI",
+      "ADBE",
+      "SPY",
+      "NVDA",
       "ABT",
       "CVX",
-      "XLF",
       "META",
-      "BAC"
+      "XLV"
     ],
     "top_momentum": [
+      "SLB",
       "MPC",
       "AAPL",
-      "SLB",
-      "XOM",
-      "INTU"
+      "INTU",
+      "XOM"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1784910817.1728635
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 3,
-      "sector_leaders": [
-        "Healthcare",
-        "Energy",
-        "Financials"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=3). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784308705.3253555
-    },
     {
       "lesson": "Multiple auto-fix failures indicate code issues requiring manual intervention; investigate and fix broken patches.",
       "category": "code",
@@ -1915,6 +1900,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 5, Breakouts: 0, Risk flags: 0.",
       "ts": 1784917274.2027082
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 5,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 5, Breakouts: 0, Risk flags: 0.",
+      "ts": 1784920605.1727424
     }
   ],
   "github_insights": [
