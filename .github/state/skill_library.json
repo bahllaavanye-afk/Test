@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Verify clock sync",
-    "Review system logs",
-    "Set connection timeouts",
-    "Rate limit requests",
-    "Validate input logs",
     "Log UCB1 decisions",
     "Set memory limits",
     "Verify trade confirms",
@@ -199,8 +194,13 @@
     "Test CPU load",
     "Verify config hash",
     "Test disk space",
-    "Log system calls"
+    "Log system calls",
+    "Test market data feeds",
+    "Monitor JVM heap size",
+    "Check OS version",
+    "Validate config hash",
+    "Estimate Sharpe ratio"
   ],
-  "last_updated": "2026-07-24T18:56:30.263476+00:00",
+  "last_updated": "2026-07-24T20:19:10.693174+00:00",
   "total": 200
 }
