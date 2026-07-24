@@ -8,24 +8,37 @@
 
 _Last updated: 2026-07-22._
 
-## ⚡ STATE AS OF 2026-07-22 EVENING (read this first)
-**Merged recently:** PR #878 (schema catch-up migration `k6f7a8b9c0d1`), PR #879
-(desk→shared-brain + P0 hotfix), PR #898 (overfit-killer gate: DSR/PSR/PBO wired into
-walk-forward). All live on main.
-**🟢 SUPABASE IS NOW ACTIVE_HEALTHY** (verified via Supabase MCP `list_projects`, which
-became available this session — project "Trade" `vexzwnfbmznvxoxxktax`, us-west-1,
-pg17). BUT its `public` schema is EMPTY (0 tables, 0 migrations) — the backend has
-NEVER successfully provisioned it, so it's been on the ephemeral SQLite fallback the
-whole time. The live `/health/detailed` still shows `database_primary: tenant not
-found` because that's a BOOT-time value and the keep-alive pings keep the instance warm
-on its stale SQLite boot (so it never cold-restarts to retry Postgres). ACTION IN
-PROGRESS: forcing a fresh Render deploy (I can't `workflow_dispatch` deploy-on-main —
-403; so a merge to main triggers it) → the new boot runs `alembic upgrade head` and
-should provision the full schema + reconnect. IF the fresh boot STILL says "tenant not
-found" while the project is healthy, the Render `DATABASE_URL` points at the wrong
-Supavisor pooler region (project is us-west-1 → pooler host must be
-`aws-0-us-west-1.pooler.supabase.com`, user `postgres.vexzwnfbmznvxoxxktax`, port 6543)
-— that's a Render env-var fix (I can't set Render env vars from here).
+## ⚡ STATE AS OF 2026-07-24 (read this first)
+**🔴 THE ONE THING BLOCKING DURABLE POSTGRES = a Render redeploy that won't trigger.**
+Everything else is ready:
+- **Supabase project "Trade" (`vexzwnfbmznvxoxxktax`, us-west-1, pg17) is ACTIVE_HEALTHY**
+  (verified via Supabase MCP `list_projects`). Its `public` schema is EMPTY (0 tables) —
+  the backend has never provisioned it; it's been on ephemeral SQLite the whole time.
+- **The live backend is running the LAST SUCCESSFUL deploy = `da55c78` (2026-07-22)**, on
+  SQLite. My newer deploys (`819aceb`) CRASHED on boot (see below) so Render kept da55c78.
+- **`database_primary` is a BOOT-time value** + the keep-alive pings hold the instance warm
+  on its stale SQLite boot, so it never cold-restarts to retry Postgres. Only a fresh
+  successful deploy/boot provisions Postgres (`start.sh` runs `alembic upgrade head` → the
+  22-table schema incl. catch-up `k6f7a8b9c0d1`).
+- **THE DEPLOY WON'T TRIGGER**: `workflow_dispatch` on deploy-on-main.yml → 403 (integration
+  token lacks actions:write). Push-to-main deploys are being EATEN — rapid autonomous-bot
+  commits land a `[skip ci]` commit as the newest push, which suppresses the deploy workflow
+  (and GITHUB_TOKEN-pushed merges may not emit push events at all). So merging my PRs did NOT
+  produce a deploy run for the fixed main.
+- **UNBLOCK (user, 30s):** Render dashboard → the backend service → **Manual Deploy → Deploy
+  latest commit**. That boots fixed main against the healthy Postgres → provisions + connects.
+  (Verify after: `/health/detailed` → `database.fallback` gone, `status` not degraded; and
+  Supabase `list_tables` shows ~22 tables.) IF it boots but STILL says "tenant not found",
+  the Render `DATABASE_URL` is the wrong pooler region — must be
+  `aws-0-us-west-1.pooler.supabase.com`, user `postgres.vexzwnfbmznvxoxxktax`, port 6543.
+**🔥 P0 FIXED THIS SESSION — main could not boot at all** (PR #934). Autonomous-improver PRs
+put THREE import-time crashes / breakages on main: (1) `@api_router.middleware()` on an
+APIRouter (no such method); (2) `pipeline.py` used FastAPI `Path(...)` where the name is
+`pathlib.Path`; (3) PR #929 deleted `PIPELINE_DEFS` (3 endpoints 500) + rewrote a strategy
+test to break on the correct `BacktestSignals` type (5 fails). All reverted/fixed; main is
+green + bootable again. This is the 3rd straight session of improver-broke-main.
+**Earlier P0 (still true):** improver PR #876 had 400'd every `/api/v1/strategies/*` — fixed
+in #879, verified live 401.
 **🔥 P0 LIVE REGRESSION found + fixed:** autonomous-improver PR #876 wrapped the ENTIRE
 strategies router in a bogus `X-Strategy-Entry/Confirmation` HTTP-header gate → every
 `/api/v1/strategies/*` GET returned 400 (dashboard strategy list + demo session dead;
