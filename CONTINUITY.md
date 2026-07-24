@@ -8,19 +8,24 @@
 
 _Last updated: 2026-07-22._
 
-## ⚡ STATE AS OF 2026-07-22 PM (read this first)
-**Merged this session:** PR #878 (schema catch-up migration `k6f7a8b9c0d1` for
-slippage_records IS fields + `/health/detailed` scheduler job-table visibility) and
-PR #879 (desk-posts→shared-brain bridge + a P0 hotfix). af42dc8/2466acb are live.
-**⚠️ SUPABASE DID NOT STAY RESTORED** — last session's MCP restore did NOT hold. The
-fresh af42dc8 boot STILL fell back to SQLite: `database_primary: (ENOTFOUND)
-tenant/user postgres.vexzwnfbmznvxoxxktax not found` (Supavisor "tenant not found" =
-project paused again / restore reverted). `database_primary` is a BOOT-time value, so
-it only clears on a fresh boot that reaches Postgres. The catch-up migration is on
-main and applies automatically the moment Postgres is reachable. **The Supabase MCP
-tools were NOT available this session to re-restore.** USER ACTION: supabase.com/
-dashboard → `vexzwnfbmznvxoxxktax` → Restore/Unpause. Until then the platform runs on
-ephemeral SQLite (works, but bot P&L resets each deploy).
+## ⚡ STATE AS OF 2026-07-22 EVENING (read this first)
+**Merged recently:** PR #878 (schema catch-up migration `k6f7a8b9c0d1`), PR #879
+(desk→shared-brain + P0 hotfix), PR #898 (overfit-killer gate: DSR/PSR/PBO wired into
+walk-forward). All live on main.
+**🟢 SUPABASE IS NOW ACTIVE_HEALTHY** (verified via Supabase MCP `list_projects`, which
+became available this session — project "Trade" `vexzwnfbmznvxoxxktax`, us-west-1,
+pg17). BUT its `public` schema is EMPTY (0 tables, 0 migrations) — the backend has
+NEVER successfully provisioned it, so it's been on the ephemeral SQLite fallback the
+whole time. The live `/health/detailed` still shows `database_primary: tenant not
+found` because that's a BOOT-time value and the keep-alive pings keep the instance warm
+on its stale SQLite boot (so it never cold-restarts to retry Postgres). ACTION IN
+PROGRESS: forcing a fresh Render deploy (I can't `workflow_dispatch` deploy-on-main —
+403; so a merge to main triggers it) → the new boot runs `alembic upgrade head` and
+should provision the full schema + reconnect. IF the fresh boot STILL says "tenant not
+found" while the project is healthy, the Render `DATABASE_URL` points at the wrong
+Supavisor pooler region (project is us-west-1 → pooler host must be
+`aws-0-us-west-1.pooler.supabase.com`, user `postgres.vexzwnfbmznvxoxxktax`, port 6543)
+— that's a Render env-var fix (I can't set Render env vars from here).
 **🔥 P0 LIVE REGRESSION found + fixed:** autonomous-improver PR #876 wrapped the ENTIRE
 strategies router in a bogus `X-Strategy-Entry/Confirmation` HTTP-header gate → every
 `/api/v1/strategies/*` GET returned 400 (dashboard strategy list + demo session dead;
@@ -36,11 +41,12 @@ read_channel_recent` reads desk Discord summaries back → `company_brain.
 fetch_desk_knowledge` → `desk_outcomes` brain category + CIO synthesis → `llm_common.
 get_company_context` surfaces `Desk results:` into every employee prompt. Stateless
 (no git-state churn). 13 tests.
-**USER ACTIONS remaining (dashboard):** (1) **Unpause Supabase** (`vexzwnfbmznvxoxxktax`)
-— the durable-DB blocker, and I could NOT do it this session (no Supabase MCP); (2)
-suspend the stale `agb8` Render service (double-executes vs the same Alpaca account);
-(3) optional TRADIER_SANDBOX_TOKEN for real greeks; (4) consider branch protection on
-main (closes the improver-PR CI-bypass hole).
+**USER ACTIONS remaining (dashboard):** (1) Supabase is HEALTHY now — if the forced
+redeploy does NOT reconnect (still "tenant not found"), fix the Render `DATABASE_URL`
+to the us-west-1 pooler (see the Supabase block above); (2) suspend the stale `agb8`
+Render service (double-executes vs the same Alpaca account); (3) optional
+TRADIER_SANDBOX_TOKEN for real greeks; (4) consider branch protection on main (closes
+the improver-PR CI-bypass hole).
 
 ## Earlier: STATE AS OF 2026-07-20 PM
 **Shipped this session (all merged to main, free stack):** bot exit sweep was
