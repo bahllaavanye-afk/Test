@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784906504.3439374,
+    "last_updated": 1784910817.174176,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784904749.446562
+    "last_brain_update": 1784910817.1728635
   },
   "episodic": [
     {
@@ -1911,11 +1911,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The auto-fix process repeatedly failed to apply a patch to the file, as indicated by three identical error messages.",
-      "item_count": 20,
-      "ts": 1784145323.5755086
-    },
-    {
       "summary": "The automated fix attempts either failed to apply a patch or were skipped due to excessive complexity, as the issue spans multiple areas.",
       "item_count": 20,
       "ts": 1784160293.16852
@@ -2409,6 +2404,11 @@
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1784904749.4337823
+    },
+    {
+      "summary": "A team lead revoked automerge for an autonomous PR because it modifies protected files (e.g., backend).",
+      "item_count": 20,
+      "ts": 1784910817.160767
     }
   ],
   "experiment_results": [
@@ -3058,6 +3058,42 @@
       "summary": "*Commodities Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $335 conf=98%  id=`b5052769\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $922 conf=80%  id=`a520f27b\u2026`",
       "source": "desk_run_summary",
       "ts": 1784904717.426819
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (15:59 UTC)  equity=$22,414.24  regime=sideways/calm\nfunnel: 47 generated \u2192 17 survived gate+topK (0 exploration) \u2192 8 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\u2705 *StatA",
+      "source": "desk_run_summary",
+      "ts": 1784910807.5449252
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784910807.5504866
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $385 conf=90%  id=`25333127\u2026`\n\ud83d\udfe2 `vol_of_vol_timing/YFI/USD` BUY $336 conf=86%  id=`e220c20a\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784910807.555876
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*International Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `time_series_momentum/ARGT` BUY $548 conf=62%  id=`fe6bee92\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784910807.5610902
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 2 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/QQQ` SELL $566 conf=100%  id=`9c3cc904\u2026`\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1175 conf=99%  id=`3f033111\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784910807.5663247
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/GDX` BUY $336 conf=99%  id=`aa86f522\u2026`\n\ud83d\udfe2 `time_series_momentum/USO` BUY $336 conf=98%  id=`760aa2c8\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $937 conf=80%  id=`69075f58\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784910807.5716197
     }
   ]
 }
