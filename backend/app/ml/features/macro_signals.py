@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 import aiohttp
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, validator
 
 from app.utils.logging import logger
 
@@ -133,8 +133,8 @@ class MacroSnapshot(BaseModel):
             raise ValueError(f"macro_bias must be one of {allowed}")
         return v
 
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "yield_spread_10y2y": -0.45,
                 "vix": 21.3,
@@ -155,6 +155,7 @@ class MacroSnapshot(BaseModel):
                 "fetched_at": "2024-01-01T12:00:00Z",
             }
         }
+    )
 
 
 class RedditSentimentItem(BaseModel):
@@ -196,8 +197,8 @@ class RedditSentimentResponse(BaseModel):
         example="Apewisdom unavailable",
     )
 
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "results": [
                     {"ticker": "AAPL", "mention_count": 150, "sentiment_score": 0.3},
@@ -208,6 +209,7 @@ class RedditSentimentResponse(BaseModel):
                 "error": None,
             }
         }
+    )
 
 
 async def _fred_latest(series_id: str, api_key: str = "DEMO_KEY") -> Optional[float]:
