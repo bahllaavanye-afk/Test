@@ -15,50 +15,111 @@ from app.bots.lifecycle import (
     decide_bot_actions,
 )
 
+# Constants extracted from test cases
+NOISE_TRADES = 3
+PROFITABLE_TRADES = 20
+PROFITABLE_PNL = 800.0
+PROFITABLE_WR = 0.7
+ARCHIVED_TRADES = 20
+ARCHIVED_PNL = 999.0
+ARCHIVED_WR = 0.9
+TEMPLATE_COUNT = 10
+TEMPLATE_PREFIX = "tpl_"
+
+LOSER = "loser"
+YOUNG = "young"
+LUMPY = "lumpy"
+COMEBACK = "comeback"
+ARCHIVED = "archived"
+WINNER = "winner"
+
 
 def _s(name, enabled=True, archived=False, trades=0, pnl=0.0, wr=None):
-    return BotStats(bot_id=name, name=name, is_enabled=enabled,
-                    is_archived=archived, trades=trades, total_pnl=pnl, win_rate=wr)
+    return BotStats(
+        bot_id=name,
+        name=name,
+        is_enabled=enabled,
+        is_archived=archived,
+        trades=trades,
+        total_pnl=pnl,
+        win_rate=wr,
+    )
 
 
 def test_losing_bot_with_evidence_is_disabled():
-    a = decide_bot_actions([_s("loser", trades=MIN_TRADES_TO_JUDGE, pnl=-300.0, wr=0.30)], [])
-    assert [b.name for b in a["disable"]] == ["loser"]
+    a = decide_bot_actions(
+        [_s(LOSER, trades=MIN_TRADES_TO_JUDGE, pnl=-300.0, wr=0.30)], []
+    )
+    assert [b.name for b in a["disable"]] == [LOSER]
 
 
 def test_losing_bot_without_evidence_is_left_alone():
-    # 3 trades is noise, not evidence — never churn on it.
-    a = decide_bot_actions([_s("young", trades=3, pnl=-500.0, wr=0.0)], [])
+    # NOISE_TRADES is noise, not evidence — never churn on it.
+    a = decide_bot_actions(
+        [_s(YOUNG, trades=NOISE_TRADES, pnl=-500.0, wr=0.0)], []
+    )
     assert a["disable"] == []
 
 
 def test_losing_pnl_but_decent_win_rate_survives():
     # Positive expectancy profiles (few big wins) shouldn't die on win rate alone.
     a = decide_bot_actions(
-        [_s("lumpy", trades=MIN_TRADES_TO_JUDGE, pnl=-50.0, wr=DISABLE_WIN_RATE + 0.05)], []
+        [
+            _s(
+                LUMPY,
+                trades=MIN_TRADES_TO_JUDGE,
+                pnl=-50.0,
+                wr=DISABLE_WIN_RATE + 0.05,
+            )
+        ],
+        [],
     )
     assert a["disable"] == []
 
 
 def test_recovered_disabled_bot_is_promoted():
     a = decide_bot_actions(
-        [_s("comeback", enabled=False, trades=MIN_TRADES_TO_PROMOTE, pnl=120.0, wr=0.6)], []
+        [
+            _s(
+                COMEBACK,
+                enabled=False,
+                trades=MIN_TRADES_TO_PROMOTE,
+                pnl=120.0,
+                wr=0.6,
+            )
+        ],
+        [],
     )
-    assert [b.name for b in a["enable"]] == ["comeback"]
+    assert [b.name for b in a["enable"]] == [COMEBACK]
 
 
 def test_archived_bots_are_never_touched():
     a = decide_bot_actions(
-        [_s("archived", enabled=False, archived=True, trades=20, pnl=999.0, wr=0.9)], []
+        [
+            _s(
+                ARCHIVED,
+                enabled=False,
+                archived=True,
+                trades=ARCHIVED_TRADES,
+                pnl=ARCHIVED_PNL,
+                wr=ARCHIVED_WR,
+            )
+        ],
+        [],
     )
     assert a["enable"] == [] and a["disable"] == []
 
 
 def test_template_creation_is_bounded():
-    a = decide_bot_actions([], [f"tpl_{i}" for i in range(10)])
+    a = decide_bot_actions(
+        [], [f"{TEMPLATE_PREFIX}{i}" for i in range(TEMPLATE_COUNT)]
+    )
     assert len(a["create"]) == MAX_CREATES_PER_RUN
 
 
 def test_profitable_enabled_bot_untouched():
-    a = decide_bot_actions([_s("winner", trades=20, pnl=800.0, wr=0.7)], [])
+    a = decide_bot_actions(
+        [_s(WINNER, trades=PROFITABLE_TRADES, pnl=PROFITABLE_PNL, wr=PROFITABLE_WR)],
+        [],
+    )
     assert a["disable"] == [] and a["enable"] == []

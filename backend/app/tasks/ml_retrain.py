@@ -15,6 +15,23 @@ import pandas as pd
 from app.utils.logging import logger
 
 # --------------------------------------------------------------------------- #
+# Constants
+# --------------------------------------------------------------------------- #
+DEFAULT_INTERVAL: str = "1h"
+MIN_HIST_LENGTH: int = 200
+MAX_EPOCHS: int = 30
+DEFAULT_TRAIN_DAYS: int = 730
+CONFIGS_DIR: Path = Path(__file__).parents[3] / "experiments" / "configs"
+DEFAULT_RETRAIN_CONFIGS: list[tuple[str, str, str]] = [
+    ("lstm", "BTC-USD", "1h"),
+    ("lstm", "ETH-USD", "1h"),
+    ("lstm", "SPY", "1d"),
+]
+MAX_RETRAIN_PER_NIGHT: int = 10
+DATE_FORMAT: str = "%Y%m%d"
+REGEX_EXTRACT_PATTERN: str = r"^\s{2}(model|symbol|interval):\s*['\"]?([^\s'\"#]+)"
+
+# --------------------------------------------------------------------------- #
 # Global in‑process cache for downloaded price data.
 # Key: (symbol, interval) -> (timestamp, DataFrame)
 # The cache lives only for the duration of the nightly job, avoiding repeated
@@ -77,7 +94,7 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
         logger.error("Failed to download data", symbol=symbol, interval=interval, error=str(exc))
         return None
 
-    if hist is None or len(hist) < 200:
+    if hist is None or len(hist) < MIN_HIST_LENGTH:
         return None
 
     # Normalize column names once.
@@ -88,11 +105,11 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
     return hist
 
 
-async def retrain_model(model_name: str, symbol: str, interval: str = "1h") -> dict:
+async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_INTERVAL) -> dict:
     """Download 2 years of data and retrain a model. Returns result dict."""
     try:
         end = datetime.now(timezone.utc)
-        start = end - timedelta(days=730)
+        start = end - timedelta(days=DEFAULT_TRAIN_DAYS)
 
         hist = await _download_hist(symbol, interval, start, end)
         if hist is None:
@@ -100,8 +117,8 @@ async def retrain_model(model_name: str, symbol: str, interval: str = "1h") -> d
 
         from app.ml.training.train_lstm import train
 
-        experiment_name = f"{model_name}_{symbol.lower()}_{datetime.now(timezone.utc).strftime('%Y%m%d')}"
-        result = await train(hist, experiment_name=experiment_name, max_epochs=30)
+        experiment_name = f"{model_name}_{symbol.lower()}_{datetime.now(timezone.utc).strftime(DATE_FORMAT)}"
+        result = await train(hist, experiment_name=experiment_name, max_epochs=MAX_EPOCHS)
 
         result["symbol"] = symbol
         result["model"] = model_name
@@ -128,7 +145,7 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
     Falls back to a minimal default set if no configs exist or yaml is unavailable.
     Returns list of (model_name, symbol, interval).
     """
-    configs_dir = Path(__file__).parents[3] / "experiments" / "configs"
+    configs_dir = CONFIGS_DIR
     seen: set[tuple[str, str, str]] = set()
     results: list[tuple[str, str, str]] = []
 
@@ -144,7 +161,7 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
                         "experiment": {
                             k: v
                             for k, v in re.findall(
-                                r"^\s{2}(model|symbol|interval):\s*['\"]?([^\s'\"#]+)",
+                                REGEX_EXTRACT_PATTERN,
                                 text,
                                 re.MULTILINE,
                             )
@@ -162,11 +179,7 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
             continue
 
     if not results:
-        results = [
-            ("lstm", "BTC-USD", "1h"),
-            ("lstm", "ETH-USD", "1h"),
-            ("lstm", "SPY", "1d"),
-        ]
+        results = list(DEFAULT_RETRAIN_CONFIGS)
 
     return results
 
@@ -175,7 +188,7 @@ async def nightly_retrain() -> None:
     """Retrain all models discovered from experiment configs. Called by APScheduler at 02:00 UTC."""
     retrain_configs = _load_retrain_configs()
     # Cap at 10 per night to avoid overwhelming free‑tier CPU
-    retrain_configs = retrain_configs[:10]
+    retrain_configs = retrain_configs[:MAX_RETRAIN_PER_NIGHT]
 
     if not retrain_configs:
         logger.info("No retrain configurations found")
