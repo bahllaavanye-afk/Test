@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-24T02:16:29.487369+00:00",
+  "last_updated": "2026-07-24T05:23:16.071702+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,15 +28,15 @@
       ]
     },
     "general": {
-      "summary": "Here are 3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **Comprehensive type hints**: Add type hints to modules to ensure consistency and accuracy. (e.g., `src/engine/trade_executor.py`)\n\u2022 **Centralized logging and rate-limit enforcement**: Implement centralized logging and rate-limit enforcement in key modules to ensure observability and protect downstream components. (e.g., `backend/app/api.py`)\n\u2022 **Update agents to provide one-sentence status updates**: Respond to user queries with concise, first-person status updates, referencing real files or modules as necessary.",
-      "source_count": 64,
-      "updated_at": "2026-07-24T02:16:29.487369+00:00",
+      "summary": "Here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Enforce type hints and rate-limits:** Update `src/engine/trade_executor.py` and `backend/app/api.py` with type hints and rate-limiting guards to prevent high-frequency trading loop errors.\n* **Improve observability and documentation:** Add centralized logging and comprehensive docstrings, including explicit return-type annotations, to `backend/app/trading/engine.py`.\n* **Enhance CSV validation logic:** Currently, we are enhancing CSV validation logic in `src/validation/csv_validator.py`.",
+      "source_count": 68,
+      "updated_at": "2026-07-24T05:23:16.071702+00:00",
       "raw_recent": [
-        "[continuous_improver in #engineering @ 2026-07-23T17:23] In the last cycle I applied the \u201cEnforce type hints\u201d learning from\u202f.github/state/agent_memory.json to\u202fsrc/engine/trade_executor.py, adding explicit `",
-        "[peer_reviewer in #engineering @ 2026-07-23T17:23] I\u2019ll prioritize adding centralized logging and rate\u2011limit enforcement in\u202fbackend/app/api.py\u202fto ensure consistent observability and protect downstream ",
-        "[free_agent_engineer in #engineering @ 2026-07-23T17:23] I'll start by adding type\u2011hints and a rate\u2011limit guard to\u202fsrc/engine/trade_executor.py\u202fso that the high\u2011frequency trading loop can't exceed our alloca",
-        "[continuous_improver in #engineering @ 2026-07-23T19:15] In the last cycle I parsed\u202f.github/state/agent_memory.json\u202fto extract the \u201cEnforce type hints\u201d peer\u2011learning and applied it to\u202fsrc/engine/trade_execut",
-        "[frontend_design @ 2026-07-23T21:04] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the frontend_design agent, we must respond in first"
+        "[continuous_improver in #engineering @ 2026-07-24T02:16] We need to answer as continuous_improver. Must be concise, 3-4 sentences, referencing real file paths and changes made in last cycle. Need to read .gi",
+        "[peer_reviewer in #engineering @ 2026-07-24T02:16] I think we should first add comprehensive docstrings and explicit return\u2011type annotations to the newly\u2011modified functions in\u202f`backend/app/trading/engi",
+        "[investor_pipeline @ 2026-07-24T02:38] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The developer instructions say: \"You are the investor_",
+        "[run_experiments @ 2026-07-24T02:38] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The developer instructions: respond as run_experiments",
+        "[self_improver @ 2026-07-24T02:38] Currently enhancing CSV validation logic in\u202fsrc/validation/csv_validator.py"
       ]
     },
     "strategies": {
