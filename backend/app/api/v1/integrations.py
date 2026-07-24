@@ -1,8 +1,13 @@
 """Integrations endpoints: Notion sync, Slack test, etc."""
+import logging
+import time
 from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user
 from app.integrations.notion_sync import get_notion_sync
 from app.models.user import User
+
+# Logger setup
+logger = logging.getLogger(__name__)
 
 # Constants
 INTEGRATIONS_PREFIX: str = "/integrations"
@@ -37,4 +42,29 @@ async def notion_status(current_user: User = Depends(get_current_user)):
 async def trigger_notion_sync(current_user: User = Depends(get_current_user)):
     """Trigger a bidirectional GitHub Issues ↔ Notion sync."""
     sync = get_notion_sync()
-    return await sync.sync_all()
+    start_time = time.perf_counter()
+    result = await sync.sync_all()
+    elapsed = time.perf_counter() - start_time
+
+    # Determine signal count
+    try:
+        signal_count = len(result)  # type: ignore[arg-type]
+    except Exception:
+        signal_count = None
+
+    # Extract P&L if present
+    pnl = None
+    if isinstance(result, dict):
+        pnl = result.get("pnl")
+    elif hasattr(result, "pnl"):
+        pnl = getattr(result, "pnl")
+
+    logger.info(
+        "Notion sync completed",
+        extra={
+            "signal_count": signal_count,
+            "execution_time_seconds": elapsed,
+            "pnl": pnl,
+        },
+    )
+    return result
