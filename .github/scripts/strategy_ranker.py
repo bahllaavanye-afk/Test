@@ -35,8 +35,9 @@ except ImportError as e:
     sys.exit(f"Missing dependency: {e}. Run: pip install numpy pandas yfinance requests")
 
 
-SLACK_BOT_TOKEN  = os.environ.get("SLACK_BOT_TOKEN", "")
-SLACK_CHANNEL    = "#pnl-daily"
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
+CHAT_CHANNEL    = "#pnl-daily"
 MIN_SHARPE_PAPER = float(os.environ.get("MIN_SHARPE_PAPER", "0.7"))  # below this → flagged
 TOP_N            = int(os.environ.get("TOP_N", "10"))
 
@@ -119,18 +120,9 @@ def _run_strategy(strategy_name: str, df: pd.DataFrame) -> pd.Series | None:
 
 
 def _post_slack(text: str) -> None:
-    if not SLACK_BOT_TOKEN:
-        print(f"[SLACK dry-run]\n{text}")
-        return
-    resp = requests.post(
-        "https://slack.com/api/chat.postMessage",
-        headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}", "Content-Type": "application/json"},
-        json={"channel": SLACK_CHANNEL, "text": text},
-        timeout=10,
-    )
-    d = resp.json()
-    if not d.get("ok"):
-        print(f"Slack error: {d.get('error')}", file=sys.stderr)
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(CHANNEL if "CHANNEL" in globals() else "engineering", text)
 
 
 def main() -> None:

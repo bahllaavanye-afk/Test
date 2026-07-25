@@ -1,7 +1,7 @@
 name: Agent Self-Review
 
 # Runs on every push to the agent branch when core agent files change.
-# Statically reviews slack_agent_team.py for quality violations — no LLM needed.
+# Statically reviews agent_team.py for quality violations — no LLM needed.
 # Exit 1 (blocking) only for CRITICAL issues: ALLOW_PAID_APIS=True, hardcoded secrets.
 # HARDCODED / SHORT_PROMPT issues are logged in the artifact but are non-blocking.
 
@@ -9,8 +9,8 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/scripts/slack_agent_team.py'
-      - '.github/workflows/slack-realtime.yml'
+      - '.github/scripts/agent_team.py'
+      - '.github/workflows/multi-agent-discussion.yml'
       - '.github/workflows/heartbeat.yml'
 
 concurrency:

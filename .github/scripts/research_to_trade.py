@@ -28,14 +28,14 @@ from typing import Any
 import httpx
 
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post, memory_write
+from llm_common import llm, chat_post, memory_write
 
 
 # ── Slack wrapper (preserves thread_ts return behaviour) ──────────────────────
 
 def slack(channel: str, text: str, thread_ts: str | None = None) -> str | None:
     """Post to Slack, return thread_ts for threading replies."""
-    resp = slack_post(channel, text, thread_ts)
+    resp = chat_post(channel, text, thread_ts)
     return resp.get("ts")
 
 

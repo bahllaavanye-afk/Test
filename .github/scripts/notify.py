@@ -1,9 +1,9 @@
-"""Unified notification delivery for all CI agents: Slack first, Discord always.
+"""Unified Discord notification delivery for all CI agents.
 
-47 of 80 scripts in this directory grew their own chat.postMessage helper with
-no failover — when Slack's free-tier quota died, their output went nowhere.
-This is the single shared chokepoint: `post()` delivers via Slack when a
-working token exists, and via Discord otherwise (or when Slack rejects).
+Scripts in this directory used to grow their own chat.postMessage helper with
+no failover; this is the single shared chokepoint they all route through.
+Slack was removed 2026-07-25 (its free-tier quota died 2026-06-29 and never
+recovered, so every message had been taking the Discord path regardless).
 Discord side supports per-channel webhooks (DISCORD_WEBHOOK_URL_<SLUG>) and
 per-employee bot profiles via the `username` field.
 
@@ -19,7 +19,6 @@ import os
 import time
 import urllib.request
 
-_SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "").strip()
 _DEFAULT_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL", "")
 _BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
 _GUILD_ID = os.environ.get("DISCORD_GUILD_ID", "").strip()
@@ -91,13 +90,8 @@ def _post_to_channel_id(cid: str, text: str, username: str) -> bool:
         print(f"[notify] bot post failed: {str(e)[:80]}")
         return False
 
-stats = {"slack_ok": 0, "discord_ok": 0, "failed": 0, "discord_skipped": 0}
-_slack_dead: str = ""  # first fatal Slack error; short-circuits later attempts
+stats = {"discord_ok": 0, "failed": 0, "discord_skipped": 0}
 
-_FATAL_SLACK_ERRORS = {
-    "message_limit_exceeded", "invalid_auth", "account_inactive",
-    "token_revoked", "not_authed",
-}
 
 
 def _discord_webhook_for(channel: str) -> str:
@@ -286,34 +280,6 @@ def _discord_post_LEGACY(channel: str, text: str, username: str = "QuantEdge") -
         return False
 
 
-def slack_post(channel: str, text: str) -> bool:
-    """One Slack chat.postMessage attempt. Never raises."""
-    global _slack_dead
-    if _slack_dead or not _SLACK_TOKEN.startswith("xoxb-"):
-        return False
-    body = json.dumps({"channel": channel, "text": text, "mrkdwn": True}).encode()
-    req = urllib.request.Request(
-        "https://slack.com/api/chat.postMessage",
-        data=body,
-        headers={"Authorization": f"Bearer {_SLACK_TOKEN}",
-                 "Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            resp = json.loads(r.read())
-        if resp.get("ok"):
-            stats["slack_ok"] += 1
-            return True
-        err = resp.get("error", "")
-        if err in _FATAL_SLACK_ERRORS:
-            _slack_dead = err
-            print(f"[notify] Slack fatally dead ({err}) — Discord takes over this run")
-        return False
-    except Exception as e:  # noqa: BLE001
-        print(f"[notify] slack failed: {str(e)[:80]}")
-        return False
-
-
 def _is_recent_duplicate(channel: str, text: str, within_last: int = 4) -> bool:
     """True if an identical message is among the last `within_last` posts in the
     Discord channel. STATELESS — reads channel history via the bot API, so no
@@ -390,12 +356,10 @@ def post_dedup(channel: str, text: str, username: str = "QuantEdge",
 
 
 def post(channel: str, text: str, username: str = "QuantEdge") -> bool:
-    """Deliver anywhere: Slack when healthy, Discord otherwise.
+    """Deliver a message to a Discord channel.
 
-    Returns True if the message landed on at least one platform.
+    Returns True if the message landed.
     """
     if not text:
         return False
-    if slack_post(channel, text):
-        return True
     return discord_post(channel, text, username=username)

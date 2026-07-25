@@ -55,17 +55,8 @@ jobs:
             alpaca-py requests yfinance
 
       # ── Step 1: Bootstrap Slack channels ──────────────────────────────────
-      - name: Bootstrap Slack channels (31 channels)
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-        run: python .github/scripts/slack_bootstrap.py
-
-      # ── Step 2: Add workspace admin to all channels ───────────────────────
       - name: Add admin to all channels
         env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
         run: |
@@ -121,32 +112,21 @@ jobs:
           EOF
 
       # ── Step 3: Slack kickoff — fill channels with team chatter ───────────
-      - name: Slack kickoff
-        continue-on-error: true
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-        run: python .github/scripts/slack_kickoff.py
-
-      # ── Step 4: Agent team standup ────────────────────────────────────────
       - name: Run Slack agent team
         continue-on-error: true
         env:
-          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           GH_TOKEN:          ${{ secrets.GITHUB_TOKEN }}
           GH_REPO:           ${{ github.repository }}
           ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
-        run: python .github/scripts/slack_agent_team.py
+        run: python .github/scripts/agent_team.py
 
       # ── Step 5: Strategy health ranking ──────────────────────────────────
       - name: Strategy health ranker
         continue-on-error: true
         env:
-          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
@@ -159,7 +139,6 @@ jobs:
         env:
           ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
-          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
         run: python .github/scripts/desk_order_placer.py
@@ -170,7 +149,6 @@ jobs:
         env:
           ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
-          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
         run: python .github/scripts/run_experiments.py
@@ -181,7 +159,6 @@ jobs:
         env:
           ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
-          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
         run: python .github/scripts/daily_pnl_report.py

@@ -10,7 +10,6 @@ Environment variables required:
   GH_REPO         — owner/repo  e.g.  "org/quantedge"
   GEMINI_API_KEY  — Google AI Studio key
   GROQ_API_KEY    — Groq console key
-  SLACK_BOT_TOKEN — Slack bot token (optional; skipped if absent)
   ALLOW_PAID_APIS — must be "False" (enforced)
 
 Usage:
@@ -81,7 +80,6 @@ GH_TOKEN: str = os.environ.get("GH_TOKEN", "")
 GH_REPO: str = os.environ.get("GH_REPO", "")
 GEMINI_API_KEY: str = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
 GROQ_API_KEY: str = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
-SLACK_BOT_TOKEN: str = os.environ.get("SLACK_BOT_TOKEN", "")
 
 # Validate safety flag — abort if someone tries to enable paid APIs
 _env_allow = os.environ.get("ALLOW_PAID_APIS", "False").strip().lower()
@@ -480,26 +478,18 @@ def _revert_file(file_path: str) -> None:
 
 # ─── Slack notification ───────────────────────────────────────────────────────
 
-def _slack_post(channel: str, text: str) -> None:
-    if not SLACK_BOT_TOKEN:
-        print(f"[free-agent] [dry-slack] #{channel}: {text[:200]}")
-        return
+def _chat_post(channel: str, text: str) -> None:
+    """Post to Discord via the shared notifier.
+
+    Previously POSTed to slack.com and returned early when the Slack token was
+    unset — which, after the Slack quota died, meant every incident report from
+    this agent was silently discarded.
+    """
     try:
-        payload = json.dumps({"channel": channel, "text": text}).encode()
-        req = urllib.request.Request(
-            "https://slack.com/api/chat.postMessage",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=10) as r:
-            resp = json.loads(r.read())
-        if not resp.get("ok"):
-            print(f"[free-agent] Slack error: {resp.get('error')}")
-    except Exception as e:
-        print(f"[free-agent] Slack post error: {e}")
+        import notify
+        notify.post(channel, text, username="Free Agent Engineer")
+    except Exception as e:  # noqa: BLE001
+        print(f"[free-agent] notify failed: {e}")
 
 
 # ─── Per-issue workflow ───────────────────────────────────────────────────────
@@ -613,7 +603,7 @@ def _process_issue(issue: dict) -> str:
         f"*Root cause:* {fix.get('root_cause', 'N/A')}\n"
         f"*Fix:* {fix.get('explanation', 'N/A')}"
     )
-    _slack_post("incidents", slack_msg)
+    _chat_post("incidents", slack_msg)
 
     return "fixed"
 
@@ -652,7 +642,7 @@ def main() -> int:
         print(f"  [{icon}] {issue_ref}: {outcome}")
 
     if fixed > 0:
-        _slack_post(
+        _chat_post(
             "incidents",
             f":robot: Free-agent engineer run complete — *{fixed}/{len(results)}* issue(s) auto-fixed.",
         )

@@ -42,8 +42,6 @@ jobs:
           exit 0
       - name: Alert Slack on drift
         if: steps.verify.outputs.rc != '0'
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         run: |
           [ -z "${SLACK_BOT_TOKEN:-}" ] && { echo "no SLACK_BOT_TOKEN — skipping alert"; exit 0; }
           python3 - <<'PY'

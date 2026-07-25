@@ -253,11 +253,11 @@ class ContinuousStrategyRunner:
                     logger.info("Signal generated", **alert)
 
                     try:
-                        from app.notifications.slack import slack
+                        from app.notifications.discord import discord
                         from app.notifications.tracker import tracker
                         tracker.record("signal_fired", "signal",
                                         f"{strategy_name} → {symbol} {signal.side} (conf={signal.confidence:.2f})")
-                        await slack.notify_signal(strategy_name, symbol, signal.side,
+                        await discord.notify_signal(strategy_name, symbol, signal.side,
                                                     signal.confidence, signal.target_price)
                     except Exception as notify_err:
                         logger.debug("Notification failed", error=str(notify_err))

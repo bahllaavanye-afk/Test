@@ -1,5 +1,32 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔴 DEEP REVIEW 2026-07-25 — Slack removal uncovered a class of SILENT MESSAGE LOSS
+> User directive: "Remove slack completely. Make discord better. Improve tests."
+> Ripping Slack out turned up something worse than dead code: **large parts of the
+> agent fleet had been posting into a void for weeks.** Every one of these was a
+> silent failure — no exception, no red CI, just no message.
+
+- [x] **[P0 FOUND+FIXED] `llm_common.slack_post` silently discarded EVERY message from 27 scripts.** It returned `{}` when `SLACK_BOT_TOKEN` was unset, and that token has been unset since the free-plan quota died 2026-06-29. So 27 agent scripts — collective learner, continuous improver, deep code review, frontend design agent, employee intros, … — believed they were reporting and were not. Replaced with `chat_post()`, which delegates to `notify.post()` (Discord). Same for `slack_read_thread`/`slack_read_channel` → `chat_read_channel()` via `notify.read_channel_recent`.
+- [x] **[P0 FOUND+FIXED] The hourly employee report has NEVER worked.** `scheduler._slack_employee_report` called `discord.post_message(...)` — a method that does not exist on the notifier and never did (not on the old `SlackClient` either). Every hourly run raised `AttributeError` straight into a `except Exception: logger.error(...)`, so the failure was logged as noise and the report was never delivered. Rewritten to use the real `send()` interface with structured fields; job renamed `slack_report` → `employee_report`.
+- [x] **[P1 FOUND+FIXED] `free_agent_engineer` and `gemini_task_runner` dropped their own reports** — both had a local `_slack_post` that returned early with no token. Now `_chat_post` → `notify.post`.
+- [x] **[P1 FOUND+FIXED] Token guards were about to block Discord too.** ~10 scripts guarded delivery with `if not SLACK_TOKEN: return`. Left alone after the migration those would have kept short-circuiting forever (the var is never set). Replaced the dead constant with `CHAT_ENABLED = bool(DISCORD_BOT_TOKEN or DISCORD_WEBHOOK_URL)`, so the guard now means "is chat configured" and passes when Discord is.
+- [x] **[P1 FOUND+FIXED] `agent_health_monitor` pointed at a script path that no longer exists** after the rename (`slack_agent_team.py`), which would have broken the health monitor at runtime. Repointed to `agent_team.py`.
+
+### Discord quality upgrades shipped in the same pass
+- [x] **Rich embeds instead of flattened text.** The old client built a coloured, field-structured Slack attachment and then, on Discord failover, threw all of it away and posted `**title**\n• k: v`. Since Slack was dead, *every* alert rendered as that degraded plain text. `app/notifications/discord.py` posts native embeds — colour per event type, proper fields, footer, timestamp.
+- [x] **Slack mrkdwn no longer leaks into Discord.** `*bold*` and `<url|label>` and `:emoji:` render as literal junk in Discord. Fixed in the employee-conversations report, p0 watchdog, strategy trimmer, heartbeat monitor, and in the **LLM prompts** that were instructing agents to "use *bold* — Slack format".
+- [x] **`_enabled` is now dynamic.** The old client froze it at construction, so credentials configured after import could never enable notifications without a process restart.
+- [x] **Per-channel routing preserved and tested** — bot-token channel resolution first (each alert in its own channel), per-channel webhook override next, catch-all webhook last with a `[#channel]` label so a shared webhook is still traceable.
+
+### Tests added/strengthened
+- [x] `backend/tests/unit/test_discord_notifier.py` — **14 tests, first ever coverage of the notification client** (the Slack one had none, which is how the two defects above survived): embed structure/colour/limits, dynamic `_enabled`, channel routing, webhook precedence, bot→webhook failover, typed-helper fields.
+- [x] `test_security_invariants.py` — replaced the now-vacuous `/slack/events` signature tests with a **stronger** invariant (every notifications route requires auth) plus a guard that Slack cannot creep back into the backend.
+- [x] `test_script_safety.py` — `TestSlackBootstrap` → `TestDiscordChannelCoverage` (same invariant, now against `discord_setup_channels.py`), and `TestSlackTokenGuard` → `TestSlackStaysRemoved` (no script may call the Slack API or read a Slack token). These make the removal **permanent** against the autonomous improver.
+
+### Remaining Slack-related cleanup (cosmetic only — no functional Slack left)
+- [ ] **[P3] Prose sweep** — ~500 residual mentions of "Slack" in comments/docstrings/prompt text across `.github/scripts` (heaviest in `agent_team.py`). No API calls, no tokens, no modules, no workflows remain; this is naming hygiene only. Worth doing in one pass so the agents stop *describing* themselves as Slack bots.
+- [ ] **[P2] `agent_team.py` is 10.6k lines** and still contains Slack-era concepts (thread `ts` values, block-kit builders) that are inert under Discord. Split it and delete the dead block/thread machinery.
+
 ## 🚨 MONDAY 2026-07-20 POST-MORTEM — "all desks bad, 0 trades, OA doesn't work" (diagnosed + fixed 2026-07-21)
 Evidence-based, three stacked causes:
 1. **[FIXED] Loss cap froze the entire book all session** — every market-hours desk run logged `🛑 DAILY LOSS CAP: equity down 2.72% vs prior close (cap 2%)`. The cap compares to Alpaca `last_equity` = FRIDAY's close, so weekend crypto drift on existing positions tripped it before Monday even opened — and it blocked ALL orders including exits (couldn't add, couldn't de-risk). Desks were otherwise perfect: 410 signals, DIA/JNJ/GLD/EWT at conf 1.00. FIX: under the cap, risk-REDUCING orders stay allowed (`is_risk_reducing` vs live Alpaca positions, fail-strict on fetch error); only new exposure is blocked; cap state surfaced in the run log + Discord funnel line. 6 tests.

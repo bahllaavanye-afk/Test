@@ -8,6 +8,24 @@
 
 _Last updated: 2026-07-24._
 
+## 🗑️ SLACK REMOVED COMPLETELY — 2026-07-25 (user directive)
+Discord is now the ONLY chat integration. Removed: `app/notifications/slack.py`,
+`app/integrations/slack_bot.py`, `app/integrations/slack_workspace.py`, 11 slack-*.yml
+workflows, 6 slack-only scripts, all `slack_*` config keys, the `/slack/*` API endpoints
+(Events receiver, follow-ups, history backfill — all bound to Slack's Events/thread model),
+and `_slack_startup_catchup` from `main.py`. `SLACK_BOT_TOKEN` is wired nowhere (68 env
+lines stripped from 65 workflows). New `app/notifications/discord.py` (native embeds) is the
+single backend notifier; `.github/scripts/notify.py` is the single agent-side one.
+**The removal exposed weeks of SILENT message loss** — `llm_common.slack_post` returned `{}`
+with no token, so 27 agent scripts had been posting into a void; the hourly employee report
+had never worked (called a non-existent `post_message`); and ~10 scripts guarded delivery on
+a token that is never set. All fixed — see the top section of IMPROVEMENTS.md.
+Two structural guards now keep Slack out (`TestSlackStaysRemoved`,
+`test_slack_integration_stays_removed`) because the autonomous improver edits these files
+unattended. Renamed: `slack_agent_team.py`→`agent_team.py`, `slack_state.json`→
+`agent_state.json`, `SLACK_TOKEN`→`CHAT_ENABLED`, brain category `slack_insights`→
+`chat_insights`. Residual "Slack" prose in comments is tracked as a P3 in IMPROVEMENTS.md.
+
 ## ⚡ STATE AS OF 2026-07-24 (read this first)
 **🔴 DURABLE POSTGRES — ROOT CAUSE PROVEN 2026-07-25 03:44 UTC. ONE USER ACTION UNBLOCKS IT.**
 The pooler prober ran (`db-url-region-autofix` run 30142794041) and produced a decisive result.

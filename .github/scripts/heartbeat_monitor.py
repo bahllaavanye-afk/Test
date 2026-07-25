@@ -37,7 +37,8 @@ from datetime import datetime, timedelta, timezone
 
 GH_TOKEN       = os.environ.get("GH_TOKEN", "")
 GH_REPO        = os.environ.get("GH_REPO", "bahllaavanye-afk/test")
-SLACK_TOKEN    = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 
 GEMINI_KEYS = [
@@ -149,42 +150,32 @@ def check_groq() -> str:
     except Exception:
         return "timeout"
 
-def post_slack_alert(alerts: list[dict], gemini_status: dict, groq_status: str):
-    if not SLACK_TOKEN:
-        return
+def post_health_alert(alerts: list[dict], gemini_status: dict, groq_status: str):
+    """Post workflow-health alerts to Discord (Slack removed 2026-07-25)."""
     healthy_gemini = sum(1 for v in gemini_status.values() if v == "healthy")
     exhausted_gemini = sum(1 for v in gemini_status.values() if v == "quota_exhausted")
 
     lines = []
     if alerts:
-        lines.append("*⚠️ Workflow Health Alerts:*")
+        lines.append("**⚠️ Workflow Health Alerts:**")
         for a in alerts:
             lines.append(f"  • {a['workflow']}: {a['issue']}")
     if exhausted_gemini > 0 and healthy_gemini == 0:
-        lines.append(f"*🔴 ALL Gemini keys exhausted* — running on Groq fallback only")
+        lines.append("**🔴 ALL Gemini keys exhausted** — running on Groq fallback only")
         lines.append("Add `GEMINI_API_KEY_2` to GitHub Secrets to restore capacity")
     elif exhausted_gemini > 0:
-        lines.append(f"*⚠️ {exhausted_gemini} Gemini key(s) exhausted* — {healthy_gemini} still healthy")
+        lines.append(f"**⚠️ {exhausted_gemini} Gemini key(s) exhausted** — {healthy_gemini} still healthy")
 
     if not lines:
         return  # No alert needed
 
     msg = "\n".join(lines) + f"\n\n_Groq fallback: {groq_status} | {datetime.now(timezone.utc).strftime('%H:%M UTC')}_"
     try:
-        requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-            json={"channel": "incidents", "text": msg, "mrkdwn": True},
-            timeout=10
-        )
-        requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-            json={"channel": "engineering", "text": msg, "mrkdwn": True},
-            timeout=10
-        )
+        import notify
+        for channel in ("incidents", "engineering"):
+            notify.post(channel, msg, username="Heartbeat Monitor")
     except Exception as e:
-        print(f"Slack error: {e}")
+        print(f"notify error: {e}")
 
 def main():
     print(f"[{datetime.now(timezone.utc).strftime('%H:%M UTC')}] Agent heartbeat check")
@@ -211,7 +202,7 @@ def main():
         print("✅ All critical workflows healthy")
 
     # 3. Alert if needed
-    post_slack_alert(workflow_alerts, gemini_status, groq_status)
+    post_health_alert(workflow_alerts, gemini_status, groq_status)
 
     # 4. Write report
     report = {

@@ -109,30 +109,24 @@ def run() -> list[dict]:
     return events
 
 
-def _post_slack(events: list[dict]) -> None:
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
-    if not token or not events:
+def _post_chat(events: list[dict]) -> None:
+    """Announce retired strategies in Discord (Slack removed 2026-07-25)."""
+    if not events:
         return
-    import urllib.request
-    lines = [":scissors: *Strategy Trim* — retired underperformers (paper):"]
+    lines = ["✂️ **Strategy Trim** — retired underperformers (paper):"]
     for e in events:
         lines.append(f"• `{e['name']}` — {e['reason']}")
     lines.append("_They stay archived (restorable) and won't be re-traded until they recover._")
-    body = json.dumps({"channel": "#alpha-research", "text": "\n".join(lines)}).encode()
-    req = urllib.request.Request(
-        "https://slack.com/api/chat.postMessage", data=body,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
-                 "User-Agent": "Mozilla/5.0"}, method="POST",
-    )
     try:
-        urllib.request.urlopen(req, timeout=15)
+        import notify
+        notify.post("alpha-research", "\n".join(lines), username="Strategy Trimmer")
     except Exception as exc:
-        print(f"[slack] trim post failed: {exc}", file=sys.stderr)
+        print(f"[notify] trim post failed: {exc}", file=sys.stderr)
 
 
 def main() -> None:
     events = run()
-    _post_slack(events)
+    _post_chat(events)
 
 
 if __name__ == "__main__":

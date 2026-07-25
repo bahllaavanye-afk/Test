@@ -8,7 +8,7 @@ import os, sys, json, random, glob, subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post, memory_write
+from llm_common import llm, chat_post, memory_write
 
 ALLOW_PAID_APIS  = os.environ.get("ALLOW_PAID_APIS", "False")
 

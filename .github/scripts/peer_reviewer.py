@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import requests
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post, memory_write
+from llm_common import llm, chat_post, memory_write
 
 GH_TOKEN   = os.environ.get("GH_TOKEN", "")
 GH_REPO    = os.environ.get("GH_REPO", "bahllaavanye-afk/test")

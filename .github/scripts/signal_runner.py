@@ -42,7 +42,8 @@ def _resolve_key(*names: str) -> str:
             if v: return v
     return ""
 
-SLACK_TOKEN    = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 GROQ_KEY       = _resolve_key("GROQ_API_KEY")
 DEEPSEEK_KEYS  = [k for k in [
     _resolve_key("DEEPSEEK_API_KEY"),
@@ -337,24 +338,10 @@ def save_memory(mem: dict):
     mem["last_updated"] = datetime.now(timezone.utc).isoformat()
     STATE_FILE.write_text(json.dumps(mem, indent=2))
 
-def post_slack(channel: str, text: str) -> bool:
-    if not SLACK_TOKEN:
-        print(f"[Slack #{channel}]: {text[:200]}")
-        return False
-    try:
-        resp = requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-            json={"channel": channel, "text": text, "mrkdwn": True},
-            timeout=10
-        )
-        ok = resp.status_code == 200 and resp.json().get("ok")
-        if not ok:
-            print(f"Slack #{channel} error: {resp.json().get('error', 'unknown')}")
-        return ok
-    except Exception as e:
-        print(f"Slack error: {e}")
-        return False
+def post_chat(channel: str, text: str) -> bool:
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    return notify.post(channel, text)
 
 def _load_strategy_gates() -> dict:
     """Load regime-based strategy gates from company_brain.json."""
@@ -424,7 +411,7 @@ def main():
     ])
     save_memory(mem)
 
-    # Post to Slack
+    # Post to Discord
     if all_signals:
         by_desk = {}
         for sig in all_signals:
@@ -441,11 +428,11 @@ def main():
             lines.append("")
 
         msg = "\n".join(lines)
-        post_slack("signals", msg)
-        post_slack("trading", msg[:500] + "..." if len(msg) > 500 else msg)
+        post_chat("signals", msg)
+        post_chat("trading", msg[:500] + "..." if len(msg) > 500 else msg)
     else:
         if _should_post_no_signals():
-            post_slack("signals", f"*{now.strftime('%H:%M UTC')}* — No high-confidence signals across any desk. Markets stable.")
+            post_chat("signals", f"*{now.strftime('%H:%M UTC')}* — No high-confidence signals across any desk. Markets stable.")
             _record_no_signal_post()
         else:
             print("[signal-runner] No signals — skipping post (cooldown active)")

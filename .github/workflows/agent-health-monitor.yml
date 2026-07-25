@@ -10,9 +10,9 @@ on:
   push:
     branches: [main, main]
     paths:
-      - ".github/scripts/slack_agent_team.py"
+      - ".github/scripts/agent_team.py"
       - ".github/scripts/agent_health_monitor.py"
-      - ".github/workflows/slack-agent-team.yml"
+      - ".github/workflows/agent-team.yml"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -59,7 +59,6 @@ jobs:
       - name: Run health monitor
         id: health
         env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

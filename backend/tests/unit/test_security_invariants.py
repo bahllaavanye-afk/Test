@@ -26,15 +26,40 @@ def test_rest_order_submission_is_risk_gated():
     )
 
 
-def test_slack_events_verifies_signature():
+def test_every_notifications_route_requires_auth():
+    """No unauthenticated inbound endpoint on the notifications router.
+
+    Replaces the old /slack/events signature test: that endpoint was an
+    UNAUTHENTICATED inbound webhook, so it needed an HMAC signature check to be
+    safe. It was removed with the rest of the Slack integration (2026-07-25), and
+    the invariant that matters now is the stronger one — every route here is
+    behind `get_current_user`, so there is no unauthenticated entry point at all.
+    If someone re-adds a public webhook, this fails and they must add verification.
+    """
     src = (API / "notifications.py").read_text()
-    assert "_verify_slack_signature" in src, "Slack signature verifier missing"
-    assert "X-Slack-Signature" in src, "Slack signature header not read"
-    assert "slack_signing_secret" in src, "signing-secret gate missing from /slack/events"
-    assert "hmac" in src and "compare_digest" in src, "must use constant-time HMAC compare"
-
-
-def test_config_exposes_slack_signing_secret():
-    assert "slack_signing_secret" in CONFIG.read_text(), (
-        "config must expose slack_signing_secret so /slack/events can verify requests"
+    routes = [ln for ln in src.splitlines() if ln.strip().startswith("@router.")]
+    assert routes, "expected at least one route in notifications.py"
+    # Count the auth dependency once per route handler.
+    assert src.count("Depends(get_current_user)") >= len(routes), (
+        f"{len(routes)} routes but only {src.count('Depends(get_current_user)')} "
+        "auth dependencies — every notifications route must require auth, or carry "
+        "its own request-signature verification if it is a public webhook"
     )
+
+
+def test_slack_integration_stays_removed():
+    """Slack was removed completely on 2026-07-25 (user directive).
+
+    The autonomous improver rewrites these files unattended, so without a guard
+    it can reintroduce a Slack path — which would silently swallow notifications
+    again (the dead SLACK_BOT_TOKEN made `slack_post` a no-op for weeks).
+    """
+    backend_app = CONFIG.parent
+    offenders = []
+    for path in backend_app.rglob("*.py"):
+        if "__pycache__" in str(path):
+            continue
+        text = path.read_text(errors="ignore")
+        if "slack.com/api" in text or "SLACK_BOT_TOKEN" in text:
+            offenders.append(str(path.relative_to(backend_app)))
+    assert not offenders, f"Slack must stay removed from the backend; found in: {offenders}"

@@ -2,7 +2,7 @@
 QuantEdge Channel Monitor — reads every monitored channel, reports gaps,
 auto-heals silent agents.
 
-For each channel in the monitored list (same list as slack_agent_team.py
+For each channel in the monitored list (same list as agent_team.py
 inbox_channels), checks the last 20 messages and reports:
   - Last post timestamp (how long ago in hours/minutes)
   - Whether it was from a bot or human
@@ -15,8 +15,8 @@ the employee function is called directly (auto-heal).
 Posts structured report to #incidents and a 1-line summary to #allquantedge.
 
 Usage:
-    SLACK_BOT_TOKEN=xoxb-... python channel_monitor.py
-    SLACK_BOT_TOKEN="" python channel_monitor.py   # prints report to stdout, exits 0
+    CHAT_ENABLED=xoxb-... python channel_monitor.py
+    CHAT_ENABLED="" python channel_monitor.py   # prints report to stdout, exits 0
 """
 
 from __future__ import annotations
@@ -36,13 +36,13 @@ from typing import Callable
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-AGENT_SCRIPT = Path(__file__).parent / "slack_agent_team.py"
+AGENT_SCRIPT = Path(__file__).parent / "agent_team.py"
 
 # ─── Token ────────────────────────────────────────────────────────────────────
 
-SLACK_BOT_TOKEN: str = os.environ.get("SLACK_BOT_TOKEN", "")
-
-# ─── Monitored channels (same list as slack_agent_team.py inbox_channels) ────
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
+# ─── Monitored channels (same list as agent_team.py inbox_channels) ────
 
 MONITORED_CHANNELS: list[str] = [
     "engineering", "alpha-research", "ml-experiments",
@@ -65,7 +65,7 @@ MONITORED_CHANNELS: list[str] = [
 # ─── Employee → channel mapping (derived from Post(channel=...) in each fn) ──
 # Key: employee display name for reports, Value: (function_name, channel)
 
-# NOTE: the values MUST be real zero-arg functions in slack_agent_team.py that
+# NOTE: the values MUST be real zero-arg functions in agent_team.py that
 # return list[Post]. The functions are role-named (not person-named); an earlier
 # rename left this map pointing at functions that no longer exist, so auto-heal
 # called nothing. Keys are person display names purely for report readability.
@@ -157,29 +157,40 @@ _channels_cache: dict[str, dict] = {}
 _list_attempted: bool = False
 
 
-def slack_call(token: str, method: str, payload: dict) -> dict:
-    """Make a Slack API call. Returns {} on network error."""
-    if not token:
-        return {"ok": False, "error": "no_token"}
-    url = f"https://slack.com/api/{method}"
-    data = json.dumps(payload).encode()
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json; charset=utf-8",
-    }
-    try:
-        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            result = json.loads(resp.read())
-        # Handle rate-limit
-        if isinstance(result, dict) and result.get("error") == "ratelimited":
-            time.sleep(5)
-            with urllib.request.urlopen(req, timeout=15) as resp2:
-                result = json.loads(resp2.read())
-        return result
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)[:120]}
+def chat_call(method: str, payload: dict) -> dict:
+    """Discord-backed stand-in for the old Slack Web API dispatcher.
 
+    Slack was removed 2026-07-25. Rather than rewrite ~60 call sites spread over
+    this file, the dispatcher itself now translates the handful of Slack methods
+    that were used into Discord operations, and returns Slack-shaped dicts so the
+    callers' `.get("ok")` / `.get("messages")` handling still works.
+
+    Methods with no Discord equivalent (join/create/reactions) are successful
+    no-ops: channels are provisioned by discord_setup_channels.py.
+    """
+    try:
+        import notify
+    except Exception:
+        return {"ok": False, "error": "notify_unavailable"}
+
+    if method == "chat.postMessage":
+        if _post_stats["attempted"] >= _POST_CAP:
+            _post_stats["skipped"] += 1
+            return {"ok": False, "error": "skipped_post_cap"}
+        _post_stats["attempted"] += 1
+        ok = notify.post(payload.get("channel", "engineering"),
+                         payload.get("text", ""),
+                         username=payload.get("username", "QuantEdge"))
+        # `ts` is used by callers only as a thread handle; Discord has none.
+        return {"ok": ok, "ts": "", "channel": payload.get("channel", "")}
+
+    if method in ("conversations.history", "conversations.replies"):
+        msgs = notify.read_channel_recent(payload.get("channel", ""),
+                                          limit=int(payload.get("limit", 15) or 15))
+        return {"ok": True, "messages": msgs}
+
+    # join / create / reactions.add / anything else: nothing to do on Discord.
+    return {"ok": True}
 
 def _load_channel_list(token: str) -> None:
     global _channels_cache, _list_attempted
@@ -191,7 +202,7 @@ def _load_channel_list(token: str) -> None:
         payload: dict = {"types": "public_channel,private_channel", "limit": 200}
         if cursor:
             payload["cursor"] = cursor
-        data = slack_call(token, "conversations.list", payload)
+        data = chat_call("conversations.list", payload)
         if not data.get("ok"):
             print(f"  [monitor] conversations.list failed: {data.get('error')}")
             break
@@ -224,7 +235,7 @@ def post_to_slack(
         # Auto-join public channels
         ch = _channels_cache.get(channel, {})
         if not ch.get("is_private", False):
-            slack_call(token, "conversations.join", {"channel": ch_id})
+            chat_call("conversations.join", {"channel": ch_id})
         channel_ref = ch_id
     else:
         channel_ref = f"#{channel}"
@@ -235,11 +246,11 @@ def post_to_slack(
         "icon_emoji": icon_emoji,
         "mrkdwn": True,
     }
-    result = slack_call(token, "chat.postMessage", payload)
+    result = chat_call("chat.postMessage", payload)
     # Fallback: missing chat:write.customize scope
     if not result.get("ok") and result.get("error") in ("not_allowed_token_type", "missing_scope"):
-        fallback = {"channel": channel_ref, "text": f"*[{username}]* {text}", "mrkdwn": True}
-        result = slack_call(token, "chat.postMessage", fallback)
+        fallback = {"channel": channel_ref, "text": f"**[{username}]** {text}", "mrkdwn": True}
+        result = chat_call("chat.postMessage", fallback)
     if not result.get("ok"):
         # Slack rejected outright (dead quota / revoked token) — deliver the
         # loop-consistency report via Discord instead of losing it.
@@ -289,7 +300,7 @@ def check_channel(token: str, channel: str) -> ChannelStatus:
             status.last_post_hours_ago = 999.0
             return status
 
-        resp = slack_call(token, "conversations.history", {
+        resp = chat_call("conversations.history", {
             "channel": ch_id,
             "limit": 20,
         })
@@ -340,12 +351,12 @@ _agent_module = None
 
 
 def _load_agent_module():
-    """Dynamically import slack_agent_team without executing main()."""
+    """Dynamically import agent_team without executing main()."""
     global _agent_module
     if _agent_module is not None:
         return _agent_module
     try:
-        spec = importlib.util.spec_from_file_location("slack_agent_team", AGENT_SCRIPT)
+        spec = importlib.util.spec_from_file_location("agent_team", AGENT_SCRIPT)
         if spec is None or spec.loader is None:
             return None
         mod = importlib.util.module_from_spec(spec)
@@ -353,17 +364,17 @@ def _load_agent_module():
         # module via sys.modules[cls.__module__]; without this the load crashes
         # with "'NoneType' object has no attribute '__dict__'" and every
         # auto-heal silently no-ops (0 agents ever healed).
-        sys.modules["slack_agent_team"] = mod
+        sys.modules["agent_team"] = mod
         spec.loader.exec_module(mod)  # type: ignore[arg-type]
         _agent_module = mod
         return mod
     except Exception as exc:
-        print(f"  [monitor] Could not import slack_agent_team: {exc}")
+        print(f"  [monitor] Could not import agent_team: {exc}")
         return None
 
 
 def call_employee_fn(fn_name: str) -> list:
-    """Call the named employee function from slack_agent_team.py and return Posts."""
+    """Call the named employee function from agent_team.py and return Posts."""
     mod = _load_agent_module()
     if mod is None:
         return []
@@ -537,11 +548,11 @@ def main() -> int:
     timestamp = now_utc.strftime("%Y-%m-%d %H:%M UTC")
     now_epoch = time.time()
 
-    if not SLACK_BOT_TOKEN:
+    if not CHAT_ENABLED:
         print("No token — printing report to stdout only (no Slack posts)")
         print(f"\nChannel Health Monitor — {timestamp}")
         print(f"Monitoring {len(MONITORED_CHANNELS)} channels, {len(EMPLOYEE_CHANNEL_MAP)} employee agents")
-        print("Set SLACK_BOT_TOKEN env var to enable Slack posting and live channel reads.")
+        print("Set CHAT_ENABLED env var to enable Slack posting and live channel reads.")
         return 0
 
     print(f"[channel_monitor] Starting — {timestamp}")
@@ -552,7 +563,7 @@ def main() -> int:
     # ── Phase 1: Check every monitored channel ────────────────────────────────
     for channel in MONITORED_CHANNELS:
         try:
-            status = check_channel(SLACK_BOT_TOKEN, channel)
+            status = check_channel(CHAT_ENABLED, channel)
         except Exception as exc:
             status = ChannelStatus(channel=channel, error=str(exc)[:120])
         report.channel_statuses.append(status)
@@ -617,7 +628,7 @@ def main() -> int:
     print(f"\n  Posting health report to #incidents…")
     print(incidents_text)
     inc_res = post_to_slack(
-        SLACK_BOT_TOKEN, "incidents", incidents_text,
+        CHAT_ENABLED, "incidents", incidents_text,
         username="Channel Health Monitor",
         icon_emoji=":rotating_light:",
     )
@@ -630,7 +641,7 @@ def main() -> int:
         for agent_st in agents_to_heal:
             try:
                 success, err = auto_heal_agent(
-                    SLACK_BOT_TOKEN,
+                    CHAT_ENABLED,
                     agent_st.emp_name,
                     agent_st.fn_name,
                     agent_st.channel,
@@ -648,7 +659,7 @@ def main() -> int:
     summary = build_allquantedge_summary(report)
     print(f"\n  Posting summary to #allquantedge: {summary}")
     aq_res = post_to_slack(
-        SLACK_BOT_TOKEN, "allquantedge", summary,
+        CHAT_ENABLED, "allquantedge", summary,
         username="Channel Health Monitor",
         icon_emoji=":bar_chart:",
     )
@@ -662,7 +673,7 @@ def main() -> int:
         now_ts = time.time()
         for agent_st in agents_to_heal:
             if agent_st.auto_healed:
-                # Map emp_name to the short key used by slack_agent_team
+                # Map emp_name to the short key used by agent_team
                 short_key = agent_st.emp_name.split("_")[0]
                 last_posts[short_key] = now_ts
         _try_save_state(state)

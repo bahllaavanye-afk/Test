@@ -65,8 +65,8 @@ SAMBANOVA_KEY = _resolve_key("SAMBANOVA_API_KEY")
 CEREBRAS_KEY  = _resolve_key("CEREBRAS_API_KEY")
 HYPERBOLIC_KEY = _resolve_key("HYPERBOLIC_API_KEY")
 TOGETHER_KEY  = _resolve_key("TOGETHER_API_KEY")
-SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
-
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 REPO_ROOT   = Path(__file__).resolve().parents[2]
 MEMORY_FILE = REPO_ROOT / ".github" / "state" / "agent_memory.json"
 SKILL_FILE  = REPO_ROOT / ".github" / "state" / "skill_library.json"
@@ -193,32 +193,11 @@ def call_llm(messages: list[dict], max_tokens: int = 400) -> str:
     return ""
 
 
-def post_slack(channel: str, text: str, username: str,
+def post_chat(channel: str, text: str, username: str,
                icon: str = "robot_face", thread_ts: str | None = None) -> str | None:
-    """Post message, return thread_ts."""
-    if not SLACK_TOKEN:
-        print(f"[#{channel}] {username}: {text[:100]}")
-        return None
-    payload: dict = {
-        "channel": channel, "text": text, "mrkdwn": True,
-        "username": username, "icon_emoji": f":{icon}:",
-    }
-    if thread_ts:
-        payload["thread_ts"] = thread_ts
-    try:
-        r = requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-            json=payload, timeout=15,
-        )
-        data = r.json()
-        if not data.get("ok"):
-            print(f"Slack error: {data.get('error')}")
-            return None
-        return data.get("ts")
-    except Exception as e:
-        print(f"Slack: {e}")
-        return None
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    return notify.post(channel, text)
 
 
 # ── Discussion topics / speaking agents ──────────────────────────────────────
@@ -317,7 +296,7 @@ def run_discussion(mem: dict, skills: list[str], force_channel: str = "") -> lis
         f"*{topic.replace('_', ' ').title()} Discussion — {now.strftime('%H:%M UTC')}*\n"
         f"_{len(round_config['speakers'])} agents contributing · {len(skills)} skills in shared memory_"
     )
-    thread_ts = post_slack(channel, opening, username="QuantEdge Multi-Agent", icon="speech_balloon")
+    thread_ts = post_chat(channel, opening, username="QuantEdge Multi-Agent", icon="speech_balloon")
     _discord_post(channel, opening, "QuantEdge Multi-Agent")  # Discord is the live surface
 
     # Per-employee brains operate on THIS mem dict (shared, no separate file
@@ -374,7 +353,7 @@ def run_discussion(mem: dict, skills: list[str], force_channel: str = "") -> lis
         else:
             reply = f"[{agent_name}] LLM unavailable — set API keys in GitHub Secrets to enable real collaboration."
 
-        ts = post_slack(channel, reply, username=display_name, icon=icon, thread_ts=thread_ts)
+        ts = post_chat(channel, reply, username=display_name, icon=icon, thread_ts=thread_ts)
         prev_content = reply
 
         # Record as peer learning

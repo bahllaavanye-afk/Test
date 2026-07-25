@@ -180,7 +180,7 @@ async def run_bot_lifecycle(db_session_factory=None) -> dict:
         if any(summary.values()):
             logger.info("Bot lifecycle actions", **{k: v for k, v in summary.items() if v})
             try:
-                from app.notifications.slack import slack
+                from app.notifications.discord import discord
 
                 def _why(s) -> str:
                     wr = f"{s.win_rate:.0%}" if s.win_rate is not None else "n/a"
@@ -197,7 +197,7 @@ async def run_bot_lifecycle(db_session_factory=None) -> dict:
                                  + "; ".join(_why(s) for s in actions["enable"]))
                 if summary["created"]:
                     lines.append("🆕 *Created* from templates: " + ", ".join(summary["created"]))
-                await slack.send(
+                await discord.send(
                     channel="bot-fleet", event_type="info",
                     title="🤖 Bot lifecycle manager", text="\n".join(lines),
                 )

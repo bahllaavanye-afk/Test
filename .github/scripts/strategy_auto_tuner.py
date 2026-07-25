@@ -26,7 +26,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 TRADING_MODE    = os.environ.get("TRADING_MODE", "paper")
 ALLOW_PAID      = os.environ.get("ALLOW_PAID_APIS", "False")
 
@@ -50,20 +51,9 @@ MIN_TRADES        = 5      # minimum sample size
 
 
 def _post_slack(channel: str, text: str) -> None:
-    if not SLACK_BOT_TOKEN:
-        return
-    try:
-        import urllib.request
-        payload = json.dumps({"channel": channel, "text": text}).encode()
-        req = urllib.request.Request(
-            "https://slack.com/api/chat.postMessage",
-            data=payload,
-            headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}", "Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=10):
-            pass
-    except Exception as e:
-        print(f"  ⚠ Slack post failed: {e}", flush=True)
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(channel, text)
 
 
 def main() -> None:

@@ -34,9 +34,10 @@ from pathlib import Path
 
 # Import shared LLM infrastructure
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, memory_write, memory_read, core_update, core_get, slack_read_channel, _load_brain, _save_brain, _STATE_DIR
+from llm_common import llm, memory_write, memory_read, core_update, core_get, chat_read_channel, _load_brain, _save_brain, _STATE_DIR
 
-SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", os.environ.get("PAT_TOKEN", ""))
 REPO = "bahllaavanye-afk/test"
 BRANCH = "main"
@@ -62,17 +63,10 @@ DESK_CHANNELS = [
 
 
 def resolve_channel_ids() -> dict[str, str]:
-    """Get channel name → ID mapping."""
-    if not SLACK_TOKEN:
-        return {}
-    req = urllib.request.Request(
-        "https://slack.com/api/conversations.list?limit=200&types=public_channel",
-        headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
-    )
+    """Return {channel_name: channel_id} from Discord (Slack removed 2026-07-25)."""
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-            return {c["name"]: c["id"] for c in data.get("channels", [])}
+        import notify
+        return notify._load_channel_ids()
     except Exception:
         return {}
 
@@ -89,7 +83,7 @@ def fetch_slack_knowledge(channel_ids: dict[str, str]) -> list[dict]:
         cid = channel_ids.get(channel_name)
         if not cid:
             continue
-        msgs = slack_read_channel(cid, limit=30, oldest=cutoff)
+        msgs = chat_read_channel(cid, limit=30, oldest=cutoff)
         for m in msgs:
             text = m.get("text", "").strip()
             if not text or len(text) < 20:
@@ -231,8 +225,8 @@ def synthesize_insights(
 
     if slack_msgs:
         slack_sample = slack_msgs[:10]
-        slack_text = "\n".join(f"[{m['channel']}] {m.get('user','?')}: {m['text']}" for m in slack_sample)
-        parts.append(f"SLACK (last 2h):\n{slack_text}")
+        chat_text = "\n".join(f"[{m['channel']}] {m.get('user','?')}: {m['text']}" for m in slack_sample)
+        parts.append(f"CHAT (last 2h):\n{chat_text}")
 
     if github_items:
         gh_sample = github_items[:5]
@@ -319,7 +313,7 @@ def update_company_brain():
                 max_tokens=100,
                 inject_company_context=False,
             )
-            memory_write("slack_insights", {"summary": summary, "msg_count": len(slack_msgs)})
+            memory_write("chat_insights", {"summary": summary, "msg_count": len(slack_msgs)})
 
         # Write GitHub-derived insights
         if github_items:
@@ -358,7 +352,7 @@ def update_company_brain():
     brain = _load_brain()
     episodic_count = len(brain.get("episodic", []))
     skills_count = len(brain.get("skills", []))
-    slack_count = len(brain.get("slack_insights", []))
+    slack_count = len(brain.get("chat_insights", []))
     desk_count = len(brain.get("desk_outcomes", []))
 
     print(f"Company brain updated:")

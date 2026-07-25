@@ -16,14 +16,14 @@ from pathlib import Path
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post as _lc_slack_post, memory_write
+from llm_common import llm, chat_post as _lc_chat_post, memory_write
 
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 if ALLOW_PAID_APIS.lower() == "true":
     sys.exit(1)
 
-SLACK_TOKEN   = os.environ.get("SLACK_BOT_TOKEN", "")
-
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 REPO_ROOT   = Path(__file__).resolve().parents[2]
 MEMORY_FILE = REPO_ROOT / ".github" / "state" / "agent_memory.json"
 SKILL_FILE  = REPO_ROOT / ".github" / "state" / "skill_library.json"
@@ -40,7 +40,7 @@ AGENT_ROLES = {
     "desk_trader":           "Paper trades across crypto/equity/polymarket. Expert in execution and slippage.",
     "system_watchdog":       "Health checks and self-healing. Expert in DevOps and monitoring.",
     "ml_trainer":            "Trains ML models. Expert in PyTorch, LSTM, XGBoost.",
-    "standup_agent":         "Posts daily standups to Slack. Expert in org communication.",
+    "standup_agent":         "Posts daily standups to Discord. Expert in org communication.",
     "investor_pipeline":     "Tracks investor relations pipeline. Expert in fundraising.",
     "run_experiments":       "Runs strategy experiments. Expert in scientific methodology.",
     "algo_agent":            "UCB1 bandit for strategy exploration. Expert in reinforcement learning.",
@@ -57,31 +57,16 @@ def _read_json(path: Path) -> dict:
         return {}
 
 
-def post_slack(channel: str, text: str, username: str, icon: str = "robot_face") -> bool:
-    if not SLACK_TOKEN:
-        print(f"[#{channel}] {text[:200]}")
-        return False
-    try:
-        r = requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-            json={"channel": channel, "text": text, "mrkdwn": True,
-                  "username": username, "icon_emoji": f":{icon}:"},
-            timeout=15,
-        )
-        ok = r.json().get("ok", False)
-        if not ok:
-            print(f"Slack error: {r.json().get('error')}")
-        return ok
-    except Exception as e:
-        print(f"Slack: {e}")
-        return False
+def post_chat(channel: str, text: str, username: str, icon: str = "robot_face") -> bool:
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    return notify.post(channel, text)
 
 
 def main():
     agent_name = os.environ.get("AGENT_NAME", "free_agent_engineer")
     user_message = os.environ.get("USER_MESSAGE", "What are you working on?")
-    channel = os.environ.get("SLACK_CHANNEL", "general")
+    channel = os.environ.get("DISCORD_CHANNEL", "general")
     now = datetime.now(timezone.utc)
 
     print(f"[{now.strftime('%H:%M UTC')}] Chat: user → {agent_name}: {user_message[:80]}")
@@ -128,17 +113,17 @@ def main():
     reply = llm(user_message, system="\n".join(system_parts), max_tokens=800, inject_company_context=False)
     print(f"Reply ({len(reply)} chars): {reply[:100]}…")
 
-    # Post to Slack
-    slack_text = (
+    # Post to Discord
+    chat_text = (
         f"*{agent_name}* → responding to: _{user_message[:120]}_\n\n"
         f"{reply}\n\n"
         f"_Powered by free LLMs (Groq/DeepSeek/Gemini) · {now.strftime('%H:%M UTC')}_"
     )
-    posted = post_slack(channel, slack_text, username=f"Agent: {agent_name}")
+    posted = post_chat(channel, chat_text, username=f"Agent: {agent_name}")
 
     # Also post to #engineering
     if channel != "engineering":
-        post_slack("engineering", slack_text, username=f"Agent: {agent_name}")
+        post_chat("engineering", chat_text, username=f"Agent: {agent_name}")
 
     # Log to memory
     mem.setdefault("agent_conversations", [])

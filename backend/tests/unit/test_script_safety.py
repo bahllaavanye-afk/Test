@@ -103,7 +103,6 @@ class TestAnthropicDisabledGuard:
     SCRIPTS_WITH_ANTHROPIC = [
         "backend_team.py",
         "frontend_team.py",
-        "ai_slack_bot.py",
         "render_auto_fix.py",
     ]
 
@@ -134,7 +133,7 @@ class TestPaidApiGuard:
     SCRIPTS_REQUIRING_GUARD = [
         "multi_agent_discussion.py",
         "continuous_improver.py",
-        "slack_agent_team.py",
+        "agent_team.py",
     ]
 
     @pytest.mark.parametrize("script_name", SCRIPTS_REQUIRING_GUARD)
@@ -197,27 +196,35 @@ class TestSafeFileLists:
         )
 
 
-# ── Slack token guard ─────────────────────────────────────────────────────────
+# ── Slack removal guard ──────────────────────────────────────────────────────
 
-class TestSlackTokenGuard:
-    SLACK_SCRIPTS = [
-        "backend_team.py",
-        "frontend_team.py",
-        "claude_conversations.py",
-        "ai_slack_bot.py",
-    ]
+class TestSlackStaysRemoved:
+    """Slack was removed completely on 2026-07-25 (user directive).
 
-    @pytest.mark.parametrize("script_name", SLACK_SCRIPTS)
-    def test_slack_token_checked_before_post(self, script_name):
-        p = SCRIPTS_DIR / script_name
-        if not p.exists():
-            pytest.skip(f"{script_name} not found")
-        src = p.read_text()
-        # Must reference SLACK_BOT_TOKEN or SLACK_TOKEN
-        assert "SLACK_BOT_TOKEN" in src or "SLACK_TOKEN" in src, (
-            f"{script_name} posts to Slack but doesn't check SLACK_BOT_TOKEN"
+    The autonomous improver edits these scripts unattended, so this guard stops
+    a Slack path being reintroduced. That matters beyond tidiness: the old
+    `slack_post` helper returned {} whenever SLACK_BOT_TOKEN was unset, so after
+    the quota died every message from 27 scripts was silently discarded.
+    """
+
+    def test_no_script_calls_the_slack_api(self):
+        offenders = [
+            name for name in _all_scripts()
+            if "slack.com/api" in (SCRIPTS_DIR / name).read_text(errors="ignore")
+        ]
+        assert not offenders, (
+            f"these scripts still call the Slack API: {sorted(offenders)} — "
+            "post via notify.post() (Discord) instead"
         )
 
+    def test_no_script_reads_a_slack_token(self):
+        offenders = [
+            name for name in _all_scripts()
+            if "SLACK_BOT_TOKEN" in (SCRIPTS_DIR / name).read_text(errors="ignore")
+        ]
+        assert not offenders, (
+            f"these scripts still read SLACK_BOT_TOKEN: {sorted(offenders)}"
+        )
 
 # ── Python syntax validity of all scripts ────────────────────────────────────
 
@@ -263,26 +270,34 @@ class TestClaudeConversations:
 
 # ── slack_bootstrap.py must include all CHANNEL_EMPLOYEES channels ────────────
 
-class TestSlackBootstrap:
-    def test_bootstrap_includes_required_channels(self):
-        bootstrap_src = _src("slack_bootstrap.py")
+class TestDiscordChannelCoverage:
+    """Every channel the employee router targets must actually be created.
+
+    Was TestSlackBootstrap against slack_bootstrap.py; repointed to
+    discord_setup_channels.py when Slack was removed (2026-07-25). The invariant
+    is unchanged and still the one that matters: if CHANNEL_EMPLOYEES references
+    a channel the setup script never creates, those messages land nowhere.
+    """
+
+    def test_setup_includes_required_channels(self):
+        setup_src = _src("discord_setup_channels.py")
         conv_src = _src("claude_conversations.py")
 
-        # Extract channel names from CHANNEL_EMPLOYEES
         m = re.search(r"CHANNEL_EMPLOYEES\s*=\s*\{(.*?)\n\}", conv_src, re.DOTALL)
         if not m:
             pytest.skip("CHANNEL_EMPLOYEES not found in claude_conversations.py")
         employee_channels = set(re.findall(r'"([\w-]+)"\s*:', m.group(1)))
 
-        # Extract channel names from slack_bootstrap.py CHANNELS list
-        bootstrap_channels = set(re.findall(r'"name":\s*"([\w-]+)"', bootstrap_src))
+        # STRUCTURE is {category: [channel, ...]} — collect every listed channel.
+        struct = re.search(r"STRUCTURE:[^=]*=\s*\{(.*?)\n\}", setup_src, re.DOTALL)
+        assert struct, "STRUCTURE not found in discord_setup_channels.py"
+        discord_channels = set(re.findall(r'"([\w-]+)"', struct.group(1)))
 
-        missing = employee_channels - bootstrap_channels
+        missing = employee_channels - discord_channels
         assert not missing, (
-            f"slack_bootstrap.py is missing channels that CHANNEL_EMPLOYEES references: "
-            f"{sorted(missing)}. Run slack-bootstrap workflow to create them."
+            "discord_setup_channels.py STRUCTURE is missing channels that "
+            f"CHANNEL_EMPLOYEES references: {sorted(missing)}"
         )
-
 
 # ── workflow YAML checks ──────────────────────────────────────────────────────
 

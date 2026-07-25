@@ -8,8 +8,8 @@ from datetime import datetime, timedelta, timezone
 
 GH_TOKEN = os.environ["GH_TOKEN"]
 GH_REPO = os.environ.get("GH_REPO", "bahllaavanye-afk/test")
-SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
-
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 def check_p0_sla():
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     breaching = []
@@ -54,20 +54,19 @@ def auto_label_new_issues():
             print(f"Auto-labeled issue #{issue['number']} as P0: {issue['title'][:60]}")
 
 def post_alert(breaching):
-    if not SLACK_BOT_TOKEN or not breaching:
+    """Post P0 SLA breaches to Discord (Slack removed 2026-07-25)."""
+    if not breaching:
         return
     lines = []
     for b in breaching:
         lines.append(f"• #{b['number']} — {b['title'][:70]} ({b['age_hours']}h unresolved) {b['url']}")
-    text = f"🚨 *P0 SLA BREACH — {len(breaching)} issue(s) unresolved > 24h*\n\n" + "\n".join(lines) + "\n\n_CTO OKR requires: zero P0 unresolved > 24h_"
+    text = (f"🚨 **P0 SLA BREACH — {len(breaching)} issue(s) unresolved > 24h**\n\n"
+            + "\n".join(lines)
+            + "\n\n_CTO OKR requires: zero P0 unresolved > 24h_")
+    import notify
     for channel in ["incidents", "engineering"]:
-        resp = requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}", "Content-Type": "application/json"},
-            json={"channel": channel, "text": text, "mrkdwn": True}
-        )
-        r = resp.json()
-        print(f"{'✓' if r.get('ok') else '✗'} Posted P0 alert to #{channel}")
+        ok = notify.post(channel, text, username="P0 Watchdog")
+        print(f"{'✓' if ok else '✗'} Posted P0 alert to #{channel}")
 
 if __name__ == "__main__":
     auto_label_new_issues()

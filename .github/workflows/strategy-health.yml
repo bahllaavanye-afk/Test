@@ -47,7 +47,6 @@ jobs:
 
       - name: Run strategy ranker
         env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           STRATEGY:        ${{ github.event.inputs.strategy || '' }}
           MIN_SHARPE_PAPER: ${{ github.event.inputs.min_sharpe || '0.7' }}
           # Minimal env so backend strategy imports work

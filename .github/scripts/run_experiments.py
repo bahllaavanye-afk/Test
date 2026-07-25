@@ -86,8 +86,9 @@ EXPERIMENT_CONFIGS = [
 
 STRATEGY_FILTER = os.environ.get("STRATEGY_FILTER", "").strip()
 SYMBOL_FILTER   = os.environ.get("SYMBOL_FILTER",   "").strip()
-SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
-SLACK_CHANNEL   = "#ml-experiments"
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
+CHAT_CHANNEL   = "#ml-experiments"
 
 
 # ── Metrics helpers ────────────────────────────────────────────────────────────
@@ -282,33 +283,9 @@ def _save_result(result: dict) -> Path:
 
 
 def _post_slack(message: str) -> None:
-    if not SLACK_BOT_TOKEN:
-        print("", flush=True)
-        print("╔══════════════════════════════════════════════════════════════════╗", flush=True)
-        print("║  ⚠  SLACK SILENT — experiment results were NOT posted to Slack  ║", flush=True)
-        print("║                                                                  ║", flush=True)
-        print("║  Add SLACK_BOT_TOKEN to repo secrets:                           ║", flush=True)
-        print("║  Settings → Secrets and variables → Actions → New secret        ║", flush=True)
-        print("╚══════════════════════════════════════════════════════════════════╝", flush=True)
-        print("", flush=True)
-        return
-    try:
-        import urllib.request, urllib.parse
-        payload = json.dumps({"channel": SLACK_CHANNEL, "text": message})
-        req = urllib.request.Request(
-            "https://slack.com/api/chat.postMessage",
-            data=payload.encode(),
-            headers={
-                "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
-                "Content-Type": "application/json",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            body = json.loads(resp.read())
-            if not body.get("ok"):
-                print(f"  ⚠ Slack error: {body.get('error')}", flush=True)
-    except Exception as exc:
-        print(f"  ⚠ Slack post failed: {exc}", flush=True)
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(CHANNEL if "CHANNEL" in globals() else "engineering", message)
 
 
 def _post_slack_summary(successes: list[dict], failures: list[str]) -> None:

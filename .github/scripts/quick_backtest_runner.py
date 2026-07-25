@@ -19,7 +19,8 @@ def _resolve_key(*names: str) -> str:
             if v: return v
     return ""
 
-SLACK_TOKEN     = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 
 if ALLOW_PAID_APIS.lower() == "true":
@@ -198,24 +199,10 @@ SYMBOLS = {
 }
 
 
-def post_slack(channel: str, text: str) -> bool:
-    if not SLACK_TOKEN:
-        print(f"[Slack #{channel}]: {text[:300]}")
-        return False
-    try:
-        resp = requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-            json={"channel": channel, "text": text, "mrkdwn": True},
-            timeout=10
-        )
-        ok = resp.status_code == 200 and resp.json().get("ok")
-        if not ok:
-            print(f"Slack #{channel} error: {resp.json().get('error', 'unknown')}")
-        return ok
-    except Exception as e:
-        print(f"Slack error: {e}")
-        return False
+def post_chat(channel: str, text: str) -> bool:
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    return notify.post(channel, text)
 
 
 def load_memory() -> dict:
@@ -318,7 +305,7 @@ def main():
         lines.append(f"\n:star: *{len(stars)} strategies with Sharpe > 1.5*: " + ", ".join(f"{r['strategy']}/{r['symbol']}" for r in stars[:5]))
 
     msg = "\n".join(lines)
-    post_slack("signals", msg)
+    post_chat("signals", msg)
 
     # Save summary JSON
     summary = {

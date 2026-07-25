@@ -48,7 +48,7 @@ _litellm_stub.completion = MagicMock(side_effect=RuntimeError("litellm not avail
 sys.modules.setdefault("litellm", _litellm_stub)
 
 # Now import the module under test
-import slack_agent_team as sat  # noqa: E402
+import agent_team as sat  # noqa: E402
 
 
 # ===========================================================================
@@ -86,7 +86,7 @@ def test_match_agent_mid_sentence():
 
 
 def test_match_real_slack_mention_format():
-    # Real Slack format: <@U1234567> what is your status?
+    # Real @mention format: <@U1234567> what is your status?
     result = sat._match_agent_summon("<@U1234567> what is your status?", bot_user_id="U1234567")
     assert result is not None
     assert "status" in result.lower()
@@ -189,10 +189,10 @@ def test_already_posted_different_channel_is_independent():
 # 3. Slack history dedup (_slack_channel_has_recent_bot_post)
 # ===========================================================================
 
-def test_slack_history_dedup_found_bot_message():
+def test_chat_history_dedup_found_bot_message():
     """Returns True when a matching bot message exists in history."""
     with patch.object(sat, "get_channel_id", return_value="C123"), \
-         patch.object(sat, "slack_call", return_value={
+         patch.object(sat, "chat_call", return_value={
              "ok": True,
              "messages": [
                  {
@@ -206,10 +206,10 @@ def test_slack_history_dedup_found_bot_message():
     assert result is True
 
 
-def test_slack_history_dedup_no_matching_message():
+def test_chat_history_dedup_no_matching_message():
     """Returns False when no matching message in history."""
     with patch.object(sat, "get_channel_id", return_value="C123"), \
-         patch.object(sat, "slack_call", return_value={
+         patch.object(sat, "chat_call", return_value={
              "ok": True,
              "messages": [
                  {
@@ -222,25 +222,25 @@ def test_slack_history_dedup_no_matching_message():
     assert result is False
 
 
-def test_slack_history_dedup_channel_id_none():
+def test_chat_history_dedup_channel_id_none():
     """Returns False when channel ID cannot be resolved."""
     with patch.object(sat, "get_channel_id", return_value=None):
         result = sat._slack_channel_has_recent_bot_post("token", "nonexistent", "Some snippet", hours=23.0)
     assert result is False
 
 
-def test_slack_history_dedup_slack_call_not_ok():
+def test_chat_history_dedup_slack_call_not_ok():
     """Returns False when Slack API returns ok=False."""
     with patch.object(sat, "get_channel_id", return_value="C123"), \
-         patch.object(sat, "slack_call", return_value={"ok": False, "error": "channel_not_found"}):
+         patch.object(sat, "chat_call", return_value={"ok": False, "error": "channel_not_found"}):
         result = sat._slack_channel_has_recent_bot_post("token", "help", "Welcome to QuantEdge", hours=23.0)
     assert result is False
 
 
-def test_slack_history_dedup_only_matches_bot_messages():
+def test_chat_history_dedup_only_matches_bot_messages():
     """Only matches messages with bot_id or known bot username — not human messages."""
     with patch.object(sat, "get_channel_id", return_value="C123"), \
-         patch.object(sat, "slack_call", return_value={
+         patch.object(sat, "chat_call", return_value={
              "ok": True,
              "messages": [
                  {
@@ -254,11 +254,11 @@ def test_slack_history_dedup_only_matches_bot_messages():
     assert result is False
 
 
-def test_slack_history_dedup_matches_known_bot_username():
+def test_chat_history_dedup_matches_known_bot_username():
     """Matches messages from known _BOT_USERNAMES even without bot_id."""
     known_username = next(iter(sat._BOT_USERNAMES))
     with patch.object(sat, "get_channel_id", return_value="C123"), \
-         patch.object(sat, "slack_call", return_value={
+         patch.object(sat, "chat_call", return_value={
              "ok": True,
              "messages": [
                  {
@@ -335,27 +335,27 @@ def test_onboarding_skips_when_same_week_in_state():
     from datetime import datetime, timezone
     current_week = datetime.now(timezone.utc).strftime("%Y-W%W")
     state = {"onboarding_posted_week": current_week}
-    mock_slack = MagicMock()
+    mock_chat = MagicMock()
 
-    with patch.object(sat, "slack_call", mock_slack), \
+    with patch.object(sat, "chat_call", mock_chat), \
          patch.object(sat, "get_channel_id", return_value="C_HELP"):
         sat.post_engineer_onboarding("xoxb-test", state)
 
-    assert mock_slack.call_count == 0
+    assert mock_chat.call_count == 0
 
 
 def test_onboarding_skips_when_history_has_recent_post():
     """With empty state + history check True, marks state and does not post."""
     state = {}
-    mock_slack = MagicMock(return_value={"ok": True})
+    mock_chat = MagicMock(return_value={"ok": True})
 
     with patch.object(sat, "get_channel_id", return_value="C_HELP"), \
          patch.object(sat, "_slack_channel_has_recent_bot_post", return_value=True), \
-         patch.object(sat, "slack_call", mock_slack):
+         patch.object(sat, "chat_call", mock_chat):
         sat.post_engineer_onboarding("xoxb-test", state)
 
     # No actual post
-    assert mock_slack.call_count == 0
+    assert mock_chat.call_count == 0
     # State should be marked
     from datetime import datetime, timezone
     current_week = datetime.now(timezone.utc).strftime("%Y-W%W")
@@ -365,18 +365,20 @@ def test_onboarding_skips_when_history_has_recent_post():
 def test_onboarding_posts_when_state_empty_and_no_history():
     """With empty state and no recent history, posts to #help and marks state."""
     state = {}
-    mock_slack = MagicMock(return_value={"ok": True})
+    mock_chat = MagicMock(return_value={"ok": True})
 
     with patch.object(sat, "get_channel_id", return_value="C_HELP"), \
          patch.object(sat, "_slack_channel_has_recent_bot_post", return_value=False), \
-         patch.object(sat, "slack_call", mock_slack):
+         patch.object(sat, "chat_call", mock_chat):
         sat.post_engineer_onboarding("xoxb-test", state)
 
-    # Should have posted (at least one slack_call)
-    assert mock_slack.call_count >= 1
-    # Check that a chat.postMessage was issued with the help channel
-    calls_to_post = [c for c in mock_slack.call_args_list
-                     if c[0][1] == "chat.postMessage"]
+    # Should have posted (at least one chat_call)
+    assert mock_chat.call_count >= 1
+    # Check that a chat.postMessage was issued with the help channel.
+    # chat_call's signature is (method, payload) — the Slack-era version took a
+    # leading `token` arg, so the method used to be at index 1.
+    calls_to_post = [c for c in mock_chat.call_args_list
+                     if c[0][0] == "chat.postMessage"]
     assert len(calls_to_post) >= 1
 
     # State should now have the week set
@@ -620,7 +622,7 @@ def test_onboarding_sets_state_week_key():
     state = {}
     with patch.object(sat, "get_channel_id", return_value="C_HELP"), \
          patch.object(sat, "_slack_channel_has_recent_bot_post", return_value=False), \
-         patch.object(sat, "slack_call", return_value={"ok": True}):
+         patch.object(sat, "chat_call", return_value={"ok": True}):
         sat.post_engineer_onboarding("xoxb-test", state)
 
     from datetime import datetime, timezone

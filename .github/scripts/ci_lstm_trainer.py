@@ -30,7 +30,8 @@ try:
 except ImportError as e:
     sys.exit(f"Missing dependency: {e}\nRun: pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install numpy yfinance")
 
-SLACK_TOKEN   = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 ARTIFACTS_DIR = Path(os.environ.get("ARTIFACTS_DIR", "backend/models_artifacts"))
 
 # Symbols to train on: (ticker, asset_type, start_date, end_date)
@@ -252,21 +253,9 @@ def compute_oos_sharpe(model: nn.Module, test_ds: TensorDataset) -> float:
 # ── Slack ─────────────────────────────────────────────────────────────────────
 
 def _post_slack(channel: str, text: str) -> None:
-    if not SLACK_TOKEN.startswith("xoxb-"):
-        print(f"[slack] #{channel}: {text[:120]}")
-        return
-    payload = json.dumps({"channel": channel, "text": text,
-                          "username": "ML Trainer", "icon_emoji": ":brain:"}).encode()
-    req = urllib.request.Request(
-        "https://slack.com/api/chat.postMessage",
-        data=payload,
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {SLACK_TOKEN}"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10):
-            pass
-    except Exception as e:
-        print(f"[slack] error posting to #{channel}: {e}")
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(channel, text)
 
 
 # ── Per-symbol training ───────────────────────────────────────────────────────

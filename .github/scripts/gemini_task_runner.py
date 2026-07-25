@@ -18,7 +18,7 @@ Environment variables:
   GEMINI_API_KEY  — primary (free 1500 req/day)
   GEMINI_API_KEY_2, GEMINI_API_KEY_3 — fallback keys
   GROQ_API_KEY    — fallback (free 500k tok/day)
-  SLACK_BOT_TOKEN — optional Slack posting
+  CHAT_ENABLED — optional Slack posting
   ALLOW_PAID_APIS — must be "False"
 
 Usage:
@@ -79,8 +79,8 @@ GROQ_KEYS = [
               "GROQ_API_KEY", "GROQ_API_KEY_4", "GROQ_API_KEY_5"]
     if os.environ.get(k, "").strip()
 ]
-SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "").strip()
-
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 # ── LLM callers ───────────────────────────────────────────────────────────────
 
 class _RateLimited(Exception):
@@ -235,17 +235,15 @@ def create_issue(title: str, body: str) -> int | None:
 
 # ── Slack ──────────────────────────────────────────────────────────────────────
 
-def _slack_post(channel: str, text: str) -> None:
-    if not SLACK_TOKEN:
-        return
-    body = json.dumps({"channel": channel, "text": text}).encode()
-    req = urllib.request.Request(
-        "https://slack.com/api/chat.postMessage", data=body,
-        headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-        method="POST",
-    )
+def _chat_post(channel: str, text: str) -> None:
+    """Post to Discord via the shared notifier.
+
+    Previously POSTed to slack.com and returned early with no token, so this
+    runner's reports went nowhere once Slack was dead.
+    """
     try:
-        urllib.request.urlopen(req, timeout=10)
+        import notify
+        notify.post(channel, text, username="Gemini Runner")
     except Exception:
         pass
 
@@ -494,7 +492,7 @@ def main() -> int:
             if ok is None:
                 print("[gemini-runner] Rate-limited — will retry next run.")
                 return 0
-            _slack_post("engineering", f":robot_face: *Gemini runner* — `{task_text[:60]}`\n{report}")
+            _chat_post("engineering", f":robot_face: *Gemini runner* — `{task_text[:60]}`\n{report}")
             return 0 if ok else 1
 
     # ── Single issue mode: --issue 42
@@ -514,16 +512,16 @@ def main() -> int:
                 if ok:
                     report = f"{verify_msg}\n\n" + report
                     close_issue(issue_num, f"## ✅ Done\n\n{report}")
-                    _slack_post("engineering", f":robot_face: *Gemini runner* closed issue #{issue_num}\n{report[:300]}")
+                    _chat_post("engineering", f":robot_face: *Gemini runner* closed issue #{issue_num}\n{report[:300]}")
                 else:
                     report = f"Verification failed: {verify_msg}\n\n" + report
                     _gh("POST", f"/repos/{GH_REPO}/issues/{issue_num}/comments",
                         {"body": f"## ⚠️ Verification failed — left open for retry\n\n{report}"})
-                    _slack_post("engineering", f":warning: *Gemini runner* — verification failed for #{issue_num}: {verify_msg}")
+                    _chat_post("engineering", f":warning: *Gemini runner* — verification failed for #{issue_num}: {verify_msg}")
             else:
                 _gh("POST", f"/repos/{GH_REPO}/issues/{issue_num}/comments",
                     {"body": f"## ⚠️ Attempt failed — left open for retry\n\n{report}"})
-                _slack_post("engineering", f":warning: *Gemini runner* could not fix #{issue_num} — left open\n{report[:200]}")
+                _chat_post("engineering", f":warning: *Gemini runner* could not fix #{issue_num} — left open\n{report[:200]}")
             return 0  # always exit 0; failures are tracked via issue comments
 
     # ── Batch mode: process all open gemini-task issues
@@ -566,7 +564,7 @@ def main() -> int:
     for num, ok, rep in results:
         icon = "✅" if ok else ("⏳" if ok is None else "❌")
         lines.append(f"{icon} Issue #{num}: {rep[:100]}")
-    _slack_post("engineering", "\n".join(lines))
+    _chat_post("engineering", "\n".join(lines))
 
     # Only hard-fail if a task actually errored (not rate-limited)
     failed = sum(1 for _, ok, _ in results if ok is False)

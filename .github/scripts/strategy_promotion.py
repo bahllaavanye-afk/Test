@@ -23,7 +23,7 @@ from pathlib import Path
 from statistics import pvariance
 
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post, memory_write, core_update, core_get
+from llm_common import llm, chat_post, memory_write, core_update, core_get
 from strategy_gate import passes_promotion_gate
 
 REPO_ROOT = Path(__file__).parent.parent.parent
@@ -380,7 +380,7 @@ def generate_promotion_summary(events: list[dict]) -> str:
     )
 
 
-# ── Slack formatting ───────────────────────────────────────────────────────────
+# ── Message formatting ───────────────────────────────────────────────────────────
 
 def _format_slack_message(events: list[dict]) -> str:
     """Build the Slack message body."""
@@ -462,13 +462,13 @@ def main() -> None:
     paper_events = [ev for ev in events if ev["to_stage"] != "live_candidate"]
 
     if paper_events:
-        slack_post("#engineering", slack_body)
+        chat_post("#engineering", slack_body)
         print("[strategy_promotion] Posted to #engineering")
 
     if live_events:
         # Live candidates need human review — post to desk lead channel
         live_body = _format_slack_message(live_events)
-        slack_post("#desk-lead-review", live_body)
+        chat_post("#desk-lead-review", live_body)
         print("[strategy_promotion] Posted to #desk-lead-review")
 
     # 4. Persist updated paper_candidate list to company brain

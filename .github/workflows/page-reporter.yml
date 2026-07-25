@@ -42,7 +42,6 @@ jobs:
 
       - name: Run screenshot runner against production
         env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
         run: |
@@ -80,7 +79,6 @@ jobs:
 
       - name: Run employee page audits
         env:
-          SLACK_BOT_TOKEN:      ${{ secrets.SLACK_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           GROQ_API_KEY:         ${{ secrets.GROQ_API_KEY }}
@@ -105,4 +103,4 @@ jobs:
           TRADING_MODE:         "paper"
           GH_TOKEN:             ${{ secrets.GITHUB_TOKEN }}
           GH_REPO:              ${{ github.repository }}
-        run: python .github/scripts/slack_agent_team.py page_reports
+        run: python .github/scripts/agent_team.py page_reports

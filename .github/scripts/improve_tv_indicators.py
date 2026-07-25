@@ -11,32 +11,21 @@ from __future__ import annotations
 import json, os, re, subprocess, sys, urllib.request
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post, memory_write
+from llm_common import llm, chat_post, memory_write
 
 REPO_ROOT = Path(__file__).parent.parent
 TV_FILE   = REPO_ROOT / "backend/app/strategies/manual/tv_indicators.py"
-SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
-
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 ALLOW_PAID = os.environ.get("ALLOW_PAID_APIS", "False")
 if ALLOW_PAID.lower() == "true":
     sys.exit(1)
 
 
 def slack(channel: str, msg: str) -> None:
-    if not SLACK_TOKEN:
-        return
-    try:
-        import urllib.request as req
-        payload = json.dumps({"channel": channel, "text": msg, "mrkdwn": True}).encode()
-        r = req.Request(
-            "https://slack.com/api/chat.postMessage",
-            data=payload,
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}",
-                     "Content-Type": "application/json"},
-        )
-        urllib.request.urlopen(r, timeout=10)
-    except Exception as e:
-        print(f"Slack error: {e}")
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(channel, msg)
 
 
 # ── Improvement prompt ────────────────────────────────────────────────────────

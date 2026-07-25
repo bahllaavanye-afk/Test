@@ -16,7 +16,8 @@ import httpx
 
 REPO_ROOT    = Path(__file__).parent.parent
 FRONTEND_SRC = REPO_ROOT / "frontend" / "src"
-SLACK_TOKEN  = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 API_KEY      = os.environ.get("ANTHROPIC_API_KEY", "")
 FOCUS        = os.environ.get("FOCUS", "overall UI quality, animations, and UX polish")
 
@@ -32,17 +33,9 @@ SAFE_FRONTEND = [
 
 
 def slack(msg: str) -> None:
-    if not SLACK_TOKEN:
-        return
-    try:
-        httpx.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
-            json={"channel": "#desk-options", "text": msg, "mrkdwn": True},
-            timeout=10,
-        )
-    except Exception as e:
-        print(f"Slack error: {e}")
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(CHANNEL if "CHANNEL" in globals() else "engineering", msg)
 
 
 def read_files() -> str:

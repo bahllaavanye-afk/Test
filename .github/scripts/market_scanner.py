@@ -37,7 +37,7 @@ from typing import Any
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import core_update, core_get, memory_write, slack_post, llm
+from llm_common import core_update, core_get, memory_write, chat_post, llm
 
 ALLOW_PAID = os.environ.get("ALLOW_PAID_APIS", "False")
 if ALLOW_PAID.lower() == "true":
@@ -943,7 +943,7 @@ def main() -> None:
                           breakouts, rsi, sectors, crypto, earnings, cross_asset)
     print("\n" + report, flush=True)
 
-    resp = slack_post("#market-analysis", report)
+    resp = chat_post("#market-analysis", report)
     if resp.get("ok"):
         print("Posted to #market-analysis", flush=True)
 
@@ -962,7 +962,7 @@ def main() -> None:
             "and (2) one specific setup worth watching based on the data above."
         )
         advice = llm(prompt, max_tokens=150, use_cache=False, inject_company_context=False)
-        slack_post("#market-analysis", f"🤖 *Tactical brief:* {advice}")
+        chat_post("#market-analysis", f"🤖 *Tactical brief:* {advice}")
         print(f"LLM advice: {advice}", flush=True)
     except Exception as e:
         print(f"LLM brief failed: {e}", flush=True)

@@ -43,9 +43,10 @@ def _resolve_key(*names: str) -> str:
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
-SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 REPO_ROOT = Path(__file__).parent.parent.parent
-AGENT_SCRIPT = Path(__file__).parent / "slack_agent_team.py"
+AGENT_SCRIPT = Path(__file__).parent / "agent_team.py"
 DRY_RUN = "--dry-run" in sys.argv
 
 # Channels that MUST have at least one proactive posting agent
@@ -216,7 +217,7 @@ def _check_engineer_llm_usage(tree: ast.Module) -> list[EngineerCheck]:
 
 def _check_env() -> dict[str, bool]:
     keys = [
-        "SLACK_BOT_TOKEN",
+        "CHAT_ENABLED",
         "GEMINI_API_KEY",
         "GROQ_API_KEY",
         "CEREBRAS_API_KEY",
@@ -392,7 +393,7 @@ def _run_agent_execution_tests(target_channel: str | None = None) -> list[AgentE
     No Slack token needed — functions return Posts without posting.
     """
     # Temporarily stub out any network calls that would fail in test
-    spec = importlib.util.spec_from_file_location("slack_agent_team", AGENT_SCRIPT)
+    spec = importlib.util.spec_from_file_location("agent_team", AGENT_SCRIPT)
     if spec is None or spec.loader is None:
         print("[health] Cannot import agent module for execution tests")
         return []
@@ -425,14 +426,13 @@ def _run_agent_execution_tests(target_channel: str | None = None) -> list[AgentE
     return results
 
 
-# ─── Slack posting ────────────────────────────────────────────────────────────
+# ─── Discord posting ────────────────────────────────────────────────────────────
 
-def _slack_post(channel: str, text: str) -> bool:
+def _chat_post(channel: str, text: str) -> bool:
     if DRY_RUN:
         print(f"[dry-run] #{channel}: {text[:120]}")
         return True
-    # Shared Slack→Discord delivery: health reports must reach a human even
-    # when Slack's quota is dead (this monitor's alerts went nowhere for days).
+    # Shared Discord delivery: health reports must reach a human.
     import notify
     return notify.post(channel, text, username="Agent Health Monitor")
 
@@ -596,9 +596,9 @@ def _test_agent_function_execution(fn_name: str, timeout_secs: int = 30) -> tupl
     """
     Import the agent script and call the named function.
     Returns (success, output_or_error).
-    Only tests functions that don't need Slack token (they return Posts).
+    Only tests functions that don't need chat credentials (they return Posts).
     """
-    spec = importlib.util.spec_from_file_location("slack_agent_team", AGENT_SCRIPT)
+    spec = importlib.util.spec_from_file_location("agent_team", AGENT_SCRIPT)
     if spec is None or spec.loader is None:
         return False, "cannot load module"
     try:
@@ -692,7 +692,7 @@ def _create_critical_issues(report: "HealthReport") -> list[int]:
     """
     For each critical finding, create a GitHub issue labelled 'agent-fix-needed'.
     Returns list of created issue numbers.
-    Called by main() after posting the Slack report when report.critical_count > 0.
+    Called by main() after posting the health report when report.critical_count > 0.
     """
     created: list[int] = []
     ts = report.timestamp
@@ -706,14 +706,14 @@ def _create_critical_issues(report: "HealthReport") -> list[int]:
             f"## Agent Health Monitor — Critical Alert\n\n"
             f"**Detected at:** {ts}\n\n"
             f"**Problem:** The channel `#{ch_check.channel}` has no registered posting agent. "
-            f"At least one `Agent()` entry in `slack_agent_team.py` must list "
+            f"At least one `Agent()` entry in `agent_team.py` must list "
             f"`\"{ch_check.channel}\"` in its channels array.\n\n"
             f"**Details:**\n"
             + "\n".join(f"- {issue}" for issue in ch_check.issues)
             + "\n\n"
             f"**Required fix:** Add an `Agent()` entry that posts to `#{ch_check.channel}`, "
             f"or extend an existing agent's channel list.\n\n"
-            f"**File to modify:** `.github/scripts/slack_agent_team.py`\n\n"
+            f"**File to modify:** `.github/scripts/agent_team.py`\n\n"
             f"_Auto-created by `agent_health_monitor.py`. "
             f"Label `agent-fix-needed` triggers the Free-Agent Engineer to auto-fix._"
         )
@@ -729,7 +729,7 @@ def _create_critical_issues(report: "HealthReport") -> list[int]:
         body = (
             f"## Agent Health Monitor — Critical Alert\n\n"
             f"**Detected at:** {ts}\n\n"
-            f"**Problem:** The function `{eng_check.fn_name}()` in `slack_agent_team.py` "
+            f"**Problem:** The function `{eng_check.fn_name}()` in `agent_team.py` "
             f"does not call a real LLM. It must use one of: "
             f"`employee_provider_prompt`, `moa_employee_prompt`, `call_best_agent`, "
             f"`call_litellm`, or `call_best_agent_for_task`.\n\n"
@@ -738,7 +738,7 @@ def _create_critical_issues(report: "HealthReport") -> list[int]:
             + "\n\n"
             f"**Required fix:** Update `{eng_check.fn_name}()` to call a real LLM "
             f"function instead of returning hardcoded text.\n\n"
-            f"**File to modify:** `.github/scripts/slack_agent_team.py`\n\n"
+            f"**File to modify:** `.github/scripts/agent_team.py`\n\n"
             f"_Auto-created by `agent_health_monitor.py`. "
             f"Label `agent-fix-needed` triggers the Free-Agent Engineer to auto-fix._"
         )
@@ -843,15 +843,15 @@ def main() -> int:
         for h in report.healed:
             print(f"  + {h}")
 
-    # Post to Slack
-    if SLACK_BOT_TOKEN or DRY_RUN:
+    # Post to Discord
+    if CHAT_ENABLED or DRY_RUN:
         incident_text = _build_incident_report(report)
-        _slack_post("incidents", incident_text)
+        _chat_post("incidents", incident_text)
 
         # Only post to allquantedge on critical issues or explicit run
         if report.critical_count > 0 or "--always-post" in sys.argv:
             summary = _build_allquantedge_summary(report)
-            _slack_post("allquantedge", summary)
+            _chat_post("allquantedge", summary)
 
     # Self-healing loop: if critical issues remain, create GitHub issues
     # labelled "agent-fix-needed" so the Free-Agent Engineer can auto-fix them.
@@ -861,9 +861,9 @@ def main() -> int:
         if created_issues:
             print(f"[health] Created {len(created_issues)} GitHub issue(s): "
                   f"{', '.join(f'#{n}' for n in created_issues)}")
-            # Post brief Slack notification about the auto-created issues
-            if SLACK_BOT_TOKEN:
-                _slack_post(
+            # Post a brief Discord notification about the auto-created issues
+            if CHAT_ENABLED:
+                _chat_post(
                     "incidents",
                     f":ticket: Health monitor created *{len(created_issues)}* GitHub issue(s) "
                     f"labelled `agent-fix-needed` — Free-Agent Engineer will attempt auto-fix. "

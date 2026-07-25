@@ -11,7 +11,7 @@ Required secrets:
   RENDER_API_KEY      — from render.com/dashboard → Account Settings → API Keys
   RENDER_SERVICE_ID   — from Render service URL: render.com/web/<SERVICE_ID>
   ANTHROPIC_API_KEY   — for QuantEdge AI diagnosis + fix generation
-  SLACK_BOT_TOKEN     — for Slack notifications
+  CHAT_ENABLED     — for Slack notifications
 """
 from __future__ import annotations
 
@@ -31,10 +31,10 @@ REPO_ROOT  = Path(__file__).parent.parent
 RENDER_API_KEY    = os.environ.get("RENDER_API_KEY", "")
 RENDER_SERVICE_ID = os.environ.get("RENDER_SERVICE_ID", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-SLACK_TOKEN       = os.environ.get("SLACK_BOT_TOKEN", "")
-
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 BRANCH = "main"
-SLACK_CHANNEL = "#risk-alerts"
+CHAT_CHANNEL = "#risk-alerts"
 
 # Files that QuantEdge AI is allowed to modify during auto-fix
 SAFE_TO_MODIFY = [
@@ -51,17 +51,9 @@ SAFE_TO_MODIFY = [
 
 
 def slack(msg: str) -> None:
-    if not SLACK_TOKEN:
-        return
-    try:
-        httpx.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
-            json={"channel": SLACK_CHANNEL, "text": msg, "mrkdwn": True},
-            timeout=10,
-        )
-    except Exception as e:
-        print(f"Slack error: {e}")
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(CHANNEL if "CHANNEL" in globals() else "engineering", msg)
 
 
 def render_get(path: str) -> dict | list | None:
