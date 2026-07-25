@@ -5,7 +5,7 @@ import json
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.api.deps import get_current_user
 
@@ -13,39 +13,41 @@ router = APIRouter(prefix="/scanners", tags=["scanners"])
 
 
 class ScanResultOut(BaseModel):
-    symbol: str = Field(..., description="Ticker symbol of the instrument.", example="AAPL")
-    desk: str = Field(..., description="Desk name that generated the signal.", example="equity")
+    symbol: str = Field(..., description="Ticker symbol of the instrument.", json_schema_extra={"example": "AAPL"})
+    desk: str = Field(..., description="Desk name that generated the signal.", json_schema_extra={"example": "equity"})
     score: float = Field(
         ...,
         description="Confidence score of the signal, normalized between 0 and 1.",
         ge=0.0,
         le=1.0,
-        example=0.87,
+        json_schema_extra={"example": 0.87},
     )
     signals: List[str] = Field(
         ...,
         description="List of signal identifiers that contributed to the score.",
-        example=["mean_rev_20_2", "vol_breakout"],
+        json_schema_extra={"example": ["mean_rev_20_2", "vol_breakout"]},
     )
     side: str = Field(
         ...,
         description="Suggested position side.",
-        example="buy",
+        json_schema_extra={"example": "buy"},
     )
     data: Dict[str, Any] = Field(
         default_factory=dict,
         description="Arbitrary additional data returned by the scanner.",
-        example={"ma20": 150.3, "volume": 2_500_000},
+        json_schema_extra={"example": {"ma20": 150.3, "volume": 2_500_000}},
     )
 
-    @validator("side")
+    @field_validator("side")
+    @classmethod
     def validate_side(cls, v: str) -> str:
         allowed = {"buy", "sell", "neutral", "none"}
         if v.lower() not in allowed:
             raise ValueError(f"side must be one of {allowed}")
         return v.lower()
 
-    @validator("signals")
+    @field_validator("signals")
+    @classmethod
     def validate_signals(cls, v: List[str]) -> List[str]:
         if not v:
             raise ValueError("signals list cannot be empty")
@@ -66,12 +68,12 @@ class ScanResultOut(BaseModel):
 
 
 class ScanResponse(BaseModel):
-    desk: str = Field(..., description="Desk identifier.", example="equity")
+    desk: str = Field(..., description="Desk identifier.", json_schema_extra={"example": "equity"})
     results: List[ScanResultOut] = Field(..., description="List of scan results for the desk.")
     cached: bool = Field(
         True,
         description="Indicates whether the results were retrieved from cache.",
-        example=True,
+        json_schema_extra={"example": True},
     )
 
     model_config = ConfigDict(
