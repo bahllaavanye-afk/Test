@@ -120,13 +120,36 @@ def current_host_port(url: str) -> tuple[str | None, str | None]:
     return parsed.hostname, (str(parsed.port) if parsed.port else None)
 
 
-async def _try_connect(host: str, port: str, ref: str, password: str) -> bool:
-    """Return True iff `SELECT 1` succeeds against this pooler host/port."""
+OK = "ok"                      # SELECT 1 succeeded — fully working
+BAD_PASSWORD = "bad_password"  # tenant EXISTS on this cluster, password rejected
+NO_TENANT = "no_tenant"        # this cluster has never heard of the tenant
+UNREACHABLE = "unreachable"    # network/timeout/other
+
+
+def classify_error(exc: Exception) -> str:
+    """Map a connection failure to a diagnosis.
+
+    The distinction that matters: "tenant or user not found" means we are asking
+    the WRONG Supavisor cluster, whereas an authentication failure means we found
+    the RIGHT cluster (it knows this tenant) and only the password is stale. That
+    makes a password error a positive identification of the correct host.
+    """
+    name = type(exc).__name__
+    msg = str(exc).lower()
+    if "invalidpassword" in name.lower() or "password authentication failed" in msg:
+        return BAD_PASSWORD
+    if "tenant or user not found" in msg or "tenant/user" in msg:
+        return NO_TENANT
+    return UNREACHABLE
+
+
+async def _try_connect(host: str, port: str, ref: str, password: str) -> str:
+    """Probe one pooler host/port. Returns OK / BAD_PASSWORD / NO_TENANT / UNREACHABLE."""
     try:
         import asyncpg
     except Exception as e:  # pragma: no cover - asyncpg installed in CI
         print(f"  asyncpg unavailable: {e}")
-        return False
+        return UNREACHABLE
     user = f"postgres.{ref}"
     try:
         conn = await asyncio.wait_for(
@@ -143,12 +166,13 @@ async def _try_connect(host: str, port: str, ref: str, password: str) -> bool:
         )
         try:
             val = await conn.fetchval("SELECT 1")
-            return val == 1
+            return OK if val == 1 else UNREACHABLE
         finally:
             await conn.close()
     except Exception as e:
-        print(f"  {host}:{port} -> {type(e).__name__}: {str(e)[:90]}")
-        return False
+        verdict = classify_error(e)
+        print(f"  {host}:{port} -> {type(e).__name__}: {str(e)[:90]}  [{verdict}]")
+        return verdict
 
 
 def headers() -> dict:
@@ -210,38 +234,60 @@ async def probe_service(service_id: str) -> bool:
     cur_host, cur_port = current_host_port(db_url)
     print(f"  current pooler host: {cur_host}:{cur_port}")
 
-    # 1. Does the CURRENT url already connect? Then it's a stale boot, not a URL bug.
-    if cur_host and cur_port and await _try_connect(cur_host, cur_port, ref, password):
-        print("  current DATABASE_URL connects OK → URL is fine (stale boot; not")
-        print("  re-patching — a one-shot Render redeploy is the remaining lever).")
-        return False
+    def apply(host: str, port: str, redeploy: bool) -> bool:
+        changed = False
+        for key, driver in (("DATABASE_URL", "asyncpg"), ("ALEMBIC_DATABASE_URL", "psycopg2")):
+            if key == "ALEMBIC_DATABASE_URL" and not current.get(key):
+                continue
+            if patch_env_var(service_id, key, build_url(driver, ref, password, host, port)):
+                changed = True
+        if changed and redeploy:
+            trigger_deploy(service_id)
+        return changed
 
-    # 2. Find the first candidate host/port that works.
+    # 1. Does the CURRENT url already connect? Then it's a stale boot, not a URL bug.
+    if cur_host and cur_port:
+        if await _try_connect(cur_host, cur_port, ref, password) == OK:
+            print("  current DATABASE_URL connects OK → URL is fine (stale boot; not")
+            print("  re-patching — a one-shot Render redeploy is the remaining lever).")
+            return False
+
+    # 2. Probe every candidate, recording which cluster RECOGNISES the tenant.
+    auth_hit: tuple[str, str] | None = None      # host/port where only the password failed
     for host in candidate_hosts(REGION):
         for port in PORTS:
             if host == cur_host and port == cur_port:
-                continue  # already known-bad above
+                continue  # already probed above
             print(f"  trying {host}:{port} ...")
-            if await _try_connect(host, port, ref, password):
-                print(f"  ✅ {host}:{port} ACCEPTS the tenant — patching Render")
-                changed = False
-                for key, driver in (
-                    ("DATABASE_URL", "asyncpg"),
-                    ("ALEMBIC_DATABASE_URL", "psycopg2"),
-                ):
-                    if key == "ALEMBIC_DATABASE_URL" and not current.get(key):
-                        continue
-                    new_url = build_url(driver, ref, password, host, port)
-                    if patch_env_var(service_id, key, new_url):
-                        changed = True
-                if changed:
-                    trigger_deploy(service_id)
-                return changed
+            verdict = await _try_connect(host, port, ref, password)
+            if verdict == OK:
+                print(f"  ✅ {host}:{port} ACCEPTS the tenant — patching Render + redeploying")
+                return apply(host, port, redeploy=True)
+            if verdict == BAD_PASSWORD and auth_hit is None:
+                auth_hit = (host, port)
 
-    print("  ❌ no pooler host/port accepted the tenant with this password.")
-    print("     Region + project are healthy, so the remaining cause is a ROTATED")
-    print("     DB password. Fix: Supabase dashboard → Database → reset password,")
-    print("     then update Render DATABASE_URL. No host change can fix this.")
+    # 3. Nothing fully connected. If some cluster recognised the tenant (password
+    #    error, not "tenant not found"), that host is PROVEN correct — fix it now so
+    #    the only remaining fault is the password. Idempotent: once DATABASE_URL
+    #    already points there we patch nothing, so this cannot loop-redeploy.
+    if auth_hit:
+        host, port = auth_hit
+        print(f"  🔎 {host}:{port} RECOGNISES the tenant but rejected the password.")
+        print("     → that cluster is the correct one; the password is stale/rotated.")
+        if (host, port) != (cur_host, cur_port):
+            print(f"  Correcting host {cur_host}:{cur_port} → {host}:{port} (password unchanged,")
+            print("  so this alone will not connect — but it removes the wrong-cluster fault).")
+            # No redeploy: the password is still wrong, so a restart would only churn
+            # the ephemeral SQLite + scheduler clocks for nothing.
+            return apply(host, port, redeploy=False)
+        print("  Host already correct — nothing to patch.")
+        print("  ➡️  USER ACTION: Supabase → Settings → Database → Reset database password,")
+        print("      then paste the pooler connection string into Render DATABASE_URL.")
+        return False
+
+    print("  ❌ no pooler host/port recognised the tenant at all.")
+    print("     Region + project are healthy, so verify the project ref and that the")
+    print("     project has not been deleted/migrated.")
     return False
 
 

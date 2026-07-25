@@ -9,8 +9,34 @@
 _Last updated: 2026-07-24._
 
 ## ⚡ STATE AS OF 2026-07-24 (read this first)
-**🟠 DURABLE POSTGRES — NARROWED TO A POOLER-CLUSTER MISMATCH; AUTONOMOUS PROBER SHIPPED.**
-Three theories are now DISPROVEN by credential-free HTTPS probes (2026-07-25 ~00:30 UTC):
+**🔴 DURABLE POSTGRES — ROOT CAUSE PROVEN 2026-07-25 03:44 UTC. ONE USER ACTION UNBLOCKS IT.**
+The pooler prober ran (`db-url-region-autofix` run 30142794041) and produced a decisive result.
+It tested every candidate host/port with a real connection:
+```
+current pooler host: aws-0-us-west-1.pooler.supabase.com:6543
+aws-0-us-west-1…:6543 → (ENOTFOUND) tenant/user postgres.vexzwnfbmznvxoxxktax not found
+aws-1-us-west-1…:6543 → InvalidPasswordError: password authentication failed for user "postgres"
+aws-1-us-west-1…:5432 → InvalidPasswordError: password authentication failed for user "postgres"
+aws-0-us-west-1…:5432 → (ENOTFOUND) tenant/user postgres.vexzwnfbmznvxoxxktax not found
+```
+**TWO STACKED FAULTS — both now proven, no guessing left:**
+  1. **WRONG POOLER CLUSTER.** Render's `DATABASE_URL` uses `aws-0-us-west-1`, but the tenant
+     lives on **`aws-1-us-west-1`**. `aws-0` says "tenant not found" (it has never heard of this
+     project); `aws-1` *recognises the tenant* and gets as far as authentication. This is what
+     produced the weeks-long "tenant/user not found" — it was the aws-0 symptom, and it MASKED
+     fault #2 underneath.
+  2. **STALE / ROTATED DB PASSWORD.** On the correct cluster the password is rejected
+     (`InvalidPasswordError`). No host change can fix this — it needs the real password.
+**➡️ USER ACTION (~2 min, the ONLY thing blocking durable Postgres):** Supabase dashboard →
+project `vexzwnfbmznvxoxxktax` → **Settings → Database → Reset database password**, then copy the
+**Session/Transaction pooler** connection string (it will correctly show the `aws-1-us-west-1`
+host) into Render → `quantedge-api` → Environment → `DATABASE_URL`, keeping the
+`postgresql+asyncpg://` scheme. Render redeploys automatically; the boot then runs `alembic
+upgrade head` → 22-table schema → durable state. (If `ALEMBIC_DATABASE_URL` is also set, give it
+the same URL with `postgresql+psycopg2://`.)
+The prober is idempotent and stays wired in — it will keep verifying and will auto-correct the
+HOST on its own; only the password genuinely requires a human.
+Superseded background (kept for the record) — three earlier theories, all correctly disproven:
   * **NOT wrong-region.** The direct DB host `db.vexzwnfbmznvxoxxktax.supabase.co` resolves to
     IPv6 `2600:1f1c:b5d:e600:…`, which AWS ip-ranges.json maps to `2600:1f1c::/36` = **us-west-1**.
     So the project genuinely lives in us-west-1 and the URL's us-west-1 pooler region is correct.
