@@ -8,6 +8,31 @@
 
 _Last updated: 2026-07-24._
 
+## 🟢 DURABLE POSTGRES — ROOT CAUSE PROVEN 2026-07-25 05:27 UTC (one 2-min user action left)
+The pooler prober ran (via the `workflow_run` chain off Agent Heartbeat) and tested all four
+cluster/port combinations. Verdict is unambiguous — there were **TWO** faults stacked:
+```
+aws-0-us-west-1...:6543  -> tenant/user postgres.<ref> not found   [no_tenant]   <- URL pointed here
+aws-1-us-west-1...:6543  -> password authentication failed          [bad_password] <- tenant LIVES here
+aws-1-us-west-1...:5432  -> password authentication failed          [bad_password]
+aws-0-us-west-1...:5432  -> tenant/user not found                   [no_tenant]
+```
+1. **WRONG SUPAVISOR CLUSTER (fixed autonomously).** The URL used `aws-0`; this project's tenant
+   lives on `aws-1`. The prober patched Render `DATABASE_URL` to `aws-1-us-west-1...:6543` and
+   triggered a redeploy. This is why the error was "tenant not found" for weeks — that message
+   means "wrong cluster", NOT "paused project" and NOT "wrong region".
+2. **STALE DB PASSWORD (needs the user — cannot be automated).** `aws-1` RECOGNISES the tenant
+   and rejects the credential. An auth failure is a POSITIVE identification of the right cluster;
+   no host change can fix it.
+   **ACTION (~2 min): Supabase dashboard → project `vexzwnfbmznvxoxxktax` → Settings → Database →
+   Reset database password → copy it → Render → quantedge-api → Environment → set `DATABASE_URL`
+   to `postgresql+asyncpg://postgres.vexzwnfbmznvxoxxktax:<NEW_PASSWORD>@aws-1-us-west-1.pooler.supabase.com:6543/postgres`
+   (URL-encode any special characters) → Save (auto-redeploys).**
+Once that lands, the boot reaches Postgres → `alembic upgrade head` provisions the 22-table schema
+(incl. catch-up `k6f7a8b9c0d1`) → durable state, and bot P&L stops resetting on every deploy.
+**Verify:** `/health/detailed` → `database.fallback` gone, `database_primary.ok` true.
+NOTE `database_primary` is a BOOT-time value, so it only changes after a restart.
+
 ## 🗑️ SLACK REMOVED COMPLETELY — 2026-07-25 (user directive)
 Discord is now the ONLY chat integration. Removed: `app/notifications/slack.py`,
 `app/integrations/slack_bot.py`, `app/integrations/slack_workspace.py`, 11 slack-*.yml
@@ -27,33 +52,7 @@ unattended. Renamed: `slack_agent_team.py`→`agent_team.py`, `slack_state.json`
 `chat_insights`. Residual "Slack" prose in comments is tracked as a P3 in IMPROVEMENTS.md.
 
 ## ⚡ STATE AS OF 2026-07-24 (read this first)
-**🔴 DURABLE POSTGRES — ROOT CAUSE PROVEN 2026-07-25 03:44 UTC. ONE USER ACTION UNBLOCKS IT.**
-The pooler prober ran (`db-url-region-autofix` run 30142794041) and produced a decisive result.
-It tested every candidate host/port with a real connection:
-```
-current pooler host: aws-0-us-west-1.pooler.supabase.com:6543
-aws-0-us-west-1…:6543 → (ENOTFOUND) tenant/user postgres.vexzwnfbmznvxoxxktax not found
-aws-1-us-west-1…:6543 → InvalidPasswordError: password authentication failed for user "postgres"
-aws-1-us-west-1…:5432 → InvalidPasswordError: password authentication failed for user "postgres"
-aws-0-us-west-1…:5432 → (ENOTFOUND) tenant/user postgres.vexzwnfbmznvxoxxktax not found
-```
-**TWO STACKED FAULTS — both now proven, no guessing left:**
-  1. **WRONG POOLER CLUSTER.** Render's `DATABASE_URL` uses `aws-0-us-west-1`, but the tenant
-     lives on **`aws-1-us-west-1`**. `aws-0` says "tenant not found" (it has never heard of this
-     project); `aws-1` *recognises the tenant* and gets as far as authentication. This is what
-     produced the weeks-long "tenant/user not found" — it was the aws-0 symptom, and it MASKED
-     fault #2 underneath.
-  2. **STALE / ROTATED DB PASSWORD.** On the correct cluster the password is rejected
-     (`InvalidPasswordError`). No host change can fix this — it needs the real password.
-**➡️ USER ACTION (~2 min, the ONLY thing blocking durable Postgres):** Supabase dashboard →
-project `vexzwnfbmznvxoxxktax` → **Settings → Database → Reset database password**, then copy the
-**Session/Transaction pooler** connection string (it will correctly show the `aws-1-us-west-1`
-host) into Render → `quantedge-api` → Environment → `DATABASE_URL`, keeping the
-`postgresql+asyncpg://` scheme. Render redeploys automatically; the boot then runs `alembic
-upgrade head` → 22-table schema → durable state. (If `ALEMBIC_DATABASE_URL` is also set, give it
-the same URL with `postgresql+psycopg2://`.)
-The prober is idempotent and stays wired in — it will keep verifying and will auto-correct the
-HOST on its own; only the password genuinely requires a human.
+**(Postgres status: see the ROOT CAUSE PROVEN block at the top of this file.)**
 Superseded background (kept for the record) — three earlier theories, all correctly disproven:
   * **NOT wrong-region.** The direct DB host `db.vexzwnfbmznvxoxxktax.supabase.co` resolves to
     IPv6 `2600:1f1c:b5d:e600:…`, which AWS ip-ranges.json maps to `2600:1f1c::/36` = **us-west-1**.

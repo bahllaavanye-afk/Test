@@ -111,3 +111,58 @@ def test_timeout_is_unreachable_not_a_verdict_about_the_tenant():
 
 def test_verdict_constants_are_distinct():
     assert len({m.OK, m.BAD_PASSWORD, m.NO_TENANT, m.UNREACHABLE}) == 4
+
+
+# ---- no-flap regression -----------------------------------------------------
+# With the tenant on aws-1 and the password stale, BOTH aws-1 ports answer
+# bad_password. The original loop skipped the CURRENT host/port when probing, so
+# it always "found" the other port and patched to it — oscillating
+# :6543 <-> :5432 on every scheduled run. Pin the fix: when the current host
+# already reports bad_password, probe_service must make NO patch at all.
+
+import asyncio
+
+
+def _run(coro):
+    return asyncio.get_event_loop().run_until_complete(coro)
+
+
+def test_no_patch_when_current_host_already_recognises_the_tenant(monkeypatch):
+    url = (f"postgresql+asyncpg://postgres.{_REF}:pw"
+           "@aws-1-us-west-1.pooler.supabase.com:6543/postgres")
+    monkeypatch.setattr(m, "get_env_vars", lambda sid: [{"key": "DATABASE_URL", "value": url}])
+
+    patched: list = []
+    monkeypatch.setattr(m, "patch_env_var", lambda sid, k, v: patched.append((k, v)) or True)
+    monkeypatch.setattr(m, "trigger_deploy", lambda sid: patched.append(("DEPLOY", sid)))
+
+    async def fake_connect(host, port, ref, password):
+        # the stale-password reality: aws-1 knows the tenant, aws-0 does not
+        return m.BAD_PASSWORD if host.startswith("aws-1") else m.NO_TENANT
+
+    monkeypatch.setattr(m, "_try_connect", fake_connect)
+
+    changed = _run(m.probe_service("srv-test"))
+    assert changed is False
+    assert patched == [], f"must not patch/redeploy when only the password is stale, got {patched}"
+
+
+def test_still_corrects_a_genuinely_wrong_cluster(monkeypatch):
+    url = (f"postgresql+asyncpg://postgres.{_REF}:pw"
+           "@aws-0-us-west-1.pooler.supabase.com:6543/postgres")
+    monkeypatch.setattr(m, "get_env_vars", lambda sid: [{"key": "DATABASE_URL", "value": url}])
+
+    patched: list = []
+    monkeypatch.setattr(m, "patch_env_var", lambda sid, k, v: patched.append((k, v)) or True)
+    monkeypatch.setattr(m, "trigger_deploy", lambda sid: patched.append(("DEPLOY", sid)))
+
+    async def fake_connect(host, port, ref, password):
+        return m.BAD_PASSWORD if host.startswith("aws-1") else m.NO_TENANT
+
+    monkeypatch.setattr(m, "_try_connect", fake_connect)
+
+    changed = _run(m.probe_service("srv-test"))
+    assert changed is True
+    assert any("aws-1-us-west-1" in v for k, v in patched if k == "DATABASE_URL"), patched
+    # host-only correction must NOT redeploy — the password is still wrong
+    assert not any(k == "DEPLOY" for k, _ in patched), "must not redeploy on a host-only fix"
