@@ -48,6 +48,12 @@ def _float_or_none(v: Any) -> float | None:
 
 @router.post("/tradingview")
 async def receive_tradingview_alert(request: Request) -> dict:
+    """Receive a TradingView alert via webhook.
+
+    Raises:
+        ValueError: If the request payload is not a JSON object or lacks required fields.
+        HTTPException: For configuration or authentication issues.
+    """
     secret = os.environ.get("TRADINGVIEW_WEBHOOK_SECRET", "").strip()
     if not secret:
         raise HTTPException(
@@ -58,27 +64,41 @@ async def receive_tradingview_alert(request: Request) -> dict:
     try:
         payload = await request.json()
         if not isinstance(payload, dict):
-            raise ValueError("payload must be a JSON object")
+            raise ValueError("Payload must be a JSON object.")
     except Exception:  # noqa: BLE001 — malformed body is a client error
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                            detail="Body must be a JSON object.")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Body must be a JSON object.",
+        )
+
+    # Validate required secret field
+    if "secret" not in payload:
+        raise ValueError("Missing required field 'secret' in payload.")
 
     if str(payload.get("secret") or "") != secret:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Bad or missing webhook secret.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Bad or missing webhook secret.",
+        )
 
     alert = _normalize(payload)
     _RECENT_ALERTS.append(alert)
     del _RECENT_ALERTS[:-_MAX_RECENT]
-    logger.info("tradingview alert received",
-                symbol=alert["symbol"], side=alert["side"], strategy=str(alert["strategy"])[:40])
+    logger.info(
+        "tradingview alert received",
+        symbol=alert["symbol"],
+        side=alert["side"],
+        strategy=str(alert["strategy"])[:40],
+    )
 
     # Best-effort fan-out to Redis subscribers (strategies/dashboards may listen).
     try:
         from app.redis_client import get_redis
+
         r = get_redis()
         if r is not None:
             import json as _json
+
             await r.publish("tradingview:alerts", _json.dumps(alert))
     except Exception as exc:  # noqa: BLE001 — receiver must not depend on Redis
         logger.debug("tradingview alert: redis publish skipped", error=str(exc))
@@ -88,6 +108,18 @@ async def receive_tradingview_alert(request: Request) -> dict:
 
 @router.get("/tradingview/recent")
 async def recent_tradingview_alerts(limit: int = 50) -> dict:
-    """Most recent received alerts (process-local ring buffer)."""
+    """Most recent received alerts (process-local ring buffer).
+
+    Args:
+        limit: Maximum number of alerts to return. Must be a positive integer.
+
+    Raises:
+        ValueError: If `limit` is not a positive integer.
+    """
+    if not isinstance(limit, int):
+        raise ValueError("Parameter 'limit' must be an integer.")
+    if limit <= 0:
+        raise ValueError("Parameter 'limit' must be greater than zero.")
+
     limit = max(1, min(limit, _MAX_RECENT))
     return {"alerts": _RECENT_ALERTS[-limit:][::-1], "count": len(_RECENT_ALERTS)}
