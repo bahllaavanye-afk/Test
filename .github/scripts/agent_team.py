@@ -2474,77 +2474,41 @@ def _fetch_thread_context(token: str, ch_id: str, thread_ts: str, limit: int = 5
 
 
 def _react(token: str, ch_id: str, ts: str, emoji: str) -> None:
-    """Add a reaction emoji to a Discord message. Silently ignores already_reacted."""
-    result = chat_call("reactions.add", {"channel": ch_id, "timestamp": ts, "name": emoji})
-    if not result.get("ok") and result.get("error") not in ("already_reacted", "no_permission"):
-        print(f"  [react] {emoji} failed: {result.get('error')}")
+    """Acknowledge a message with a reaction emoji.
 
-
-def _build_summon_blocks(reply: str, agent_name: str) -> list[dict]:
+    Currently a no-op: chat_call has no Discord implementation for
+    reactions.add (it needs a real message id, which the Slack-era `ts` is not),
+    so it returns {"ok": True} without doing anything. Kept as the single place
+    to wire Discord reactions up properly — see the IMPROVEMENTS.md item.
     """
-    Format a summon reply as Block Kit blocks for rich display.
-    Falls back gracefully — Discord renders `text` if blocks not supported.
-    """
-    # Split into paragraphs; code blocks stay as-is
-    blocks: list[dict] = []
-    paragraphs = [p.strip() for p in reply.split("\n\n") if p.strip()]
-
-    for para in paragraphs[:6]:  # cap at 6 blocks to stay within Discord's 50-block limit
-        if para.startswith("```") or para.startswith("`"):
-            blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": para[:3000]},
-            })
-        elif len(para) > 2 and para[0] in ("-", "•", "*") and "\n" in para:
-            # Bullet list — keep as section
-            blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": para[:3000]},
-            })
-        else:
-            blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": para[:3000]},
-            })
-
-    if blocks:
-        blocks.append({"type": "divider"})
-        blocks.append({
-            "type": "context",
-            "elements": [{
-                "type": "mrkdwn",
-                "text": f"_{agent_name}_ • QuantEdge AI Agent • Free-tier LLM",
-            }],
-        })
-    return blocks
+    chat_call("reactions.add", {"channel": ch_id, "timestamp": ts, "name": emoji})
 
 
-def _post_with_blocks(
+
+def _post_reply(
     token: str,
     ch_id: str,
     text: str,
-    blocks: list[dict],
     username: str,
     icon_emoji: str,
-    thread_ts: str | None,
+    thread_ts: str | None = None,
 ) -> dict:
-    """Post a Discord message with Block Kit blocks. Falls back to text-only if blocks fail."""
-    payload: dict = {
+    """Post an agent reply to a channel.
+
+    Was _post_with_blocks: it built Slack Block Kit blocks and passed a
+    thread_ts. Under Discord chat_call ignores both (Discord has no Block Kit and
+    no Slack-style thread ts), so the blocks were built and thrown away on every
+    summon while the plain `text` — the full reply — was what actually landed.
+    Dropping them changes nothing a user sees; agent attribution still comes
+    through `username`. `thread_ts` is accepted and ignored for call-site
+    compatibility.
+    """
+    return chat_call("chat.postMessage", {
         "channel": ch_id,
-        "text": text,           # fallback for notifications
-        "blocks": blocks,
+        "text": text,
         "username": username,
         "icon_emoji": icon_emoji,
-        "mrkdwn": True,
-    }
-    if thread_ts:
-        payload["thread_ts"] = thread_ts
-    result = chat_call("chat.postMessage", payload)
-    if not result.get("ok"):
-        # Retry without blocks (Block Kit might not be enabled on this workspace)
-        payload.pop("blocks", None)
-        result = chat_call("chat.postMessage", payload)
-    return result
+    })
 
 
 def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
@@ -2613,9 +2577,8 @@ def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
                     f"The Gemini runner will implement it in the next 20 min and post an update here."
                 )
                 if ch_id:
-                    _post_with_blocks(
+                    _post_reply(
                         token, ch_id, dispatch_msg,
-                        _build_summon_blocks(dispatch_msg, agent_name),
                         username=agent_name, icon_emoji=agent_emoji, thread_ts=ts,
                     )
                     _react(token, ch_id, ts, "white_check_mark")
@@ -2632,11 +2595,10 @@ def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
         ans = call_best_agent(user_msg, system_prompt=system_prompt, max_tokens=700)
         if ans and ans.strip() and len(ans.strip()) > 20:
             reply = ans.strip()
-            blocks = _build_summon_blocks(reply, agent_name)
             if ch_id:
-                r = _post_with_blocks(token, ch_id, reply, blocks,
-                                      username=agent_name, icon_emoji=agent_emoji,
-                                      thread_ts=ts)
+                r = _post_reply(token, ch_id, reply,
+                                username=agent_name, icon_emoji=agent_emoji,
+                                thread_ts=ts)
             else:
                 r = post_to_chat(token, ch, reply,
                                   username=agent_name, icon_emoji=agent_emoji,
@@ -2647,7 +2609,7 @@ def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
                     _react(token, ch_id, ts, "white_check_mark")
                 answered += 1
                 state.setdefault("replied_to", []).append(ts)
-                print(f"  ✓ summon answered → #{ch} as '{agent_name}' (blocks={bool(blocks)})")
+                print(f"  ✓ summon answered → #{ch} as '{agent_name}'")
             else:
                 print(f"  [summon] post failed: {r.get('error')}")
                 if ch_id:
@@ -2671,8 +2633,7 @@ def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
                     f"Zero-spend policy is enforced — no paid fallback."
                 )
             if ch_id:
-                _post_with_blocks(token, ch_id, fallback,
-                                  _build_summon_blocks(fallback, agent_name),
+                _post_reply(token, ch_id, fallback,
                                   username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
                 _react(token, ch_id, ts, "hourglass_flowing_sand")
             else:
