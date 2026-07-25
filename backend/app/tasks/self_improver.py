@@ -7,12 +7,15 @@ Self-improvement autoloop. Runs forever, looking for ways to improve the platfor
   5. Sleep, then repeat
 """
 from __future__ import annotations
+
 import asyncio
 import json
 import random
 import uuid
+import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from typing import Any
 
 from app.utils.logging import logger
 
@@ -59,8 +62,19 @@ class SelfImprover:
         space = PARAM_SPACES.get(strategy, {})
         return {k: random.choice(v) for k, v in space.items()}
 
-    async def _evaluate(self, strategy: str, symbol: str, params: dict) -> float:
-        """Run a quick backtest with the given params. Returns Sharpe."""
+    async def _evaluate(self, strategy: str, symbol: str, params: dict) -> dict:
+        """
+        Run a quick backtest with the given params.
+        Returns a dict with keys: sharpe, pnl, signal_count, exec_time.
+        """
+        start_time = time.perf_counter()
+        result: dict[str, Any] = {
+            "sharpe": 0.0,
+            "pnl": None,
+            "signal_count": 0,
+            "exec_time": 0.0,
+        }
+
         try:
             import pandas as pd
             import yfinance as yf
@@ -72,17 +86,25 @@ class SelfImprover:
             loop = asyncio.get_running_loop()
             hist = await loop.run_in_executor(
                 None,
-                lambda: yf.download(symbol, start=str(start.date()), end=str(end.date()),
-                                    interval="1d", auto_adjust=True, progress=False)
+                lambda: yf.download(
+                    symbol,
+                    start=str(start.date()),
+                    end=str(end.date()),
+                    interval="1d",
+                    auto_adjust=True,
+                    progress=False,
+                ),
             )
             if hist is None or len(hist) < 60:
-                return 0.0
+                result["exec_time"] = time.perf_counter() - start_time
+                return result
 
             close = hist["Close"].squeeze() if hasattr(hist["Close"], "squeeze") else hist["Close"]
 
             cls = STRATEGY_REGISTRY.get(strategy)
             if not cls:
-                return 0.0
+                result["exec_time"] = time.perf_counter() - start_time
+                return result
 
             try:
                 strat = cls(**params)
@@ -91,14 +113,32 @@ class SelfImprover:
 
             signals = strat.backtest_signals(hist)
             if signals is None or (hasattr(signals, "__len__") and len(signals) < 30):
-                return 0.0
+                result["exec_time"] = time.perf_counter() - start_time
+                return result
+
+            signal_count = len(signals) if hasattr(signals, "__len__") else 0
+            result["signal_count"] = signal_count
 
             sig_series = signals if hasattr(signals, "values") else pd.Series(signals, index=hist.index)
             metrics = run_backtest(sig_series, close)
-            return float(metrics.sharpe)
+
+            result["sharpe"] = float(getattr(metrics, "sharpe", 0.0))
+            # Attempt to extract P&L or total return if available
+            pnl = getattr(metrics, "pnl", None)
+            if pnl is None:
+                pnl = getattr(metrics, "total_return", None)
+            result["pnl"] = float(pnl) if pnl is not None else None
+
         except Exception as e:
-            logger.debug("Self-improver eval failed", strategy=strategy, error=str(e))
-            return 0.0
+            logger.debug(
+                "Self-improver eval failed",
+                strategy=strategy,
+                error=str(e),
+            )
+        finally:
+            result["exec_time"] = time.perf_counter() - start_time
+
+        return result
 
     async def _improve_strategy(self, strategy: str, symbol: str) -> dict | None:
         """Sweep params for one strategy. Returns promoted result or None."""
@@ -113,7 +153,20 @@ class SelfImprover:
         # 5 random configs per iteration
         for _ in range(5):
             params = self._sample_params(strategy)
-            sharpe = await self._evaluate(strategy, symbol, params)
+            eval_result = await self._evaluate(strategy, symbol, params)
+            sharpe = eval_result["sharpe"]
+
+            logger.info(
+                "Self-improver evaluated",
+                strategy=strategy,
+                symbol=symbol,
+                params=params,
+                sharpe=sharpe,
+                signal_count=eval_result["signal_count"],
+                exec_time=round(eval_result["exec_time"], 4),
+                pnl=eval_result["pnl"],
+            )
+
             if sharpe > best_iter_sharpe:
                 best_iter_sharpe = sharpe
                 best_iter_params = params
@@ -130,7 +183,9 @@ class SelfImprover:
                 "params": best_iter_params,
                 "new_sharpe": round(best_iter_sharpe, 4),
                 "previous_sharpe": round(current_best, 4),
-                "improvement_pct": round((best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4),
+                "improvement_pct": round(
+                    (best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4
+                ),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             self._persist(promotion)
@@ -163,11 +218,18 @@ class SelfImprover:
         logger.info("SelfImprover started", interval=self.interval_seconds)
 
         # Symbol coverage
-        TARGETS = [("momentum", "SPY"), ("momentum", "QQQ"), ("mean_reversion", "AAPL"),
-                   ("rsi_macd", "MSFT"), ("breakout", "NVDA"), ("supertrend", "SPY")]
+        TARGETS = [
+            ("momentum", "SPY"),
+            ("momentum", "QQQ"),
+            ("mean_reversion", "AAPL"),
+            ("rsi_macd", "MSFT"),
+            ("breakout", "NVDA"),
+            ("supertrend", "SPY"),
+        ]
 
         while self._running:
             self._iteration += 1
+            iter_start = time.perf_counter()
             logger.info("SelfImprover iteration", n=self._iteration)
             for strategy, symbol in TARGETS:
                 try:
@@ -175,7 +237,18 @@ class SelfImprover:
                 except asyncio.CancelledError:
                     return
                 except Exception as e:
-                    logger.warning("Self-improver target failed", strategy=strategy, symbol=symbol, error=str(e))
+                    logger.warning(
+                        "Self-improver target failed",
+                        strategy=strategy,
+                        symbol=symbol,
+                        error=str(e),
+                    )
+            iter_duration = time.perf_counter() - iter_start
+            logger.info(
+                "SelfImprover iteration completed",
+                n=self._iteration,
+                duration=round(iter_duration, 4),
+            )
             await asyncio.sleep(self.interval_seconds)
 
     async def stop(self) -> None:
