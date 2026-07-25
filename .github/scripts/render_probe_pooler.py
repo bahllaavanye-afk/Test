@@ -245,19 +245,34 @@ async def probe_service(service_id: str) -> bool:
             trigger_deploy(service_id)
         return changed
 
-    # 1. Does the CURRENT url already connect? Then it's a stale boot, not a URL bug.
+    # 1. Probe the CURRENT url first and KEEP its verdict.
+    #    Subtle bug this replaces: the candidate loop below used to `continue` past
+    #    the current host/port, so `auth_hit` could never equal the current value.
+    #    With the tenant on aws-1 and the password stale, BOTH aws-1 ports answer
+    #    bad_password, so every run "found" the other port and patched to it —
+    #    flapping :6543 <-> :5432 forever. Probing the current value fixes that.
+    cur_verdict: str | None = None
     if cur_host and cur_port:
-        if await _try_connect(cur_host, cur_port, ref, password) == OK:
+        cur_verdict = await _try_connect(cur_host, cur_port, ref, password)
+        if cur_verdict == OK:
             print("  current DATABASE_URL connects OK → URL is fine (stale boot; not")
             print("  re-patching — a one-shot Render redeploy is the remaining lever).")
             return False
+        if cur_verdict == BAD_PASSWORD:
+            # The cluster already recognises the tenant: the host is RIGHT and only
+            # the credential is stale. Changing the host again would be churn.
+            print(f"  🔎 {cur_host}:{cur_port} RECOGNISES the tenant but rejected the password.")
+            print("     → host is already correct; nothing here can fix a stale credential.")
+            print("  ➡️  USER ACTION: Supabase → Settings → Database → Reset database password,")
+            print("      then paste the pooler connection string into Render DATABASE_URL.")
+            return False
 
-    # 2. Probe every candidate, recording which cluster RECOGNISES the tenant.
+    # 2. Current host is wrong (no_tenant/unreachable). Probe the candidates.
     auth_hit: tuple[str, str] | None = None      # host/port where only the password failed
     for host in candidate_hosts(REGION):
         for port in PORTS:
             if host == cur_host and port == cur_port:
-                continue  # already probed above
+                continue  # already probed above, verdict kept in cur_verdict
             print(f"  trying {host}:{port} ...")
             verdict = await _try_connect(host, port, ref, password)
             if verdict == OK:
