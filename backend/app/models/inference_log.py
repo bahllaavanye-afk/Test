@@ -1,11 +1,22 @@
 """InferenceLog ORM — records every prediction made by a serving model."""
 import uuid
+import logging
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    event,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+
+logger = logging.getLogger(__name__)
 
 
 class InferenceLog(Base):
@@ -46,3 +57,29 @@ class InferenceLog(Base):
     # Filled in ex-post when actual market return is known
     actual_return: Mapped[float | None] = mapped_column(Numeric(10, 6))
     is_correct: Mapped[bool | None] = mapped_column(Boolean)
+
+
+def _log_inference(mapper, connection, target: InferenceLog) -> None:
+    """
+    Structured logging of inference metrics at INFO level.
+
+    Logs key fields such as signal, latency, confidence, and realised P&L.
+    """
+    logger.info(
+        "Inference recorded",
+        extra={
+            "inference_id": target.id,
+            "release_id": target.release_id,
+            "model_name": target.model_name,
+            "version": target.version,
+            "symbol": target.symbol,
+            "signal": target.signal,
+            "latency_ms": float(target.latency_ms),
+            "confidence": float(target.confidence),
+            "actual_return": float(target.actual_return) if target.actual_return is not None else None,
+            "is_correct": target.is_correct,
+        },
+    )
+
+
+event.listens_for(InferenceLog, "after_insert")(_log_inference)
