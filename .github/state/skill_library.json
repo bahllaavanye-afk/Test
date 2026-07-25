@@ -1,12 +1,5 @@
 {
   "skills": [
-    "Set memory limits",
-    "Verify trade confirms",
-    "Verify disk space",
-    "* **Enforce type hints and rate-limits:** Update `src/engine/trade_executor.py` and `backend/app/api.py` with type hints and rate-limiting guards to prevent high-frequency trading loop errors.",
-    "Implement type hints",
-    "Set max trade size",
-    "Enforce rate limits",
     "Verify OS updates",
     "Check disk space",
     "Implement Temporal Fusion",
@@ -199,8 +192,15 @@
     "Check OS version",
     "Validate config hash",
     "Estimate Sharpe ratio",
-    "Verify DB connections"
+    "Verify DB connections",
+    "Test DB queries",
+    "Verify network",
+    "Log trade errors",
+    "Check file perms",
+    "Parse agent memory",
+    "Apply concrete fixes",
+    "Rename variables"
   ],
-  "last_updated": "2026-07-24T22:57:54.286052+00:00",
+  "last_updated": "2026-07-25T00:07:29.785170+00:00",
   "total": 200
 }
