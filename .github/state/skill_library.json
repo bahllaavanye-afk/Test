@@ -1,12 +1,5 @@
 {
   "skills": [
-    "Estimate Sharpe ratio",
-    "* **Documentation standards set**: Docstrings have been standardized across the codebase, as seen in recent learnings on `docstrings` in `ml/features/technical.py` and `execution/limit_first.py`.",
-    "Check API rates",
-    "Test disk space",
-    "Validate user input",
-    "Track CPU usage",
-    "Use Temporal Fusion Transformer",
     "* When referencing file paths, use **real file paths** to enhance clarity and accuracy.",
     "Enhance type hints",
     "Add type hints and docstrings",
@@ -199,8 +192,15 @@
     "Check config files",
     "Test DB connections",
     "Verify thread counts",
-    "Validate input types"
+    "Validate input types",
+    "Check SSL certs",
+    "Test DNS resolution",
+    "Limit concurrent trades",
+    "Monitor system memory",
+    "Optimize API calls",
+    "Scan log files",
+    "Reference config files"
   ],
-  "last_updated": "2026-07-25T10:09:48.867839+00:00",
+  "last_updated": "2026-07-25T11:42:18.266474+00:00",
   "total": 200
 }
