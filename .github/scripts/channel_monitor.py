@@ -431,7 +431,7 @@ def auto_heal_agent(token: str, emp_name: str, fn_name: str, channel: str) -> tu
 
 
 def _try_load_state() -> dict:
-    """Load slack_state.json if it exists, for save_state compatibility."""
+    """Load agent_state.json if it exists, for save_state compatibility."""
     try:
         mod = _load_agent_module()
         if mod:

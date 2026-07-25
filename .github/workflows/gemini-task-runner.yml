@@ -12,7 +12,7 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - ".github/state/slack_state.json"  # don't re-run on state commits
+      - ".github/state/agent_state.json"  # don't re-run on state commits
   workflow_dispatch:
     inputs:
       issue_number:

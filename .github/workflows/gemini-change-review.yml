@@ -105,7 +105,7 @@ jobs:
         run: |
           git config user.email "agents@quantedge.ai"
           git config user.name "QuantEdge Agent Team"
-          STATE=".github/state/slack_state.json"
+          STATE=".github/state/agent_state.json"
           if [ -f "$STATE" ]; then
             git add "$STATE"
             git diff --cached --quiet || git commit -m "chore: persist review state [skip ci]"
