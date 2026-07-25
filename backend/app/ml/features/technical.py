@@ -181,3 +181,58 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             _logger.error("Failed to compute ADX feature", exc_info=exc)
 
     return df
+
+
+# ==============================
+# Unit tests for edge conditions
+# ==============================
+import unittest
+
+
+class TestAddTechnicalFeatures(unittest.TestCase):
+    def test_minimal_dataframe(self):
+        """Boundary test with a single-row DataFrame."""
+        df = pd.DataFrame({"close": [100.0]}, index=[pd.Timestamp("2023-01-01")])
+        result = add_technical_features(df)
+        # All computed columns should exist and contain NaN or 0 as appropriate
+        self.assertIn("returns_1", result.columns)
+        self.assertTrue(np.isnan(result["returns_1"].iloc[0]))
+        self.assertIn("vol_5", result.columns)
+        self.assertTrue(np.isnan(result["vol_5"].iloc[0]))
+        self.assertIn("ema_9_diff", result.columns)
+        self.assertTrue(np.isnan(result["ema_9_diff"].iloc[0]))
+
+    def test_dataframe_with_nans(self):
+        """Ensure NaNs in input do not cause crashes and propagate correctly."""
+        df = pd.DataFrame(
+            {
+                "close": [100.0, np.nan, 102.0, 101.0],
+                "high": [101.0, 102.0, np.nan, 102.0],
+                "low": [99.0, 98.0, 100.0, np.nan],
+                "volume": [200, 0, np.nan, 250],
+            },
+            index=pd.date_range("2023-01-01", periods=4)
+        )
+        result = add_technical_features(df)
+        # Check that the function returns a DataFrame with the same index length
+        self.assertEqual(len(result), 4)
+        # Verify that NaNs are present where expected (e.g., returns after NaN)
+        self.assertTrue(np.isnan(result["returns_1"].iloc[1]))
+        # Volume ratio should handle zero and NaN safely
+        self.assertFalse(result["volume_ratio"].isnull().all())
+
+    def test_missing_optional_columns(self):
+        """Test that missing high/low/volume are replaced with defaults."""
+        df = pd.DataFrame(
+            {"close": [100, 101, 102, 103, 104]},
+            index=pd.date_range("2023-01-01", periods=5)
+        )
+        result = add_technical_features(df)
+        # high and low default to close, so ATR should be computable
+        self.assertIn("atr_14", result.columns)
+        # volume defaults to ones, so volume_ratio should be close to 1
+        self.assertTrue((result["volume_ratio"] - 1).abs().max() < 1e-6)
+
+
+if __name__ == "__main__":
+    unittest.main()
