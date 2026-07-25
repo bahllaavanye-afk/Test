@@ -2,13 +2,16 @@ name: DB Keep-Alive
 
 # Supabase free tier auto-pauses after 7 idle days — that pause took the whole
 # site down on 2026-07-20 (every DB endpoint 500'd while /health stayed green).
-# One cheap SELECT a few times per day via the backend keeps the project active.
-# Fail-soft: if the backend or DB is down this must not go red — the deploy
-# smoke and watchdogs own alerting; this job only exists to generate activity.
+# One cheap SELECT via the backend keeps the project active — AND this workflow
+# carries the DB self-heal (region fix + pooler-cluster probe), so it runs
+# HOURLY: GitHub delays/drops the newer db-url-region-autofix schedule by hours,
+# and while Postgres is down we want the probe to retry every hour, not 3x/day.
+# All steps are idempotent + fail-soft (no redeploy once the URL already works),
+# so hourly execution is safe. Deploy smoke and watchdogs own alerting.
 
 on:
   schedule:
-    - cron: "17 3,11,19 * * *"   # 3x daily, offset minute to dodge cron congestion
+    - cron: "17 * * * *"   # hourly at :17, offset to dodge top-of-hour congestion
   workflow_dispatch: {}
 
 jobs:
