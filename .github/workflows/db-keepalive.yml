@@ -12,7 +12,21 @@ name: DB Keep-Alive
 on:
   schedule:
     - cron: "17 * * * *"   # hourly at :17, offset to dodge top-of-hour congestion
+  # GitHub free-tier DROPS/heavily-delays cron runs (db-url-region-autofix ran
+  # once in 6h; this workflow's own slots land 1.5-3h late). workflow_run events
+  # are NOT dropped the way cron is, and fire regardless of the source's actor,
+  # so also piggyback on two already-reliable, ~hourly workflows to give the DB
+  # self-heal a dependable trigger. Idempotent + fail-soft, so extra runs are safe.
+  workflow_run:
+    workflows:
+      - "Agent Heartbeat — Zero-Downtime Monitor"
+      - "QuantEdge Quant Firm Pipeline (Hourly)"
+    types: [completed]
   workflow_dispatch: {}
+
+concurrency:
+  group: db-keepalive-selfheal
+  cancel-in-progress: false
 
 jobs:
   ping:
