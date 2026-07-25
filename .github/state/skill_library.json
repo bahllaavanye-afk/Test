@@ -1,12 +1,5 @@
 {
   "skills": [
-    "Sanitize API responses",
-    "Validate CSV",
-    "Check disk space",
-    "Refactor complex code",
-    "Test network connectivity",
-    "Monitor system resources",
-    "Cache API results",
     "Detect network partitions",
     "Check DB connections",
     "Apply concrete fixes",
@@ -199,8 +192,15 @@
     "Test order routing",
     "Scan for memory leaks",
     "Verify system status",
-    "Improve code linting"
+    "Improve code linting",
+    "Check API keys",
+    "Validate inputs",
+    "Track timeout errors",
+    "Verify dependency updates",
+    "Monitor system health",
+    "Optimize signal batches",
+    "Backtest strategies"
   ],
-  "last_updated": "2026-07-25T19:44:38.506964+00:00",
+  "last_updated": "2026-07-25T20:46:12.946503+00:00",
   "total": 200
 }
