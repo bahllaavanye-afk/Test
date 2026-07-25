@@ -9,32 +9,32 @@
 _Last updated: 2026-07-24._
 
 ## ⚡ STATE AS OF 2026-07-24 (read this first)
-**🟠 DURABLE POSTGRES — WRONG-REGION HYPOTHESIS DISPROVEN; ONE MANUAL ACTION NOW NEEDED.**
-The `db-url-region-autofix.yml` schedule FINALLY activated and ran 2026-07-24 22:31 UTC
-(conclusion=success). Its log is definitive — **Render creds were present** (RENDER_API_KEY/
-RENDER_SERVICE_ID both set, guard passed) and the script reported:
-> `DATABASE_URL: already pooler in region us-west-1 — OK` / `No changes made`.
-So the Render `DATABASE_URL` is ALREADY a correct-region (`aws-0-us-west-1.pooler.supabase.com`)
-pooler URL with the right project ref — **the wrong-region theory is wrong**, and because
-nothing changed, the autofix (correctly) did NOT trigger a redeploy. Yet Supavisor still answers
-`tenant/user postgres.vexzwnfbmznvxoxxktax not found`. On a correctly-formatted, correct-region
-pooler URL that error means one of exactly two things, and I can resolve NEITHER autonomously
-this session (no Supabase MCP tools loaded; `workflow_dispatch`/Render deploy both 403 for the
-agent token):
-  1. **Supabase project is PAUSED** (free-tier 7-day idle auto-pause). The keep-alive can't
-     revive it because it never reaches Postgres (always SQLite fallback → no real DB activity
-     recorded → stays paused). **FIX (≈30s): supabase.com/dashboard → project
-     `vexzwnfbmznvxoxxktax` → Restore/Resume.** This is the most likely cause.
-  2. **Stale boot** (less likely): DB reachable now but the running Render instance cached the
-     SQLite fallback from a boot when it wasn't. `database_primary` in /health is a BOOT-time
-     value so health alone can't distinguish this. **FIX (≈30s): Render dashboard →
-     `quantedge-api` → Manual Deploy → "Deploy latest commit".** Do NOT auto-loop this — a
-     redeploy every 3h resets the ephemeral SQLite + APScheduler clocks and breaks bot/desk
-     continuity, so it must stay a deliberate one-shot, not an automated retry.
-The region-autofix stays in place (harmless no-op now, `db-url-region-autofix.yml` cron `27 */3`
-+ `db-keepalive.yml`); it will auto-correct if the URL ever drifts to a wrong region again.
-Everything downstream is READY: once Postgres is reachable, the next boot runs `alembic upgrade
-head` → 22-table schema (incl. catch-up `k6f7a8b9c0d1`) → durable state.
+**🟠 DURABLE POSTGRES — NARROWED TO A POOLER-CLUSTER MISMATCH; AUTONOMOUS PROBER SHIPPED.**
+Three theories are now DISPROVEN by credential-free HTTPS probes (2026-07-25 ~00:30 UTC):
+  * **NOT wrong-region.** The direct DB host `db.vexzwnfbmznvxoxxktax.supabase.co` resolves to
+    IPv6 `2600:1f1c:b5d:e600:…`, which AWS ip-ranges.json maps to `2600:1f1c::/36` = **us-west-1**.
+    So the project genuinely lives in us-west-1 and the URL's us-west-1 pooler region is correct.
+  * **NOT paused.** `https://vexzwnfbmznvxoxxktax.supabase.co/rest/v1/` returns **HTTP 401
+    `{"message":"No API key found in request"}`** — a live PostgREST. A paused project would not.
+  * **NOT (merely) a stale boot** — a redeploy alone won't help, because a fresh boot would hit
+    the same rejection.
+Yet the us-west-1 Supavisor answers `tenant/user postgres.<ref> not found`. Supavisor is
+partitioned into CLUSTERS (`aws-0-<region>` vs the newer `aws-1-<region>`) and ports (txn `:6543`
+vs session `:5432`); a tenant lives on exactly ONE combo, and the URL points at the wrong one.
+NOTE the region-autofix "already pooler in region us-west-1 — OK" log does NOT prove the host is
+`aws-0` — its regex only matches `aws-0-…`, so an `aws-1-…` host also prints "OK". We can't see
+the masked URL value, and can't test Postgres from this sandbox (HTTPS-only proxy; port 6543 unreachable).
+FIX SHIPPED — `.github/scripts/render_probe_pooler.py` + wired into `db-url-region-autofix.yml`
+(runs every 3h, creds-guarded, fail-soft). GitHub runners CAN reach Postgres directly, so the
+prober reads the current Render `DATABASE_URL`, and if it doesn't connect, TESTS candidate hosts
+(`aws-1`/`aws-0` × `6543`/`5432`) with a real `SELECT 1`, then PATCHes Render to the first host
+that verifiably works + redeploys. Safe by construction — it only ever patches to a proven host.
+If NO host works, the sole remaining cause is a **rotated DB password** (needs a human: Supabase
+dashboard → Database → reset password → update Render `DATABASE_URL`); the prober logs exactly that.
+7 unit tests on the pure logic (parse/candidate/build). **Next `db-url-region-autofix` run (cron
+`27 */3`) executes the prober** → expect auto-heal unless it's the password case.
+The region-autofix stays as a drift guard. Downstream is READY: once Postgres is reachable, the
+next boot runs `alembic upgrade head` → 22-table schema (incl. catch-up `k6f7a8b9c0d1`) → durable.
 - Supabase "Trade" (`vexzwnfbmznvxoxxktax`, us-west-1, pg17) is ACTIVE_HEALTHY; `public`
   schema still empty until the first good boot lands.
 - **How to verify it worked:** `/health/detailed` → `database.fallback` gone / `status` not
