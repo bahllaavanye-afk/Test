@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.utils.logging import logger
 
@@ -24,6 +25,52 @@ try:
     _HMM_AVAILABLE = True
 except ImportError:
     _HMM_AVAILABLE = False
+
+
+class RegimeStatus(BaseModel):
+    """
+    Schema representing the current market regime status.
+
+    This model is primarily used for internal validation and documentation.
+    It is not persisted directly; the ``run_once`` coroutine writes only the
+    integer regime to Redis, but the model provides a clear contract for
+    downstream consumers.
+    """
+
+    regime: int = Field(
+        ...,
+        ge=0,
+        le=2,
+        description="Integer label for the market regime: 0 = bear, 1 = sideways, 2 = bull.",
+        example=2,
+    )
+    label: str = Field(
+        ...,
+        description="Human‑readable label derived from ``regime``.",
+        example="bull",
+    )
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="UTC timestamp when the regime was evaluated.",
+        example="2026-07-25T12:34:56Z",
+    )
+
+    @validator("label")
+    def check_label_matches_regime(cls, v: str, values):
+        mapping = {0: "bear", 1: "sideways", 2: "bull"}
+        regime = values.get("regime")
+        if regime is not None and mapping.get(regime) != v:
+            raise ValueError(f"Label '{v}' does not match regime {regime}")
+        return v
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "regime": 1,
+                "label": "sideways",
+                "timestamp": "2026-07-25T12:00:00Z",
+            }
+        }
 
 
 def _compute_features(returns: np.ndarray) -> np.ndarray:
@@ -217,6 +264,13 @@ async def run_once(redis_client) -> int | None:
 
     regime = _fit_regime(returns)
     labels = {0: "bear", 1: "sideways", 2: "bull"}
+
+    # Validate against the schema before persisting (does not affect external behavior)
+    try:
+        RegimeStatus(regime=regime, label=labels[regime])
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Regime monitor: schema validation failed", error=str(exc))
+        return None
 
     try:
         await redis_client.set("market:regime", str(regime), ex=600)  # TTL 10 min
