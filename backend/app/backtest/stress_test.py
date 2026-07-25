@@ -2,7 +2,7 @@
 Historical stress testing — overlay a strategy's signals on known crisis periods.
 
 Tests how a strategy would have performed during the most severe market dislocations,
-revealing tail-risk exposure that standard backtests can understate when they
+revealing tail‑risk exposure that standard backtests can understate when they
 average across calm and turbulent regimes.
 """
 from __future__ import annotations
@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+import numpy as np
 import pandas as pd
 
 from app.backtest.engine import BacktestMetrics, run_backtest
@@ -87,7 +88,11 @@ class StressResult:
     data_points: int
 
 
-def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timestamp) -> pd.Series | None:
+def _slice_series(
+    series: pd.Series | None,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+) -> pd.Series | None:
     """Vectorized slice of a Series using .loc; returns None if input is None."""
     if series is None:
         return None
@@ -99,6 +104,52 @@ def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timesta
         return series.loc[mask]
 
 
+def _apply_entry_filters(
+    signals: pd.Series,
+    prices: pd.Series,
+    volume: pd.Series | None,
+    lookback: int,
+    price_change_thresh: float,
+    require_volume: bool,
+) -> pd.Series:
+    """
+    Tighten entry conditions by applying simple confirmation filters.
+
+    - **price_change_thresh**: absolute percent change over ``lookback`` periods
+      that must be exceeded (0 disables the filter).
+    - **require_volume**: if True, a signal is kept only when the volume at the
+      signal timestamp exceeds the median volume of the look‑back window.
+    - Signals are left unchanged when filters are disabled.
+    """
+    if signals.empty:
+        return signals
+
+    # Align price series to signal index
+    price_aligned = prices.reindex(signals.index).ffill()
+
+    # Compute price change over the look‑back window
+    if lookback > 0 and price_change_thresh > 0:
+        price_shifted = price_aligned.shift(lookback)
+        pct_change = (price_aligned - price_shifted) / price_shifted
+        price_filter = pct_change.abs() >= price_change_thresh
+    else:
+        price_filter = pd.Series(True, index=signals.index)
+
+    # Volume filter
+    if require_volume and volume is not None:
+        vol_aligned = volume.reindex(signals.index).ffill()
+        vol_median = vol_aligned.rolling(lookback, min_periods=1).median()
+        vol_filter = vol_aligned > vol_median
+    else:
+        vol_filter = pd.Series(True, index=signals.index)
+
+    combined_filter = price_filter & vol_filter
+
+    # Preserve original signal direction; zero out filtered entries
+    filtered_signals = signals.where(combined_filter, other=0)
+    return filtered_signals
+
+
 def run_stress_tests(
     signals: pd.Series,
     prices: pd.Series,
@@ -108,12 +159,19 @@ def run_stress_tests(
     commission_pct: float = 0.001,
     slippage_pct: float = 0.0005,
     scenarios: list[StressScenario] | None = None,
+    entry_lookback: int = 3,
+    price_change_threshold: float = 0.0,
+    require_volume_filter: bool = False,
 ) -> list[StressResult]:
     """
     Run the strategy through each stress scenario window.
 
     Only scenarios where the price series has ≥ 5 data points are evaluated;
-    others return period_covered=False with metrics=None.
+    others return ``period_covered=False`` with ``metrics=None``.
+
+    Entry filters (``price_change_threshold`` and ``require_volume_filter``) tighten
+    the raw signal set before backtesting, helping to reduce spurious entries that
+    often dominate during extreme market moves.
     """
     if scenarios is None:
         scenarios = STRESS_SCENARIOS
@@ -155,8 +213,18 @@ def run_stress_tests(
             )
             continue
 
-        metrics = run_backtest(
+        # Apply confirmation / entry filters
+        filtered_signals = _apply_entry_filters(
             signals=s_signals,
+            prices=s_prices,
+            volume=s_volume,
+            lookback=entry_lookback,
+            price_change_thresh=price_change_threshold,
+            require_volume=require_volume_filter,
+        )
+
+        metrics = run_backtest(
+            signals=filtered_signals,
             prices=s_prices,
             opens=s_opens,
             volume=s_volume,
@@ -181,8 +249,8 @@ def stress_summary(results: list[StressResult]) -> dict:
     """
     Compact summary dict suitable for JSON serialisation.
 
-    Returns per-scenario max_drawdown, total_return, and sharpe.
-    Only includes scenarios where period_covered=True.
+    Returns per‑scenario max_drawdown, total_return, and sharpe.
+    Only includes scenarios where ``period_covered=True``.
     """
     out: dict = {}
     for r in results:
