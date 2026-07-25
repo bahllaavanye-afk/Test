@@ -1,8 +1,9 @@
 import uuid
-from datetime import datetime
-from datetime import date
+from datetime import datetime, date
+
 from sqlalchemy import String, ForeignKey, Numeric, DateTime, Date, Integer, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.database import Base
 from app.models.base import TimestampMixin
 
@@ -10,7 +11,6 @@ from app.models.base import TimestampMixin
 class Order(Base, TimestampMixin):
     __tablename__ = "orders"
     __table_args__ = (
-        # Composite indexes for the most common query patterns
         Index("ix_orders_account_status", "account_id", "status"),
         Index("ix_orders_account_created", "account_id", "created_at"),
         Index("ix_orders_symbol_status", "symbol", "status"),
