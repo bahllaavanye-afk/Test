@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1784934932.3342717,
+    "last_updated": 1784938614.1443248,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,37 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784934932.3329413
+    "last_brain_update": 1784938614.142991
   },
   "episodic": [
-    {
-      "lesson": "Deployment failing due to Vercel free-tier daily limit of 100 deploys. Upgrade to Pro or implement deploy batching to avoid blocking.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784320290.1226518
-    },
-    {
-      "lesson": "Autonomous PR modifying protected file `backend/app/brokers/base.py` was revoked. Need stricter guardrails or mandatory human review for critical paths to prevent repeat of past breakage.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784320290.127643
-    },
-    {
-      "lesson": "Multiple auto-fix patches failed to apply, indicating fragile CI/CD automation or inconsistent code state. Investigate patch generation and application process.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784320290.131401
-    },
-    {
-      "lesson": "Previous autonomous edit (#298) broke main, yet similar risky PRs are still attempted. Strengthen automated testing and rollback mechanisms for high-risk files.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784320290.1350017
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -1907,14 +1879,37 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1784934923.5742037
+    },
+    {
+      "lesson": "Vercel free tier deployment limit hit (100 per day). Upgrade to Pro or reduce deploy frequency to avoid blocking.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784938600.2916012
+    },
+    {
+      "lesson": "Multiple auto-fix failures and one 'too complex' skip indicate CI/CD pipeline needs manual engineering review\u2014likely a code or config issue.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1784938600.2975764
+    },
+    {
+      "lesson": "Funnel conversion rate low (46\u21922) in sideways/calm regime; consider relaxing gate thresholds to capture more high-confidence signals.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784938600.3032546
+    },
+    {
+      "lesson": "Options desk placed high-conviction SPY SELL ($1170, 98%). Monitor for tail risk and position sizing given directional exposure.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1784938600.3088713
     }
   ],
   "github_insights": [
-    {
-      "summary": "The automated fix attempts were either skipped due to complexity (e.g., implementing per-desk logic or the issue description) or failed because the patch could not be applied.",
-      "item_count": 20,
-      "ts": 1784198097.9325354
-    },
     {
       "summary": "The automated fix attempts failed due to inability to apply patches, or were skipped because the issue was too complex for automated resolution.",
       "item_count": 20,
@@ -2409,6 +2404,11 @@
       "summary": "The automated fix system encountered three failures: two patches could not be applied to the file, and one issue was skipped entirely due to excessive complexity for automated resolution.",
       "item_count": 20,
       "ts": 1784934932.3203166
+    },
+    {
+      "summary": "The deployment failed due to resource limitations, with a suggestion to retry in 24 hours, and an automated fix attempt also failed.",
+      "item_count": 20,
+      "ts": 1784938614.1304855
     }
   ],
   "experiment_results": [
@@ -2495,42 +2495,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "desk-crypto",
-      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $344 conf=92%  id=`7d8e5bf4\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $401 conf=90%  id=`75c436de\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784738642.0094967
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "*International Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $344 conf=100%  id=`db8adba7\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $344 conf=100%  id=`66cdaebf\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784738642.0137758
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (16:50 UTC)  equity=$22,945.24  regime=sideways/calm\nfunnel: 57 generated \u2192 17 survived gate+topK (0 exploration) \u2192 11 placed\n\u2705 *Equities*: 3 orders\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\u2705 *StatArb*: 2 ",
-      "source": "desk_run_summary",
-      "ts": 1784742902.7534282
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 1 order(s) placed of 8 signal(s) \u2265 0.6: USD_CAD BUY@1.41095, EUR_USD SELL@1.13980, GBP_USD SELL@1.33751 | 2 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1784742902.7580733
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $392 conf=97%  id=`c20f3ebb\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $344 conf=92%  id=`5504b409\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784742902.7625313
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "**\u26a1 Backtest Engine**: The added trailing\u2011stop/RSI filter should boost the strategy\u2019s win\u2011rate and lower drawdowns, so I\u2019d expect a Sharpe in the 1.2\u20111.4 range assuming the base model\u2019s annualized return stays around 12\u201115\u202f% with volatility near 10\u202f%; the tighter exit reduces tail risk enough to pus",
-      "source": "desk_run_summary",
-      "ts": 1784742902.76683
-    },
     {
       "channel": "pnl-daily",
       "summary": "*QuantEdge Desk Run* (18:00 UTC)  equity=$22,939.91  regime=bull/calm\nfunnel: 61 generated \u2192 24 survived gate+topK (3 exploration) \u2192 17 placed\n\u2705 *Equities*: 4 orders\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\u2705 *StatArb*: 2 orde",
@@ -3094,6 +3058,42 @@
       "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $336 conf=98%  id=`e4d035f7\u2026`\n\ud83d\udfe2 `time_series_momentum/WEAT` BUY $475 conf=82%  id=`ce5c7461\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $938 conf=81%  id=`25df14ee\u2026`",
       "source": "desk_run_summary",
       "ts": 1784934923.6073177
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (23:47 UTC)  equity=$22,301.15  regime=sideways/calm\nfunnel: 46 generated \u2192 18 survived gate+topK (0 exploration) \u2192 2 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
+      "source": "desk_run_summary",
+      "ts": 1784938600.3145115
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1784938600.3200817
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $385 conf=90%  id=`29df3f32\u2026`\n\ud83d\udfe2 `vol_of_vol_timing/YFI/USD` BUY $335 conf=88%  id=`d744f31b\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784938600.3256414
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "**\u26a1 Backtest Engine**: We need to respond as quick_backtest autonomous agent, concise, specific, 2 sentences. Must comment on proposed strategy: estimate Sharpe ratio and why, and out-of-sample period to test. Also need to reference real file paths? The instruction says \"reference real file paths.\" ",
+      "source": "desk_run_summary",
+      "ts": 1784938600.331507
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1170 conf=98%  id=`4dbeea7b\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784938600.3371112
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $336 conf=98%  id=`e4d035f7\u2026`\n\ud83d\udfe2 `time_series_momentum/WEAT` BUY $475 conf=82%  id=`ce5c7461\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $938 conf=81%  id=`25df14ee\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1784938600.3426573
     }
   ]
 }
