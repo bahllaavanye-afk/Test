@@ -1,6 +1,5 @@
 {
   "skills": [
-    "**Investor Pipeline Monitoring**: The investor pipeline queue (src/pipeline/investor_pipeline.py) is actively being monitored to ensure timely processing of investor pipeline tasks.",
     "Estimate Sharpe ratio",
     "* **Documentation standards set**: Docstrings have been standardized across the codebase, as seen in recent learnings on `docstrings` in `ml/features/technical.py` and `execution/limit_first.py`.",
     "Check API rates",
@@ -199,8 +198,9 @@
     "Log API calls",
     "Check config files",
     "Test DB connections",
-    "Verify thread counts"
+    "Verify thread counts",
+    "Validate input types"
   ],
-  "last_updated": "2026-07-25T08:28:49.880347+00:00",
+  "last_updated": "2026-07-25T10:09:48.867839+00:00",
   "total": 200
 }
