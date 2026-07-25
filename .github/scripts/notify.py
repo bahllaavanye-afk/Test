@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import urllib.parse
 import urllib.request
 
 _DEFAULT_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL", "")
@@ -82,13 +83,20 @@ def _load_channel_ids() -> dict[str, str]:
 def _post_to_channel_id(cid: str, text: str, username: str) -> bool:
     """Post via bot API to a specific channel id. Bots can't set per-message
     usernames, so the employee identity rides a bold name prefix."""
+    return _post_to_channel_id_returning(cid, text, username) is not None
+
+
+def _post_to_channel_id_returning(cid: str, text: str, username: str) -> str | None:
+    """Same post, but returns the created message id (Discord returns the message
+    object). The id is what makes reactions possible — the old helper threw it
+    away, which is why agent acknowledgements were silent no-ops."""
     prefix = f"**{str(username).strip()[:60]}** " if username and username != "QuantEdge" else ""
     try:
-        _bot_req("POST", f"/channels/{cid}/messages", {"content": (prefix + text)[:2000]})
-        return True
+        resp = _bot_req("POST", f"/channels/{cid}/messages", {"content": (prefix + text)[:2000]})
+        return str(resp.get("id")) if isinstance(resp, dict) and resp.get("id") else None
     except Exception as e:  # noqa: BLE001
         print(f"[notify] bot post failed: {str(e)[:80]}")
-        return False
+        return None
 
 stats = {"discord_ok": 0, "failed": 0, "discord_skipped": 0}
 
@@ -363,3 +371,49 @@ def post(channel: str, text: str, username: str = "QuantEdge") -> bool:
     if not text:
         return False
     return discord_post(channel, text, username=username)
+
+
+# ── reactions ────────────────────────────────────────────────────────────────
+# Slack-style emoji names used by the agent code, mapped to the real Unicode
+# characters Discord's reactions endpoint expects.
+_EMOJI = {
+    "eyes": "\U0001F440",
+    "white_check_mark": "\u2705",
+    "x": "\u274C",
+    "hourglass_flowing_sand": "\u23F3",
+    "rocket": "\U0001F680",
+    "warning": "\u26A0\uFE0F",
+}
+
+
+def post_returning_id(channel: str, text: str, username: str = "QuantEdge") -> str | None:
+    """Post and return the Discord message id, or None.
+
+    Only the bot-token path can return an id; a webhook post cannot, so callers
+    must treat None as "posted, but not reactable".
+    """
+    if not text:
+        return None
+    cid = _load_channel_ids().get(str(channel).lower().lstrip("#"))
+    if not cid:
+        # fall back to the normal delivery path so the message still lands
+        post(channel, text, username=username)
+        return None
+    return _post_to_channel_id_returning(cid, text, username)
+
+
+def add_reaction(channel: str, message_id: str, emoji: str) -> bool:
+    """React to a message. `emoji` may be a Slack-style name or a raw character."""
+    if not (_BOT_TOKEN and message_id):
+        return False
+    cid = _load_channel_ids().get(str(channel).lower().lstrip("#"))
+    if not cid:
+        return False
+    ch = _EMOJI.get(emoji, emoji)
+    try:
+        _bot_req("PUT", f"/channels/{cid}/messages/{message_id}"
+                        f"/reactions/{urllib.parse.quote(ch)}/@me")
+        return True
+    except Exception as e:  # noqa: BLE001
+        print(f"[notify] reaction {emoji} failed: {str(e)[:70]}")
+        return False

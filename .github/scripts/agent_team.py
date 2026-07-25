@@ -2474,14 +2474,15 @@ def _fetch_thread_context(token: str, ch_id: str, thread_ts: str, limit: int = 5
 
 
 def _react(token: str, ch_id: str, ts: str, emoji: str) -> None:
-    """Acknowledge a message with a reaction emoji.
+    """Acknowledge a message with a reaction emoji (👀 received, ✅ answered).
 
-    Currently a no-op: chat_call has no Discord implementation for
-    reactions.add (it needs a real message id, which the Slack-era `ts` is not),
-    so it returns {"ok": True} without doing anything. Kept as the single place
-    to wire Discord reactions up properly — see the IMPROVEMENTS.md item.
+    `ts` must be a real Discord message id — chat_call now returns one from
+    chat.postMessage. Fails soft: reactions need the bot token and the channel
+    id, so a webhook-only deployment simply gets no reaction.
     """
-    chat_call("reactions.add", {"channel": ch_id, "timestamp": ts, "name": emoji})
+    result = chat_call("reactions.add", {"channel": ch_id, "timestamp": ts, "name": emoji})
+    if not result.get("ok"):
+        print(f"  [react] {emoji} not applied: {result.get('error')}")
 
 
 
@@ -3814,18 +3815,30 @@ def chat_call(method: str, payload: dict) -> dict:
             _post_stats["skipped"] += 1
             return {"ok": False, "error": "skipped_post_cap"}
         _post_stats["attempted"] += 1
-        ok = notify.post(payload.get("channel", "engineering"),
-                         payload.get("text", ""),
+        channel = payload.get("channel", "engineering")
+        # Return the REAL Discord message id as `ts` so callers can react to it.
+        # This used to return "" unconditionally, which is why every agent
+        # acknowledgement (👀 / ✅ / ❌) was a silent no-op.
+        msg_id = notify.post_returning_id(channel, payload.get("text", ""),
+                                          username=payload.get("username", "QuantEdge"))
+        if msg_id:
+            return {"ok": True, "ts": msg_id, "channel": channel}
+        ok = notify.post(channel, payload.get("text", ""),
                          username=payload.get("username", "QuantEdge"))
-        # `ts` is used by callers only as a thread handle; Discord has none.
-        return {"ok": ok, "ts": "", "channel": payload.get("channel", "")}
+        return {"ok": ok, "ts": "", "channel": channel}
 
     if method in ("conversations.history", "conversations.replies"):
         msgs = notify.read_channel_recent(payload.get("channel", ""),
                                           limit=int(payload.get("limit", 15) or 15))
         return {"ok": True, "messages": msgs}
 
-    # join / create / reactions.add / anything else: nothing to do on Discord.
+    if method == "reactions.add":
+        ok = notify.add_reaction(payload.get("channel", ""),
+                                 str(payload.get("timestamp", "")),
+                                 payload.get("name", ""))
+        return {"ok": ok, "error": "" if ok else "reaction_unavailable"}
+
+    # join / create / anything else: nothing to do on Discord.
     return {"ok": True}
 
 def get_channel_id(token: str, name: str) -> str | None:
