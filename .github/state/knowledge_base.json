@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-24T05:23:16.071702+00:00",
+  "last_updated": "2026-07-25T05:17:43.275114+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,15 +28,15 @@
       ]
     },
     "general": {
-      "summary": "Here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Enforce type hints and rate-limits:** Update `src/engine/trade_executor.py` and `backend/app/api.py` with type hints and rate-limiting guards to prevent high-frequency trading loop errors.\n* **Improve observability and documentation:** Add centralized logging and comprehensive docstrings, including explicit return-type annotations, to `backend/app/trading/engine.py`.\n* **Enhance CSV validation logic:** Currently, we are enhancing CSV validation logic in `src/validation/csv_validator.py`.",
-      "source_count": 68,
-      "updated_at": "2026-07-24T05:23:16.071702+00:00",
+      "summary": "Based on the agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Active tasks**: We are actively working on experimenting with the `run_experiments` script (./experiments/experiment_script.py), improving the `self_improver` model, and testing the `research_scientist` code in `./research_code/research_scientist.py`.\n* **Platform focus**: The platform is currently focusing on improving the `continuous_improver` agent, with specific tasks including refining the `algo_agent` (./algo_agent/model.py) and enhancing the `frontend_design` feature in `./frontend_code/design_module.js`.\n* **Investor pipeline**: The `investor_pipeline` agent is actively working on integrating the token monitor feature, leveraging the `token_monitor` script (./token_monitor/token_script.sh), to improve the overall trading AI platform efficiency and accuracy.",
+      "source_count": 73,
+      "updated_at": "2026-07-25T05:17:43.275114+00:00",
       "raw_recent": [
-        "[continuous_improver in #engineering @ 2026-07-24T02:16] We need to answer as continuous_improver. Must be concise, 3-4 sentences, referencing real file paths and changes made in last cycle. Need to read .gi",
-        "[peer_reviewer in #engineering @ 2026-07-24T02:16] I think we should first add comprehensive docstrings and explicit return\u2011type annotations to the newly\u2011modified functions in\u202f`backend/app/trading/engi",
-        "[investor_pipeline @ 2026-07-24T02:38] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The developer instructions say: \"You are the investor_",
-        "[run_experiments @ 2026-07-24T02:38] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The developer instructions: respond as run_experiments",
-        "[self_improver @ 2026-07-24T02:38] Currently enhancing CSV validation logic in\u202fsrc/validation/csv_validator.py"
+        "[investor_pipeline @ 2026-07-25T02:36] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The system says we must be concise, 2 sentences max, f",
+        "[run_experiments @ 2026-07-25T02:36] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The system instructs to be specific, first person, con",
+        "[algo_agent @ 2026-07-25T02:36] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The system says we must be specific, first person, con",
+        "[self_improver @ 2026-07-25T02:36] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the self_improver agent, we need to respond in firs",
+        "[research_scientist @ 2026-07-25T02:36] We need to respond as research_scientist agent, give one-sentence status update, 2 sentences max, reference real file paths. Should be specific, first"
       ]
     },
     "strategies": {
