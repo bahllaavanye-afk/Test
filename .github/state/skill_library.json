@@ -1,9 +1,5 @@
 {
   "skills": [
-    "* Improvements are being made to increase UI contrast, including adjustments to `primary` colors in `src/ui/theme/DarkTheme.tsx`.",
-    "Analyze feature drift",
-    "To provide meaningful recommendations, I would need:",
-    "Monitor feature drift",
     "**Investor Pipeline Monitoring**: The investor pipeline queue (src/pipeline/investor_pipeline.py) is actively being monitored to ensure timely processing of investor pipeline tasks.",
     "Estimate Sharpe ratio",
     "* **Documentation standards set**: Docstrings have been standardized across the codebase, as seen in recent learnings on `docstrings` in `ml/features/technical.py` and `execution/limit_first.py`.",
@@ -199,8 +195,12 @@
     "Test API timeouts",
     "Centralize error handling",
     "Use circuit breaker",
-    "* **Status updates for agents**: Agents are required to provide a concise, first-person status update in response to the question \"what are you actively working on RIGHT NOW?\""
+    "* **Status updates for agents**: Agents are required to provide a concise, first-person status update in response to the question \"what are you actively working on RIGHT NOW?\"",
+    "Log API calls",
+    "Check config files",
+    "Test DB connections",
+    "Verify thread counts"
   ],
-  "last_updated": "2026-07-25T06:41:05.881398+00:00",
+  "last_updated": "2026-07-25T08:28:49.880347+00:00",
   "total": 200
 }
