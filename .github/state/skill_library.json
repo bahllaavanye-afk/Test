@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Check cache expiry",
-    "**Thread safety review**: `self_improver` is actively reviewing thread safety in `src/trading/` to prevent potential concurrency issues.",
-    "A new **SPY EMA-RSI DualMomentum** strategy has been proposed, with a Sharpe ratio estimated around 0.9, based on a 20-period EMA crossover filtered by a 14-day RSI < 30.",
-    "Verify dependency updates",
     "Based on the agent learnings, the following are the most important and actionable takeaways:",
     "Verify db connections",
     "Track API timeouts",
@@ -199,8 +195,12 @@
     "Analyze signal accuracy",
     "Validate user input",
     "Track CPU usage",
-    "Limit trade volume"
+    "Limit trade volume",
+    "Scan for updates",
+    "Monitor API logs",
+    "Check health endpoints",
+    "Review risk metrics"
   ],
-  "last_updated": "2026-07-25T14:46:00.292801+00:00",
+  "last_updated": "2026-07-25T16:01:35.067379+00:00",
   "total": 200
 }
