@@ -1,8 +1,7 @@
 {
-  "last_run_ts": 1784930978,
+  "last_run_ts": 1784940465,
   "last_commit_sha": "92ed6fe",
   "posted_hashes": [
-    "7e8f0c050fc7",
     "c251fcc0bc55",
     "40a4df1a6bf5",
     "6aafe3a5c586",
@@ -1001,23 +1000,20 @@
     "8fae2dcac92c",
     "b7577628e323",
     "98df5b9d73e3",
-    "fdc74062b0a3"
+    "fdc74062b0a3",
+    "c77e42d369c0"
   ],
   "replied_to": [],
   "post_dedup": {
-    "standup-channel:standup": 1784680437.8178315,
-    "agent-api-usage:api_usage_report": 1784680461.739268,
-    "agent-api-usage:throughput_report": 1784680462.5820265,
-    "engineering:agent_reminder": 1784680558.955721,
-    "help:agent_reminder": 1784680559.1793723,
-    "engineering:silent_vp_eng": 1784680462.7546084,
-    "alpha-research:silent_alpha_dir": 1784680466.7210736,
-    "desk-crypto:silent_ml_lead": 1784680470.0041695,
-    "risk-alerts:silent_risk_eng": 1784680474.1608098,
-    "squad-backend:silent_backend_lead": 1784680476.9163144,
-    "squad-qa:silent_qa_dir": 1784680479.802696,
-    "infra-alerts:silent_devops_dir": 1784680482.6358604,
-    "squad-execution:silent_exec_eng": 1784680485.9458017
+    "standup-channel:standup": 1784940435.4319549,
+    "agent-api-usage:api_usage_report": 1784940465.2462597,
+    "agent-api-usage:throughput_report": 1784940467.412331,
+    "engineering:agent_reminder": 1784940543.262885,
+    "help:agent_reminder": 1784940543.4867995,
+    "engineering:silent_vp_eng": 1784940467.5998137,
+    "alpha-research:silent_alpha_dir": 1784940474.9115043,
+    "desk-crypto:silent_ml_lead": 1784940485.0733101,
+    "squad-backend:silent_backend_lead": 1784940492.3481202
   },
   "response_cache": {},
   "posted_today": [
@@ -1069,11 +1065,11 @@
     "Alpha Research Director"
   ],
   "last_post_ts": {
-    "vp_eng": 1784680462.75456,
-    "alpha_dir": 1784680462.75456,
-    "ml_lead": 1784680462.75456,
+    "vp_eng": 1784940467.5997744,
+    "alpha_dir": 1784940467.5997744,
+    "ml_lead": 1784940467.5997744,
     "risk_eng": 1784680462.75456,
-    "backend_lead": 1784680462.75456,
+    "backend_lead": 1784940467.5997744,
     "qa_dir": 1784680462.75456,
     "devops_dir": 1784680462.75456,
     "exec_eng": 1784680462.75456,
@@ -1168,12 +1164,6 @@
     "product_lead": 1784470078.4361582
   },
   "daily_usage": {
-    "2026-07-09": {
-      "GEMINI_API_KEY_3": {
-        "tokens": 300,
-        "requests": 1
-      }
-    },
     "2026-07-11": {
       "GEMINI_API_KEY_3": {
         "tokens": 300,
@@ -1229,6 +1219,12 @@
         "tokens": 300,
         "requests": 1
       }
+    },
+    "2026-07-25": {
+      "GEMINI_API_KEY_2": {
+        "tokens": 300,
+        "requests": 1
+      }
     }
   },
   "onboarding_posted_week": "2026-W29",
@@ -1242,118 +1238,83 @@
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-24"
+        "date": "2026-07-25"
       },
       "alpha_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-24"
+        "date": "2026-07-25"
       },
       "ml_lead": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-24"
+        "date": "2026-07-25"
       },
       "risk_eng": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-24"
+        "date": "2026-07-25"
       },
       "backend_lead": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-24"
+        "date": "2026-07-25"
       },
       "qa_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-24"
+        "date": "2026-07-25"
       },
       "devops_dir": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-24"
+        "date": "2026-07-25"
       },
       "exec_eng": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-24"
+        "date": "2026-07-25"
       },
       "poly_desk": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-24"
+        "date": "2026-07-25"
       },
       "ml_researcher": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-24"
+        "date": "2026-07-25"
       },
       "vp_research": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-24"
+        "date": "2026-07-25"
       },
       "quant_researcher": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-24"
+        "date": "2026-07-25"
       },
       "cro": {
         "calls": 6,
         "slack_posts": 8,
         "tokens": 3000,
-        "date": "2026-07-24"
+        "date": "2026-07-25"
       }
     }
   },
   "quality_log": [
-    {
-      "emp": "frontend_lead",
-      "score": 7,
-      "reason": "While the goal and data point are specific, it lacks details on the optimization strategies being implemented beyond data processing.",
-      "channel": "unknown",
-      "ts": "2026-07-15 13:33:13"
-    },
-    {
-      "emp": "data_lead",
-      "score": 7,
-      "reason": "Identifies specific issues with missed messages and proposes a retry mechanism, but lacks detailed next steps or a timeline for implementation.",
-      "channel": "unknown",
-      "ts": "2026-07-15 13:33:24"
-    },
-    {
-      "emp": "alpha_researcher",
-      "score": 7,
-      "reason": "Provides specific data on Sharpe ratios and adjustments but lacks detailed analysis on the implications of the findings or further actionable recommendations.",
-      "channel": "unknown",
-      "ts": "2026-07-15 13:33:31"
-    },
-    {
-      "emp": "exec_lead",
-      "score": 7,
-      "reason": "While it provides specific data and mentions reviewing logs, it lacks actionable steps to improve the execution strategy beyond the vague mention of fine-tuning limit orders.",
-      "channel": "unknown",
-      "ts": "2026-07-15 13:33:34"
-    },
-    {
-      "emp": "security_lead",
-      "score": 8,
-      "reason": "Provides a specific file path and cites a concrete, actionable step to address a quantified risk, but lacks a second distinct actionable point or further analysis of potential impact on trading operations.",
-      "channel": "unknown",
-      "ts": "2026-07-15 13:33:38"
-    },
     {
       "emp": "ml_infra",
       "score": 5,
@@ -2718,49 +2679,44 @@
       "reason": "While it mentions specific signals and techniques, it lacks detail on the cointegration methods and actionable steps to implement the proposed strategies.",
       "channel": "unknown",
       "ts": "2026-07-22 00:35:25"
+    },
+    {
+      "emp": "ml_lead",
+      "score": 2,
+      "reason": "Output is too vague and lacks concrete, actionable points, merely stating an observation about BTC perpetual funding rates without providing any meaningful analysis or insight.",
+      "channel": "unknown",
+      "ts": "2026-07-25 00:47:25"
+    },
+    {
+      "emp": "vp_eng",
+      "score": 9,
+      "reason": "Provides specific, data-driven insights, including file paths, strategy details, and quantified performance metrics, such as a 25% increase in file read attempts and a 0.85 Sharpe ratio.",
+      "channel": "unknown",
+      "ts": "2026-07-25 00:47:54"
+    },
+    {
+      "emp": "alpha_dir",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-07-25 00:48:04"
+    },
+    {
+      "emp": "ml_lead",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-07-25 00:48:11"
+    },
+    {
+      "emp": "backend_lead",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-07-25 00:48:18"
     }
   ],
   "agent_output_log": [
-    {
-      "emp": "devops_dir",
-      "channel": "unknown",
-      "text": "*Currently, we're facing a delay in deployment due to a failure in the GitHub Actions pipeline, specifically in `/.github/workflows/deploy.yml`, where the build step has a 75% failure rate over the last 10 runs. I\u2019m investigating the issue related to Docker image builds that are caused by outdated d",
-      "provider": "GitHub Models",
-      "ts": 1784577918.739983,
-      "score": 5
-    },
-    {
-      "emp": "backtest_engineer",
-      "channel": "unknown",
-      "text": "I'm currently finalizing the enhancements to our backtesting framework by integrating new transaction cost models. Specifically, I'm adjusting the `transaction_costs.yml` to include tiered pricing based on trade volume, which is expected to improve the accuracy of our backtest results. Additionally,",
-      "provider": "GitHub Models",
-      "ts": 1784577948.8510349,
-      "score": 7
-    },
-    {
-      "emp": "data_engineer_2",
-      "channel": "unknown",
-      "text": "*Currently, I'm monitoring the data ingestion process for the market data feeds, with a focus on identifying feed latency issues. As of the latest checks, I've noted that 15% of the ingested bars in `data/market_data/ingest_log.txt` are exceeding our target latency threshold of 200ms. Additionally, ",
-      "provider": "GitHub Models",
-      "ts": 1784577953.133586,
-      "score": 7
-    },
-    {
-      "emp": "infra_lead",
-      "channel": "unknown",
-      "text": "We're currently facing a capacity risk with our cloud infrastructure due to an increase in data ingestion demands. The latest metrics show that our usage on the AWS EC2 instance types has reached 85% of allocated capacity, specifically for `t2.large` instances, which correlates with our deployment o",
-      "provider": "GitHub Models",
-      "ts": 1784577957.1319888,
-      "score": 7
-    },
-    {
-      "emp": "nlp_researcher",
-      "channel": "unknown",
-      "text": "I'm currently refining our earnings call NLP model by enhancing the text preprocessing pipeline, specifically adjusting tokenization parameters in `tokenizer.py` to improve sentiment accuracy. The latest evaluation indicates a **15% increase** in precision metrics for sentiment classification. Addit",
-      "provider": "GitHub Models",
-      "ts": 1784577960.4848642,
-      "score": 7
-    },
     {
       "emp": "rl_trader",
       "channel": "unknown",
@@ -3120,15 +3076,55 @@
       "provider": "GitHub Models",
       "ts": 1784680525.4425845,
       "score": 6
+    },
+    {
+      "emp": "ml_lead",
+      "channel": "unknown",
+      "text": "Monitoring BTC perpetual funding rates, we're observing a sustained elevation, with Binance \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1784940445.5136652,
+      "score": 2
+    },
+    {
+      "emp": "vp_eng",
+      "channel": "unknown",
+      "text": "*I'm currently reviewing the `signal_runner` logs in `./agent_memory.json`*, where I've noticed a 25% increase in file read attempts over the past hour, with 17 attempts to open the file in the last 30 minutes. The **Breakout-Stoch + ATR** strategy is being tested on the 5-minute chart, with an entr",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1784940474.7370138,
+      "score": 9
+    },
+    {
+      "emp": "alpha_dir",
+      "channel": "unknown",
+      "text": "Currently, I am *rigorously reviewing the backtest parameters* for the proposed \"Breakout \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_3)",
+      "ts": 1784940484.8833957,
+      "score": 5
+    },
+    {
+      "emp": "ml_lead",
+      "channel": "unknown",
+      "text": "*Currently investigating the increased file read attempts by `signal_runner` in `./agent_memory. \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY)",
+      "ts": 1784940491.0446694,
+      "score": 5
+    },
+    {
+      "emp": "backend_lead",
+      "channel": "unknown",
+      "text": "Currently, I'm *profiling our FastAPI service's interaction with `agent_memory. \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1784940498.059017,
+      "score": 5
     }
   ],
   "last_providers": {
     "devops_dir": "GitHub Models",
-    "vp_eng": "GitHub Models",
-    "alpha_dir": "GitHub Models",
-    "ml_lead": "GitHub Models",
+    "vp_eng": "Gemini(GEMINI_API_KEY)",
+    "alpha_dir": "Gemini(GEMINI_API_KEY_3)",
+    "ml_lead": "Gemini(GEMINI_API_KEY)",
     "risk_eng": "GitHub Models",
-    "backend_lead": "GitHub Models",
+    "backend_lead": "Gemini(GEMINI_API_KEY_2)",
     "qa_dir": "GitHub Models",
     "exec_eng": "litellm:groq",
     "poly_desk": "GitHub Models",
@@ -3175,15 +3171,15 @@
     "gemini_fallback_alpha-research": 1781095580.7191632,
     "GEMINI_API_KEY_2": 1784617203.956297,
     "GEMINI_API_KEY_3": 1784617203.956297,
-    "gemini_fallback_engineering": 1784487463.9653878
+    "gemini_fallback_engineering": 1784940465.33927
   },
   "token_budget": {
     "GEMINI_API_KEY_2": {
-      "date": "2026-07-22",
-      "used": 0
+      "date": "2026-07-25",
+      "used": 300
     },
     "GEMINI_API_KEY_3": {
-      "date": "2026-07-22",
+      "date": "2026-07-25",
       "used": 0
     }
   },
@@ -3221,6 +3217,9 @@
     "2026-07-21": {
       "GEMINI_API_KEY_2": 300,
       "GEMINI_API_KEY_3": 300
+    },
+    "2026-07-25": {
+      "GEMINI_API_KEY_2": 300
     }
   },
   "posted_today_date": "2026-07-24",
