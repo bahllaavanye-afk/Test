@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Refactor constants files",
-    "Check clock sync",
-    "Log memory usage",
-    "Track queue lengths",
     "Sanitize API responses",
     "Validate CSV",
     "Check disk space",
@@ -199,8 +195,12 @@
     "Test market data",
     "Analyze signal confidence",
     "Backtest strategy variants",
-    "Estimate Sharpe ratio"
+    "Estimate Sharpe ratio",
+    "Test order routing",
+    "Scan for memory leaks",
+    "Verify system status",
+    "Improve code linting"
   ],
-  "last_updated": "2026-07-25T18:28:11.388339+00:00",
+  "last_updated": "2026-07-25T19:44:38.506964+00:00",
   "total": 200
 }
