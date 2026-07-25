@@ -310,17 +310,40 @@ class CompositeExit:
     def should_exit(
         self, position: dict, current_price: float, context: dict
     ) -> tuple[bool, str | None]:
+        """First strategy to trigger wins.
+
+        A raising strategy is skipped rather than aborting the rest — one broken
+        rule must not disable the others. But note what a swallowed error means
+        here: if a stop-loss check raises, this returns ``(False, None)``, which
+        the caller cannot distinguish from "checked, nothing to do" — so the
+        position keeps running with no stop. That is the "silently eat an exit"
+        failure mode, so when EVERY strategy fails we escalate to error level:
+        the position is unprotected, not merely un-triggered.
+        """
+        evaluated = 0
+        failed: list[str] = []
         for strategy in self.strategies:
             try:
                 triggered, reason = strategy.should_exit(position, current_price, context)
+                evaluated += 1
                 if triggered:
                     return True, reason
             except Exception as exc:
+                failed.append(type(strategy).__name__)
                 logger.warning(
                     "Exit strategy check failed",
                     strategy=type(strategy).__name__,
                     error=str(exc),
                 )
+
+        if self.strategies and evaluated == 0:
+            # Nothing evaluated => no exit rule is protecting this position.
+            logger.error(
+                "ALL exit strategies failed — position is UNPROTECTED",
+                symbol=position.get("symbol"),
+                failed_strategies=failed,
+                current_price=current_price,
+            )
         return False, None
 
 
