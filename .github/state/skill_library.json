@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Detect network partitions",
-    "Check DB connections",
-    "Apply concrete fixes",
-    "strategy_logic on strategies/ml_enhanced/lorentzian_knn.py: success \u2014 tests green",
-    "**Comprehensive type hints**: Add type hints to modules to ensure consistency and accuracy. (e.g., `src/engine/trade_executor.py`)",
     "Rename variables",
     "Test network ping",
     "Refactor validation logic",
@@ -199,8 +194,13 @@
     "Verify dependency updates",
     "Monitor system health",
     "Optimize signal batches",
-    "Backtest strategies"
+    "Backtest strategies",
+    "Log exception stacks",
+    "Scan for circular deps",
+    "Parse agent memory logs",
+    "Enable strict mypy checks",
+    "Update script exit codes"
   ],
-  "last_updated": "2026-07-25T20:46:12.946503+00:00",
+  "last_updated": "2026-07-25T21:51:49.660350+00:00",
   "total": 200
 }
