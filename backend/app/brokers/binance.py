@@ -159,3 +159,57 @@ class BinanceBroker(AbstractBroker):
             except Exception as e:
                 logger.error("Failed to fetch tickers from Binance", error=str(e))
                 raise BrokerError(f"Binance ticker fetch error: {e}")
+
+
+# ==============================
+# Unit Tests for Edge Cases
+# ==============================
+import pytest
+import unittest.mock
+
+@pytest.fixture
+def mock_exchange():
+    """Create an async mock mimicking the ccxt exchange interface."""
+    mock = unittest.mock.AsyncMock()
+    mock.fetch_ohlcv = unittest.mock.AsyncMock()
+    mock.fetch_tickers = unittest.mock.AsyncMock()
+    mock.fetch_ticker = unittest.mock.AsyncMock()
+    mock.iso8601 = unittest.mock.Mock(side_effect=lambda ts: f"ISO{ts}")
+    return mock
+
+@pytest.fixture
+def broker(mock_exchange):
+    """Instantiate BinanceBroker with a mocked exchange."""
+    b = BinanceBroker(api_key="test_key", secret="test_secret", testnet=False)
+    b.exchange = mock_exchange
+    return b
+
+
+@pytest.mark.asyncio
+async def test_get_historical_invalid_interval_fallback(broker, mock_exchange):
+    """When an unknown interval is supplied, BinanceBroker should fall back to '1d'."""
+    mock_exchange.fetch_ohlcv.return_value = []
+    await broker.get_historical("BTC/USDT", interval="invalid_interval")
+    mock_exchange.fetch_ohlcv.assert_awaited_once()
+    # The second argument should be the default '1d' mapping
+    args = mock_exchange.fetch_ohlcv.call_args[0]
+    assert args[1] == "1d"
+
+
+@pytest.mark.asyncio
+async def test_get_all_tickers_caching_behavior(broker, mock_exchange):
+    """Within the cache TTL, subsequent calls should return cached data without invoking fetch_tickers."""
+    mock_exchange.fetch_tickers.return_value = {"BTC/USDT": {"bid": 50000}}
+    first_result = await broker.get_all_tickers(cache_ttl=5)
+    second_result = await broker.get_all_tickers(cache_ttl=5)
+    assert first_result is second_result  # Same object indicates caching
+    assert mock_exchange.fetch_tickers.await_count == 1  # Called only once
+
+
+@pytest.mark.asyncio
+async def test_get_quote_timeout_raises_broker_error(broker, mock_exchange):
+    """A timeout while fetching a ticker should be translated into a BrokerError."""
+    mock_exchange.fetch_ticker.side_effect = asyncio.TimeoutError
+    with pytest.raises(BrokerError) as exc_info:
+        await broker.get_quote("ETH/USDT")
+    assert "quote timed out" in str(exc_info.value).lower()
