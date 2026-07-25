@@ -1,11 +1,5 @@
 {
   "skills": [
-    "* When referencing file paths, use **real file paths** to enhance clarity and accuracy.",
-    "Enhance type hints",
-    "Add type hints and docstrings",
-    "Log trade errors",
-    "Verify timestamp sync",
-    "Track API rate limits",
     "Validate CSV logic",
     "Implement idempotence",
     "- Which trading strategies/components failed",
@@ -199,8 +193,14 @@
     "Monitor system memory",
     "Optimize API calls",
     "Scan log files",
-    "Reference config files"
+    "Reference config files",
+    "Check timestamp sync",
+    "Test market hours",
+    "Log trade retries",
+    "Check dependency",
+    "Monitor latency trends",
+    "Analyze signal accuracy"
   ],
-  "last_updated": "2026-07-25T11:42:18.266474+00:00",
+  "last_updated": "2026-07-25T13:17:05.337494+00:00",
   "total": 200
 }
