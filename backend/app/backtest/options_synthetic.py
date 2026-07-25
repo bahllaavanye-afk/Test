@@ -206,3 +206,42 @@ IRON_CONDOR = [
 ]
 BULL_PUT_SPREAD = [SpreadLeg("put", "sell", 0.96), SpreadLeg("put", "buy", 0.92)]
 BEAR_CALL_SPREAD = [SpreadLeg("call", "sell", 1.04), SpreadLeg("call", "buy", 1.08)]
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge‑case validation
+# ----------------------------------------------------------------------
+def test_bs_price_zero_time_returns_intrinsic():
+    """When time to expiry is zero, price should equal intrinsic value."""
+    spot = 100.0
+    strike = 105.0
+    intrinsic = max(spot - strike, 0.0)  # call intrinsic = 0
+    price = bs_price(spot, strike, t_years=0.0, sigma=0.2, kind="call")
+    assert price == intrinsic
+
+
+def test_bs_price_invalid_kind_raises():
+    """Invalid option kind should raise a ValueError."""
+    try:
+        bs_price(100, 100, 0.5, 0.2, kind="invalid")
+    except ValueError as e:
+        assert 'kind must be "call" or "put"' in str(e)
+    else:
+        assert False, "ValueError not raised for invalid kind"
+
+
+def test_price_spread_empty_legs_returns_zero():
+    """An empty leg list should result in a spread value of zero."""
+    value = price_spread(spot=100.0, legs=[], strikes=[], t_years=0.1, sigma=0.2)
+    assert value == 0.0
+
+
+def test_backtest_spread_skips_nan_volatility():
+    """When volatility is NaN (e.g., insufficient history), the entry should be skipped."""
+    # Minimal DataFrame with only 3 rows; vol_window=5 ensures NaN volatility.
+    df = pd.DataFrame({"close": [100.0, 101.0, 102.0]})
+    entry_mask = pd.Series([True, False, False], index=df.index)
+    result = backtest_spread(df, legs=BULL_PUT_SPREAD, entry_mask=entry_mask, vol_window=5)
+    # No trades should be recorded because volatility is NaN at the entry point.
+    assert result.trades == 0
+    assert result.pnl_series == []
