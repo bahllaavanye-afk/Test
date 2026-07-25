@@ -1,19 +1,3 @@
-"""
-Technical indicator feature computation using pandas-ta.
-
-All indicators are computed using only past data (no lookahead) to ensure
-that the resulting features are suitable for training predictive models
-or for live trading. The function operates on a pandas DataFrame that
-contains at least a ``close`` price series and optionally ``high``, ``low``
-and ``volume`` series. Missing columns default to the ``close`` series (for
-``high``/``low``) or a constant series of ones (for ``volume``).
-
-The implementation mirrors the original code base and adds no new
-behaviour; it merely enriches the DataFrame with a collection of common
-technical features such as returns, volatility, EMA distance, RSI, MACD,
-Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -21,6 +5,7 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 import app.ml.features.pandas_ta_compat as ta
 
@@ -181,3 +166,115 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             _logger.error("Failed to compute ADX feature", exc_info=exc)
 
     return df
+
+
+class TechnicalFeatureConfig(BaseModel):
+    """
+    Configuration schema for technical feature generation.
+
+    This schema centralises all tunable parameters used by
+    :func:`add_technical_features`. It provides validation, documentation,
+    and example values to aid developers and API consumers.
+    """
+
+    returns_periods: list[int] = Field(
+        default_factory=lambda: [1, 5, 10, 21],
+        description="Look‑back periods (in bars) for simple return calculations.",
+        example=[1, 5, 10, 21],
+    )
+    volatility_periods: list[int] = Field(
+        default_factory=lambda: [5, 21, 63],
+        description="Rolling window sizes (in bars) for volatility (standard deviation of log returns).",
+        example=[5, 21, 63],
+    )
+    ema_spans: list[int] = Field(
+        default_factory=lambda: [9, 21, 50],
+        description="Span values for Exponential Moving Average distance features.",
+        example=[9, 21, 50],
+    )
+    rsi_lengths: list[int] = Field(
+        default_factory=lambda: [14, 21],
+        description="Lengths for Relative Strength Index calculations.",
+        example=[14, 21],
+    )
+    macd_fast: int = Field(
+        default=12,
+        description="Fast EMA period for MACD.",
+        example=12,
+        ge=1,
+    )
+    macd_slow: int = Field(
+        default=26,
+        description="Slow EMA period for MACD.",
+        example=26,
+        ge=1,
+    )
+    macd_signal: int = Field(
+        default=9,
+        description="Signal line EMA period for MACD.",
+        example=9,
+        ge=1,
+    )
+    bb_length: int = Field(
+        default=20,
+        description="Look‑back period for Bollinger Bands.",
+        example=20,
+        ge=1,
+    )
+    bb_std: float = Field(
+        default=2.0,
+        description="Number of standard deviations for Bollinger Bands width.",
+        example=2.0,
+        gt=0.0,
+    )
+    volume_ma_window: int = Field(
+        default=20,
+        description="Window size for moving average of volume used in volume ratio feature.",
+        example=20,
+        ge=1,
+    )
+    atr_length: int = Field(
+        default=14,
+        description="Look‑back period for Average True Range.",
+        example=14,
+        ge=1,
+    )
+    stoch_k: int = Field(
+        default=14,
+        description="Look‑back period for %K line of Stochastic Oscillator.",
+        example=14,
+        ge=1,
+    )
+    stoch_d: int = Field(
+        default=3,
+        description="Smoothing period for %D line of Stochastic Oscillator.",
+        example=3,
+        ge=1,
+    )
+    adx_length: int = Field(
+        default=14,
+        description="Look‑back period for Average Directional Index.",
+        example=14,
+        ge=1,
+    )
+
+    @validator(
+        "returns_periods",
+        "volatility_periods",
+        "ema_spans",
+        "rsi_lengths",
+        each_item=True,
+    )
+    def positive_int(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("All period values must be positive integers.")
+        return v
+
+    @validator("bb_std")
+    def positive_float(cls, v: float) -> float:
+        if v <= 0.0:
+            raise ValueError("bb_std must be a positive float.")
+        return v
+
+
+__all__ = ["add_technical_features", "TechnicalFeatureConfig"]
