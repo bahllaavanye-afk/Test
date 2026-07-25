@@ -166,6 +166,9 @@ class AlpacaBroker(AbstractBroker):
 
             # Detect bracket order when stop_loss or take_profit are set
             has_bracket = request.stop_loss is not None or request.take_profit is not None
+            # Set if a requested bracket had to be filled as a naked order, so the
+            # returned OrderResult can say so instead of looking like a clean fill.
+            bracket_degraded = False
 
             if has_bracket and ALPACA_BRACKET_AVAILABLE:
                 try:
@@ -217,9 +220,19 @@ class AlpacaBroker(AbstractBroker):
                     )
                     raise
                 except Exception as bracket_exc:
-                    logger.warning(
-                        "Bracket order failed — falling back to plain market order",
+                    # This degrades a PROTECTED entry into a naked one: the
+                    # take-profit and stop-loss legs the caller asked for are
+                    # dropped, but the entry still fills. The strategy sized this
+                    # trade assuming a stop exists, so a warning is not enough —
+                    # log at error level and mark the result so downstream (exit
+                    # sweep, risk) can see the position is unprotected.
+                    bracket_degraded = True
+                    logger.error(
+                        "Bracket order failed — filling as a PLAIN order with NO "
+                        "stop-loss/take-profit legs",
                         symbol=request.symbol,
+                        requested_stop_loss=request.stop_loss,
+                        requested_take_profit=request.take_profit,
                         error=str(bracket_exc),
                     )
                     # Fall through to plain order below
@@ -267,7 +280,15 @@ class AlpacaBroker(AbstractBroker):
                 avg_fill_price=(
                     float(order.filled_avg_price) if order.filled_avg_price else None
                 ),
-                raw_payload={"id": str(order.id), "symbol": request.symbol},
+                raw_payload={
+                    "id": str(order.id),
+                    "symbol": request.symbol,
+                    **({
+                        "bracket_degraded": True,
+                        "unapplied_stop_loss": request.stop_loss,
+                        "unapplied_take_profit": request.take_profit,
+                    } if bracket_degraded else {}),
+                },
             )
         except BrokerError:
             # Already logged – re‑raise to allow upstream handling
