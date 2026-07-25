@@ -165,3 +165,78 @@ async def backtest_worker_loop() -> None:
             logger.warning(f"Backtest worker poll error: {exc}")
 
         await asyncio.sleep(30)
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for edge‑case behavior of run_backtest_job
+# ---------------------------------------------------------------------------
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+# Helper mock BacktestRun object
+class MockBacktestRun:
+    def __init__(self, **kwargs):
+        self.id = kwargs.get("id", "test-run-id")
+        self.status = kwargs.get("status", "queued")
+        self.symbol = kwargs.get("symbol")
+        self.start_date = kwargs.get("start_date")
+        self.end_date = kwargs.get("end_date")
+        self.interval = kwargs.get("interval")
+        self.strategy_name = kwargs.get("strategy_name")
+        self.params = kwargs.get("params", {})
+        self.created_at = kwargs.get("created_at", datetime.now(timezone.utc))
+        self.error_message = None
+        self.completed_at = None
+        self.started_at = None
+
+
+@pytest.mark.asyncio
+async def test_run_backtest_job_none_run_id_logs_warning(caplog):
+    """Edge case: run_backtest_job receives None as run_id."""
+    caplog.set_level("WARNING")
+    await run_backtest_job(None)
+    assert any("run_backtest_job called with None or empty run_id" in rec.message for rec in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_missing_required_fields_sets_failed():
+    """Edge case: required fields missing; should mark run as failed."""
+    mock_run = MockBacktestRun(symbol=None, start_date=datetime.now(timezone.utc), end_date=datetime.now(timezone.utc), interval="1d", strategy_name="dummy")
+    async_session_mock = AsyncMock()
+    async_session_mock.__aenter__.return_value.get.return_value = mock_run
+    async_session_mock.__aenter__.return_value.commit = AsyncMock()
+
+    with patch("app.database.AsyncSessionLocal", return_value=async_session_mock):
+        await run_backtest_job("any-id")
+
+    assert mock_run.status == "failed"
+    assert mock_run.error_message == "Missing required backtest parameters"
+
+
+@pytest.mark.asyncio
+async def test_empty_ohlcv_triggers_failure():
+    """Edge case: fetch_ohlcv returns empty DataFrame, causing failure."""
+    mock_run = MockBacktestRun(
+        symbol="FAKE",
+        start_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+        end_date=datetime(2020, 1, 10, tzinfo=timezone.utc),
+        interval="1d",
+        strategy_name="dummy",
+    )
+    async_session_mock = AsyncMock()
+    async_session_mock.__aenter__.return_value.get.return_value = mock_run
+    async_session_mock.__aenter__.return_value.commit = AsyncMock()
+
+    # Mock fetch_ohlcv to return empty DataFrame
+    async_fetch = AsyncMock(return_value=pd.DataFrame())
+    # Mock strategy registry to return a dummy strategy that would never be called
+    dummy_strategy = MagicMock()
+    dummy_strategy.backtest_signals.return_value = pd.Series([], dtype=int)
+
+    with patch("app.database.AsyncSessionLocal", return_value=async_session_mock), \
+         patch("app.backtest.data_loader.fetch_ohlcv", async_fetch), \
+         patch.dict("app.strategies.STRATEGY_REGISTRY", {"dummy": lambda: dummy_strategy}):
+        await run_backtest_job("run-id-empty-data")
+
+    assert mock_run.status == "failed"
+    assert "No OHLCV data" in mock_run.error_message
