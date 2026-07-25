@@ -21,18 +21,19 @@ def _first_run_time() -> datetime:
     """
     return datetime.now(timezone.utc) + timedelta(seconds=random.uniform(30, 150))
 
+
 if TYPE_CHECKING:
     from app.models.bot import Bot
 
 # Map interval strings to APScheduler kwargs
 _INTERVAL_MAP: dict[str, dict] = {
-    "1m":  {"minutes": 1},
-    "5m":  {"minutes": 5},
+    "1m": {"minutes": 1},
+    "5m": {"minutes": 5},
     "15m": {"minutes": 15},
     "30m": {"minutes": 30},
-    "1h":  {"hours": 1},
-    "4h":  {"hours": 4},
-    "1d":  {"hours": 24},
+    "1h": {"hours": 1},
+    "4h": {"hours": 4},
+    "1d": {"hours": 24},
 }
 
 
@@ -136,3 +137,83 @@ class BotRunner:
             logger.debug("Bot unscheduled", bot_id=bot_id)
         except Exception as exc:  # noqa: BLE001 — job may simply not exist
             logger.debug("Bot unschedule skipped", bot_id=bot_id, error=str(exc))
+
+
+# --------------------------------------------------------------------------- #
+# Unit tests for edge cases
+# --------------------------------------------------------------------------- #
+
+import asyncio
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+
+class MockScheduler:
+    """A lightweight mock of APScheduler's AsyncIOScheduler."""
+
+    def __init__(self):
+        self.added_jobs = []
+        self.removed_jobs = []
+
+    def add_job(self, func, trigger, **kwargs):
+        self.added_jobs.append({"func": func, "trigger": trigger, "kwargs": kwargs})
+
+    def remove_job(self, job_id):
+        self.removed_jobs.append(job_id)
+
+
+@pytest.mark.asyncio
+async def test_first_run_time_bounds(monkeypatch):
+    """Ensure _first_run_time respects the 30‑150 second bounds."""
+    fixed_now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    # Test lower bound
+    monkeypatch.setattr(datetime, "now", lambda tz=None: fixed_now)
+    monkeypatch.setattr(random, "uniform", lambda a, b: 30)
+    result = _first_run_time()
+    assert result == fixed_now + timedelta(seconds=30)
+
+    # Test upper bound
+    monkeypatch.setattr(random, "uniform", lambda a, b: 150)
+    result = _first_run_time()
+    assert result == fixed_now + timedelta(seconds=150)
+
+
+@pytest.mark.asyncio
+async def test_reschedule_unknown_interval_uses_default():
+    """When an interval string is not in _INTERVAL_MAP, default to 1 hour."""
+    scheduler = MockScheduler()
+    runner = BotRunner(scheduler)  # type: ignore[arg-type]
+
+    # Create a minimal Bot mock
+    bot = MagicMock()
+    bot.id = str(uuid.uuid4())
+    bot.trigger = {"type": "schedule", "interval": "99h"}
+
+    await runner.reschedule(bot)
+
+    # Exactly one job should be added
+    assert len(scheduler.added_jobs) == 1
+    job = scheduler.added_jobs[0]
+    # The default should be a 1‑hour interval
+    assert job["kwargs"].get("hours") == 1
+    assert job["kwargs"]["id"] == f"bot_{bot.id}"
+    assert job["func"] == runner._run_bot
+
+
+@pytest.mark.asyncio
+async def test_unschedule_missing_job_does_not_raise():
+    """unschedule should swallow errors when the job does not exist."""
+    scheduler = MockScheduler()
+    runner = BotRunner(scheduler)  # type: ignore[arg-type]
+
+    # Simulate scheduler.remove_job raising an exception
+    def raise_error(job_id):
+        raise ValueError("job not found")
+
+    scheduler.remove_job = raise_error  # type: ignore[assignment]
+
+    # Should not propagate the exception
+    await runner.unschedule("nonexistent-id")
+    # No exception means test passes; also check that debug logging was called
+    # (cannot easily capture logger output without extra fixtures, so we rely on no raise).
