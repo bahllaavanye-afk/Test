@@ -800,3 +800,53 @@ def test_call_best_agent_for_task_github_models_first():
     assert call_order[0] == "github_models"
     assert result is not None
     assert provider == "GitHub Models"
+
+
+# ===========================================================================
+import notify as _notify  # chat_call imports this lazily
+
+# chat_call ↔ Discord: message-id round-trip and reactions
+# Regression guard: chat_call used to return ts="" for every post, so agent
+# acknowledgements (👀/✅/❌) could never attach to anything.
+# ===========================================================================
+
+def test_chat_call_returns_the_real_discord_message_id():
+    with patch.object(_notify, "post_returning_id", return_value="999") as p:
+        r = sat.chat_call("chat.postMessage",
+                          {"channel": "engineering", "text": "hi", "username": "Alex"})
+    assert r["ok"] is True
+    assert r["ts"] == "999", "the real message id must come back as ts"
+    assert r["channel"] == "engineering"
+    p.assert_called_once()
+
+
+def test_chat_call_falls_back_to_plain_post_when_no_id_available():
+    """Webhook-only delivery yields no id — the message must still be sent."""
+    with patch.object(_notify, "post_returning_id", return_value=None), \
+         patch.object(_notify, "post", return_value=True) as plain:
+        r = sat.chat_call("chat.postMessage", {"channel": "eng", "text": "hi"})
+    assert r["ok"] is True
+    assert r["ts"] == ""
+    plain.assert_called_once()
+
+
+def test_chat_call_reports_failure_when_delivery_fails():
+    with patch.object(_notify, "post_returning_id", return_value=None), \
+         patch.object(_notify, "post", return_value=False):
+        r = sat.chat_call("chat.postMessage", {"channel": "eng", "text": "hi"})
+    assert r["ok"] is False
+
+
+def test_chat_call_reactions_delegate_to_notify():
+    with patch.object(_notify, "add_reaction", return_value=True) as add:
+        r = sat.chat_call("reactions.add",
+                          {"channel": "eng", "timestamp": "555", "name": "eyes"})
+    assert r["ok"] is True
+    add.assert_called_once_with("eng", "555", "eyes")
+
+
+def test_chat_call_reactions_surface_unavailability():
+    with patch.object(_notify, "add_reaction", return_value=False):
+        r = sat.chat_call("reactions.add", {"channel": "eng", "timestamp": "", "name": "eyes"})
+    assert r["ok"] is False
+    assert r["error"] == "reaction_unavailable"
