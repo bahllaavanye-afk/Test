@@ -7,12 +7,20 @@ bars API with yfinance → synthetic as fallback. These tests mock the HTTP boun
 from __future__ import annotations
 
 import sys
+import functools
 from datetime import date
 
 import pandas as pd
 import pytest
 
 import app.backtest.data_loader as dl
+
+
+# Apply lightweight caching to pure helper functions – they are called repeatedly
+# across many test cases and benefit from memoization without altering external
+# behavior.
+dl._symbol_to_alpaca_crypto = functools.lru_cache(maxsize=None)(dl._symbol_to_alpaca_crypto)
+dl._interval_to_alpaca = functools.lru_cache(maxsize=None)(dl._interval_to_alpaca)
 
 
 def _page(bars: list[dict], token=None) -> dict:
