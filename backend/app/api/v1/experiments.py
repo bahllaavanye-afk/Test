@@ -3,15 +3,18 @@ import asyncio
 import logging
 import uuid
 from pathlib import Path
-from fastapi import APIRouter, Body, Depends, HTTPException
+from datetime import datetime, timezone
+from functools import lru_cache
+
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.experiment import Experiment
 from app.models.user import User
 from pydantic import BaseModel, ConfigDict
-from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +51,14 @@ class TrainRequest(BaseModel):
     config_name: str  # e.g. "lstm_btc_1h"
 
 
+@lru_cache(maxsize=1)
+def _cached_config_names() -> set[str]:
+    """Cache the set of available config stems to avoid repeated filesystem scans."""
+    if not CONFIGS_DIR.exists():
+        return set()
+    return {p.stem for p in CONFIGS_DIR.glob("*.yaml")}
+
+
 async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
     """Background task: run the experiment script for the given config."""
     import subprocess
@@ -57,13 +68,17 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
     try:
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, str(script), "--config", str(config_path),
-            "--experiment-id", experiment_id,
+            sys.executable,
+            str(script),
+            "--config",
+            str(config_path),
+            "--experiment-id",
+            experiment_id,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         await proc.wait()
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover
         logger.error("Experiment %s failed: %s", experiment_id, exc)
 
 
@@ -80,10 +95,10 @@ async def trigger_training(
     """
     config_name = body.config_name.removesuffix(".yaml")
 
-    # Validate config exists
-    config_path = CONFIGS_DIR / f"{config_name}.yaml"
-    if not config_path.exists():
-        available = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
+    # Validate config exists using cached set
+    available_configs = _cached_config_names()
+    if config_name not in available_configs:
+        available = sorted(available_configs)
         raise HTTPException(
             404,
             f"Config '{config_name}' not found. Available: {available[:10]}{'...' if len(available) > 10 else ''}",
@@ -118,9 +133,7 @@ async def list_train_configs(
     current_user: User = Depends(get_current_user),
 ):
     """List available training config names."""
-    if not CONFIGS_DIR.exists():
-        return {"configs": []}
-    configs = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
+    configs = sorted(_cached_config_names())
     return {"configs": configs}
 
 
