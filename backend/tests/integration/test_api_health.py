@@ -91,9 +91,15 @@ def test_workflow_health_strategies_live():
     )
 
 
-def test_slack_config_present():
-    """SLACK_BOT_TOKEN env var must exist; skip gracefully if not configured."""
-    token = os.environ.get("SLACK_BOT_TOKEN", "")
-    if not token:
-        pytest.skip("SLACK_BOT_TOKEN not set — Slack integration not configured in this environment")
-    assert len(token) > 0, "SLACK_BOT_TOKEN must be non-empty"
+def test_discord_config_present():
+    """A Discord delivery route must be configured; skip if this env has none.
+
+    Replaces test_slack_config_present (Slack removed 2026-07-25). A bot token
+    is preferred because it routes each alert to its own channel; a webhook
+    alone still delivers, so either counts as configured.
+    """
+    bot = os.environ.get("DISCORD_BOT_TOKEN", "")
+    hook = os.environ.get("DISCORD_WEBHOOK_URL", "")
+    if not bot and not hook:
+        pytest.skip("no DISCORD_BOT_TOKEN/DISCORD_WEBHOOK_URL — chat not configured in this environment")
+    assert bot or hook, "a Discord bot token or webhook URL must be non-empty"

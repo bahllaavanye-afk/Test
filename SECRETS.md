@@ -36,7 +36,6 @@ key once in Doppler and it propagates everywhere — no more "7 copies to mainta
    # LLM / research (free tiers)
    GROQ_API_KEY  GEMINI_API_KEY  PERPLEXITY_API_KEY  DEEPSEEK_API_KEY
    # Slack
-   SLACK_BOT_TOKEN  SLACK_TEAM_ID  SLACK_ADMIN_EMAIL  SLACK_ADMIN_USER_ID
    # Render ops
    RENDER_API_KEY  RENDER_SERVICE_ID  RENDER_WORKER_SERVICE_ID
    # Non-secret config (fine to keep here too)
@@ -77,7 +76,6 @@ workflow in place or delete it later — Doppler is now the source).
 
 The MCP servers in `.mcp.json` are wrapped with `doppler run --`, so the session needs
 **only one** secret — a Doppler **service token** — and Doppler injects the rest
-(`SLACK_BOT_TOKEN`, `ALPACA_*`, etc.) into each server.
 
 1. Doppler → quantedge → `dev` → **Access → Service Tokens → Generate** (read-only).
 2. In your Claude Code environment config (code.claude.com → your environment):
@@ -88,7 +86,6 @@ The MCP servers in `.mcp.json` are wrapped with `doppler run --`, so the session
      ```
 3. Start a fresh session. `.mcp.json` runs e.g.
    `doppler run -- npx -yq @modelcontextprotocol/server-slack`, which auths with
-   `DOPPLER_TOKEN` and provides `SLACK_BOT_TOKEN` — the Slack/Alpaca/etc. MCP tools now work.
 
 > If `DOPPLER_TOKEN` is absent or the CLI isn't installed, those MCP servers won't start
 > (they also don't work today without keys) — so this is strictly an improvement once set up.
@@ -104,7 +101,6 @@ doppler login                                       # once
 doppler setup -p quantedge -c dev                   # in repo root, once
 # then run anything with secrets injected:
 doppler run -- ./scripts/launch.sh paper
-doppler run -- python scripts/slack_message_monitor.py
 # convenience wrapper:
 ./scripts/with-doppler.sh ./scripts/launch.sh dev
 ```

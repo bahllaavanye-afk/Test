@@ -40,26 +40,27 @@ jobs:
           python scripts/verify_live.py | tee /tmp/verify.txt
           echo "rc=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
           exit 0
-      - name: Alert Slack on drift
+      - name: Alert Discord on drift
         if: steps.verify.outputs.rc != '0'
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          [ -z "${SLACK_BOT_TOKEN:-}" ] && { echo "no SLACK_BOT_TOKEN — skipping alert"; exit 0; }
+          # Was posting to Slack and silently skipping when that token was
+          # unset — i.e. every deploy-drift alert since the Slack quota died was
+          # lost. Routed through the shared Discord notifier instead.
           python3 - <<'PY'
-          import os, json, urllib.request
-          tok = os.environ["SLACK_BOT_TOKEN"]
+          import sys
+          sys.path.insert(0, ".github/scripts")
+          import notify
           tail = ""
           try:
               tail = open("/tmp/verify.txt").read()[-500:]
           except Exception:
               pass
-          text = ":rotating_light: *Deploy drift* — the live backend is NOT serving the real QuantEdge API.\n```" + tail + "```"
-          body = json.dumps({"channel": "#infra-alerts", "text": text}).encode()
-          req = urllib.request.Request("https://slack.com/api/chat.postMessage", data=body,
-                headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"})
-          try:
-              urllib.request.urlopen(req, timeout=10)
-          except Exception as e:
-              print("slack post failed:", e)
+          text = ("🚨 **Deploy drift** — the live backend is NOT serving the real "
+                  "QuantEdge API.\n```" + tail + "```")
+          notify.post("infra-alerts", text, username="Deploy Verify")
           PY
       - name: Summary
         run: |
