@@ -8,7 +8,14 @@
 
 _Last updated: 2026-07-24._
 
-## 🟢 DURABLE POSTGRES — ROOT CAUSE PROVEN 2026-07-25 05:27 UTC (one 2-min user action left)
+## 🟢 DURABLE POSTGRES — CLUSTER FIX CONFIRMED LIVE 2026-07-25 07:36 UTC (password is the ONLY blocker)
+**CONFIRMED IN PRODUCTION 07:36 UTC:** `/health/detailed` now reports
+`password authentication failed for user "postgres"` — it previously said
+`(ENOTFOUND) tenant/user ... not found`. That change is hard proof the cluster fix reached the
+live boot: the backend now REACHES the correct `aws-1` Supavisor, which recognises the tenant
+and rejects only the credential. **Fault #1 is closed. Fault #2 (the password) is the single
+remaining blocker and needs the user.**
+
 The pooler prober ran (via the `workflow_run` chain off Agent Heartbeat) and tested all four
 cluster/port combinations. Verdict is unambiguous — there were **TWO** faults stacked:
 ```
