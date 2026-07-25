@@ -17,6 +17,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, List, Tuple
 
+from pydantic import BaseModel, Field, validator
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +26,65 @@ from app.tasks.free_llm_router import call_race
 from app.tasks.agent_memory import AgentMemory
 
 logger = logging.getLogger(__name__)
+
+
+class StrategyMetric(BaseModel):
+    """Metrics for a single strategy over the last 30 days."""
+
+    strategy: str = Field(..., description="Name of the strategy.", example="mean_rev_20_2")
+    num_trades: int = Field(
+        ..., ge=0, description="Number of trades executed in the period.", example=42
+    )
+    total_pnl: float = Field(..., description="Total profit & loss.", example=1250.75)
+    avg_pnl: float = Field(..., description="Average profit per trade.", example=29.78)
+    win_rate: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Proportion of winning trades (0‑1).",
+        example=0.62,
+    )
+    sharpe: float = Field(..., description="Annualized Sharpe ratio.", example=1.23)
+
+    @validator("sharpe", pre=True, always=True)
+    def round_sharpe(cls, v: float) -> float:
+        """Round Sharpe to three decimal places."""
+        return round(v, 3)
+
+
+class AutoDisabledPayload(BaseModel):
+    """Payload describing strategies that were auto‑disabled."""
+
+    strategies: List[str] = Field(
+        ..., description="List of strategy names that were disabled.", example=["mean_rev_20_2"]
+    )
+
+
+class LLMSuggestion(BaseModel):
+    """LLM suggestion payload stored in AgentMemory."""
+
+    provider: str = Field(..., description="LLM provider identifier.", example="openai")
+    suggestion: str = Field(..., description="Raw suggestion text from the LLM.", example="Adjust lookback period.")
+
+
+class RegimePayload(BaseModel):
+    """Broadcast payload describing current market regime."""
+
+    regime: str = Field(
+        ...,
+        description="Current market regime classification.",
+        example="bull",
+        regex="^(bull|bear|sideways)$",
+    )
+    health_ratio: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Proportion of strategies with Sharpe > 0.5.",
+        example=0.71,
+    )
+    profitable_strategies: int = Field(..., ge=0, description="Number of profitable strategies.", example=14)
+    total_strategies: int = Field(..., ge=1, description="Total number of evaluated strategies.", example=20)
 
 
 class SelfImprovingLoop:
@@ -39,14 +100,16 @@ class SelfImprovingLoop:
             await self._auto_disable_underperformers(metrics)
             await self._llm_improvement_pass(metrics)
             await self._broadcast_regime(metrics)
-            logger.info("SelfImprovingLoop: cycle complete (%d strategies evaluated)", len(metrics))
+            logger.info(
+                "SelfImprovingLoop: cycle complete (%d strategies evaluated)", len(metrics)
+            )
         except Exception as e:
             logger.exception("SelfImprovingLoop cycle error: %s", e)
 
     # ── Metric collection ─────────────────────────────────────────────────────
 
     async def _collect_strategy_metrics(self) -> List[dict]:
-        """Pull per-strategy Sharpe + win-rate from trade history (last 30d)."""
+        """Pull per‑strategy Sharpe + win‑rate from trade history (last 30d)."""
         cutoff = datetime.now(timezone.utc) - timedelta(days=30)
         async with self._factory() as session:
             result = await session.execute(
@@ -72,23 +135,24 @@ class SelfImprovingLoop:
         for row in rows:
             std = row.std_pnl or 1e-9
             sharpe = (row.avg_pnl / std) * (252 ** 0.5) if std > 0 else 0
-            metrics.append(
-                {
-                    "strategy": row.strategy_name,
-                    "num_trades": row.num_trades,
-                    "total_pnl": float(row.total_pnl or 0),
-                    "avg_pnl": float(row.avg_pnl or 0),
-                    "win_rate": float(row.win_rate or 0),
-                    "sharpe": round(sharpe, 3),
-                }
+            metric = StrategyMetric(
+                strategy=row.strategy_name,
+                num_trades=row.num_trades,
+                total_pnl=float(row.total_pnl or 0),
+                avg_pnl=float(row.avg_pnl or 0),
+                win_rate=float(row.win_rate or 0),
+                sharpe=sharpe,
             )
+            metrics.append(metric.dict())
         return metrics
 
     # ── Auto-disable ──────────────────────────────────────────────────────────
 
     async def _auto_disable_underperformers(self, metrics: List[dict]) -> None:
         """Disable strategies with Sharpe < 0 and >= 10 trades in the last 30 days."""
-        underperformers = [m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10]
+        underperformers = [
+            m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10
+        ]
         if not underperformers:
             return
 
@@ -110,7 +174,8 @@ class SelfImprovingLoop:
 
         names = [m["strategy"] for m in underperformers]
         logger.info("SelfImprovingLoop: auto-disabled %s", names)
-        await self._memory.write("auto_disabled", {"strategies": names})
+        payload = AutoDisabledPayload(strategies=names)
+        await self._memory.write("auto_disabled", payload.dict())
 
     # ── LLM improvement pass ──────────────────────────────────────────────────
 
@@ -154,13 +219,8 @@ Be concise. Each suggestion under 2 sentences."""
 
     async def _store_llm_suggestion(self, response: Any) -> None:
         """Persist LLM suggestion to AgentMemory and log the provider."""
-        await self._memory.write(
-            "llm_suggestions",
-            {
-                "provider": response.provider,
-                "suggestion": response.content,
-            },
-        )
+        suggestion = LLMSuggestion(provider=response.provider, suggestion=response.content)
+        await self._memory.write("llm_suggestions", suggestion.dict())
         logger.info("SelfImprovingLoop: LLM suggestion from %s stored", response.provider)
 
     # ── Regime broadcast ──────────────────────────────────────────────────────
@@ -171,17 +231,17 @@ Be concise. Each suggestion under 2 sentences."""
         health = profitable / total
 
         regime = "bull" if health > 0.6 else ("bear" if health < 0.3 else "sideways")
-        await self._memory.set_latest(
-            "platform_health",
-            {
-                "regime": regime,
-                "health_ratio": round(health, 3),
-                "profitable_strategies": profitable,
-                "total_strategies": total,
-            },
+        payload = RegimePayload(
+            regime=regime,
+            health_ratio=health,
+            profitable_strategies=profitable,
+            total_strategies=total,
         )
+        await self._memory.set_latest("platform_health", payload.dict())
 
         try:
-            await self._redis.publish("platform:regime", json.dumps({"regime": regime, "health": health}))
+            await self._redis.publish(
+                "platform:regime", json.dumps({"regime": regime, "health": health})
+            )
         except Exception as exc:  # noqa: BLE001 — subscribers just miss one regime tick
             logger.debug("self-improving loop: regime publish failed: %s", exc)
