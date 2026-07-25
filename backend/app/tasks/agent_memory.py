@@ -81,3 +81,75 @@ class AgentMemory:
         except Exception as e:
             logger.warning("AgentMemory.read_all_topics failed: %s", e)
             return []
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge cases (boundary conditions)
+# ----------------------------------------------------------------------
+if __name__ == "__main__":
+    import asyncio
+    import unittest
+
+    class _MockRedis:
+        """A minimal async in‑memory mock of the Redis interface used by AgentMemory."""
+        def __init__(self):
+            self._store: dict[str, list[bytes] | bytes] = {}
+
+        async def lpush(self, key: str, value: str) -> None:
+            self._store.setdefault(key, []).insert(0, value.encode())
+
+        async def ltrim(self, key: str, start: int, end: int) -> None:
+            if key in self._store and isinstance(self._store[key], list):
+                self._store[key] = self._store[key][start : end + 1]
+
+        async def lrange(self, key: str, start: int, end: int) -> list[bytes]:
+            if key not in self._store or not isinstance(self._store[key], list):
+                return []
+            return self._store[key][start : end + 1]
+
+        async def set(self, key: str, value: str) -> None:
+            self._store[key] = value.encode()
+
+        async def get(self, key: str) -> bytes | None:
+            val = self._store.get(key)
+            return val if isinstance(val, bytes) else None
+
+        async def keys(self, pattern: str) -> list[str]:
+            # Very simple pattern handling: only supports prefix*
+            prefix = pattern.rstrip("*")
+            return [k for k in self._store if k.startswith(prefix)]
+
+    class TestAgentMemoryEdgeCases(unittest.IsolatedAsyncioTestCase):
+        async def asyncSetUp(self):
+            self.redis = _MockRedis()
+            self.mem = AgentMemory(self.redis)
+
+        async def test_write_empty_dict(self):
+            """Writing an empty dict should still store a timestamp."""
+            await self.mem.write("empty_topic", {})
+            recent = await self.mem.read_recent("empty_topic", n=1)
+            self.assertEqual(len(recent), 1)
+            self.assertIn("ts", recent[0])
+            # No other keys should be present
+            self.assertEqual(set(recent[0].keys()), {"ts"})
+
+        async def test_read_recent_zero(self):
+            """Reading with n=0 should return an empty list without error."""
+            # Pre‑populate with some data
+            await self.mem.write("some_topic", {"val": 1})
+            recent = await self.mem.read_recent("some_topic", n=0)
+            self.assertEqual(recent, [])
+
+        async def test_max_list_length_enforced(self):
+            """The list should never exceed _MAX_LIST_LEN items."""
+            topic = "bounded_topic"
+            # Insert more than the max allowed items
+            for i in range(_MAX_LIST_LEN + 10):
+                await self.mem.write(topic, {"idx": i})
+            recent = await self.mem.read_recent(topic, n=_MAX_LIST_LEN + 20)
+            self.assertEqual(len(recent), _MAX_LIST_LEN)
+            # The most recent item should be the last written (i = _MAX_LIST_LEN + 9)
+            self.assertEqual(recent[0]["idx"], _MAX_LIST_LEN + 9)
+
+    # Run the tests when the module is executed directly
+    unittest.main()
