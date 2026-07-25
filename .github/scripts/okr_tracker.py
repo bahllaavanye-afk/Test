@@ -119,7 +119,7 @@ def build_okr_report(commits, p0_breaching, pipeline, strategy_count, workflow_c
 _OKR targets: pipeline ≥10, Series A by D90, ≥50 commits/day, zero P0 >24h_"""
     return text
 
-def post_to_slack(text, channel="okr-updates"):
+def post_to_chat(text, channel="okr-updates"):
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     notify.post(channel, text)
@@ -141,9 +141,9 @@ if __name__ == "__main__":
     print(report)
 
     # Post to multiple channels
-    post_to_slack(report, "okr-updates")
+    post_to_chat(report, "okr-updates")
     if report_type == "weekly":
-        post_to_slack(report, "general")
+        post_to_chat(report, "general")
 
     # Write JSON summary for GitHub step summary
     summary = {

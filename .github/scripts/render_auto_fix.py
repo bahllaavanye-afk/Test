@@ -5,13 +5,13 @@ Render Health Monitor + Auto-Fix
 2. On failure: fetches deploy logs.
 3. Calls QuantEdge AI to diagnose and generate a fix.
 4. Applies the fix (writes files), commits, pushes → triggers Render re-deploy.
-5. Posts status to Slack.
+5. Posts status to Discord.
 
 Required secrets:
   RENDER_API_KEY      — from render.com/dashboard → Account Settings → API Keys
   RENDER_SERVICE_ID   — from Render service URL: render.com/web/<SERVICE_ID>
   ANTHROPIC_API_KEY   — for QuantEdge AI diagnosis + fix generation
-  CHAT_ENABLED     — for Slack notifications
+  CHAT_ENABLED     — for Discord notifications
 """
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ SAFE_TO_MODIFY = [
 ]
 
 
-def slack(msg: str) -> None:
+def chat(msg: str) -> None:
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     notify.post(CHANNEL if "CHANNEL" in globals() else "engineering", msg)
@@ -177,7 +177,7 @@ def _gemini_autofix(logs: str, deploy_id: str, commit_msg: str) -> None:
     import urllib.request
     gemini_key = os.environ.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY_1", ""))
     if not gemini_key:
-        slack("⚠️ *Render Auto-Fix:* No LLM key available — manual fix required.")
+        chat("⚠️ *Render Auto-Fix:* No LLM key available — manual fix required.")
         return
 
     context_files = read_key_files()
@@ -214,18 +214,18 @@ def _gemini_autofix(logs: str, deploy_id: str, commit_msg: str) -> None:
         if apply_fix(json.dumps({"root_cause": root_cause, "files": files})):
             pushed = git_commit_and_push(f"fix(render): {root_cause[:60]}")
             if pushed:
-                slack(f"🤖 *Render Auto-Fix (Gemini):* {root_cause}\n✅ {fix_desc}\nPushed fix — awaiting re-deploy.")
+                chat(f"🤖 *Render Auto-Fix (Gemini):* {root_cause}\n✅ {fix_desc}\nPushed fix — awaiting re-deploy.")
                 return
-        slack(f"🤖 *Render Diagnosis (Gemini):* {root_cause}\n{fix_desc}\nNo code changes applied.")
+        chat(f"🤖 *Render Diagnosis (Gemini):* {root_cause}\n{fix_desc}\nNo code changes applied.")
     except Exception as exc:
         print(f"Gemini auto-fix failed: {exc}")
-        slack(f"⚠️ *Render Auto-Fix:* Gemini diagnosis failed: {exc}")
+        chat(f"⚠️ *Render Auto-Fix:* Gemini diagnosis failed: {exc}")
 
 
 def main() -> None:
     if not RENDER_API_KEY or not RENDER_SERVICE_ID:
         print("RENDER_API_KEY / RENDER_SERVICE_ID not set — skipping")
-        slack("⚠️ Render monitor: API key or service ID not set. Add `RENDER_API_KEY` and `RENDER_SERVICE_ID` to GitHub Secrets.")
+        chat("⚠️ Render monitor: API key or service ID not set. Add `RENDER_API_KEY` and `RENDER_SERVICE_ID` to GitHub Secrets.")
         return
 
     deploy = get_latest_deploy()
@@ -247,7 +247,7 @@ def main() -> None:
     # ── Service is failing ────────────────────────────────────────────────────
     logs = get_deploy_logs(deploy_id) if deploy_id else ""
 
-    slack(
+    chat(
         f"🔴 *Render Deploy FAILED* · `{status}`\n"
         f"Deploy: `{deploy_id[:12]}` · Commit: {commit_msg}\n"
         f"```{logs[-2000:]}```\n"
@@ -310,7 +310,7 @@ def main() -> None:
         print(f"QuantEdge AI response:\n{fix_text[:500]}...")
     except Exception as e:
         print(f"QuantEdge AI API error: {e}")
-        slack(f"❌ Auto-fix failed: QuantEdge AI API error — {e}")
+        chat(f"❌ Auto-fix failed: QuantEdge AI API error — {e}")
         return
 
     # ── Apply and push ────────────────────────────────────────────────────────
@@ -324,13 +324,13 @@ def main() -> None:
 
         pushed = git_commit_and_push(reason)
         if pushed:
-            slack(
+            chat(
                 f"✅ *Auto-fix applied & pushed*\n"
                 f"Root cause: {reason}\n"
                 f"Render will re-deploy automatically."
             )
         else:
-            slack("⚠️ Auto-fix generated no changes — manual intervention needed")
+            chat("⚠️ Auto-fix generated no changes — manual intervention needed")
     else:
         # Just post the diagnosis
         try:
@@ -338,7 +338,7 @@ def main() -> None:
             reason = fix_data.get("root_cause", fix_text[:300])
         except Exception:
             reason = fix_text[:300]
-        slack(
+        chat(
             f"🔍 *Render Failure Diagnosis:*\n{reason}\n\n"
             f"_Auto-fix could not apply changes to safe files — check manually._"
         )

@@ -5,7 +5,7 @@ and context sharing so the platform keeps running 24/7 even when Claude is unava
 Key features:
 - Rotates through multiple Gemini API keys (GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3)
 - Falls back to Groq (Llama-3.1, Mixtral) when all Gemini keys are exhausted
-- Posts Slack alert when quota is hit so owner can add a new key
+- Posts Discord alert when quota is hit so owner can add a new key
 - Shares platform context across all agents so they stay in sync
 - Exports context snapshot to /tmp/agent_context.json for agent hand-off
 
@@ -92,7 +92,7 @@ GROQ_MODELS = [
 class MultiAgentLLM:
     """
     LLM abstraction that rotates through Gemini keys then falls back to Groq.
-    Tracks quota exhaustion and alerts via Slack.
+    Tracks quota exhaustion and alerts via Discord.
     Zero-downtime: always returns a response even if all Gemini keys are exhausted.
     """
 
@@ -268,7 +268,7 @@ class MultiAgentLLM:
         return ""
 
     def _alert_quota_exhausted(self):
-        """Post Slack alert so owner knows to add a new Gemini key."""
+        """Post Discord alert so owner knows to add a new Gemini key."""
         msg = (
             "⚠️ *All Gemini keys exhausted — falling back to Cerebras/Groq/Perplexity/SambaNova*\n"
             "Zero downtime. To restore capacity:\n"
@@ -284,7 +284,7 @@ class MultiAgentLLM:
             return
         for ch in ["engineering", "incidents"]:
             _lc_chat_post(f"#{ch}", msg)
-        print("✓ Quota alert posted to Slack")
+        print("✓ Quota alert posted to Discord")
 
     def status(self) -> dict:
         return {

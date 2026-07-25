@@ -22,7 +22,7 @@ if ALLOW_PAID.lower() == "true":
     sys.exit(1)
 
 
-def slack(channel: str, msg: str) -> None:
+def chat(channel: str, msg: str) -> None:
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     notify.post(channel, msg)
@@ -173,7 +173,7 @@ def main() -> None:
     if not raw:
         msg = "⚠️ *TV Indicator Agent:* All LLM providers failed — no improvement this cycle"
         print(msg)
-        slack("#desk-tv-indicators", msg)
+        chat("#desk-tv-indicators", msg)
         return
 
     improved_code = extract_code(raw)
@@ -182,13 +182,13 @@ def main() -> None:
     if not ok:
         msg = f"⚠️ *TV Indicator Agent:* Generated code failed validation: `{reason}` — keeping current version"
         print(msg)
-        slack("#desk-tv-indicators", msg)
+        chat("#desk-tv-indicators", msg)
         return
 
     # Check if there are meaningful changes (not just whitespace)
     if improved_code.strip() == current_code.strip():
         print("[tv-improve] No meaningful changes in improved code")
-        slack("#desk-tv-indicators", "ℹ️ *TV Indicator Agent:* Strategies already at SOTA level — no changes needed")
+        chat("#desk-tv-indicators", "ℹ️ *TV Indicator Agent:* Strategies already at SOTA level — no changes needed")
         return
 
     # Count improvements
@@ -215,7 +215,7 @@ def main() -> None:
         summary += "Improvements: " + " | ".join(f"`{i}`" for i in improvements) + "\n"
     summary += f"_{len(improved_code)} chars_ → reward-gated PR opened (automerge label)"
     print(summary)
-    slack("#desk-tv-indicators", summary)
+    chat("#desk-tv-indicators", summary)
 
 
 if __name__ == "__main__":

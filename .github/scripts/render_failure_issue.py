@@ -78,7 +78,7 @@ def gh_request(method: str, path: str, payload: dict | None = None) -> dict | li
     return None
 
 
-def slack(msg: str) -> None:
+def chat(msg: str) -> None:
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     notify.post(CHANNEL if "CHANNEL" in globals() else "engineering", msg)
@@ -132,7 +132,7 @@ def find_or_create_issue(deploy_id: str, status: str, logs: str, commit_msg: str
         })
         if new_issue:
             print(f"Created issue #{new_issue['number']}: {new_issue['html_url']}")
-            slack(f"🔴 *Render deploy failed* — Issue created: {new_issue['html_url']}\nQuantEdge AI will auto-fix shortly.")
+            chat(f"🔴 *Render deploy failed* — Issue created: {new_issue['html_url']}\nQuantEdge AI will auto-fix shortly.")
         return new_issue
 
 
@@ -149,7 +149,7 @@ def close_resolved_issues(current_status: str) -> None:
             })
             gh_request("PATCH", f"/issues/{num}", {"state": "closed"})
             print(f"Closed issue #{num} (deploy recovered)")
-            slack(f"✅ *Render recovered* — Closed issue #{num}")
+            chat(f"✅ *Render recovered* — Closed issue #{num}")
 
 
 def main() -> None:

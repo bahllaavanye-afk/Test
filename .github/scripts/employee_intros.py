@@ -138,7 +138,7 @@ EMPLOYEES = [
     },
 ]
 
-# ── Slack helpers — delegates to llm_common ───────────────────────────────────
+# ── Discord helpers — delegates to llm_common ───────────────────────────────────
 
 def resolve_channels() -> dict[str, str]:
     """Return {channel_name: channel_id} from Discord (Slack removed 2026-07-25)."""
@@ -155,7 +155,7 @@ def post(channel_id: str, text: str, thread_ts: str | None = None) -> str | None
 
 
 def read_thread(channel_id: str, thread_ts: str) -> list[dict]:
-    """Read actual Slack thread so replies see what was really said."""
+    """Read actual Discord thread so replies see what was really said."""
     return chat_read_channel(channel_id, thread_ts, limit=15)
 
 
@@ -169,11 +169,11 @@ def build_intro_prompt(employee: dict, channel: str, channel_members: list[dict]
 Your expertise: {employee['expertise']}
 Your personality: {employee['personality']}
 
-Write a brief Slack introduction message for the #{channel} channel.
+Write a brief Discord introduction message for the #{channel} channel.
 You are introducing yourself to your teammates ({teammates}) who are also in this channel.
 Make it natural, specific to your role, and relevant to what this channel is about.
 Mention one specific thing you're working on or excited about right now.
-Keep it to 3-5 sentences. Use casual but professional Slack tone. No hashtags or emojis spam."""
+Keep it to 3-5 sentences. Use casual but professional Discord tone. No hashtags or emojis spam."""
 
 
 def build_reply_prompt(
@@ -186,7 +186,7 @@ Your personality: {replier['personality']}
 Your colleague {intro_author['name']} ({intro_author['title']}) just posted this introduction in #{channel}:
 "{intro_text}"
 
-Write a natural, genuine Slack reply. Reference something specific they said.
+Write a natural, genuine Discord reply. Reference something specific they said.
 Ask a relevant follow-up question OR share a related perspective from your own work.
 Keep it to 2-3 sentences. Sound like a real colleague, not a bot."""
 
@@ -207,7 +207,7 @@ All replies so far: {reply_summary}
 
 Write a 2-3 sentence follow-up. Respond to what {best_reply_author['name']} said specifically.
 Move the conversation forward — propose something concrete to collaborate on, or share a quick insight.
-Sound natural, like a real colleague wrapping up a brief Slack thread."""
+Sound natural, like a real colleague wrapping up a brief Discord thread."""
 
 
 # ── Main conversation engine ──────────────────────────────────────────────────
@@ -227,7 +227,7 @@ def run_channel_conversations(channel_name: str, channel_id: str, members: list[
         prompt = build_intro_prompt(emp, channel_name, members)
         text = llm(
             prompt,
-            system=f"You are {emp['name']}, {emp['title']} at QuantEdge. Sound like a real person on Slack.",
+            system=f"You are {emp['name']}, {emp['title']} at QuantEdge. Sound like a real person on Discord.",
             max_tokens=150,
             temperature=0.85,
             inject_company_context=True,
@@ -345,7 +345,7 @@ def main() -> None:
         for ch in emp["channels"]:
             channel_members.setdefault(ch, []).append(emp)
 
-    # Run conversations only on channels that exist in Slack
+    # Run conversations only on channels that exist in Discord
     # Process channels with most members first (richest conversations)
     ordered = sorted(
         [(ch, members) for ch, members in channel_members.items() if ch in channel_map],
@@ -353,7 +353,7 @@ def main() -> None:
     )
 
     if not ordered:
-        print("[intros] No matching channels found in Slack workspace")
+        print("[intros] No matching channels found in Discord workspace")
         return
 
     for channel_name, members in ordered:

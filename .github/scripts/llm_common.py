@@ -9,7 +9,7 @@ HOW CONTEXT IS SHARED ACROSS LLMs:
   What IS shared is external context injected into every prompt:
 
   1. company_brain.json — single shared JSON file, read by every agent before calling any LLM.
-     Contains: regime, top strategies, recent lessons, Slack insights, trade outcomes.
+     Contains: regime, top strategies, recent lessons, Discord insights, trade outcomes.
      Built by company_brain.py every 15 minutes from all sources.
 
   2. ConversationStore (in memory_manager.py) — persists conversation history as OpenAI
@@ -1026,7 +1026,7 @@ def core_get(key: str, default: Any = None) -> Any:
     return brain.get("core", {}).get(key, default)
 
 
-# ── Slack helpers ─────────────────────────────────────────────────────────────
+# ── Discord helpers ─────────────────────────────────────────────────────────────
 
 def chat_post(channel: str, text: str, thread_ts: str | None = None) -> dict:
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""

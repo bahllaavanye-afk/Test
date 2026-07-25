@@ -1,10 +1,10 @@
 """
-Comprehensive pytest tests for the QuantEdge Slack agent team system.
-Tests cover: summon detection, cooldown/dedup, Slack history dedup,
+Comprehensive pytest tests for the QuantEdge Discord agent team system.
+Tests cover: summon detection, cooldown/dedup, Discord history dedup,
 daily reminder, onboarding, provider cascade, employee provider,
 answer_agent_summons, state mutation, and channel agent identity.
 
-All tests are fully offline — no real Slack token or LLM keys required.
+All tests are fully offline — no real Discord token or LLM keys required.
 """
 
 import sys
@@ -85,14 +85,14 @@ def test_match_agent_mid_sentence():
     assert result is not None
 
 
-def test_match_real_slack_mention_format():
+def test_match_real_mention_format():
     # Real @mention format: <@U1234567> what is your status?
     result = sat._match_agent_summon("<@U1234567> what is your status?", bot_user_id="U1234567")
     assert result is not None
     assert "status" in result.lower()
 
 
-def test_match_real_slack_mention_with_username():
+def test_match_real_mention_with_username():
     # <@U1234567|username> help me
     result = sat._match_agent_summon("<@U1234567|username> help me", bot_user_id="U1234567")
     assert result is not None
@@ -129,10 +129,10 @@ def test_match_trigger_with_very_short_question_at_start():
     assert result == "X"
 
 
-def test_match_slack_mention_wrong_user_id():
+def test_match_mention_wrong_user_id():
     # Mention is for a different bot — should NOT match as a @mention-based summon
     result = sat._match_agent_summon("<@UOTHER> help me", bot_user_id="U1234567")
-    # The Slack mention won't match, but "help me" alone has no literal trigger
+    # The Discord mention won't match, but "help me" alone has no literal trigger
     # so result depends on whether any literal trigger appears — none here
     assert result is None
 
@@ -186,7 +186,7 @@ def test_already_posted_different_channel_is_independent():
 
 
 # ===========================================================================
-# 3. Slack history dedup (_slack_channel_has_recent_bot_post)
+# 3. Discord history dedup (_channel_has_recent_bot_post)
 # ===========================================================================
 
 def test_chat_history_dedup_found_bot_message():
@@ -202,7 +202,7 @@ def test_chat_history_dedup_found_bot_message():
                  }
              ]
          }):
-        result = sat._slack_channel_has_recent_bot_post("token", "help", "Welcome to QuantEdge", hours=23.0)
+        result = sat._channel_has_recent_bot_post("token", "help", "Welcome to QuantEdge", hours=23.0)
     assert result is True
 
 
@@ -218,22 +218,22 @@ def test_chat_history_dedup_no_matching_message():
                  }
              ]
          }):
-        result = sat._slack_channel_has_recent_bot_post("token", "help", "Welcome to QuantEdge", hours=23.0)
+        result = sat._channel_has_recent_bot_post("token", "help", "Welcome to QuantEdge", hours=23.0)
     assert result is False
 
 
 def test_chat_history_dedup_channel_id_none():
     """Returns False when channel ID cannot be resolved."""
     with patch.object(sat, "get_channel_id", return_value=None):
-        result = sat._slack_channel_has_recent_bot_post("token", "nonexistent", "Some snippet", hours=23.0)
+        result = sat._channel_has_recent_bot_post("token", "nonexistent", "Some snippet", hours=23.0)
     assert result is False
 
 
-def test_chat_history_dedup_slack_call_not_ok():
-    """Returns False when Slack API returns ok=False."""
+def test_chat_history_dedup_chat_call_not_ok():
+    """Returns False when Discord API returns ok=False."""
     with patch.object(sat, "get_channel_id", return_value="C123"), \
          patch.object(sat, "chat_call", return_value={"ok": False, "error": "channel_not_found"}):
-        result = sat._slack_channel_has_recent_bot_post("token", "help", "Welcome to QuantEdge", hours=23.0)
+        result = sat._channel_has_recent_bot_post("token", "help", "Welcome to QuantEdge", hours=23.0)
     assert result is False
 
 
@@ -250,7 +250,7 @@ def test_chat_history_dedup_only_matches_bot_messages():
                  }
              ]
          }):
-        result = sat._slack_channel_has_recent_bot_post("token", "help", "Welcome to QuantEdge", hours=23.0)
+        result = sat._channel_has_recent_bot_post("token", "help", "Welcome to QuantEdge", hours=23.0)
     assert result is False
 
 
@@ -267,7 +267,7 @@ def test_chat_history_dedup_matches_known_bot_username():
                  }
              ]
          }):
-        result = sat._slack_channel_has_recent_bot_post(
+        result = sat._channel_has_recent_bot_post(
             "token", "engineering", "Your free AI team is on 24/7", hours=23.0
         )
     assert result is True
@@ -283,11 +283,11 @@ def test_post_daily_reminder_posts_to_engineering_and_help():
     mock_post = MagicMock(return_value={"ok": True})
 
     with patch.object(sat, "_already_posted", return_value=False), \
-         patch.object(sat, "_slack_channel_has_recent_bot_post", return_value=False), \
-         patch.object(sat, "post_to_slack", mock_post):
+         patch.object(sat, "_channel_has_recent_bot_post", return_value=False), \
+         patch.object(sat, "post_to_chat", mock_post):
         sat.post_daily_agent_reminder("xoxb-test", state)
 
-    # Extract all channels posted to via post_to_slack(token, channel, text, ...)
+    # Extract all channels posted to via post_to_chat(token, channel, text, ...)
     channels_posted = {c[0][1] for c in mock_post.call_args_list if len(c[0]) >= 2}
     assert "engineering" in channels_posted
     assert "help" in channels_posted
@@ -296,13 +296,13 @@ def test_post_daily_reminder_posts_to_engineering_and_help():
 
 
 def test_post_daily_reminder_skips_when_already_posted():
-    """When _already_posted returns True, post_to_slack is NOT called for that channel."""
+    """When _already_posted returns True, post_to_chat is NOT called for that channel."""
     state = {}
     mock_post = MagicMock(return_value={"ok": True})
 
     with patch.object(sat, "_already_posted", return_value=True), \
-         patch.object(sat, "_slack_channel_has_recent_bot_post", return_value=False), \
-         patch.object(sat, "post_to_slack", mock_post):
+         patch.object(sat, "_channel_has_recent_bot_post", return_value=False), \
+         patch.object(sat, "post_to_chat", mock_post):
         sat.post_daily_agent_reminder("xoxb-test", state)
 
     # No posts should have been made (all channels skipped by _already_posted)
@@ -310,13 +310,13 @@ def test_post_daily_reminder_skips_when_already_posted():
 
 
 def test_post_daily_reminder_skips_when_recent_history_found():
-    """When _slack_channel_has_recent_bot_post returns True, post_to_slack is NOT called and state is updated."""
+    """When _channel_has_recent_bot_post returns True, post_to_chat is NOT called and state is updated."""
     state = {}
     mock_post = MagicMock(return_value={"ok": True})
 
     with patch.object(sat, "_already_posted", return_value=False), \
-         patch.object(sat, "_slack_channel_has_recent_bot_post", return_value=True), \
-         patch.object(sat, "post_to_slack", mock_post):
+         patch.object(sat, "_channel_has_recent_bot_post", return_value=True), \
+         patch.object(sat, "post_to_chat", mock_post):
         sat.post_daily_agent_reminder("xoxb-test", state)
 
     # No actual posts should have been made
@@ -331,7 +331,7 @@ def test_post_daily_reminder_skips_when_recent_history_found():
 # ===========================================================================
 
 def test_onboarding_skips_when_same_week_in_state():
-    """If state already has the current week, returns immediately without Slack calls."""
+    """If state already has the current week, returns immediately without Discord calls."""
     from datetime import datetime, timezone
     current_week = datetime.now(timezone.utc).strftime("%Y-W%W")
     state = {"onboarding_posted_week": current_week}
@@ -350,7 +350,7 @@ def test_onboarding_skips_when_history_has_recent_post():
     mock_chat = MagicMock(return_value={"ok": True})
 
     with patch.object(sat, "get_channel_id", return_value="C_HELP"), \
-         patch.object(sat, "_slack_channel_has_recent_bot_post", return_value=True), \
+         patch.object(sat, "_channel_has_recent_bot_post", return_value=True), \
          patch.object(sat, "chat_call", mock_chat):
         sat.post_engineer_onboarding("xoxb-test", state)
 
@@ -368,7 +368,7 @@ def test_onboarding_posts_when_state_empty_and_no_history():
     mock_chat = MagicMock(return_value={"ok": True})
 
     with patch.object(sat, "get_channel_id", return_value="C_HELP"), \
-         patch.object(sat, "_slack_channel_has_recent_bot_post", return_value=False), \
+         patch.object(sat, "_channel_has_recent_bot_post", return_value=False), \
          patch.object(sat, "chat_call", mock_chat):
         sat.post_engineer_onboarding("xoxb-test", state)
 
@@ -501,7 +501,7 @@ def test_employee_provider_returns_none_when_no_result():
 
 def _make_summon(channel="alpha-research", thread_ts="1234567.000", question="What is Sharpe?"):
     # No channel_id: forces code to call get_channel_id() which tests mock to None,
-    # keeping ch_id=None and routing through post_to_slack (the mocked path).
+    # keeping ch_id=None and routing through post_to_chat (the mocked path).
     return {
         "channel_name": channel,
         "thread_ts": thread_ts,
@@ -521,7 +521,7 @@ def test_answer_summons_posts_llm_answer():
 
     mock_post = MagicMock(return_value={"ok": True, "ts": "9999999.000"})
     with patch.object(sat, "call_best_agent", return_value=real_answer), \
-         patch.object(sat, "post_to_slack", mock_post), \
+         patch.object(sat, "post_to_chat", mock_post), \
          patch.object(sat, "_build_summon_context", return_value=""), \
          patch.object(sat, "get_channel_id", return_value=None):
         count = sat.answer_agent_summons("xoxb-test", summons, state)
@@ -540,7 +540,7 @@ def test_answer_summons_skips_already_replied_ts():
 
     mock_post = MagicMock(return_value={"ok": True})
     with patch.object(sat, "call_best_agent", return_value="Some answer"), \
-         patch.object(sat, "post_to_slack", mock_post), \
+         patch.object(sat, "post_to_chat", mock_post), \
          patch.object(sat, "_build_summon_context", return_value=""), \
          patch.object(sat, "get_channel_id", return_value=None):
         count = sat.answer_agent_summons("xoxb-test", summons, state)
@@ -556,7 +556,7 @@ def test_answer_summons_posts_api_limit_fallback_when_llm_fails():
 
     mock_post = MagicMock(return_value={"ok": True})
     with patch.object(sat, "call_best_agent", return_value=None), \
-         patch.object(sat, "post_to_slack", mock_post), \
+         patch.object(sat, "post_to_chat", mock_post), \
          patch.object(sat, "_build_summon_context", return_value=""), \
          patch.object(sat, "get_channel_id", return_value=None):
         sat.answer_agent_summons("xoxb-test", summons, state)
@@ -578,7 +578,7 @@ def test_answer_summons_records_ts_in_replied_to():
 
     mock_post = MagicMock(return_value={"ok": True})
     with patch.object(sat, "call_best_agent", return_value=good_answer), \
-         patch.object(sat, "post_to_slack", mock_post), \
+         patch.object(sat, "post_to_chat", mock_post), \
          patch.object(sat, "_build_summon_context", return_value=""), \
          patch.object(sat, "get_channel_id", return_value=None):
         sat.answer_agent_summons("xoxb-test", summons, state)
@@ -608,7 +608,7 @@ def test_answer_summons_appends_to_replied_to():
     good_answer = "Detailed LSTM analysis in backend/app/ml/models/lstm_model.py — val_sharpe 1.8 vs train 3.2."
 
     with patch.object(sat, "call_best_agent", return_value=good_answer), \
-         patch.object(sat, "post_to_slack", return_value={"ok": True}), \
+         patch.object(sat, "post_to_chat", return_value={"ok": True}), \
          patch.object(sat, "_build_summon_context", return_value=""), \
          patch.object(sat, "get_channel_id", return_value=None):
         sat.answer_agent_summons("xoxb-test", summons, state)
@@ -621,7 +621,7 @@ def test_onboarding_sets_state_week_key():
     """post_engineer_onboarding sets state['onboarding_posted_week']."""
     state = {}
     with patch.object(sat, "get_channel_id", return_value="C_HELP"), \
-         patch.object(sat, "_slack_channel_has_recent_bot_post", return_value=False), \
+         patch.object(sat, "_channel_has_recent_bot_post", return_value=False), \
          patch.object(sat, "chat_call", return_value={"ok": True}):
         sat.post_engineer_onboarding("xoxb-test", state)
 
@@ -676,14 +676,14 @@ def test_identity_unknown_channel_falls_back_to_default():
 
 
 def test_identity_used_in_answer_summons():
-    """answer_agent_summons calls post_to_slack with the correct agent identity for the channel."""
+    """answer_agent_summons calls post_to_chat with the correct agent identity for the channel."""
     summons = [_make_summon(channel="desk-crypto")]
     state = {"replied_to": []}
     answer = "Funding rate carry on Binance via CCXT in backend/app/strategies/manual/triangular_arb.py shows 0.8% annualized per day."
 
     mock_post = MagicMock(return_value={"ok": True})
     with patch.object(sat, "call_best_agent", return_value=answer), \
-         patch.object(sat, "post_to_slack", mock_post), \
+         patch.object(sat, "post_to_chat", mock_post), \
          patch.object(sat, "_build_summon_context", return_value=""), \
          patch.object(sat, "get_channel_id", return_value=None):
         sat.answer_agent_summons("xoxb-test", summons, state)
@@ -702,7 +702,7 @@ def test_identity_used_for_engineering_channel():
 
     mock_post = MagicMock(return_value={"ok": True})
     with patch.object(sat, "call_best_agent", return_value=answer), \
-         patch.object(sat, "post_to_slack", mock_post), \
+         patch.object(sat, "post_to_chat", mock_post), \
          patch.object(sat, "_build_summon_context", return_value=""), \
          patch.object(sat, "get_channel_id", return_value=None):
         sat.answer_agent_summons("xoxb-test", summons, state)
@@ -757,7 +757,7 @@ def test_answer_summons_alpha_research_uses_correct_identity():
 
     mock_post = MagicMock(return_value={"ok": True})
     with patch.object(sat, "call_best_agent", return_value=answer), \
-         patch.object(sat, "post_to_slack", mock_post), \
+         patch.object(sat, "post_to_chat", mock_post), \
          patch.object(sat, "_build_summon_context", return_value=""), \
          patch.object(sat, "get_channel_id", return_value=None):
         sat.answer_agent_summons("xoxb-test", summons, state)
@@ -777,8 +777,8 @@ def test_post_daily_reminder_never_posts_to_alpha_research():
         return {"ok": True}
 
     with patch.object(sat, "_already_posted", return_value=False), \
-         patch.object(sat, "_slack_channel_has_recent_bot_post", return_value=False), \
-         patch.object(sat, "post_to_slack", side_effect=capture_post):
+         patch.object(sat, "_channel_has_recent_bot_post", return_value=False), \
+         patch.object(sat, "post_to_chat", side_effect=capture_post):
         sat.post_daily_agent_reminder("xoxb-test", state)
 
     assert "alpha-research" not in posted_channels

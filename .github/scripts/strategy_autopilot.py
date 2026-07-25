@@ -589,7 +589,7 @@ def main() -> None:
         state["runs"][r["name"]] = state["runs"][r["name"]][-5:]
     _save_state(state)
 
-    # Build Slack report
+    # Build Discord report
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     n_bars = len(list(data.values())[0]) if data else 0
     n_is_bars = int(n_bars * _TRAIN_FRAC)
@@ -637,9 +637,9 @@ def main() -> None:
         lines.append("")
         lines.append(f"*🤖 LLM-proposed mutations tested:* {len(mutations)}")
 
-    slack_report = "\n".join(lines)
-    print("\n" + slack_report, flush=True)
-    chat_post("#strategy-lab", slack_report)
+    chat_report = "\n".join(lines)
+    print("\n" + chat_report, flush=True)
+    chat_post("#strategy-lab", chat_report)
 
     print("Autopilot complete.", flush=True)
 

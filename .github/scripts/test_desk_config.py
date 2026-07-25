@@ -71,7 +71,7 @@ def test_every_desk_has_symbols_and_sane_limits():
         assert len(d.symbols) == len(set(d.symbols)), f"{d.name}: duplicate symbols"
         assert d.notional_usd > 0, f"{d.name}: non-positive notional"
         assert 0.0 < d.confidence_min <= 1.0, f"{d.name}: bad confidence_min"
-        assert d.slack_channel.startswith("#"), f"{d.name}: bad channel {d.slack_channel!r}"
+        assert d.chat_channel.startswith("#"), f"{d.name}: bad channel {d.chat_channel!r}"
 
 
 def test_desk_strategies_have_explicit_regime_mapping():

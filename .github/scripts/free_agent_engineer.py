@@ -3,7 +3,7 @@ QuantEdge Free-Agent Engineer — autonomous issue fixer.
 
 Reads open GitHub Issues labeled "agent-fix-needed", calls free LLMs
 (Gemini Flash → Groq fallback) to generate targeted code fixes, applies
-them, verifies imports, commits, closes the issue, and posts to Slack.
+them, verifies imports, commits, closes the issue, and posts to Discord.
 
 Environment variables required:
   GH_TOKEN        — GitHub token with repo + issues write permissions
@@ -476,7 +476,7 @@ def _revert_file(file_path: str) -> None:
         print(f"[free-agent] Revert failed: {e}")
 
 
-# ─── Slack notification ───────────────────────────────────────────────────────
+# ─── Discord notification ───────────────────────────────────────────────────────
 
 def _chat_post(channel: str, text: str) -> None:
     """Post to Discord via the shared notifier.
@@ -594,8 +594,8 @@ def _process_issue(issue: dict) -> str:
     )
     _close_issue(number, close_comment)
 
-    # 9. Notify Slack #incidents
-    slack_msg = (
+    # 9. Notify Discord #incidents
+    chat_msg = (
         f":robot: *Free-agent engineer fixed issue #{number}*\n"
         f"*Issue:* {title}\n"
         f"*Agent:* {agent_name}\n"
@@ -603,7 +603,7 @@ def _process_issue(issue: dict) -> str:
         f"*Root cause:* {fix.get('root_cause', 'N/A')}\n"
         f"*Fix:* {fix.get('explanation', 'N/A')}"
     )
-    _chat_post("incidents", slack_msg)
+    _chat_post("incidents", chat_msg)
 
     return "fixed"
 

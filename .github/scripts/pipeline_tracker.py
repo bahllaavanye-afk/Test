@@ -17,7 +17,7 @@ Usage in any runner script:
     tracker.complete()
 
 State is written to pipeline_runs.json at the repo root and optionally
-posted to Slack per-stage.
+posted to Discord per-stage.
 """
 from __future__ import annotations
 
@@ -108,9 +108,9 @@ class PipelineRunRecord:
     run_url:      str = ""
 
 
-# ─── Slack helpers ─────────────────────────────────────────────────────────────
+# ─── Discord helpers ─────────────────────────────────────────────────────────────
 
-def _slack_post(channel: str, text: str) -> None:
+def _chat_post(channel: str, text: str) -> None:
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     notify.post(channel, text)
@@ -197,9 +197,9 @@ class PipelineTracker:
         t0 = time.monotonic()
         self._save()
 
-        # Slack: stage started
+        # Discord: stage started
         if channel:
-            _slack_post(channel, f":hourglass_flowing_sand: *{label}* started  |  pipeline `{self.pipeline}`  |  <{RUN_URL}|run →>")
+            _chat_post(channel, f":hourglass_flowing_sand: *{label}* started  |  pipeline `{self.pipeline}`  |  <{RUN_URL}|run →>")
 
         print(f"\n  [stage] {label} — running", flush=True)
 
@@ -209,10 +209,10 @@ class PipelineTracker:
             sr.duration_s   = round(time.monotonic() - t0, 2)
             sr.completed_at = _now()
             self._save()
-            # Slack: stage done
+            # Discord: stage done
             summary = _format_output(sr.output)
             if channel:
-                _slack_post(channel,
+                _chat_post(channel,
                     f":white_check_mark: *{label}* completed in `{sr.duration_s}s`"
                     + (f"  —  {summary}" if summary else "")
                     + f"  |  <{RUN_URL}|run →>")
@@ -226,7 +226,7 @@ class PipelineTracker:
             self._record.status = Status.FAILED
             self._save()
             if channel:
-                _slack_post(channel,
+                _chat_post(channel,
                     f":x: *{label}* FAILED after `{sr.duration_s}s`\n"
                     f"```{sr.error}```  |  <{RUN_URL}|run →>")
             print(f"  [stage] ✗ {label} — {sr.error}", flush=True)
@@ -286,7 +286,7 @@ def _to_dict(obj) -> dict:
     return obj
 
 
-# ─── Read helpers (used by API / Slack agents) ─────────────────────────────────
+# ─── Read helpers (used by API / Discord agents) ─────────────────────────────────
 
 def load_runs(limit: int = 20) -> list[dict]:
     if not STATE_FILE.exists():

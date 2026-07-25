@@ -102,7 +102,7 @@ EMPLOYEE_CHANNEL_MAP: dict[str, tuple[str, str]] = {
 # Templates that indicate onboarding/reminder spam rather than real content
 TEMPLATE_SPAM_SNIPPETS: list[str] = [
     "Welcome to QuantEdge — Free Agent Team Guide",
-    "Our AI agents run 24/7 across all Slack channels",
+    "Our AI agents run 24/7 across all Discord channels",
     "Agent Health Report",
     "Channel Health Monitor",
     "Daily agent reminder",
@@ -150,7 +150,7 @@ class MonitorReport:
     agents_healed: int = 0
 
 
-# ─── Slack helpers ────────────────────────────────────────────────────────────
+# ─── Discord helpers ────────────────────────────────────────────────────────────
 
 
 _channels_cache: dict[str, dict] = {}
@@ -161,7 +161,7 @@ def chat_call(method: str, payload: dict) -> dict:
     """Discord-backed stand-in for the old Slack Web API dispatcher.
 
     Slack was removed 2026-07-25. Rather than rewrite ~60 call sites spread over
-    this file, the dispatcher itself now translates the handful of Slack methods
+    this file, the dispatcher itself now translates the handful of Discord methods
     that were used into Discord operations, and returns Slack-shaped dicts so the
     callers' `.get("ok")` / `.get("messages")` handling still works.
 
@@ -219,7 +219,7 @@ def get_channel_id(token: str, name: str) -> str | None:
     return ch["id"] if ch else None
 
 
-def post_to_slack(
+def post_to_chat(
     token: str,
     channel: str,
     text: str,
@@ -227,7 +227,7 @@ def post_to_slack(
     username: str = "Channel Monitor",
     icon_emoji: str = ":mag:",
 ) -> dict:
-    """Post a message to a Slack channel by name."""
+    """Post a message to a Discord channel by name."""
     if not token:
         return {"ok": False, "error": "no_token"}
     ch_id = get_channel_id(token, channel)
@@ -252,7 +252,7 @@ def post_to_slack(
         fallback = {"channel": channel_ref, "text": f"**[{username}]** {text}", "mrkdwn": True}
         result = chat_call("chat.postMessage", fallback)
     if not result.get("ok"):
-        # Slack rejected outright (dead quota / revoked token) — deliver the
+        # Discord rejected outright (dead quota / revoked token) — deliver the
         # loop-consistency report via Discord instead of losing it.
         try:
             import notify
@@ -268,7 +268,7 @@ def post_to_slack(
 
 def _is_bot_message(msg: dict) -> bool:
     """True if the message was posted by a bot (not a human user)."""
-    # Slack marks bot messages with bot_id or subtype='bot_message'
+    # Discord marks bot messages with bot_id or subtype='bot_message'
     if msg.get("bot_id"):
         return True
     if msg.get("subtype") == "bot_message":
@@ -314,7 +314,7 @@ def check_channel(token: str, channel: str) -> ChannelStatus:
             status.last_post_hours_ago = 999.0
             return status
 
-        # Most recent message first (Slack returns newest first)
+        # Most recent message first (Discord returns newest first)
         most_recent = messages[0]
         ts_float = float(most_recent.get("ts", 0))
         status.last_post_ts = ts_float
@@ -415,7 +415,7 @@ def auto_heal_agent(token: str, emp_name: str, fn_name: str, channel: str) -> tu
             icon = getattr(post, "icon_emoji", ":robot_face:")
             if not text:
                 continue
-            res = post_to_slack(token, channel_target, text, username=username, icon_emoji=icon)
+            res = post_to_chat(token, channel_target, text, username=username, icon_emoji=icon)
             if res.get("ok"):
                 success = True
                 print(f"  [auto-heal] ✓ {fn_name} → #{channel_target}")
@@ -549,10 +549,10 @@ def main() -> int:
     now_epoch = time.time()
 
     if not CHAT_ENABLED:
-        print("No token — printing report to stdout only (no Slack posts)")
+        print("No token — printing report to stdout only (no Discord posts)")
         print(f"\nChannel Health Monitor — {timestamp}")
         print(f"Monitoring {len(MONITORED_CHANNELS)} channels, {len(EMPLOYEE_CHANNEL_MAP)} employee agents")
-        print("Set CHAT_ENABLED env var to enable Slack posting and live channel reads.")
+        print("Set CHAT_ENABLED env var to enable Discord posting and live channel reads.")
         return 0
 
     print(f"[channel_monitor] Starting — {timestamp}")
@@ -627,7 +627,7 @@ def main() -> int:
     incidents_text = build_incidents_report(report)
     print(f"\n  Posting health report to #incidents…")
     print(incidents_text)
-    inc_res = post_to_slack(
+    inc_res = post_to_chat(
         CHAT_ENABLED, "incidents", incidents_text,
         username="Channel Health Monitor",
         icon_emoji=":rotating_light:",
@@ -658,7 +658,7 @@ def main() -> int:
     # ── Phase 6: Post summary to #allquantedge ────────────────────────────────
     summary = build_allquantedge_summary(report)
     print(f"\n  Posting summary to #allquantedge: {summary}")
-    aq_res = post_to_slack(
+    aq_res = post_to_chat(
         CHAT_ENABLED, "allquantedge", summary,
         username="Channel Health Monitor",
         icon_emoji=":bar_chart:",

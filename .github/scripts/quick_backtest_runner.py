@@ -1,7 +1,7 @@
 """
 Quick Backtest Runner — runs every 15 minutes.
 Standalone: no backend deps. Uses yfinance + numpy.
-Runs lightweight signal backtests on crypto+equity symbols and posts results to Slack.
+Runs lightweight signal backtests on crypto+equity symbols and posts results to Discord.
 """
 from __future__ import annotations
 import os, sys, json
@@ -285,7 +285,7 @@ def main():
     mem["backtest_results"] = (mem["backtest_results"] + results)[-500:]
     save_memory(mem)
 
-    # Build Slack report
+    # Build Discord report
     best = results[:5]
     lines = [f"*Backtest Report — {now.strftime('%H:%M UTC')} | {len(results)} runs across {len(set(r['desk'] for r in results))} desks*\n"]
     lines.append("*Top 5 by Sharpe Ratio*")

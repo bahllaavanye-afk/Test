@@ -7,7 +7,7 @@ retires persistent losers so the desk doesn't keep bleeding on dead strategies.
 Reads paper performance from backend/performance_log/strategy_performance.json
 (written by fill_tracker.py: per strategy → trades, wins, win_rate,
 avg_return_pct, total_return_pct). Flags strategies to TRIM, records them in
-.github/state/strategy_trims.json, and posts a summary to Slack #alpha-research.
+.github/state/strategy_trims.json, and posts a summary to Discord #alpha-research.
 The desk placer can read the trims file to skip retired strategies.
 
 Only judges strategies with enough trades (statistical significance) — never

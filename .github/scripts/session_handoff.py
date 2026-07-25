@@ -1,5 +1,5 @@
 """
-Session Handoff — posts a full system briefing to Slack #engineering when called.
+Session Handoff — posts a full system briefing to Discord #engineering when called.
 Reads agent_memory.json + git log to reconstruct state.
 Run this when Claude Code session is ending so the next session starts informed.
 Also triggered by the watchdog if no recent commits are detected.
@@ -88,7 +88,7 @@ def main():
         "*Active Autonomous Workflows*",
         "  • `*/5 * * * *` — system-watchdog (health + self-heal)",
         "  • `*/5 * * * *` — signal-runner (crypto/equity/polymarket signals)",
-        "  • `*/5 * * * *` — slack-summon-watcher (respond to Slack messages)",
+        "  • `*/5 * * * *` — chat-summon-watcher (respond to Discord messages)",
         "  • `*/15 * * * *` — quick-backtest (strategy backtests)",
         "  • `*/15 * * * *` — token-usage-monitor (#token-usage posts)",
         "  • `*/30 * * * *` — continuous-improvement (5 files/run, RLVR+Reflexion+Voyager)",

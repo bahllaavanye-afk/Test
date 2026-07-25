@@ -1,9 +1,9 @@
 """
-Claude ↔ Employee Conversations — Real Slack threads with Gemini-powered responses.
+Claude ↔ Employee Conversations — Real Discord threads with Gemini-powered responses.
 
 Claude posts an opening message to each channel.
 The channel's resident employee responds using Gemini Flash (free tier).
-Both sides are posted to Slack so you can see the real thread.
+Both sides are posted to Discord so you can see the real thread.
 
 Usage (via GitHub Actions workflow_dispatch or direct):
     python claude_conversations.py [--channel CHANNEL] [--all]
@@ -64,7 +64,7 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "vp_eng",
         "name": "VP Engineering",
         "emoji": "⚙️",
-        "slack_name": "VP-Eng · Alex Chen",
+        "display_name": "VP-Eng · Alex Chen",
         "claude_opener": (
             "Hey Alex, I just reviewed the workflow runs. desk-trading is now green, "
             "free-agent-engineer exits 0 on partial fixes, and gemini-ml-training has "
@@ -76,7 +76,7 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "ml_lead",
         "name": "ML Lead / Crypto Desk",
         "emoji": "₿",
-        "slack_name": "ML-Lead · Kai Zhang",
+        "display_name": "ML-Lead · Kai Zhang",
         "claude_opener": (
             "Kai, the DEX-CEX arb strategy is live (dex_cex_arb.py), social sentiment "
             "features are wired into engineer.py for crypto symbols, and we have 13 crypto "
@@ -88,7 +88,7 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "poly_desk",
         "name": "Polymarket Desk",
         "emoji": "🎯",
-        "slack_name": "Poly-Desk · Lior Avraham",
+        "display_name": "Poly-Desk · Lior Avraham",
         "claude_opener": (
             "Lior, we have 5 Polymarket strategies: poly_binary_arb, poly_calibration_arb, "
             "poly_late_resolution, poly_market_maker, polymarket_sentiment_momentum. "
@@ -100,7 +100,7 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "alpha_dir",
         "name": "Alpha Research Director",
         "emoji": "📈",
-        "slack_name": "Alpha-Dir · Sofia Karlsson",
+        "display_name": "Alpha-Dir · Sofia Karlsson",
         "claude_opener": (
             "Sofia, equities desk has 43 strategies live including cross_sectional_momentum, "
             "opening_range_breakout, vwap_reversion, and the full ML-enhanced suite. "
@@ -112,7 +112,7 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "cro",
         "name": "Chief Risk Officer",
         "emoji": "🛡️",
-        "slack_name": "CRO · Marcus Olufemi",
+        "display_name": "CRO · Marcus Olufemi",
         "claude_opener": (
             "Marcus, capital split is 70% arb / 30% directional as configured. "
             "Bot exit checker runs every 5 min and creates Trade records at TP/SL. "
@@ -124,7 +124,7 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "ml_researcher",
         "name": "ML Researcher",
         "emoji": "🧠",
-        "slack_name": "ML-Research · Tomas Lindqvist",
+        "display_name": "ML-Research · Tomas Lindqvist",
         "claude_opener": (
             "Tomas, we have 17 model architectures: LSTM, TFT, XGBoost, LightGBM, "
             "SSM (Mamba-style), PatchTST, iTransformer, GNN, A3C-LSTM, Ensemble. "
@@ -136,7 +136,7 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "backend_lead",
         "name": "Backend Lead",
         "emoji": "🔧",
-        "slack_name": "Backend-Lead · Anna Hoffmann",
+        "display_name": "Backend-Lead · Anna Hoffmann",
         "claude_opener": (
             "Anna, FastAPI backend is live on Render. 78 strategies registered (28 arb, 44 equity, 6 crypto). "
             "APScheduler running 10 jobs (snapshot, retrain, order_sync, bot_exit_checker, etc.). "
@@ -148,11 +148,11 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "devops_dir",
         "name": "DevOps Director",
         "emoji": "🚨",
-        "slack_name": "DevOps-Dir · Kenji Watanabe",
+        "display_name": "DevOps-Dir · Kenji Watanabe",
         "claude_opener": (
             "Kenji, 60 GitHub Actions workflows running on main branch: signal-runner every 5min, "
             "system-watchdog every 5min, quick-backtest every 15min, continuous-improvement every 30min, "
-            "slack-agent-team 4x/day. All 7 LLM providers configured. "
+            "chat-agent-team 4x/day. All 7 LLM providers configured. "
             "Which workflow is the highest single point of failure right now?"
         ),
     },
@@ -160,7 +160,7 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "frontend_lead",
         "name": "Frontend Lead",
         "emoji": "🎨",
-        "slack_name": "Frontend · Priya Iyer",
+        "display_name": "Frontend · Priya Iyer",
         "claude_opener": (
             "Priya, the Bloomberg dark theme is live on all pages. LWCharts equity curves, "
             "comparison chart, and drawdown monitor are all rendering. "
@@ -172,7 +172,7 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "data_lead",
         "name": "Data Engineering Lead",
         "emoji": "🗄️",
-        "slack_name": "Data-Eng · Jiwoo Park",
+        "display_name": "Data-Eng · Jiwoo Park",
         "claude_opener": (
             "Jiwoo, real-time feeds from Alpaca + Binance WebSocket are live. "
             "Redis price cache TTL is set. Historical OHLCV pipeline runs nightly. "
@@ -183,7 +183,7 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "alpha_researcher",
         "name": "Alpha Researcher",
         "emoji": "⚗️",
-        "slack_name": "Alpha · Aleksandr Petrov",
+        "display_name": "Alpha · Aleksandr Petrov",
         "claude_opener": (
             "Aleksandr, 78 strategies live: 44 equity + 28 arb + 6 crypto. "
             "Walk-forward validation enforced on all. poly_binary_arb near risk-free, "
@@ -195,7 +195,7 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "exec_lead",
         "name": "Execution Lead",
         "emoji": "⚡",
-        "slack_name": "Execution · Ying Chen",
+        "display_name": "Execution · Ying Chen",
         "claude_opener": (
             "Ying, TWAP/VWAP/LimitFirst/Iceberg all implemented. Smart router selects algo by "
             "order size and urgency. PPO RL execution agent trained for minimizing implementation shortfall. "
@@ -207,7 +207,7 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "security_lead",
         "name": "Security Lead",
         "emoji": "🔐",
-        "slack_name": "Security · Naoko Tanaka",
+        "display_name": "Security · Naoko Tanaka",
         "claude_opener": (
             "Naoko, JWT auth on all endpoints, AES-256 broker key encryption, rate limiting via slowapi. "
             "No raw SQL (ORM only), CSP headers on Vercel, secret scanning active. "
@@ -219,7 +219,7 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "product_lead",
         "name": "Product Manager",
         "emoji": "📋",
-        "slack_name": "Product · Sarah Kim",
+        "display_name": "Product · Sarah Kim",
         "claude_opener": (
             "Sarah, OKR 1 (CEO): investor pipeline at 10 contacts, Series A target D90. "
             "OKR 1 (CTO): 50+ commits/day via continuous improvement bots. "
@@ -231,7 +231,7 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "devops_dir",
         "name": "DevOps Director",
         "emoji": "🚀",
-        "slack_name": "DevOps · Liu Wei",
+        "display_name": "DevOps · Liu Wei",
         "claude_opener": (
             "Liu, 42 GitHub Actions workflows deployed, all running hourly. Render backend + Vercel frontend live. "
             "Agent heartbeat monitors every 30 min. P0 watchdog alerts every hour. "
@@ -243,7 +243,7 @@ CHANNEL_EMPLOYEES: dict[str, dict] = {
         "emp_key": "ml_infra",
         "name": "ML Infrastructure Lead",
         "emoji": "🏗️",
-        "slack_name": "ML-Infra · Felix Andersen",
+        "display_name": "ML-Infra · Felix Andersen",
         "claude_opener": (
             "Felix, Gemini cloud training runs every 4h across all symbols. "
             "LSTM, TFT, XGBoost, LightGBM, SSM, Lorentzian KNN, Ensemble all in registry. "
@@ -468,7 +468,7 @@ def get_employee_response(emp_key: str, context: str) -> tuple[str, str]:
         persona = "You are a senior quant engineer at QuantEdge, an algorithmic trading platform."
 
     user_msg = (
-        f"Claude (platform AI) just posted this to your Slack channel:\n\n"
+        f"Claude (platform AI) just posted this to your Discord channel:\n\n"
         f"\"{context}\"\n\n"
         f"Reply directly and concisely as yourself. Be specific — cite file names, metrics, "
         f"numbers. Max 120 words. Discord format (**bold** for emphasis). No headers."
@@ -497,13 +497,13 @@ def get_employee_response(emp_key: str, context: str) -> tuple[str, str]:
     )
 
 
-# ── Slack helpers ──────────────────────────────────────────────────────────────
+# ── Discord helpers ──────────────────────────────────────────────────────────────
 
 def chat_call(method: str, payload: dict) -> dict:
     """Discord-backed stand-in for the old Slack Web API dispatcher.
 
     Slack was removed 2026-07-25. Rather than rewrite ~60 call sites spread over
-    this file, the dispatcher itself now translates the handful of Slack methods
+    this file, the dispatcher itself now translates the handful of Discord methods
     that were used into Discord operations, and returns Slack-shaped dicts so the
     callers' `.get("ok")` / `.get("messages")` handling still works.
 
@@ -572,7 +572,7 @@ def get_or_create_channel(channel_name: str) -> str | None:
 
 def post_message(channel: str, text: str, thread_ts: str | None = None,
                  username: str | None = None, icon_emoji: str | None = None) -> dict:
-    # Discord is the operator's live surface — deliver there first (Slack token is
+    # Discord is the operator's live surface — deliver there first (Discord token is
     # dead). Best-effort so a delivery hiccup never breaks a conversation.
     try:
         import sys as _sys
@@ -655,7 +655,7 @@ def follow_up_on_threads(memory: dict):
 
             # Have the employee respond to the latest message in the thread
             emp_key = config["emp_key"]
-            context = f"In your Slack channel, someone just said: \"{latest_reply}\"\n\nRespond briefly as yourself. Max 80 words."
+            context = f"In your Discord channel, someone just said: \"{latest_reply}\"\n\nRespond briefly as yourself. Max 80 words."
             emp_text, provider = get_employee_response(emp_key, context)
 
             if emp_text and "unavailable" not in emp_text.lower():
@@ -663,10 +663,10 @@ def follow_up_on_threads(memory: dict):
                     "channel": ch_id,
                     "text": emp_text,
                     "thread_ts": ts,
-                    "username": config["slack_name"],
+                    "username": config["display_name"],
                 }
                 chat_call("chat.postMessage", reply_payload)
-                print(f"  ↩ Follow-up in #{channel_name} thread by {config['slack_name']}")
+                print(f"  ↩ Follow-up in #{channel_name} thread by {config['display_name']}")
 
             # Update state
             thread_state[state_key] = {"last_reply_count": reply_count}
@@ -687,7 +687,7 @@ def run_conversation(channel_name: str) -> dict:
     print(f"{'='*60}")
 
     if not CHAT_ENABLED:
-        print("⚠️  No CHAT_ENABLED — conversation will be logged only, not posted to Slack.")
+        print("⚠️  No CHAT_ENABLED — conversation will be logged only, not posted to Discord.")
 
     # Step 1: Post Claude's opening message
     claude_text = (
@@ -702,7 +702,7 @@ def run_conversation(channel_name: str) -> dict:
     if CHAT_ENABLED:
         ch_id = get_or_create_channel(channel_name)
         if not ch_id:
-            print(f"⚠️  Channel #{channel_name} not found/created — skipping Slack post")
+            print(f"⚠️  Channel #{channel_name} not found/created — skipping Discord post")
         else:
             ensure_in_channel(ch_id)
             result = post_message(
@@ -725,7 +725,7 @@ def run_conversation(channel_name: str) -> dict:
     # Step 3: Post employee response as reply in thread
     if CHAT_ENABLED and ch_id:
         formatted = (
-            f"*{config['slack_name']}* {config['emoji']}\n"
+            f"**{config['display_name']}** {config['emoji']}\n"
             f"_{provider}_\n\n"
             f"{emp_text}"
         )
@@ -733,7 +733,7 @@ def run_conversation(channel_name: str) -> dict:
             ch_id,
             formatted,
             thread_ts=thread_ts,
-            username=config["slack_name"],
+            username=config["display_name"],
             icon_emoji=config["emoji"],
         )
         if reply.get("ok"):
@@ -747,7 +747,7 @@ def run_conversation(channel_name: str) -> dict:
         "provider": provider,
         "claude_message": config["claude_opener"],
         "employee_response": emp_text,
-        "posted_to_slack": bool(CHAT_ENABLED and ch_id and thread_ts),
+        "posted_to_chat": bool(CHAT_ENABLED and ch_id and thread_ts),
     }
 
 
@@ -808,7 +808,7 @@ def main():
                 "message": emp_text[:500],
                 "timestamp": ts_emp,
                 "provider": r.get("provider", "none"),
-                "posted_to_slack": r.get("posted_to_slack", False),
+                "posted_to_chat": r.get("posted_to_chat", False),
             }
 
     memory["conversations"] = conversations
@@ -821,7 +821,7 @@ def main():
     print(f"CONVERSATION SUMMARY — {len(results)} channels")
     print(f"{'='*60}")
     for r in results:
-        status = "✅ Slack" if r.get("posted_to_slack") else "📋 Log-only"
+        status = "✅ Discord" if r.get("posted_to_chat") else "📋 Log-only"
         print(f"{status}  #{r['channel']:20} {r['employee']:25} [{r['provider']}]")
 
     # Write summary JSON for GitHub step summary

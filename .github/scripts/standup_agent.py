@@ -1,5 +1,5 @@
 """
-Daily Standup Agent — posts org cadence events to Slack channels.
+Daily Standup Agent — posts org cadence events to Discord channels.
 
 Events per CTO_ORG_FULL.md:
   13:00 UTC — All-hands standup (CTO-led, all channels)
@@ -71,7 +71,7 @@ def get_github_context() -> dict:
         pass
     return ctx
 
-# ── Slack ─────────────────────────────────────────────────────────────────────
+# ── Discord ─────────────────────────────────────────────────────────────────────
 
 def post_chat(channel: str, text: str, username: str = "QuantEdge CTO", icon: str = "robot_face") -> bool:
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
@@ -111,7 +111,7 @@ REAL PLATFORM DATA (use this, not made-up numbers):
 - Failure traces to learn from: {failure_count}
 
 Write 4-5 bullets. Tone: energetic, data-driven. Reference the real stats above.
-Under 150 words. Slack markdown. No headers."""
+Under 150 words. Discord markdown. No headers."""
 
     content = llm(prompt)
     if not content:
@@ -186,7 +186,7 @@ Include based on the above:
 - 1 research direction worth pursuing
 - Next concrete action
 
-Under 120 words. Tone: academic yet decisive. Use Slack markdown."""
+Under 120 words. Tone: academic yet decisive. Use Discord markdown."""
     content = llm(prompt, max_tokens=300)
     if not content:
         content = "• Momentum factor refresh showing improved 12-1 month signal on crypto\n• Evaluating PCA stat-arb on ETF pairs for equity desk\n• Tracking: 'Conditional momentum in crypto' (arXiv 2024)\n• Action: backtest both on 2023-2025 OOS data this week"
@@ -227,7 +227,7 @@ REAL PLATFORM DATA:
 Write a professional EOD risk report. Use the real data above.
 Do NOT make up VaR numbers — say "paper mode: no AUM at risk" for financial figures.
 Include: regime status, circuit breaker status (none — paper mode), allocation status, agent health.
-Under 120 words. Slack markdown."""
+Under 120 words. Discord markdown."""
     content = llm(prompt, max_tokens=300)
     if not content:
         content = (

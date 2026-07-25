@@ -4,7 +4,7 @@ Multi-Agent Discussion — employees genuinely collaborate by reading each other
 Architecture (Voyager + Reflexion + MARL-lite):
 1. Each "speaker" agent reads: shared memory, skills, recent peer learnings
 2. It generates a substantive update about its domain using a free LLM
-3. Other "reactor" agents read the update and reply in the same Slack thread
+3. Other "reactor" agents read the update and reply in the same Discord thread
 4. All findings written back to agent_memory.json peer_learnings
 
 This creates a realistic engineering discussion where agents:
@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import requests
 
-# Discord is the operator's actual chat surface (Slack token is dead). Deliver
+# Discord is the operator's actual chat surface (Discord token is dead). Deliver
 # every discussion message to Discord via the shared notify helper — bot-token
 # routing to the matching channel, per-channel webhook, or default webhook.
 sys.path.insert(0, str(Path(__file__).resolve().parent))

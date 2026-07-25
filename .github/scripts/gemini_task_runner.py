@@ -18,7 +18,7 @@ Environment variables:
   GEMINI_API_KEY  — primary (free 1500 req/day)
   GEMINI_API_KEY_2, GEMINI_API_KEY_3 — fallback keys
   GROQ_API_KEY    — fallback (free 500k tok/day)
-  CHAT_ENABLED — optional Slack posting
+  CHAT_ENABLED — optional Discord posting
   ALLOW_PAID_APIS — must be "False"
 
 Usage:
@@ -233,13 +233,13 @@ def create_issue(title: str, body: str) -> int | None:
     return num
 
 
-# ── Slack ──────────────────────────────────────────────────────────────────────
+# ── Discord ──────────────────────────────────────────────────────────────────────
 
 def _chat_post(channel: str, text: str) -> None:
     """Post to Discord via the shared notifier.
 
     Previously POSTed to slack.com and returned early with no token, so this
-    runner's reports went nowhere once Slack was dead.
+    runner's reports went nowhere once Discord was dead.
     """
     try:
         import notify

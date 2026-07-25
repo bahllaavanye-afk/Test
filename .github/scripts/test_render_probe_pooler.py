@@ -124,7 +124,10 @@ import asyncio
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # asyncio.run(), not get_event_loop(): when the whole suite runs together
+    # another test can leave the ambient loop closed, which made these two
+    # silently skip with "coroutine was never awaited".
+    return asyncio.run(coro)
 
 
 def test_no_patch_when_current_host_already_recognises_the_tenant(monkeypatch):

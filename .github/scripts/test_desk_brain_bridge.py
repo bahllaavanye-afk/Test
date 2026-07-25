@@ -64,7 +64,7 @@ def test_synthesize_includes_desk_results(monkeypatch):
     monkeypatch.setattr(company_brain, "llm", fake_llm)
 
     out = company_brain.synthesize_insights(
-        slack_msgs=[], github_items=[], code_findings=[],
+        chat_msgs=[], github_items=[], code_findings=[],
         desk_items=[{"source": "desk", "channel": "pnl-daily", "text": "funnel 49→5, +$12"}],
     )
     assert "DESK RESULTS" in captured["prompt"]

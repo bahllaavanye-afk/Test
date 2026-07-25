@@ -45,7 +45,7 @@ SERVICES = [
         "expected_status": [200, 401],  # 401 = wrong key but API is up
         "headers": {},
         "critical": True,
-        "slack_channel": "#desk-equities",
+        "chat_channel": "#desk-equities",
     },
     {
         "name": "Alpaca Data API",
@@ -54,7 +54,7 @@ SERVICES = [
         "expected_status": [200, 401, 403],
         "headers": {},
         "critical": True,
-        "slack_channel": "#infra-alerts",
+        "chat_channel": "#infra-alerts",
     },
     {
         "name": "Binance REST API",
@@ -65,7 +65,7 @@ SERVICES = [
         "expected_status": [200, 451],
         "headers": {},
         "critical": True,
-        "slack_channel": "#desk-crypto",
+        "chat_channel": "#desk-crypto",
     },
     {
         "name": "Binance Futures API",
@@ -74,7 +74,7 @@ SERVICES = [
         "expected_status": [200, 451],  # 451 = geo-block from runners (see above)
         "headers": {},
         "critical": True,
-        "slack_channel": "#desk-crypto",
+        "chat_channel": "#desk-crypto",
     },
     {
         "name": "Polymarket CLOB",
@@ -83,7 +83,7 @@ SERVICES = [
         "expected_status": [200, 404],
         "headers": {},
         "critical": True,
-        "slack_channel": "#desk-polymarket",
+        "chat_channel": "#desk-polymarket",
     },
     {
         "name": "Vercel (Frontend)",
@@ -92,7 +92,7 @@ SERVICES = [
         "expected_status": [200, 301, 302, 404],  # 404 = deployed but no route at /
         "headers": {},
         "critical": True,
-        "slack_channel": "#infra-alerts",
+        "chat_channel": "#infra-alerts",
     },
     {
         "name": "Render (Backend API)",
@@ -101,7 +101,7 @@ SERVICES = [
         "expected_status": [200],
         "headers": {},
         "critical": True,
-        "slack_channel": "#infra-alerts",
+        "chat_channel": "#infra-alerts",
     },
     {
         "name": "Anthropic API",
@@ -110,7 +110,7 @@ SERVICES = [
         "expected_status": [200, 401],  # 401 = wrong key but API is up
         "headers": {"anthropic-version": "2023-06-01"},
         "critical": False,
-        "slack_channel": "#infra-alerts",
+        "chat_channel": "#infra-alerts",
     },
     {
         "name": "GitHub API",
@@ -119,7 +119,7 @@ SERVICES = [
         "expected_status": [200],
         "headers": {"User-Agent": "QuantEdge-Monitor"},
         "critical": False,
-        "slack_channel": "#infra-alerts",
+        "chat_channel": "#infra-alerts",
     },
     {
         "name": "yfinance (Yahoo Finance)",
@@ -128,7 +128,7 @@ SERVICES = [
         "expected_status": [200],
         "headers": {"User-Agent": "Mozilla/5.0"},
         "critical": True,
-        "slack_channel": "#infra-alerts",
+        "chat_channel": "#infra-alerts",
     },
 ]
 
@@ -141,7 +141,7 @@ DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL", "")
 
 
 def discord_post(channel: str, text: str) -> None:
-    """Failover alert delivery — Slack's free-tier quota can die entirely
+    """Failover alert delivery — Discord's free-tier quota can die entirely
     (message_limit_exceeded), and a monitor whose alerts go nowhere is useless."""
     slug = str(channel).lstrip("#").upper().replace("-", "_")
     webhook = os.environ.get(f"DISCORD_WEBHOOK_URL_{slug}", "") or DISCORD_WEBHOOK
@@ -229,8 +229,8 @@ def main() -> None:
                 f"Impact: {'Trading may be affected' if svc['critical'] else 'Non-critical service'}"
             )
             chat_post(CHANNEL, msg)
-            if svc.get("slack_channel") and svc["slack_channel"] != CHANNEL:
-                chat_post(svc["slack_channel"], msg)
+            if svc.get("chat_channel") and svc["chat_channel"] != CHANNEL:
+                chat_post(svc["chat_channel"], msg)
             print(f"    → OUTAGE ALERT sent to {CHANNEL}")
 
         elif healthy and not was_healthy:

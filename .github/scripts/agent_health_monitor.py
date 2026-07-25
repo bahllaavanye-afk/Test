@@ -10,7 +10,7 @@ Checks every channel and every engineer function for signs of failure, then:
 Run modes:
   python agent_health_monitor.py             # full health sweep
   python agent_health_monitor.py --channel desk-crypto  # single channel
-  python agent_health_monitor.py --dry-run   # report only, no Slack posts
+  python agent_health_monitor.py --dry-run   # report only, no Discord posts
 """
 
 import ast
@@ -390,7 +390,7 @@ def _execute_agent_test(
 def _run_agent_execution_tests(target_channel: str | None = None) -> list[AgentExecResult]:
     """
     Import the agent module once, then call each agent function.
-    No Slack token needed — functions return Posts without posting.
+    No Discord token needed — functions return Posts without posting.
     """
     # Temporarily stub out any network calls that would fail in test
     spec = importlib.util.spec_from_file_location("agent_team", AGENT_SCRIPT)

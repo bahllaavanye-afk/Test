@@ -5,11 +5,11 @@ Runs daily via GitHub Actions. For each registered strategy × symbol:
   1. Fetches 2 years of daily OHLCV from yfinance
   2. Computes signals via strategy.backtest_signals()
   3. Runs backtest → Sharpe, drawdown, win rate
-  4. Ranks all strategies and posts a leaderboard to Slack
+  4. Ranks all strategies and posts a leaderboard to Discord
 
 Output:
   - experiments/results/strategy_ranking_YYYYMMDD.json
-  - Slack #pnl-daily post with top 10 / bottom 5
+  - Discord #pnl-daily post with top 10 / bottom 5
 
 Actions trigger:
   - cron daily after market close
@@ -119,7 +119,7 @@ def _run_strategy(strategy_name: str, df: pd.DataFrame) -> pd.Series | None:
         return None
 
 
-def _post_slack(text: str) -> None:
+def _post_chat(text: str) -> None:
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     notify.post(CHANNEL if "CHANNEL" in globals() else "engineering", text)
@@ -181,7 +181,7 @@ def main() -> None:
     out_path.write_text(json.dumps({"date": today_str, "rankings": results}, indent=2))
     print(f"\nSaved to {out_path}")
 
-    # Build Slack message
+    # Build Discord message
     date_str = datetime.now(timezone.utc).strftime("%a %b %-d %Y")
     lines = [f"*Strategy Health Ranking — {date_str}*\n*Top {min(TOP_N, len(results))} strategies:*"]
     for i, r in enumerate(results[:TOP_N], 1):
@@ -199,8 +199,8 @@ def main() -> None:
         for r in underperformers[-5:]:
             lines.append(f"  • `{r['strategy']} / {r['symbol']}` — Sharpe {r['sharpe']:.2f}")
 
-    _post_slack("\n".join(lines))
-    print("Posted to Slack")
+    _post_chat("\n".join(lines))
+    print("Posted to Discord")
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ Promotion gates:
   paper_active → live_candidate: 4+ weeks with live Sharpe > 1.0 AND max_dd < 15%
 
 State is stored in .github/state/strategy_promotions.json
-All transitions posted to Slack #engineering + #desk-lead-review.
+All transitions posted to Discord #engineering + #desk-lead-review.
 
 Runs daily via GitHub Actions.
 """
@@ -382,8 +382,8 @@ def generate_promotion_summary(events: list[dict]) -> str:
 
 # ── Message formatting ───────────────────────────────────────────────────────────
 
-def _format_slack_message(events: list[dict]) -> str:
-    """Build the Slack message body."""
+def _format_chat_message(events: list[dict]) -> str:
+    """Build the Discord message body."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     lines = [f":rocket: *Strategy Promotion Update* — {today}", ""]
 
@@ -456,18 +456,18 @@ def main() -> None:
     memo = generate_promotion_summary(events)
     print("[MEMO]\n" + memo)
 
-    # 3. Post to Slack
-    slack_body = _format_slack_message(events)
+    # 3. Post to Discord
+    chat_body = _format_chat_message(events)
     live_events = [ev for ev in events if ev["to_stage"] == "live_candidate"]
     paper_events = [ev for ev in events if ev["to_stage"] != "live_candidate"]
 
     if paper_events:
-        chat_post("#engineering", slack_body)
+        chat_post("#engineering", chat_body)
         print("[strategy_promotion] Posted to #engineering")
 
     if live_events:
         # Live candidates need human review — post to desk lead channel
-        live_body = _format_slack_message(live_events)
+        live_body = _format_chat_message(live_events)
         chat_post("#desk-lead-review", live_body)
         print("[strategy_promotion] Posted to #desk-lead-review")
 

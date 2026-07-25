@@ -2,7 +2,7 @@
 
 The cascade silently died once (Cloudflare 1010) and nobody noticed for days
 because the agent workflows degrade to green. This canary probes every provider,
-prints a status report, posts a Slack alert to #infra-alerts when the brain is
+prints a status report, posts a Discord alert to #infra-alerts when the brain is
 unhealthy, and exits non-zero so the workflow goes red.
 
 Run:  python .github/scripts/brain_health.py
@@ -20,9 +20,9 @@ import llm_common as L  # noqa: E402
 _UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
 
 
-def _alert_slack(text: str) -> None:
-    # Shared Slack→Discord delivery — a brain-down page that only tries the
-    # (quota-dead) Slack workspace is a page nobody receives.
+def _alert_chat(text: str) -> None:
+    # Shared Discord→Discord delivery — a brain-down page that only tries the
+    # (quota-dead) Discord workspace is a page nobody receives.
     channel = os.environ.get("ALERT_CHANNEL", "infra-alerts")
     try:
         import notify
@@ -47,7 +47,7 @@ def main() -> int:
         "needs a browser User-Agent)."
     )
     print("BRAIN UNHEALTHY — alerting", file=sys.stderr)
-    _alert_slack(msg)
+    _alert_chat(msg)
     return 1
 
 
