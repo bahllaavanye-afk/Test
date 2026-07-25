@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 import aiohttp
-from pydantic import BaseModel, ConfigDict, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.utils.logging import logger
 
@@ -26,49 +26,51 @@ class MacroSignals(BaseModel):
     yield_curve_inverted: Optional[bool] = Field(
         default=None,
         description="True if the 10Y‑2Y yield spread is negative (inverted).",
-        example=True,
+        json_schema_extra={"example": True},
     )
     yield_spread_bps: Optional[float] = Field(
         default=None,
         description="Yield spread expressed in basis points.",
-        example=-25.3,
+        json_schema_extra={"example": -25.3},
     )
     yield_curve_signal: Optional[str] = Field(
         default=None,
         description="High‑level regime derived from the yield spread.",
-        example="risk_off",
+        json_schema_extra={"example": "risk_off"},
     )
     vix_regime: Optional[str] = Field(
         default=None,
         description="Risk regime based on VIX level.",
-        example="elevated",
+        json_schema_extra={"example": "elevated"},
     )
     vix_level: Optional[float] = Field(
         default=None,
         description="Current VIX index level.",
         ge=0,
-        example=22.5,
+        json_schema_extra={"example": 22.5},
     )
     credit_stress: Optional[bool] = Field(
         default=None,
         description="True if high‑yield credit spread exceeds stress threshold.",
-        example=False,
+        json_schema_extra={"example": False},
     )
     hy_spread_pct: Optional[float] = Field(
         default=None,
         description="High‑yield credit spread expressed as a percentage.",
         ge=0,
-        example=4.2,
+        json_schema_extra={"example": 4.2},
     )
 
-    @validator("yield_curve_signal")
+    @field_validator("yield_curve_signal")
+    @classmethod
     def _validate_yield_curve_signal(cls, v):
         allowed = {"risk_off", "neutral", "risk_on"}
         if v is not None and v not in allowed:
             raise ValueError(f"yield_curve_signal must be one of {allowed}")
         return v
 
-    @validator("vix_regime")
+    @field_validator("vix_regime")
+    @classmethod
     def _validate_vix_regime(cls, v):
         allowed = {"fear", "elevated", "complacent"}
         if v is not None and v not in allowed:
@@ -82,30 +84,30 @@ class MacroSnapshot(BaseModel):
     yield_spread_10y2y: Optional[float] = Field(
         default=None,
         description="Latest 10‑year minus 2‑year Treasury yield spread (in %).",
-        example=-0.45,
+        json_schema_extra={"example": -0.45},
     )
     vix: Optional[float] = Field(
         default=None,
         description="Current VIX index level.",
         ge=0,
-        example=21.3,
+        json_schema_extra={"example": 21.3},
     )
     fed_funds_rate: Optional[float] = Field(
         default=None,
         description="Effective Federal Funds rate (in %).",
         ge=0,
-        example=5.25,
+        json_schema_extra={"example": 5.25},
     )
     hy_credit_spread: Optional[float] = Field(
         default=None,
         description="High‑yield credit spread (in %).",
         ge=0,
-        example=4.8,
+        json_schema_extra={"example": 4.8},
     )
     usd_index: Optional[float] = Field(
         default=None,
         description="Broad US Dollar index value.",
-        example=102.5,
+        json_schema_extra={"example": 102.5},
     )
     signals: MacroSignals = Field(
         default_factory=MacroSignals,
@@ -115,18 +117,19 @@ class MacroSnapshot(BaseModel):
         description="Aggregated macro risk score ranging from -3 (risk‑off) to +3 (risk‑on).",
         ge=-3,
         le=3,
-        example=1,
+        json_schema_extra={"example": 1},
     )
     macro_bias: str = Field(
         description="High‑level macro bias derived from macro_score.",
-        example="risk_on",
+        json_schema_extra={"example": "risk_on"},
     )
     fetched_at: datetime = Field(
         description="Timestamp of when the snapshot was retrieved (UTC).",
-        example="2024-01-01T12:00:00Z",
+        json_schema_extra={"example": "2024-01-01T12:00:00Z"},
     )
 
-    @validator("macro_bias")
+    @field_validator("macro_bias")
+    @classmethod
     def _validate_macro_bias(cls, v):
         allowed = {"risk_on", "risk_off", "neutral"}
         if v not in allowed:
@@ -161,17 +164,18 @@ class MacroSnapshot(BaseModel):
 class RedditSentimentItem(BaseModel):
     """Single ticker sentiment entry from Apewisdom."""
 
-    ticker: str = Field(..., description="Ticker symbol.", example="AAPL")
-    mention_count: int = Field(..., ge=0, description="Number of mentions.", example=123)
+    ticker: str = Field(..., description="Ticker symbol.", json_schema_extra={"example": "AAPL"})
+    mention_count: int = Field(..., ge=0, description="Number of mentions.", json_schema_extra={"example": 123})
     sentiment_score: Optional[float] = Field(
         default=None,
         description="Sentiment score ranging from -1 (negative) to 1 (positive).",
         ge=-1,
         le=1,
-        example=0.27,
+        json_schema_extra={"example": 0.27},
     )
 
-    @validator("ticker")
+    @field_validator("ticker")
+    @classmethod
     def _ticker_upper(cls, v):
         return v.upper()
 
@@ -185,7 +189,7 @@ class RedditSentimentResponse(BaseModel):
     )
     fetched_at: datetime = Field(
         description="Timestamp of retrieval (UTC).",
-        example="2024-01-01T12:00:00Z",
+        json_schema_extra={"example": "2024-01-01T12:00:00Z"},
     )
     source: str = Field(
         default="apewisdom.io (reddit wsb)",
@@ -194,7 +198,7 @@ class RedditSentimentResponse(BaseModel):
     error: Optional[str] = Field(
         default=None,
         description="Error message if the fetch failed.",
-        example="Apewisdom unavailable",
+        json_schema_extra={"example": "Apewisdom unavailable"},
     )
 
     model_config = ConfigDict(

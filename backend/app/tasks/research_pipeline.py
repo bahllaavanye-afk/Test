@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Literal
 
-from pydantic import BaseModel, Field, ValidationError, validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.tasks.free_llm_router import call_race, call_consensus
 from app.tasks.agent_memory import AgentMemory
@@ -39,47 +39,52 @@ class ResearchIdea(BaseModel):
     name: str = Field(
         ...,
         description="Short, unique identifier for the idea.",
-        example="rsi_momentum_breakout",
+        json_schema_extra={"example": "rsi_momentum_breakout"},
         min_length=1,
     )
     hypothesis: str = Field(
         ...,
         description="Testable hypothesis describing the expected effect.",
-        example="Combining RSI overbought signals with EMA crossover improves Sharpe ratio.",
+        json_schema_extra={"example": "Combining RSI overbought signals with EMA crossover improves Sharpe ratio."},
         min_length=10,
     )
     model: Literal["lstm", "xgboost", "manual"] = Field(
         ...,
         description="Machine‑learning model type to be used for the experiment.",
-        example="lstm",
+        json_schema_extra={"example": "lstm"},
     )
     symbol: str = Field(
         ...,
         description="Trading symbol with optional exchange suffix (e.g., BTC/USDT or SPY).",
-        example="BTC/USDT",
+        json_schema_extra={"example": "BTC/USDT"},
     )
     interval: Literal["1h", "1d"] = Field(
         ...,
         description="Timeframe for the data used in the experiment.",
-        example="1h",
+        json_schema_extra={"example": "1h"},
     )
     features: List[str] = Field(
         ...,
         description="List of technical feature identifiers required for the experiment.",
-        example=["rsi_14", "macd", "bb_width"],
-        min_items=1,
+        json_schema_extra={"example": ["rsi_14", "macd", "bb_width"]},
+        min_length=1,
     )
 
-    @validator("symbol")
+    @field_validator("symbol")
+    @classmethod
     def validate_symbol(cls, v: str) -> str:
         if "/" not in v and not v.isalpha():
             raise ValueError("symbol must contain a '/' separating base and quote or be an alpha ticker")
         return v
 
-    @validator("features", each_item=True)
-    def validate_feature(cls, v: str) -> str:
-        if not v:
-            raise ValueError("feature names cannot be empty")
+    @field_validator("features")
+    @classmethod
+    def validate_features(cls, v: List[str]) -> List[str]:
+        # Pydantic V2 dropped `each_item=True`; validate the items explicitly so
+        # the per-item rule (no empty feature names) is preserved exactly.
+        for item in v:
+            if not item:
+                raise ValueError("feature names cannot be empty")
         return v
 
 

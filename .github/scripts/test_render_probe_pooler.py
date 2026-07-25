@@ -73,3 +73,41 @@ def test_current_host_port_parses_pooler():
 
 def test_ports_env_default():
     assert m.PORTS == ["6543", "5432"] or m.PORTS == ["5432", "6543"] or "6543" in m.PORTS
+
+
+# ---- error classification: the distinction the whole fix turns on ----------
+# "tenant or user not found" = WRONG cluster. An auth failure = RIGHT cluster
+# (it knows this tenant) with a stale password. Confusing the two is what kept
+# the real cause hidden for weeks, so pin it down.
+
+
+class _InvalidPasswordError(Exception):
+    """Stands in for asyncpg.exceptions.InvalidPasswordError (matched by name)."""
+
+
+def test_invalid_password_is_positive_cluster_identification():
+    exc = _InvalidPasswordError('password authentication failed for user "postgres"')
+    assert m.classify_error(exc) == m.BAD_PASSWORD
+
+
+def test_invalid_password_detected_by_message_alone():
+    # a generic exception type still classifies via its message
+    assert m.classify_error(Exception('password authentication failed for user "postgres"')) == m.BAD_PASSWORD
+
+
+def test_tenant_not_found_is_wrong_cluster():
+    exc = Exception("(ENOTFOUND) tenant/user postgres.vexzwnfbmznvxoxxktax not found")
+    assert m.classify_error(exc) == m.NO_TENANT
+
+
+def test_tenant_or_user_not_found_wording_also_detected():
+    assert m.classify_error(Exception("Tenant or user not found")) == m.NO_TENANT
+
+
+def test_timeout_is_unreachable_not_a_verdict_about_the_tenant():
+    assert m.classify_error(TimeoutError("timed out")) == m.UNREACHABLE
+    assert m.classify_error(OSError("Network is unreachable")) == m.UNREACHABLE
+
+
+def test_verdict_constants_are_distinct():
+    assert len({m.OK, m.BAD_PASSWORD, m.NO_TENANT, m.UNREACHABLE}) == 4
