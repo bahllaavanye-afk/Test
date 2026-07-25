@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Verify db connections",
-    "Track API timeouts",
-    "* **Investor Pipeline Status**: Currently actively working on scanning code for updates in the `/opt/quantedge/dependencies` directory to ensure dependencies are up-to-date.",
-    "Monitor API tokens",
-    "* A circuit-breaker wrapper will be added to `backend/app/api/external_client.py` for resilience and fault-tolerance.",
     "Refactor constants files",
     "Check clock sync",
     "Log memory usage",
@@ -199,8 +194,13 @@
     "Monitor API logs",
     "Check health endpoints",
     "Review risk metrics",
-    "Verify clock sync"
+    "Verify clock sync",
+    "Log trade rejects",
+    "Test market data",
+    "Analyze signal confidence",
+    "Backtest strategy variants",
+    "Estimate Sharpe ratio"
   ],
-  "last_updated": "2026-07-25T17:29:00.804504+00:00",
+  "last_updated": "2026-07-25T18:28:11.388339+00:00",
   "total": 200
 }
