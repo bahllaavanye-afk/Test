@@ -25,19 +25,28 @@ jobs:
         with: { ref: main }
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - name: Correct DATABASE_URL pooler region if wrong (+ redeploy if changed)
+      - name: Fix DATABASE_URL region + probe pooler cluster (+ redeploy if changed)
+        # Redundant trigger for the DB self-heal. db-url-region-autofix.yml owns
+        # the same two scripts on its own 3h cron, but GitHub under-fires that
+        # newer schedule, so this already-reliable workflow runs them too.
+        # render_fix_db_url  → corrects a wrong pooler REGION (no-op once right).
+        # render_probe_pooler → if the URL still won't connect, TESTS aws-0/aws-1
+        #   × 6543/5432 with a real SELECT 1 and patches Render to a working host.
+        # Both idempotent + fail-soft; only redeploy when they actually change it.
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
           RENDER_WORKER_SERVICE_ID: ${{ secrets.RENDER_WORKER_SERVICE_ID }}
           SUPABASE_REGION: us-west-1
           SUPABASE_POOLER_PORT: "6543"
+          SUPABASE_POOLER_PORTS: "6543,5432"
         run: |
           if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
             echo "render creds absent — skipping db-url fix"; exit 0
           fi
-          pip install httpx --quiet
-          python .github/scripts/render_fix_db_url.py || echo "db-url fix step failed (fail-soft)"
+          pip install httpx asyncpg --quiet
+          python .github/scripts/render_fix_db_url.py || echo "db-url region fix failed (fail-soft)"
+          python .github/scripts/render_probe_pooler.py || echo "pooler probe failed (fail-soft)"
       - name: Touch the database through the live backend
         run: |
           # /health/detailed runs SELECT 1 against the configured DATABASE_URL —
