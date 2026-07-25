@@ -23,6 +23,13 @@
 - [x] `test_security_invariants.py` — replaced the now-vacuous `/slack/events` signature tests with a **stronger** invariant (every notifications route requires auth) plus a guard that Slack cannot creep back into the backend.
 - [x] `test_script_safety.py` — `TestSlackBootstrap` → `TestDiscordChannelCoverage` (same invariant, now against `discord_setup_channels.py`), and `TestSlackTokenGuard` → `TestSlackStaysRemoved` (no script may call the Slack API or read a Slack token). These make the removal **permanent** against the autonomous improver.
 
+### Second pass 2026-07-25 — the first sweep's guard was scoped too narrowly
+- [x] **[P1 FOUND+FIXED] Two more dead alert paths.** `deploy-verify.yml` posted deploy-drift alerts to Slack and `exit 0`'d when the token was missing — so **every deploy-drift alert since the quota died was lost**. `secrets-check.yml` did the same with its missing-secrets report. Both now go through `notify.post()`.
+- [x] **[P1 FOUND+FIXED] `auto-launch.yml` had a step that would `KeyError` at runtime** — it read `os.environ["SLACK_BOT_TOKEN"]` while its `env:` block only defined the Discord vars. Deleted (it invited a Slack workspace admin to Slack channels).
+- [x] **[P1 FOUND+FIXED] A whole directory was missed** — repo-root `scripts/` (distinct from `.github/scripts/`) still held `slack_message_monitor.py` and `slack_invite_all.py`. Deleted; no live callers.
+- [x] **Guards widened to close the hole that caused this.** `TestSlackStaysRemoved` now scans `scripts/`, `.github/scripts/`, `.github/tests/` **and** `.github/workflows/` — the first version only checked `.github/scripts/`, which is exactly why the above survived. Repo-wide audit is now 0 Slack API calls, 0 token reads, 0 slack workflows, 0 slack modules.
+- [x] **`test_slack_config_present` → `test_discord_config_present`** — the health test asserted a Slack token existed.
+
 ### Remaining Slack-related cleanup (cosmetic only — no functional Slack left)
 - [ ] **[P3] Prose sweep** — ~500 residual mentions of "Slack" in comments/docstrings/prompt text across `.github/scripts` (heaviest in `agent_team.py`). No API calls, no tokens, no modules, no workflows remain; this is naming hygiene only. Worth doing in one pass so the agents stop *describing* themselves as Slack bots.
 - [ ] **[P2] `agent_team.py` is 10.6k lines** and still contains Slack-era concepts (thread `ts` values, block-kit builders) that are inert under Discord. Split it and delete the dead block/thread machinery.

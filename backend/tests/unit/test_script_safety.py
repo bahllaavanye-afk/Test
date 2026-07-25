@@ -207,24 +207,36 @@ class TestSlackStaysRemoved:
     the quota died every message from 27 scripts was silently discarded.
     """
 
-    def test_no_script_calls_the_slack_api(self):
-        offenders = [
-            name for name in _all_scripts()
-            if "slack.com/api" in (SCRIPTS_DIR / name).read_text(errors="ignore")
-        ]
+    # Cover EVERY script dir and the workflows, not just .github/scripts — the
+    # first removal pass missed the repo-root scripts/ dir and four workflows
+    # precisely because the guard was scoped too narrowly.
+    ROOTS = ["scripts", ".github/scripts", ".github/tests", ".github/workflows"]
+
+    def _offenders(self, needle: str) -> list[str]:
+        repo = SCRIPTS_DIR.parent.parent
+        hits = []
+        for root in self.ROOTS:
+            base = repo / root
+            if not base.exists():
+                continue
+            for path in list(base.glob("*.py")) + list(base.glob("*.yml")):
+                text = path.read_text(errors="ignore")
+                # the guards themselves necessarily mention the strings they forbid
+                if path.name.startswith("test_"):
+                    continue
+                if needle in text:
+                    hits.append(str(path.relative_to(repo)))
+        return sorted(hits)
+
+    def test_nothing_calls_the_slack_api(self):
+        offenders = self._offenders("slack.com/api")
         assert not offenders, (
-            f"these scripts still call the Slack API: {sorted(offenders)} — "
-            "post via notify.post() (Discord) instead"
+            f"these still call the Slack API: {offenders} — post via notify.post() (Discord)"
         )
 
-    def test_no_script_reads_a_slack_token(self):
-        offenders = [
-            name for name in _all_scripts()
-            if "SLACK_BOT_TOKEN" in (SCRIPTS_DIR / name).read_text(errors="ignore")
-        ]
-        assert not offenders, (
-            f"these scripts still read SLACK_BOT_TOKEN: {sorted(offenders)}"
-        )
+    def test_nothing_reads_a_slack_token(self):
+        offenders = self._offenders("SLACK_BOT_TOKEN")
+        assert not offenders, f"these still read SLACK_BOT_TOKEN: {offenders}"
 
 # ── Python syntax validity of all scripts ────────────────────────────────────
 
