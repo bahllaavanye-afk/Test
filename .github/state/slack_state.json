@@ -1,8 +1,7 @@
 {
-  "last_run_ts": 1784940465,
+  "last_run_ts": 1784943767,
   "last_commit_sha": "92ed6fe",
   "posted_hashes": [
-    "c251fcc0bc55",
     "40a4df1a6bf5",
     "6aafe3a5c586",
     "2a65cca20140",
@@ -1001,19 +1000,24 @@
     "b7577628e323",
     "98df5b9d73e3",
     "fdc74062b0a3",
-    "c77e42d369c0"
+    "c77e42d369c0",
+    "c1b50c746b06"
   ],
   "replied_to": [],
   "post_dedup": {
     "standup-channel:standup": 1784940435.4319549,
     "agent-api-usage:api_usage_report": 1784940465.2462597,
-    "agent-api-usage:throughput_report": 1784940467.412331,
+    "agent-api-usage:throughput_report": 1784943772.4736843,
     "engineering:agent_reminder": 1784940543.262885,
     "help:agent_reminder": 1784940543.4867995,
     "engineering:silent_vp_eng": 1784940467.5998137,
     "alpha-research:silent_alpha_dir": 1784940474.9115043,
     "desk-crypto:silent_ml_lead": 1784940485.0733101,
-    "squad-backend:silent_backend_lead": 1784940492.3481202
+    "squad-backend:silent_backend_lead": 1784940492.3481202,
+    "risk-alerts:silent_risk_eng": 1784943772.771068,
+    "squad-qa:silent_qa_dir": 1784943780.9074118,
+    "engineering:silent_equity_lead": 1784943794.5233011,
+    "engineering:silent_arb_trader": 1784943809.586663
   },
   "response_cache": {},
   "posted_today": [
@@ -1068,9 +1072,9 @@
     "vp_eng": 1784940467.5997744,
     "alpha_dir": 1784940467.5997744,
     "ml_lead": 1784940467.5997744,
-    "risk_eng": 1784680462.75456,
+    "risk_eng": 1784943772.7710195,
     "backend_lead": 1784940467.5997744,
-    "qa_dir": 1784680462.75456,
+    "qa_dir": 1784943772.7710195,
     "devops_dir": 1784680462.75456,
     "exec_eng": 1784680462.75456,
     "poly_desk": 1784617210.8670454,
@@ -1079,7 +1083,7 @@
     "quant_researcher": 1784617210.8670454,
     "cro": 1784617210.8670454,
     "frontend": 1784617210.8670454,
-    "equity_lead": 1784489020.0098388,
+    "equity_lead": 1784943772.7710195,
     "fixed_income_desk": 1784617210.8670454,
     "macro_researcher": 1784472314.115288,
     "stat_arb_desk": 1784472314.115288,
@@ -1088,7 +1092,7 @@
     "model_validator": 1784617210.8670454,
     "feature_engineer": 1783777069.5503943,
     "crypto_quant": 1783777825.5999532,
-    "arb_trader": 1784511579.2217534,
+    "arb_trader": 1784943772.7710195,
     "portfolio_manager": 1784617210.8670454,
     "market_maker": 1784511579.2217534,
     "rl_trader": 1783777825.5999532,
@@ -1222,6 +1226,10 @@
     },
     "2026-07-25": {
       "GEMINI_API_KEY_2": {
+        "tokens": 600,
+        "requests": 2
+      },
+      "GEMINI_API_KEY_3": {
         "tokens": 300,
         "requests": 1
       }
@@ -1315,34 +1323,6 @@
     }
   },
   "quality_log": [
-    {
-      "emp": "ml_infra",
-      "score": 5,
-      "reason": "reviewer unavailable \u2014 conservative score",
-      "channel": "unknown",
-      "ts": "2026-07-15 13:33:45"
-    },
-    {
-      "emp": "devops_dir",
-      "score": 7,
-      "reason": "While it presents specific metrics and identifies a relevant file for analysis, it lacks actionable steps to improve the CI pipeline latency.",
-      "channel": "unknown",
-      "ts": "2026-07-18 06:55:26"
-    },
-    {
-      "emp": "vp_eng",
-      "score": 7,
-      "reason": "Identifies specific areas of concern but lacks concrete action steps or details on how to mitigate the identified issues.",
-      "channel": "unknown",
-      "ts": "2026-07-18 06:56:38"
-    },
-    {
-      "emp": "alpha_dir",
-      "score": 7,
-      "reason": "While it mentions specific metrics and potential biases in the performance evaluation, it lacks actionable steps or detailed analysis regarding the lookahead biases and regime-fitting parameters.",
-      "channel": "unknown",
-      "ts": "2026-07-18 06:56:42"
-    },
     {
       "emp": "ml_lead",
       "score": 7,
@@ -2714,41 +2694,37 @@
       "reason": "reviewer unavailable \u2014 conservative score",
       "channel": "unknown",
       "ts": "2026-07-25 00:48:18"
+    },
+    {
+      "emp": "risk_eng",
+      "score": 8,
+      "reason": "Cites specific file paths, quantifies the risk with a Sharpe ratio and drawdown cap, and provides a concrete, actionable point regarding position limits and capital split.",
+      "channel": "unknown",
+      "ts": "2026-07-25 01:43:00"
+    },
+    {
+      "emp": "qa_dir",
+      "score": 8,
+      "reason": "Cites specific file paths, strategy names, and quantifies the risk with a Sharpe ratio and maximum drawdown, demonstrating a clear and focused analysis.",
+      "channel": "unknown",
+      "ts": "2026-07-25 01:43:06"
+    },
+    {
+      "emp": "equity_lead",
+      "score": 2,
+      "reason": "Output lacks concrete, actionable points and merely announces the initiation of a review without providing any specific details or insights.",
+      "channel": "unknown",
+      "ts": "2026-07-25 01:43:19"
+    },
+    {
+      "emp": "arb_trader",
+      "score": 5,
+      "reason": "reviewer unavailable \u2014 conservative score",
+      "channel": "unknown",
+      "ts": "2026-07-25 01:43:34"
     }
   ],
   "agent_output_log": [
-    {
-      "emp": "rl_trader",
-      "channel": "unknown",
-      "text": "I'm currently focused on enhancing the stability of our PPO training process. I've been experimenting with reward shaping techniques; specifically, I've adjusted the reward function to incorporate a risk-adjusted return metric, intending to improve the average reward per episode from 150 to 180 in t",
-      "provider": "GitHub Models",
-      "ts": 1784577964.1329741,
-      "score": 7
-    },
-    {
-      "emp": "graph_ml_researcher",
-      "channel": "unknown",
-      "text": "I'm currently refining our graph neural network model for cross-asset correlation learning. I\u2019ve integrated new edge features from the `edges.csv` file, focusing on correlation values, which have improved our average ROC-AUC score to 0.87 in preliminary tests. Additionally, I'm optimizing the graph ",
-      "provider": "GitHub Models",
-      "ts": 1784577967.3760402,
-      "score": 9
-    },
-    {
-      "emp": "crypto_defi_desk",
-      "channel": "unknown",
-      "text": "*Currently analyzing liquidity pools on Uniswap V3, specifically focusing on ETH/USDC pools with a TVL of $250 million. The average yield for liquidity providers in these pools is around 13.5%, which is significantly higher than the current average DeFi yield of 6.8%. I am also assessing smart contr",
-      "provider": "GitHub Models",
-      "ts": 1784577974.799526,
-      "score": 6
-    },
-    {
-      "emp": "product_lead",
-      "channel": "unknown",
-      "text": "Currently analyzing the market opportunity for our enhanced cross-asset correlation signals, specifically using the \u26a0\ufe0f",
-      "provider": "Gemini(GEMINI_API_KEY_3)",
-      "ts": 1784577991.1047647,
-      "score": 5
-    },
     {
       "emp": "ml_lead",
       "channel": "unknown",
@@ -3116,6 +3092,38 @@
       "provider": "Gemini(GEMINI_API_KEY_2)",
       "ts": 1784940498.059017,
       "score": 5
+    },
+    {
+      "emp": "risk_eng",
+      "channel": "unknown",
+      "text": "Currently analyzing the **\"Breakout-Stoch + ATR\"** strategy variant on the **5-minute chart**. The entry trigger is set to activate when the price closes above the highest high of the previous 14 bars. Based on backtesting results from `./backtest_results/Breakout_Stoch_ATR_5min.json`, the initial S",
+      "provider": "GitHub Models",
+      "ts": 1784943780.575399,
+      "score": 8
+    },
+    {
+      "emp": "qa_dir",
+      "channel": "unknown",
+      "text": "I'm currently reviewing the **`strategy_generator.py`** file, focusing on the **\"Breakout-Stoch + ATR\"** variant, which has a proposed entry trigger of 14 bars on the 5-minute chart. The **`quick_backtest`** agent estimates a Sharpe ratio of **1.23** for this strategy, with a maximum drawdown of **1",
+      "provider": "litellm:groq",
+      "ts": 1784943786.4953172,
+      "score": 8
+    },
+    {
+      "emp": "equity_lead",
+      "channel": "unknown",
+      "text": "Currently, I'm initiating a *review of the \"Breakout-Stoch + ATR\" \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_2)",
+      "ts": 1784943799.3160264,
+      "score": 2
+    },
+    {
+      "emp": "arb_trader",
+      "channel": "unknown",
+      "text": "Currently monitoring *cross-exchange arbitrage opportunities* for **TSLA**, specifically looking for \u26a0\ufe0f",
+      "provider": "Gemini(GEMINI_API_KEY_3)",
+      "ts": 1784943814.650249,
+      "score": 5
     }
   ],
   "last_providers": {
@@ -3125,7 +3133,7 @@
     "ml_lead": "Gemini(GEMINI_API_KEY)",
     "risk_eng": "GitHub Models",
     "backend_lead": "Gemini(GEMINI_API_KEY_2)",
-    "qa_dir": "GitHub Models",
+    "qa_dir": "litellm:groq",
     "exec_eng": "litellm:groq",
     "poly_desk": "GitHub Models",
     "ml_researcher": "Gemini(GEMINI_API_KEY_2)",
@@ -3133,7 +3141,7 @@
     "quant_researcher": "Gemini(GEMINI_API_KEY)",
     "cro": "GitHub Models",
     "frontend": "GitHub Models",
-    "equity_lead": "GitHub Models",
+    "equity_lead": "Gemini(GEMINI_API_KEY_2)",
     "fixed_income_desk": "GitHub Models",
     "macro_researcher": "GitHub Models",
     "stat_arb_desk": "GitHub Models",
@@ -3142,7 +3150,7 @@
     "model_validator": "Gemini(GEMINI_API_KEY_2)",
     "feature_engineer": "GitHub Models",
     "crypto_quant": "GitHub Models",
-    "arb_trader": "GitHub Models",
+    "arb_trader": "Gemini(GEMINI_API_KEY_3)",
     "portfolio_manager": "Gemini(GEMINI_API_KEY_2)",
     "market_maker": "GitHub Models",
     "rl_trader": "GitHub Models",
@@ -3169,18 +3177,18 @@
   },
   "idle_posted_ts": {
     "gemini_fallback_alpha-research": 1781095580.7191632,
-    "GEMINI_API_KEY_2": 1784617203.956297,
-    "GEMINI_API_KEY_3": 1784617203.956297,
+    "GEMINI_API_KEY_2": 1784943767.950095,
+    "GEMINI_API_KEY_3": 1784943767.950095,
     "gemini_fallback_engineering": 1784940465.33927
   },
   "token_budget": {
     "GEMINI_API_KEY_2": {
       "date": "2026-07-25",
-      "used": 300
+      "used": 600
     },
     "GEMINI_API_KEY_3": {
       "date": "2026-07-25",
-      "used": 0
+      "used": 300
     }
   },
   "bot_handle_announced": true,
@@ -3219,7 +3227,8 @@
       "GEMINI_API_KEY_3": 300
     },
     "2026-07-25": {
-      "GEMINI_API_KEY_2": 300
+      "GEMINI_API_KEY_2": 600,
+      "GEMINI_API_KEY_3": 300
     }
   },
   "posted_today_date": "2026-07-24",
