@@ -7,7 +7,7 @@ runs the relevant strategies' analyze(), and places real paper orders
 when signals fire with sufficient confidence.
 
 No mock data. If Alpaca is unreachable, the desk is skipped entirely.
-Results are posted to the desk-specific Slack channel.
+Results are posted to the desk-specific Discord channel.
 """
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ DESK_FILTER       = os.environ.get("DESK_FILTER", "").strip().lower()
 
 class DeskConfig(NamedTuple):
     name:            str
-    slack_channel:   str
+    chat_channel:   str
     symbols:         list[str]
     strategy_names:  list[str]       # must match STRATEGY_REGISTRY keys
     notional_usd:    float            # dollars per order
@@ -67,7 +67,7 @@ class DeskConfig(NamedTuple):
 DESKS: list[DeskConfig] = [
     DeskConfig(
         name="Equities",
-        slack_channel="#desk-equities",
+        chat_channel="#desk-equities",
         # Scaled 10 -> 30 (2026-07-15): megacaps + liquid large-caps across
         # sectors. Bars come batched (comma-separated symbols=, chunk 20), so
         # more symbols costs one extra API call, not 20.
@@ -99,7 +99,7 @@ DESKS: list[DeskConfig] = [
     ),
     DeskConfig(
         name="Crypto",
-        slack_channel="#desk-crypto",
+        chat_channel="#desk-crypto",
         # Full Alpaca US crypto universe (majors + liquid alts) — the desk was
         # stuck on 4 pairs while Alpaca supports ~20. More symbols = more
         # independent shots at a ≥conf_min setup every 24/7 run; per-desk
@@ -136,7 +136,7 @@ DESKS: list[DeskConfig] = [
     ),
     DeskConfig(
         name="Options",
-        slack_channel="#desk-options",
+        chat_channel="#desk-options",
         symbols=["SPY", "QQQ", "AAPL", "TSLA", "NVDA", "IWM", "AMD", "META"],
         # Income structures (wheel/condor/credit-spread — the Options Alpha core,
         # see docs/research/OPTIONS_ALPHA_DEEP_2026.md §3) trade the underlying as
@@ -164,7 +164,7 @@ DESKS: list[DeskConfig] = [
     ),
     DeskConfig(
         name="Polymarket",
-        slack_channel="#desk-polymarket",
+        chat_channel="#desk-polymarket",
         symbols=["SPY"],   # proxy for market regime
         strategy_names=[
             "polymarket_sentiment_momentum", "poly_binary_arb",
@@ -178,7 +178,7 @@ DESKS: list[DeskConfig] = [
     ),
     DeskConfig(
         name="Macro/FX",
-        slack_channel="#desk-fx-rates",
+        chat_channel="#desk-fx-rates",
         # INDA/EPI/SMIN = India sleeve (docs/research/INDIA_GLOBAL_SOTA_2026.md §1):
         # NSE is the largest derivatives market globally and Indian equities carry a
         # documented momentum premium — tradable today as US ETFs on Alpaca, no new broker.
@@ -200,7 +200,7 @@ DESKS: list[DeskConfig] = [
     ),
     DeskConfig(
         name="StatArb",
-        slack_channel="#desk-stat-arb",
+        chat_channel="#desk-stat-arb",
         symbols=["SPY", "QQQ", "IWM", "GLD", "TLT",
                  # 2026-07-15 scale-up: sector/region ETFs widen the pair pool
                  "XLF", "XLK", "XLE", "EFA", "EEM", "DIA", "MDY"],
@@ -218,7 +218,7 @@ DESKS: list[DeskConfig] = [
     ),
     DeskConfig(
         name="Commodities",
-        slack_channel="#desk-commodities",
+        chat_channel="#desk-commodities",
         # Commodity exposure via US-listed ETF proxies (no futures account needed):
         # gold, silver, oil, natgas, agriculture, broad basket, miners, copper.
         # Time-series momentum is THE documented commodity premium (Moskowitz-
@@ -239,7 +239,7 @@ DESKS: list[DeskConfig] = [
     ),
     DeskConfig(
         name="TV Indicators",
-        slack_channel="#desk-tv-indicators",
+        chat_channel="#desk-tv-indicators",
         # The 12 TradingView-community indicator strategies (maintained by the
         # tv-indicator-improvement agent) finally get a venue — they were in
         # the registry, contract-tested, SOTA-upgraded on a schedule... and
@@ -257,7 +257,7 @@ DESKS: list[DeskConfig] = [
     ),
     DeskConfig(
         name="International",
-        slack_channel="#desk-equities",
+        chat_channel="#desk-equities",
         # Country-ETF rotation (docs/research/COUNTRY_DESKS_2026.md): documented
         # country momentum/reversal premia, tradable on Alpaca US-listed ETFs.
         symbols=["EWJ", "FXI", "EWY", "EWT", "EWZ", "EWW", "EWC",
@@ -1318,9 +1318,9 @@ async def run_desk(desk: DeskConfig, account: dict) -> list[dict]:
     return orders_placed
 
 
-# ── Slack helper ──────────────────────────────────────────────────────────────
+# ── Discord helper ──────────────────────────────────────────────────────────────
 
-def _post_slack(channel: str, message: str) -> None:
+def _post_chat(channel: str, message: str) -> None:
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     notify.post(channel, message)
@@ -1714,7 +1714,7 @@ async def main() -> None:
                 else:
                     print(f"    ✗ order placement returned no ID", flush=True)
 
-            # Post per-desk Slack summaries
+            # Post per-desk Discord summaries
             for desk in active_desks:
                 desk_order_list = desk_orders_map.get(desk.name, [])
                 if desk_order_list:
@@ -1726,15 +1726,15 @@ async def main() -> None:
                             f"{o['side'].upper()} ${o['notional']:.0f} "
                             f"conf={o['confidence']:.0%}  id=`{o['order_id'][:8]}…`"
                         )
-                    _post_slack(desk.slack_channel, "\n".join(lines))
+                    _post_chat(desk.chat_channel, "\n".join(lines))
                     desk_summaries.append(f"✅ *{desk.name}*: {len(desk_order_list)} orders")
                 else:
                     desk_summaries.append(f"💤 *{desk.name}*: no signals fired")
 
             tracker.set_output(orders_placed=len(all_orders), total_notional=round(total_notional, 2))
 
-        # ── Stage 6: PnL Snapshot / Slack Summary ────────────────────────────
-        with tracker.stage(PNL_SNAPSHOT, "Post PnL snapshot to Slack"):
+        # ── Stage 6: PnL Snapshot / Discord Summary ────────────────────────────
+        with tracker.stage(PNL_SNAPSHOT, "Post PnL snapshot to Discord"):
             now_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
             # Funnel telemetry: makes "why so few trades?" visible at a glance —
             # generated → gated/topK survivors → exploration clips → placed —
@@ -1750,7 +1750,7 @@ async def main() -> None:
                 summary += "🛑 loss cap ACTIVE — new exposure blocked, risk-reducing orders only\n"
             summary += "\n".join(desk_summaries)
             summary += f"\n\nTotal orders placed: *{len(all_orders)}*"
-            _post_slack("#pnl-daily", summary)
+            _post_chat("#pnl-daily", summary)
 
             # Graphical companion (user: "show me more graphical"): orders-per-desk
             # bar chart. Only when something was placed, so we don't spam empty runs.

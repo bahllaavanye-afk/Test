@@ -19,7 +19,7 @@ Each employee:
   2. Reviews through their own expertise lens (persona from agent_team.py)
   3. Uses a pinned independent LLM (different per employee → zero cross-contamination)
   4. Writes their own report to docs/agent-reviews/<domain>-<date>-<employee>.md
-  5. Posts findings to their Slack channel
+  5. Posts findings to their Discord channel
   6. Writes priority actions to shared company brain
 
 CRO (Chief Risk Officer) synthesizes all 8 reports into system health verdict.
@@ -58,7 +58,7 @@ REVIEW_DIR.mkdir(parents=True, exist_ok=True)
 DATE_STR = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 TIME_STR = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-# Each agent: (domain, slack_channel, path_prefixes, provider_name, emp_key, focus_instruction)
+# Each agent: (domain, chat_channel, path_prefixes, provider_name, emp_key, focus_instruction)
 # emp_key = the QuantEdge employee responsible for this domain (from agent_team.py personas)
 AGENTS: list[tuple[str, str, list[str], str, str, str]] = [
     (

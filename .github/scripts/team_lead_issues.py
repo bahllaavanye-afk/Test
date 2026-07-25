@@ -48,7 +48,7 @@ TEAM_LEADS: list[dict] = [
     {
         "role": "vp_eng",
         "name": "VP Engineering",
-        "slack_name": "VP-Eng · Alex Chen",
+        "display_name": "VP-Eng · Alex Chen",
         "team": "backend-team",
         "labels": ["engineering", "agent-fix-needed"],
         "channel": "engineering",
@@ -62,7 +62,7 @@ TEAM_LEADS: list[dict] = [
     {
         "role": "alpha_dir",
         "name": "Alpha Research Director",
-        "slack_name": "Alpha-Dir · Sofia Karlsson",
+        "display_name": "Alpha-Dir · Sofia Karlsson",
         "team": "equities-desk",
         "labels": ["strategy", "alpha-research", "agent-fix-needed"],
         "channel": "desk-equities",
@@ -76,7 +76,7 @@ TEAM_LEADS: list[dict] = [
     {
         "role": "ml_lead",
         "name": "ML Lead",
-        "slack_name": "ML-Lead · Kai Zhang",
+        "display_name": "ML-Lead · Kai Zhang",
         "team": "ml-team",
         "labels": ["ml", "crypto", "agent-fix-needed"],
         "channel": "ml-research",
@@ -91,7 +91,7 @@ TEAM_LEADS: list[dict] = [
     {
         "role": "cro",
         "name": "Chief Risk Officer",
-        "slack_name": "CRO · Marcus Olufemi",
+        "display_name": "CRO · Marcus Olufemi",
         "team": "risk-team",
         "labels": ["risk", "compliance", "agent-fix-needed"],
         "channel": "risk",
@@ -105,7 +105,7 @@ TEAM_LEADS: list[dict] = [
     {
         "role": "frontend",
         "name": "Frontend Lead",
-        "slack_name": "Frontend-Lead · Priya Subramanian",
+        "display_name": "Frontend-Lead · Priya Subramanian",
         "team": "frontend-team",
         "labels": ["frontend", "ui", "agent-fix-needed"],
         "channel": "engineering",
@@ -119,7 +119,7 @@ TEAM_LEADS: list[dict] = [
     {
         "role": "poly_desk",
         "name": "Polymarket Desk Lead",
-        "slack_name": "Poly-Desk · Lior Avraham",
+        "display_name": "Poly-Desk · Lior Avraham",
         "team": "polymarket-desk",
         "labels": ["polymarket", "strategy", "agent-fix-needed"],
         "channel": "desk-polymarket",
@@ -133,7 +133,7 @@ TEAM_LEADS: list[dict] = [
     {
         "role": "exec_eng",
         "name": "Execution Engineer",
-        "slack_name": "Exec-Eng · Diego Ramirez",
+        "display_name": "Exec-Eng · Diego Ramirez",
         "team": "execution-team",
         "labels": ["execution", "slippage", "agent-fix-needed"],
         "channel": "desk-equities",
@@ -147,7 +147,7 @@ TEAM_LEADS: list[dict] = [
     {
         "role": "devops_dir",
         "name": "DevOps Director",
-        "slack_name": "DevOps-Dir · Kenji Watanabe",
+        "display_name": "DevOps-Dir · Kenji Watanabe",
         "team": "devops-team",
         "labels": ["devops", "ci-cd", "agent-fix-needed"],
         "channel": "incidents",
@@ -318,10 +318,10 @@ def create_issue(title: str, body: str, labels: list[str]) -> dict | None:
     })
 
 
-# ── Slack notification ─────────────────────────────────────────────────────────
+# ── Discord notification ─────────────────────────────────────────────────────────
 
 def chat_post(channel: str, text: str, username: str) -> None:
-    # Discord-first (the operator's live surface); Slack only if a token exists.
+    # Discord-first (the operator's live surface); Discord only if a token exists.
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     notify.post(channel, text)
@@ -382,7 +382,7 @@ def generate_issues_for_lead(lead: dict, context: str, existing_titles: set[str]
 
 
 def run_team_lead(lead: dict, context: str, existing_titles: set[str], dry_run: bool = False) -> list[str]:
-    """Run a single team lead, create their issues, post to Slack. Returns issue URLs."""
+    """Run a single team lead, create their issues, post to Discord. Returns issue URLs."""
     print(f"\n{'='*55}")
     print(f"Team Lead: {lead['name']} → #{lead['channel']}")
     print(f"{'='*55}")
@@ -435,15 +435,15 @@ def run_team_lead(lead: dict, context: str, existing_titles: set[str], dry_run: 
                 existing_titles.add(title.lower())
                 time.sleep(0.5)  # rate limit
 
-    # Post summary to Slack
+    # Post summary to Discord
     if created_titles:
         issue_list = "\n".join(f"• {t}" for t in created_titles)
         chat_text = (
-            f"*{lead['slack_name']}* filed {len(created_titles)} new issues for the {lead['team']}:\n"
+            f"**{lead['display_name']}** filed {len(created_titles)} new issues for the {lead['team']}:\n"
             f"{issue_list}\n\n"
             f"_These are queued for agent auto-fix (label: agent-fix-needed)_"
         )
-        chat_post(lead["channel"], chat_text, username=lead["slack_name"])
+        chat_post(lead["channel"], chat_text, username=lead["display_name"])
         print(f"  📣 Posted to #{lead['channel']}")
 
     return created_urls

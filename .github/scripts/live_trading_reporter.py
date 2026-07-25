@@ -2,7 +2,7 @@
 QuantEdge Live Trading Reporter
 =================================
 Reads the REAL Alpaca paper account (positions, orders, P&L, clock)
-and posts live status to Slack channels so every employee sees real numbers.
+and posts live status to Discord channels so every employee sees real numbers.
 
 Runs every 30 minutes via live-trading-reporter.yml.
 Posts to:
@@ -71,10 +71,10 @@ def get(path: str, params: dict | None = None, base: str = ALPACA_BASE) -> dict 
         return {}
 
 
-# ── Slack helpers ──────────────────────────────────────────────────────────────
+# ── Discord helpers ──────────────────────────────────────────────────────────────
 def post_chat(channel: str, text: str, username: str = "Live Trading Bot",
                emoji: str = ":chart_with_upwards_trend:") -> bool:
-    # Discord-first (operator's live surface); Slack only if a token exists.
+    # Discord-first (operator's live surface); Discord only if a token exists.
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     return notify.post(channel, text)

@@ -1,6 +1,6 @@
 """
 Daily P&L Attribution Report
-Runs after market close and posts a strategy-level Slack summary to #pnl-daily.
+Runs after market close and posts a strategy-level Discord summary to #pnl-daily.
 
 Data source: Alpaca paper account closed orders for today.
 """
@@ -44,8 +44,8 @@ def _alpaca(path: str, params: dict | None = None) -> dict | list:
     return resp.json()
 
 
-def _post_slack(text: str, blocks: list | None = None) -> None:
-    # Discord-first (operator's live surface); Slack only if a token exists.
+def _post_chat(text: str, blocks: list | None = None) -> None:
+    # Discord-first (operator's live surface); Discord only if a token exists.
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     notify.post(CHANNEL if "CHANNEL" in globals() else "engineering", text)
@@ -89,7 +89,7 @@ def main() -> None:
     # Sort by absolute notional
     ranked = sorted(symbol_stats.items(), key=lambda kv: abs(kv[1]["side_vol"]), reverse=True)
 
-    # ── Build Slack message ────────────────────────────────────────────────────
+    # ── Build Discord message ────────────────────────────────────────────────────
     now_et = datetime.now(timezone.utc) - timedelta(hours=4)  # approx ET
     date_str = now_et.strftime("%a %b %-d %Y")
     pnl_emoji = "🟢" if day_pnl >= 0 else "🔴"
@@ -118,7 +118,7 @@ def main() -> None:
     )
 
     full_text = f"{header}\n{body}\n{footer}"
-    _post_slack(full_text)
+    _post_chat(full_text)
 
     # Chart companion (user: "Discord messages show me more graphical") — top
     # symbols by signed notional as a green/red bar chart embed. Fail-soft.

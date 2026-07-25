@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Autonomous quality review for the Slack agent team.
+Autonomous quality review for the Discord agent team.
 Checks agent_team.py for hardcoded content and quality violations.
 Exits 0 if clean, exits 1 if critical issues found (blocks merge).
 

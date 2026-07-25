@@ -3,7 +3,7 @@ Automated experiment runner for GitHub Actions.
 
 For each strategy in EXPERIMENT_CONFIGS, fetches historical OHLCV via yfinance,
 runs backtest_signals(), computes Sharpe/Sortino/drawdown, and writes a JSON result
-to experiments/results/. On completion, posts a summary to Slack #ml-experiments.
+to experiments/results/. On completion, posts a summary to Discord #ml-experiments.
 
 No mocks. If data is unavailable the strategy result is skipped (not faked).
 """
@@ -282,14 +282,14 @@ def _save_result(result: dict) -> Path:
     return fname
 
 
-def _post_slack(message: str) -> None:
+def _post_chat(message: str) -> None:
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     notify.post(CHANNEL if "CHANNEL" in globals() else "engineering", message)
 
 
-def _post_slack_summary(successes: list[dict], failures: list[str]) -> None:
-    """Build and post the full advanced-metrics Slack summary."""
+def _post_chat_summary(successes: list[dict], failures: list[str]) -> None:
+    """Build and post the full advanced-metrics Discord summary."""
     lines = [f"*QuantEdge ML Experiments* — {date.today().isoformat()}"]
     lines.append(f"✅ {len(successes)} backtests completed  |  ❌ {len(failures)} failed")
     lines.append("")
@@ -337,7 +337,7 @@ def _post_slack_summary(successes: list[dict], failures: list[str]) -> None:
              f"Avg Omega: `{float(np.mean(omegas)):.2f}`") if omegas else "",
         ]
 
-    _post_slack("\n".join(lines))
+    _post_chat("\n".join(lines))
 
 
 def main() -> None:
@@ -400,9 +400,9 @@ def main() -> None:
                 best_sharpe=max((r["results"].get("sharpe", 0) for r in successes), default=0),
             )
 
-        # ── Stage 4: evaluation / Slack report ───────────────────────────────
+        # ── Stage 4: evaluation / Discord report ───────────────────────────────
         with tracker.stage(Stage.EVALUATION, "Compute metrics & post report", channel="#ml-experiments"):
-            _post_slack_summary(successes, failures)
+            _post_chat_summary(successes, failures)
             tracker.set_output(n_results=len(successes))
 
     # ── Terminal summary ──────────────────────────────────────────────────────

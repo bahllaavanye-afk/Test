@@ -31,7 +31,7 @@
 - [x] **`test_slack_config_present` → `test_discord_config_present`** — the health test asserted a Slack token existed.
 
 ### Remaining Slack-related cleanup (cosmetic only — no functional Slack left)
-- [ ] **[P3] Prose sweep** — ~500 residual mentions of "Slack" in comments/docstrings/prompt text across `.github/scripts` (heaviest in `agent_team.py`). No API calls, no tokens, no modules, no workflows remain; this is naming hygiene only. Worth doing in one pass so the agents stop *describing* themselves as Slack bots.
+- [x] **[P3] Prose sweep — DONE 2026-07-25.** 499 → 53 mentions, and all 53 remaining are deliberate history ("Slack removed 2026-07-25", "Previously POSTed to slack.com", the guard tests' forbidden strings). **Zero non-historical mentions left.** This was not cosmetic: the leftovers sat inside LLM prompt text, so agents were still being told they were Slack bots and to write Slack-flavoured output. Also renamed the remaining identifiers the first pass missed (`post_to_slack`→`post_to_chat`, `_post_slack`/`_slack_post`→`_post_chat`/`_chat_post`, `fetch_slack_knowledge`→`fetch_chat_knowledge`, `_slack_channel_has_recent_bot_post`→`_channel_has_recent_bot_post`, `slack_name`→`display_name`, `posted_to_slack`→`posted_to_chat`) and fixed more Slack single-star bold that renders literally in Discord. 321 agent tests pass.
 - [ ] **[P2] `agent_team.py` is 10.6k lines** and still contains Slack-era concepts (thread `ts` values, block-kit builders) that are inert under Discord. Split it and delete the dead block/thread machinery.
 
 ## 🚨 MONDAY 2026-07-20 POST-MORTEM — "all desks bad, 0 trades, OA doesn't work" (diagnosed + fixed 2026-07-21)

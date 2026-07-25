@@ -2,7 +2,7 @@
 Backend AI Engineering Team
 
 Reviews backend code for bugs, security issues, and performance problems.
-Auto-fixes safe issues (config, imports, error handling) and posts a report to Slack.
+Auto-fixes safe issues (config, imports, error handling) and posts a report to Discord.
 
 Focused areas:
   - API endpoint correctness
@@ -82,7 +82,7 @@ AUDIT_FILES = [
 ]
 
 
-def slack(channel: str, msg: str) -> None:
+def chat(channel: str, msg: str) -> None:
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     notify.post(channel, msg)
@@ -200,7 +200,7 @@ def _run_gemini_audit() -> None:
     ])
     if not has_any_key:
         print("No free LLM keys configured — backend audit skipped")
-        slack("#engineering", "⚠️ *Backend AI Team:* Skipped (no LLM key available)")
+        chat("#engineering", "⚠️ *Backend AI Team:* Skipped (no LLM key available)")
         return
 
     print("Backend AI Team starting audit via free LLM cascade...")
@@ -218,7 +218,7 @@ def _run_gemini_audit() -> None:
     text = _call_free_llm(prompt, max_tokens=1024)
     if not text:
         print("All free LLM providers failed — audit skipped")
-        slack("#engineering", "⚠️ *Backend AI Team:* All LLM providers failed")
+        chat("#engineering", "⚠️ *Backend AI Team:* All LLM providers failed")
         return
     try:
         m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL) or re.search(r"(\{.*\})", text, re.DOTALL)
@@ -231,10 +231,10 @@ def _run_gemini_audit() -> None:
             sev = f.get("severity", "medium").upper()
             icon = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🔵"}.get(sev, "❓")
             lines.append(f"{icon} `{f.get('file', '?')}`: {f.get('issue', '?')}")
-        slack("#engineering", "\n".join(lines))
+        chat("#engineering", "\n".join(lines))
     except Exception as exc:
         print(f"Free LLM audit parse failed: {exc}")
-        slack("#engineering", f"⚠️ *Backend AI Team:* Audit parse failed: {exc}")
+        chat("#engineering", f"⚠️ *Backend AI Team:* Audit parse failed: {exc}")
 
 
 def main() -> None:
@@ -320,13 +320,13 @@ Rules:
     # Apply auto-fixes
     patched = apply_and_push(patches) if patches else []
 
-    # Report to Slack
+    # Report to Discord
     if not findings and not patched:
         if not _already_posted_clean():
-            slack("#engineering", f"✅ *Backend AI Team:* All systems clean\n_{summary}_")
+            chat("#engineering", f"✅ *Backend AI Team:* All systems clean\n_{summary}_")
             _record_clean_post()
         else:
-            print("[backend-team] All clean — skipping Slack post (cooldown active)")
+            print("[backend-team] All clean — skipping Discord post (cooldown active)")
         return
 
     ICONS = {"critical": "🚨", "high": "🔴", "medium": "🟡", "low": "🔵"}
@@ -342,10 +342,10 @@ Rules:
         lines.append(f"\n✅ Auto-fixed: {', '.join(patched)}")
 
     channel = "#risk-alerts" if critical_count > 0 else "#engineering"
-    slack(channel, "\n".join(lines))
+    chat(channel, "\n".join(lines))
 
     if critical_count > 0 or high_count > 1:
-        slack("#engineering", f"⚠️ Backend team found {critical_count} critical + {high_count} high severity issues. Check #risk-alerts")
+        chat("#engineering", f"⚠️ Backend team found {critical_count} critical + {high_count} high severity issues. Check #risk-alerts")
 
 
 if __name__ == "__main__":

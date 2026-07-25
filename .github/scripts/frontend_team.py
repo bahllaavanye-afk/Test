@@ -32,7 +32,7 @@ SAFE_FRONTEND = [
 ]
 
 
-def slack(msg: str) -> None:
+def chat(msg: str) -> None:
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     notify.post(CHANNEL if "CHANNEL" in globals() else "engineering", msg)
@@ -124,7 +124,7 @@ def _run_gemini_review() -> None:
     gemini_key = os.environ.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY_1", ""))
     if not gemini_key:
         print("No GEMINI_API_KEY either — frontend review skipped")
-        slack("⚠️ *Frontend AI Team:* Skipped (no LLM key available)")
+        chat("⚠️ *Frontend AI Team:* Skipped (no LLM key available)")
         return
 
     print("Frontend AI Team starting review via Gemini...")
@@ -157,10 +157,10 @@ def _run_gemini_review() -> None:
         lines = [f"🎨 *Frontend AI Audit (Gemini)* — {len(findings)} findings", f"_{summary}_"]
         for f in findings[:5]:
             lines.append(f"• `{f.get('file', '?')}`: {f.get('issue', '?')}")
-        slack("\n".join(lines))
+        chat("\n".join(lines))
     except Exception as exc:
         print(f"Gemini review failed: {exc}")
-        slack(f"⚠️ *Frontend AI Team:* Gemini review failed: {exc}")
+        chat(f"⚠️ *Frontend AI Team:* Gemini review failed: {exc}")
 
 
 def main() -> None:
@@ -196,7 +196,7 @@ def main() -> None:
     pushed = apply_and_push(data.get("files", []), summary)
 
     if pushed:
-        slack(f"🎨 *Frontend AI Team:* {summary}")
+        chat(f"🎨 *Frontend AI Team:* {summary}")
     else:
         print("No changes applied")
 

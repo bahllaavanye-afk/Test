@@ -9,7 +9,7 @@ Flow:
   2. Parse strategy name from client_order_id
   3. For fills >= 24h old: fetch next-day price, compute win/loss + return
   4. Write cumulative stats to backend/performance_log/strategy_performance.json
-  5. Post report to Slack #pnl-daily
+  5. Post report to Discord #pnl-daily
 
 Run daily at 22:00 UTC via fill-tracking.yml workflow.
 """
@@ -60,8 +60,8 @@ def _alpaca_get(path: str, params: dict | None = None, data_api: bool = False) -
         return json.loads(resp.read())
 
 
-def _post_slack(channel: str, text: str) -> None:
-    # Discord-first (operator's live surface); Slack only if a token exists.
+def _post_chat(channel: str, text: str) -> None:
+    # Discord-first (operator's live surface); Discord only if a token exists.
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     notify.post(channel, text)
@@ -237,8 +237,8 @@ def main() -> None:
     OUTPUT_FILE.write_text(json.dumps(output, indent=2))
     print(f"\n✓ Saved performance data: {len(updated_perf)} strategies, {len(new_tracked)} new fills", flush=True)
 
-    # Fill summary → Discord (and Slack if a token exists). No longer gated on the
-    # dead Slack token, or the summary would never reach Discord either.
+    # Fill summary → Discord (and Discord if a token exists). No longer gated on the
+    # dead Discord token, or the summary would never reach Discord either.
     if new_wins or updated_perf:
         qualified = {k: v for k, v in updated_perf.items() if v["trades"] >= 3}
         if qualified:
@@ -257,7 +257,7 @@ def main() -> None:
                 for n, d in bot:
                     lines.append(f"  ⚠️ `{n}`: {d['win_rate']:.0%} win ({d['trades']} trades, avg {d['avg_return_pct']:+.2f}%)")
 
-            _post_slack("#pnl-daily", "\n".join(lines))
+            _post_chat("#pnl-daily", "\n".join(lines))
 
     print("Fill tracker complete.", flush=True)
 

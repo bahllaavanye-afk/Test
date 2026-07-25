@@ -50,7 +50,7 @@ LOWER_STEP        = 0.02   # lower when outperforming
 MIN_TRADES        = 5      # minimum sample size
 
 
-def _post_slack(channel: str, text: str) -> None:
+def _post_chat(channel: str, text: str) -> None:
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     notify.post(channel, text)
@@ -144,7 +144,7 @@ def main() -> None:
             + "\n".join(f"  • {c}" for c in changes)
             + f"\n\n_{len(perf)} strategies evaluated, {len(perf) - len(changes)} unchanged_"
         )
-        _post_slack("#pnl-daily", msg)
+        _post_chat("#pnl-daily", msg)
     else:
         print("✓ All strategies within acceptable performance — no changes needed", flush=True)
         if len(perf) > 0:

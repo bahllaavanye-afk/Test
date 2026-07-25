@@ -11,7 +11,7 @@ EXECUTION DESK  → Paper order placement via Alpaca (TWAP/Limit-first)
 REVIEW DESK     → Lead quantitative review: approve/reject each signal
 
 All 6 desks run sequentially as a chain. Each desk posts updates to its
-dedicated Slack channel. The entire pipeline runs every hour via GitHub Actions.
+dedicated Discord channel. The entire pipeline runs every hour via GitHub Actions.
 
 Only strategies with:
   - IC > 0.02 (Information Coefficient)
@@ -58,9 +58,9 @@ def _llm(prompt: str, max_tokens: int = 600) -> str | None:
     return None
 
 
-def slack(channel: str, msg: str, thread_ts: str | None = None) -> str | None:
+def chat(channel: str, msg: str, thread_ts: str | None = None) -> str | None:
     if not CHAT_ENABLED:
-        print(f"[Slack #{channel}] {msg[:100]}")
+        print(f"[Discord #{channel}] {msg[:100]}")
         return None
     resp = chat_post(f"#{channel}", msg, thread_ts)
     return resp.get("ts")
@@ -260,7 +260,7 @@ class ResearchDesk:
     """Generates hypotheses from market data using LLM synthesis."""
 
     def run(self, thread_ts: str | None) -> list[dict]:
-        slack("desk-research", "📡 *Research Desk:* Scanning universe for alpha opportunities...", thread_ts)
+        chat("desk-research", "📡 *Research Desk:* Scanning universe for alpha opportunities...", thread_ts)
         hypotheses = []
 
         for symbol in EQUITY_UNIVERSE[:5]:  # limit to 5 to save time
@@ -293,13 +293,13 @@ These signals were detected in today's market scan:
 {json.dumps(summary_data, indent=2)}
 
 In 3-4 sentences, synthesize the overall market narrative, identify the strongest opportunity,
-and flag any macro risks. Be specific. Format for Slack."""
+and flag any macro risks. Be specific. Format for Discord."""
             narrative = _llm(prompt, max_tokens=200) or "Market scan complete."
-            slack("desk-research",
+            chat("desk-research",
                   f"📊 *Research Desk findings:* {len(hypotheses)} opportunities\n_{narrative}_",
                   thread_ts)
         else:
-            slack("desk-research", "📊 *Research Desk:* No significant signals today — staying flat", thread_ts)
+            chat("desk-research", "📊 *Research Desk:* No significant signals today — staying flat", thread_ts)
 
         return hypotheses
 
@@ -315,7 +315,7 @@ class QuantDesk:
             if abs(ic) >= 0.015:   # IC threshold
                 validated.append(h)
 
-        slack("desk-research",
+        chat("desk-research",
               f"🔬 *Quant Desk:* {len(validated)}/{len(hypotheses)} passed IC filter (threshold: 0.015)",
               thread_ts)
         return validated
@@ -345,7 +345,7 @@ class RiskDesk:
             h["notional"] = notional
             approved.append(h)
 
-        slack("desk-risk",
+        chat("desk-risk",
               f"⚖️ *Risk Desk:* {len(approved)}/{len(validated)} approved after Sharpe + drawdown gates",
               thread_ts)
         return approved
@@ -369,7 +369,7 @@ class PortfolioDesk:
             else:               short_added += 1
 
         total_notional = sum(h["notional"] for h in final)
-        slack("desk-research",
+        chat("desk-research",
               f"📁 *Portfolio Desk:* {len(final)} positions | "
               f"{long_added}L/{short_added}S | notional: ${total_notional:.0f}",
               thread_ts)
@@ -408,9 +408,9 @@ class ExecutionDesk:
                     f"${h['notional']:.2f} | Sharpe {wf.get('sharpe',0):.2f} | "
                     f"DD {wf.get('max_dd',0)*100:.1f}%"
                 )
-            slack("desk-equity", "\n".join(lines), thread_ts)
+            chat("desk-equity", "\n".join(lines), thread_ts)
         else:
-            slack("desk-equity", "🚀 *Execution Desk:* No positions executed this cycle", thread_ts)
+            chat("desk-equity", "🚀 *Execution Desk:* No positions executed this cycle", thread_ts)
 
         return executed
 
@@ -430,7 +430,7 @@ Stats:
 - Total notional deployed: ${stats['notional']:.2f}
 
 In 3-4 sentences: assess pipeline health, identify any bottlenecks (where did most signals drop off?),
-and give a verdict: STRONG_CYCLE | NORMAL_CYCLE | WEAK_CYCLE. Format for Slack."""
+and give a verdict: STRONG_CYCLE | NORMAL_CYCLE | WEAK_CYCLE. Format for Discord."""
 
         review = _llm(prompt, max_tokens=200)
         if not review:
@@ -447,14 +447,14 @@ and give a verdict: STRONG_CYCLE | NORMAL_CYCLE | WEAK_CYCLE. Format for Slack."
             f"_Pipeline: {stats['research']} ideas → {stats['quant']} validated "
             f"→ {stats['risk']} risk-approved → {stats['execution']} executed_"
         )
-        slack("desk-lead-review", msg, thread_ts)
+        chat("desk-lead-review", msg, thread_ts)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
     ts_now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    thread_ts = slack("desk-research",
+    thread_ts = chat("desk-research",
         f"🏢 *QuantEdge Quant Firm Pipeline* — {ts_now}\n"
         f"_6-desk chain: Research → Quant → Risk → Portfolio → Execution → CIO Review_")
 

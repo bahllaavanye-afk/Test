@@ -5,7 +5,7 @@ Checks:
 1. Critical GitHub Actions workflows ran within expected windows
 2. Gemini API key quota status (how many keys healthy)
 3. Groq fallback available
-4. Posts Slack alert ONLY when something is actually broken
+4. Posts Discord alert ONLY when something is actually broken
 
 This runs even when Claude is offline — it only uses GitHub API + free LLMs.
 

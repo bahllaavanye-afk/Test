@@ -2158,7 +2158,7 @@ def call_best_agent(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Slack thread reading — agents respond to actual human replies
+# Discord thread reading — agents respond to actual human replies
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -2308,7 +2308,7 @@ _DEFAULT_SUMMON_SYSTEM = (
 def _match_agent_summon(text: str, bot_user_id: str = "") -> str | None:
     """
     Return the question (trigger stripped) if text contains a summon trigger, else None.
-    Handles both literal triggers (@agent, ask:, ??) and real Slack @mention format <@USER_ID>.
+    Handles both literal triggers (@agent, ask:, ??) and real Discord @mention format <@USER_ID>.
     Also detects questions addressed to the bot anywhere in the message.
     """
     import re
@@ -2317,7 +2317,7 @@ def _match_agent_summon(text: str, bot_user_id: str = "") -> str | None:
     stripped = text.strip()
     low = stripped.lower()
 
-    # Real Slack @mention: <@U1234567> or <@U1234567|username>
+    # Real Discord @mention: <@U1234567> or <@U1234567|username>
     if bot_user_id:
         mention_re = re.compile(r"<@" + re.escape(bot_user_id) + r"(?:\|[^>]*)?>", re.IGNORECASE)
         if mention_re.search(stripped):
@@ -2349,7 +2349,7 @@ def detect_agent_summons(
 ) -> list[dict]:
     """
     Scan recent channel messages for a human who summoned a free agent via:
-    - Real Slack @mention (<@BOT_USER_ID>)
+    - Real Discord @mention (<@BOT_USER_ID>)
     - Literal trigger: @agent, @quant, @ai, @quantedge, ask:, ??
 
     Self-guard: must have `user` field, no `bot_id`, user != bot_user_id, ts not in already_replied.
@@ -2474,7 +2474,7 @@ def _fetch_thread_context(token: str, ch_id: str, thread_ts: str, limit: int = 5
 
 
 def _react(token: str, ch_id: str, ts: str, emoji: str) -> None:
-    """Add a reaction emoji to a Slack message. Silently ignores already_reacted."""
+    """Add a reaction emoji to a Discord message. Silently ignores already_reacted."""
     result = chat_call("reactions.add", {"channel": ch_id, "timestamp": ts, "name": emoji})
     if not result.get("ok") and result.get("error") not in ("already_reacted", "no_permission"):
         print(f"  [react] {emoji} failed: {result.get('error')}")
@@ -2483,13 +2483,13 @@ def _react(token: str, ch_id: str, ts: str, emoji: str) -> None:
 def _build_summon_blocks(reply: str, agent_name: str) -> list[dict]:
     """
     Format a summon reply as Block Kit blocks for rich display.
-    Falls back gracefully — Slack renders `text` if blocks not supported.
+    Falls back gracefully — Discord renders `text` if blocks not supported.
     """
     # Split into paragraphs; code blocks stay as-is
     blocks: list[dict] = []
     paragraphs = [p.strip() for p in reply.split("\n\n") if p.strip()]
 
-    for para in paragraphs[:6]:  # cap at 6 blocks to stay within Slack's 50-block limit
+    for para in paragraphs[:6]:  # cap at 6 blocks to stay within Discord's 50-block limit
         if para.startswith("```") or para.startswith("`"):
             blocks.append({
                 "type": "section",
@@ -2528,7 +2528,7 @@ def _post_with_blocks(
     icon_emoji: str,
     thread_ts: str | None,
 ) -> dict:
-    """Post a Slack message with Block Kit blocks. Falls back to text-only if blocks fail."""
+    """Post a Discord message with Block Kit blocks. Falls back to text-only if blocks fail."""
     payload: dict = {
         "channel": ch_id,
         "text": text,           # fallback for notifications
@@ -2605,7 +2605,7 @@ def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
             issue_num = dispatch_to_gemini_runner(
                 title=f"[{ch}] {question[:120]}",
                 body=question,
-                context=f"Requested in #{ch} by Slack user at {ts}",
+                context=f"Requested in #{ch} by Discord user at {ts}",
             )
             if issue_num:
                 dispatch_msg = (
@@ -2620,7 +2620,7 @@ def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
                     )
                     _react(token, ch_id, ts, "white_check_mark")
                 else:
-                    post_to_slack(token, ch, dispatch_msg,
+                    post_to_chat(token, ch, dispatch_msg,
                                   username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
                 state.setdefault("replied_to", []).append(ts)
                 answered += 1
@@ -2638,7 +2638,7 @@ def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
                                       username=agent_name, icon_emoji=agent_emoji,
                                       thread_ts=ts)
             else:
-                r = post_to_slack(token, ch, reply,
+                r = post_to_chat(token, ch, reply,
                                   username=agent_name, icon_emoji=agent_emoji,
                                   thread_ts=ts)
             if r.get("ok"):
@@ -2676,7 +2676,7 @@ def answer_agent_summons(token: str, summons: list[dict], state: dict) -> int:
                                   username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
                 _react(token, ch_id, ts, "hourglass_flowing_sand")
             else:
-                post_to_slack(token, ch, fallback,
+                post_to_chat(token, ch, fallback,
                               username=agent_name, icon_emoji=agent_emoji, thread_ts=ts)
             state.setdefault("replied_to", []).append(ts)
             print(f"  [summon] providers exhausted for #{ch} summon")
@@ -2744,7 +2744,7 @@ def generate_thread_response(thread: dict) -> str | None:
 
     system_prompt = (
         f"{channel_system}\n"
-        "You are replying to a human's message in a Slack thread. "
+        "You are replying to a human's message in a Discord thread. "
         "Reply in 2-4 sentences. Be specific and technical. "
         "Reference real file paths, metric values, or strategy names from the codebase. "
         "Do NOT use bullet lists or markdown headers. Write natural conversational text. "
@@ -2811,7 +2811,7 @@ def generate_thread_response(thread: dict) -> str | None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Auto-create Slack channels — zero-config for new workspaces
+# Auto-create Discord channels — zero-config for new workspaces
 # ─────────────────────────────────────────────────────────────────────────────
 
 REQUIRED_CHANNELS = [
@@ -2831,7 +2831,7 @@ REQUIRED_CHANNELS = [
 
 
 def ensure_channels_exist(token: str) -> None:
-    """Create any missing Slack channels. Safe to call repeatedly — skips existing."""
+    """Create any missing Discord channels. Safe to call repeatedly — skips existing."""
     # Warm the channel cache first
     get_channel_id(token, "general")
 
@@ -2941,7 +2941,7 @@ def _run_inline_health_check(token: str, state: dict) -> None:
         for h in healed:
             msg_lines.append(f"  :wrench: Auto-healed: {h}")
     msg_lines.append("_Full diagnostic: trigger agent-health-monitor workflow_")
-    # Use slack_call directly to avoid forward-reference to post_to_slack
+    # Use chat_call directly to avoid a forward-reference to post_to_chat
     chat_call("chat.postMessage", {
         "channel": "incidents",
         "text": "\n".join(msg_lines),
@@ -3112,14 +3112,14 @@ def post_engineer_onboarding(token: str, state: dict) -> None:
     if not ch_id:
         return
 
-    # Slack history backup — prevents spam even when state is empty/fresh
-    if _slack_channel_has_recent_bot_post(token, "help", "Welcome to QuantEdge", hours=150.0):  # 6 days
+    # Discord history backup — prevents spam even when state is empty/fresh
+    if _channel_has_recent_bot_post(token, "help", "Welcome to QuantEdge", hours=150.0):  # 6 days
         state["onboarding_posted_week"] = current_week
         return
 
     guide = """*:wave: Welcome to QuantEdge — Free Agent Team Guide*
 
-Our AI agents run 24/7 across all Slack channels. Here's how to use them:
+Our AI agents run 24/7 across all Discord channels. Here's how to use them:
 
 *1. Summon a free agent — instant answer, $0 cost*
 Type `@agent <your question>` at the start of a message in any monitored channel → instant answer from the free LLM team (Groq/Gemini/Cerebras), zero Claude/Anthropic spend.
@@ -3163,8 +3163,8 @@ Type `/capacity` to see live usage and add more keys.
 Go to GitHub Actions → "QuantEdge Run ML Experiments" → Run workflow
 Available models: LSTM, XGBoost, TFT, SSM, Ensemble, Lorentzian KNN
 
-*6. Code changes via Slack (when CTO is unavailable)*
-GitHub Actions → "QuantEdge Slack Code Request" → type your request in plain English
+*6. Code changes via Discord (when CTO is unavailable)*
+GitHub Actions → "QuantEdge Discord Code Request" → type your request in plain English
 
 *7. Self-healing*
 The self-healer runs every 30 min, auto-fixes failing tests and broken imports.
@@ -3233,7 +3233,7 @@ def post_api_usage_report(token: str, state: dict, run_posts: int = 0) -> None:
 
     lines: list[str] = [
         f"*:robot_face: Agent API Usage Dashboard — {now_str}*",
-        f"Run produced *{run_posts}* Slack posts   |   "
+        f"Run produced *{run_posts}* Discord posts   |   "
         f"Response cache: *{len(state.get('response_cache', {}))}* entries",
         "",
         "*Provider Budget (daily soft limits — 80% of real cap)*",
@@ -3476,7 +3476,7 @@ def scan_for_commands(
 
 def handle_thread_command(command_text: str, token: str = "", state: dict | None = None) -> str | None:
     """
-    Respond to a /command typed in a Slack thread.
+    Respond to a /command typed in a Discord thread.
     Returns response text, or None if command not recognised.
     """
     cmd = command_text.strip()
@@ -3737,7 +3737,7 @@ def new_commits_since_last_run(state: dict) -> list[dict]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Slack low-level
+# Discord low-level
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -3760,10 +3760,10 @@ _FATAL_POST_ERRORS = {
 _post_stats = {"attempted": 0, "ok": 0, "failed": 0, "skipped": 0, "fatal_error": ""}
 
 # ── Discord failover ─────────────────────────────────────────────────────────
-# Slack's free-plan quota exhausted on 2026-06-29 (message_limit_exceeded) and
-# stayed dead for days. When DISCORD_WEBHOOK_URL is set, posts that Slack
+# Discord's free-plan quota exhausted on 2026-06-29 (message_limit_exceeded) and
+# stayed dead for days. When DISCORD_WEBHOOK_URL is set, posts that Discord
 # fatally rejects are delivered to Discord instead — "[#channel] username: text"
-# — so the employees' output isn't lost while Slack is down. Discord webhooks
+# — so the employees' output isn't lost while Discord is down. Discord webhooks
 # are free with generous limits; still capped per run and paced for the
 # webhook's rate bucket (~5 req/2s). Deliberate volume-cap skips do NOT go to
 # Discord (the cap exists to limit volume, not to reroute it).
@@ -3819,12 +3819,12 @@ def _discord_post(channel: str, username: str, text: str) -> bool:
 def _posting_health_exit_code() -> int:
     """Non-zero when posting is provably broken (attempts made, zero landed).
 
-    Discord delivery counts: if Slack is dead but the failover carried the
+    Discord delivery counts: if Discord is dead but the failover carried the
     messages, the run did its job and should not page.
     """
     if _post_stats["attempted"] > 0 and _post_stats["ok"] == 0 and _discord_stats["sent"] == 0:
         print(
-            f"[slack] POSTING BROKEN: 0/{_post_stats['attempted']} posts landed "
+            f"[chat] POSTING BROKEN: 0/{_post_stats['attempted']} posts landed "
             f"(fatal={_post_stats['fatal_error'] or 'n/a'}, skipped={_post_stats['skipped']}, "
             f"discord_sent={_discord_stats['sent']})"
         )
@@ -3836,7 +3836,7 @@ def chat_call(method: str, payload: dict) -> dict:
     """Discord-backed stand-in for the old Slack Web API dispatcher.
 
     Slack was removed 2026-07-25. Rather than rewrite ~60 call sites spread over
-    this file, the dispatcher itself now translates the handful of Slack methods
+    this file, the dispatcher itself now translates the handful of Discord methods
     that were used into Discord operations, and returns Slack-shaped dicts so the
     callers' `.get("ok")` / `.get("messages")` handling still works.
 
@@ -3878,7 +3878,7 @@ def get_channel_id(token: str, name: str) -> str | None:
                 payload["cursor"] = cursor
             data = chat_call("conversations.list", payload)
             if not data.get("ok"):
-                print(f"  [slack] conversations.list failed: {data.get('error')} — will post by name")
+                print(f"  [chat] conversations.list failed: {data.get('error')} — will post by name")
                 break
             for ch in data.get("channels", []):
                 _channels_cache[ch["name"]] = ch
@@ -3890,7 +3890,7 @@ def get_channel_id(token: str, name: str) -> str | None:
 
 
 def _post_raw(token: str, channel_ref: str, text: str, username: str, icon_emoji: str, thread_ts: str | None) -> dict:
-    """Post to Slack using channel_ref (can be ID or #name). Falls back to plain write if customize fails."""
+    """Post to Discord using channel_ref (can be ID or #name). Falls back to plain write if customize fails."""
     payload: dict = {
         "channel": channel_ref,
         "text": text,
@@ -3951,7 +3951,7 @@ def _quality_gate(text: str, channel: str, engineer: str, state: dict) -> bool:
     return False
 
 
-def post_to_slack(
+def post_to_chat(
     token: str,
     channel: str,
     text: str,
@@ -3974,7 +3974,7 @@ def post_to_slack(
         result = _post_raw(token, name_ref, text, username, icon_emoji, thread_ts)
 
     if not result.get("ok"):
-        print(f"  [slack] post failed to #{channel}: {result.get('error')}")
+        print(f"  [chat] post failed to #{channel}: {result.get('error')}")
     return result
 
 
@@ -4442,7 +4442,7 @@ def vp_eng_daily() -> list[Post]:
     ai, provider = employee_provider_prompt(
         "vp_eng",
         ("Summarize today's CI health and name the single top reliability risk, "
-         "given these commit subjects and test status. 2-3 sentences, Slack-ready, no preamble.\n\n"
+         "given these commit subjects and test status. 2-3 sentences, Discord-ready, no preamble.\n\n"
          f"Commit subjects:\n{commit_subjects}\n\nTests: {test_line}"),
     state=state,
     )
@@ -4501,7 +4501,7 @@ def alpha_dir_strategy_review() -> list[Post]:
          f"Static findings: {'; '.join(findings)}\n"
          f"Source snippet:\n{src[:600]}\n\n"
          "Give one concrete alpha-research recommendation for this strategy. "
-         "2 sentences max, Slack-ready, no preamble."),
+         "2 sentences max, Discord-ready, no preamble."),
     state=state,
     )
     if ai:
@@ -4701,7 +4701,7 @@ def risk_eng_risk() -> list[Post]:
     ai, provider = employee_provider_prompt(
         "risk_eng",
         (f"Risk system status: {risk_summary}. "
-         "Name the single most important risk gap to close next. 1-2 sentences, Slack-ready."),
+         "Name the single most important risk gap to close next. 1-2 sentences, Discord-ready."),
     state=state,
     )
     if ai:
@@ -4760,7 +4760,7 @@ def backend_lead_backend() -> list[Post]:
         "backend_lead",
         (f"{len(backend_changes)} backend files changed in last 48h. "
          f"Top files: {file_list}. "
-         "What's the single biggest backend reliability risk from this churn? 2 sentences, Slack-ready."),
+         "What's the single biggest backend reliability risk from this churn? 2 sentences, Discord-ready."),
     state=state,
     )
     if ai:
@@ -4827,7 +4827,7 @@ def devops_dir_devops() -> list[Post]:
         "devops_dir",
         (f"Last 10 CI workflow runs: {counts}. "
          f"Latest: {last.get('name')} → {last.get('conclusion') or last.get('status')} on {last.get('head_branch')}. "
-         "What's the top DevOps/infra action to improve CI reliability? 1-2 sentences, Slack-ready."),
+         "What's the top DevOps/infra action to improve CI reliability? 1-2 sentences, Discord-ready."),
     state=state,
     )
     text = scaffold + (f"\n\n{ai}" if ai else "")
@@ -4923,7 +4923,7 @@ def qa_dir_qa() -> list[Post]:
     ai, provider = employee_provider_prompt(
         "qa_dir",
         (f"QA status: {test_status_summary}. "
-         "What's the single most important QA improvement to make this sprint? 2 sentences, Slack-ready."),
+         "What's the single most important QA improvement to make this sprint? 2 sentences, Discord-ready."),
     state=state,
     )
     if ai:
@@ -4955,8 +4955,8 @@ def security_eng_security() -> list[Post]:
         f"You are the security engineer at QuantEdge. Live secret scan result: {scan_summary}. "
         + (f"Matches (first 3): {'; '.join(suspicious[:3])[:300]}. " if suspicious else "")
         + "Beyond secret leaks, identify the single most critical security gap in an algo-trading platform "
-        "running on GitHub Actions + Render + Supabase + Slack. "
-        "Consider: JWT expiry, CORS policy, Slack token scope creep, order-injection via API, "
+        "running on GitHub Actions + Render + Supabase + Discord. "
+        "Consider: JWT expiry, CORS policy, Discord token scope creep, order-injection via API, "
         "or unencrypted broker key storage. Name the exact file and the patch. Be specific."
     )
     ai, _ = employee_provider_prompt("security_eng", task, state=state)
@@ -5078,7 +5078,7 @@ def quant_researcher_research() -> list[Post]:
         "quant_researcher",
         (f"{len(untested)} of {len(strats)} manual strategies untested. "
          f"Sample: {', '.join(sample)}. "
-         "Which one should we run walk-forward validation on first, and why? 2 sentences, Slack-ready."),
+         "Which one should we run walk-forward validation on first, and why? 2 sentences, Discord-ready."),
     state=state,
     )
     text = scaffold + (f"\n\n{ai}" if ai else "")
@@ -5170,7 +5170,7 @@ def poly_desk_polymarket() -> list[Post]:
     ai, provider = employee_provider_prompt(
         "poly_desk",
         (f"Polymarket scan: {opp_summary}. Strategies registered: {len(poly)}. "
-         "What's the single best next step for the Polymarket desk? 1-2 sentences, Slack-ready."),
+         "What's the single best next step for the Polymarket desk? 1-2 sentences, Discord-ready."),
     state=state,
     )
     if ai:
@@ -5217,7 +5217,7 @@ def cro_risk() -> list[Post]:
         "cro",
         (f"CRO daily: {acct_state}; audit_log={'present' if has_audit else 'missing'}; "
          "70/30 capital split enforced. Name the single biggest firm-level risk to address today. "
-         "1-2 sentences, CRO tone, Slack-ready."),
+         "1-2 sentences, CRO tone, Discord-ready."),
     state=state,
     )
     if ai:
@@ -5320,7 +5320,7 @@ def qa_dir_open_prs() -> list[Post]:
         "(1) which PR needs review most urgently and why, "
         "(2) one specific test coverage concern for the open PRs, "
         "(3) CI quality reminder for the team. "
-        "Format: Slack prose with *bold* titles. No fake test results."
+        "Format: Discord prose with *bold* titles. No fake test results."
     )
     ai, _ = employee_provider_prompt("qa_dir", task, state=state)
     if not ai:
@@ -5428,7 +5428,7 @@ def junior_eng_question() -> list[Post]:
         task = (
             f"You are a junior engineer at QuantEdge, a quantitative trading platform (FastAPI + PyTorch + Alpaca). "
             f"You found this TODO in the codebase: {context}. "
-            "Write a genuine 2-3 sentence Slack message to #help asking: "
+            "Write a genuine 2-3 sentence Discord message to #help asking: "
             "(1) what the TODO's intent is and whether it's worth implementing, "
             "(2) one specific technical question about the code around it. "
             "Sound like a curious junior engineer, not an AI. Mention the file path."
@@ -5441,7 +5441,7 @@ def junior_eng_question() -> list[Post]:
         task = (
             f"You are a junior engineer at QuantEdge, a quantitative trading platform (FastAPI + PyTorch). "
             f"{recent_commit_ctx}. "
-            "Write a genuine Slack message to #help asking one specific technical question "
+            "Write a genuine Discord message to #help asking one specific technical question "
             "about something in the codebase you're confused about — "
             "e.g. how strategies are registered, how the risk engine works, how backtests run, "
             "or how the ML feature pipeline operates. "
@@ -6130,7 +6130,7 @@ def ml_researcher_research() -> list[Post]:
         "ml_researcher",
         (f"ML research: {len(model_names)} models, {n_configs} configs, {n_results} results. "
          f"Best result: {best_strat} Sharpe={best_sharpe:.3f}. "
-         "What is the single most impactful next ML research direction? 2 sentences, Slack-ready."),
+         "What is the single most impactful next ML research direction? 2 sentences, Discord-ready."),
     state=state,
     )
     if ai:
@@ -6195,7 +6195,7 @@ def cro_dl_engineer() -> list[Post]:
         "cro",
         (f"DL engineer update: {len(model_files)} architectures, {n_features} features, {n_configs} configs. "
          f"Models: {', '.join(sorted(model_files)[:6])}. "
-         "What's the single most impactful DL architecture change to make next? 2 sentences, Slack-ready."),
+         "What's the single most impactful DL architecture change to make next? 2 sentences, Discord-ready."),
     state=state,
     )
     if ai:
@@ -7564,7 +7564,7 @@ def build_discussion_chains(
              ("Junior Engineer", ":raised_hand:", "quick q in thread — is there a linter config I should be running locally before pushing?"),
              ("Backend Lead", ":gear:", "yes — `pre-commit run --all-files`. config is in `.pre-commit-config.yaml`. run once to install hooks")],
             [("Alpha Research Director", ":chart_with_upwards_trend:", f"{_m('ML Modeling Lead')}: let's sync on the ensemble weight update after your Optuna run. 15min?"),
-             ("ML Modeling Lead", ":robot_face:", "absolutely — Optuna finishes in ~2h. pinging you then. can do a quick Slack huddle"),],
+             ("ML Modeling Lead", ":robot_face:", "absolutely — Optuna finishes in ~2h. pinging you then. can do a quick Discord huddle"),],
         ]
         chains.append(("standup", pt, random.choice(thread_comments)))
 
@@ -7644,7 +7644,7 @@ def _lookup_agent_user_ids(token: str) -> None:
         # Also map bot users
         bot_map = {m.get("name", "").lower(): m.get("id", "") for m in members if m.get("is_bot") and not m.get("deleted")}
         handle_map.update(bot_map)
-        # Map our agent handles to real Slack user IDs
+        # Map our agent handles to real Discord user IDs
         for handle in AGENT_HANDLES.values():
             uid = handle_map.get(handle.lower())
             if uid:
@@ -7655,7 +7655,7 @@ def _lookup_agent_user_ids(token: str) -> None:
 
 
 def _m(role: str) -> str:
-    """Return Slack mention for a role. Uses <@USER_ID> if ID is known, else display @handle."""
+    """Return Discord mention for a role. Uses <@USER_ID> if ID is known, else display @handle."""
     handle = AGENT_HANDLES.get(role, role.split()[0].lower())
     uid = _AGENT_USER_IDS.get(handle)
     if uid:
@@ -7720,7 +7720,7 @@ def generate_collab_thread(token: str, state: dict) -> int:
     req_emoji = _CHANNEL_AGENT_IDENTITY.get(channel, ("Agent", ":robot_face:"))[1]
 
     # Post requester message
-    r1 = post_to_slack(token, channel, req_msg.strip(),
+    r1 = post_to_chat(token, channel, req_msg.strip(),
                        username=req_agent_name, icon_emoji=req_emoji)
     if not r1.get("ok"):
         return 0
@@ -7748,7 +7748,7 @@ def generate_collab_thread(token: str, state: dict) -> int:
         return 1  # still count the first post
 
     resp_agent_name = responder
-    r2 = post_to_slack(token, channel, resp_msg.strip(),
+    r2 = post_to_chat(token, channel, resp_msg.strip(),
                        username=resp_agent_name, icon_emoji=req_emoji,
                        thread_ts=thread_ts)
     if r2.get("ok"):
@@ -8488,7 +8488,7 @@ def main() -> int:
     else:
         bot_user_id = auth.get("user_id", "")
         print(f"✅ Authed as {auth.get('user')} in {auth.get('team')} at {datetime.now(timezone.utc).isoformat()}")
-        # Resolve real Slack user IDs so @mentions actually notify people
+        # Resolve real Discord user IDs so @mentions actually notify people
         _lookup_agent_user_ids(token)
 
     # Load run state for dedup + thread tracking + token budget
@@ -8583,7 +8583,7 @@ def main() -> int:
                 print(f"  [inbox] skipping dup reply in #{ch}")
                 continue
             agent_name, agent_emoji = _CHANNEL_AGENT_IDENTITY.get(ch, ("QuantEdge Bot", ":robot_face:"))
-            r = post_to_slack(
+            r = post_to_chat(
                 token, ch, response,
                 username=agent_name,
                 icon_emoji=agent_emoji,
@@ -8615,7 +8615,7 @@ def main() -> int:
                 continue
             if is_duplicate(state, response):
                 continue
-            r = post_to_slack(
+            r = post_to_chat(
                 token, ch, response,
                 username="QuantEdge Bot",
                 icon_emoji=":robot_face:",
@@ -8701,7 +8701,7 @@ def main() -> int:
         if is_duplicate(state, p.text):
             print(f"  ⏭ {label} → #{p.channel} (dup)")
             return None
-        r = post_to_slack(
+        r = post_to_chat(
             token, channel=p.channel, text=p.text,
             username=p.username, icon_emoji=p.icon_emoji,
             thread_ts=p.thread_of,
@@ -8776,7 +8776,7 @@ def main() -> int:
                 })
                 _AGENT_TASK_QUEUE.remove(task)
 
-    # ── Reaction wave — agents react to each other's posts (feels like real Slack)
+    # ── Reaction wave — agents react to each other's posts (feels like real Discord)
     print("\n👍 Reaction wave")
     react_targets = random.sample(posted_for_reactions, min(10, len(posted_for_reactions)))
     for ch_id, ts in react_targets:
@@ -8844,7 +8844,7 @@ def main() -> int:
         tracker_lines.append(f"\n*Benched this wave ({len(unique_benched)}):*")
         tracker_lines.extend(unique_benched[:10])
 
-    r = post_to_slack(
+    r = post_to_chat(
         token,
         channel="engineering",
         text="\n".join(tracker_lines),
@@ -8955,12 +8955,12 @@ def _already_posted(state: dict, channel: str, content_key: str, cooldown_second
     return False
 
 
-_BOT_USERNAMES = {"QuantEdge Agent Team", "QuantEdge Slack Agent"}
+_BOT_USERNAMES = {"QuantEdge Agent Team", "QuantEdge Discord Agent"}
 
-def _slack_channel_has_recent_bot_post(
+def _channel_has_recent_bot_post(
     token: str, channel: str, text_snippet: str, hours: float = 23.0
 ) -> bool:
-    """Check Slack channel history for a recent bot post containing text_snippet.
+    """Check Discord channel history for a recent bot post containing text_snippet.
     Used as a hard fallback when in-memory state is empty (e.g. first run after deploy).
     Returns True if found (skip posting), False if safe to post.
     """
@@ -9048,7 +9048,7 @@ def post_throughput_report(token: str, state: dict) -> None:
         lines.append(f"Total: {total_posts} posts | avg quality: {avg_quality:.1f}/10 | {hallucinations} hallucinations flagged")
 
     msg = "\n".join(lines)
-    post_to_slack(token, "agent-api-usage", msg,
+    post_to_chat(token, "agent-api-usage", msg,
                   username="Throughput Tracker", icon_emoji=":bar_chart:")
 
 
@@ -9118,7 +9118,7 @@ def fill_idle_capacity(token: str, state: dict) -> int:
                 api_key, "llama-3.3-70b-versatile", sys_prompt, _prompt, 300)
             if r:
                 track_api_call(groq_env, 300)
-                res = post_to_slack(token, _ch,
+                res = post_to_chat(token, _ch,
                               f"*{_label} — {_hr}*\n{r.strip()}",
                               username="Quant Bot", icon_emoji=_emoji)
                 idle_posted[groq_env] = _now
@@ -9145,7 +9145,7 @@ def fill_idle_capacity(token: str, state: dict) -> int:
                 api_key, "qwen-3-32b", sys_prompt, _prompt, 300)
             if r:
                 track_api_call(cerebras_env, 300)
-                res = post_to_slack(token, "engineering",
+                res = post_to_chat(token, "engineering",
                               f"*ML/Quant Note — {_hr}*\n{r.strip()}",
                               username="Cerebras Bot", icon_emoji=":brain:")
                 idle_posted[cerebras_env] = _now
@@ -9172,7 +9172,7 @@ def fill_idle_capacity(token: str, state: dict) -> int:
             r = call_gemini_with_key(api_key, sys_prompt, _prompt, 300, state)
             if r:
                 # track_api_call already called inside call_gemini_with_key on success
-                res = post_to_slack(token, "alpha-research",
+                res = post_to_chat(token, "alpha-research",
                               f"*Alpha Research — {_hr}*\n{r.strip()}",
                               username="Gemini Bot", icon_emoji=":crystal_ball:")
                 idle_posted[gemini_env] = _now
@@ -9206,7 +9206,7 @@ def fill_idle_capacity(token: str, state: dict) -> int:
             print(f"  [fill_idle] Gemini fallback (Groq/Cerebras CF-blocked) — posting to #{_fch}")
             r = call_gemini_with_key(_gkey, sys_prompt, _fprompt, 300, state)
             if r:
-                res = post_to_slack(token, _fch,
+                res = post_to_chat(token, _fch,
                               f"*{_flabel} — {_hr}*\n{r.strip()}",
                               username="Gemini Bot", icon_emoji=_femoji)
                 idle_posted[_fallback_key_id] = _now
@@ -9249,7 +9249,7 @@ def post_daily_standup(token: str, state: dict) -> int:
         username, icon = _disp
         channel = {"ml_lead": "desk-crypto", "poly_desk": "desk-polymarket", "vp_research": "desk-fx-rates",
                    "devops_dir": "engineering", "risk_eng": "risk-alerts"}.get(emp, "engineering")
-        res = post_to_slack(token, channel, result.strip(), username=username, icon_emoji=icon)
+        res = post_to_chat(token, channel, result.strip(), username=username, icon_emoji=icon)
         if res and res.get("ok"):
             print(f"  [standup] ✓ {emp} posted to #{channel}")
             return 1
@@ -9259,7 +9259,7 @@ def post_daily_standup(token: str, state: dict) -> int:
 
 
 def _get_engineer_channel(emp_key: str) -> str:
-    """Return the primary Slack channel for an engineer, defaulting to 'engineering'."""
+    """Return the primary Discord channel for an engineer, defaulting to 'engineering'."""
     _EMP_CHANNEL_MAP: dict[str, str] = {
         "vp_eng": "engineering",
         "alpha_dir": "alpha-research",
@@ -9325,7 +9325,7 @@ def check_silent_engineers(token: str, state: dict) -> int:
             if result and len(result.strip()) > 20:
                 _disp = _SILENT_EMP_DISPLAY.get(emp_key, (emp_key.capitalize(), ":technologist:"))
                 username, icon = _disp
-                res = post_to_slack(token, ch,
+                res = post_to_chat(token, ch,
                     result.strip(),
                     username=username,
                     icon_emoji=icon,
@@ -9347,7 +9347,7 @@ def check_silent_engineers(token: str, state: dict) -> int:
 def post_daily_agent_reminder(token: str, state: dict) -> None:
     """Post once/day to #engineering and #help reminding engineers to use the free bots.
     NOTE: never posts to #alpha-research — that channel is for research content only.
-    Uses Slack history as primary cooldown so repeated runs never double-post."""
+    Uses Discord history as primary cooldown so repeated runs never double-post."""
     msg = (
         "*:robot_face: Your free AI team is on 24/7 — use them for everything:*\n"
         "• `@agent <question>` in any channel → instant answer (Groq/Gemini/Cerebras)\n"
@@ -9362,12 +9362,12 @@ def post_daily_agent_reminder(token: str, state: dict) -> None:
         # Primary: state-based cooldown (works once state is persisted)
         if _already_posted(state, ch, "agent_reminder", 86000):  # 24-hr
             continue
-        # Backup: Slack history check — prevents double-post even on first run
-        if _slack_channel_has_recent_bot_post(token, ch, snippet, hours=23.0):
+        # Backup: Discord history check — prevents double-post even on first run
+        if _channel_has_recent_bot_post(token, ch, snippet, hours=23.0):
             # Mark as posted in state so subsequent waves skip it too
             state.setdefault("post_dedup", {})[f"{ch}:agent_reminder"] = time.time()
             continue
-        res = post_to_slack(token, ch, msg, username="QuantEdge Bot", icon_emoji=":robot_face:")
+        res = post_to_chat(token, ch, msg, username="QuantEdge Bot", icon_emoji=":robot_face:")
         if res and res.get("ok"):
             state.setdefault("post_dedup", {})[f"{ch}:agent_reminder"] = time.time()
             print(f"  [daily_reminder] ✓ posted to #{ch}")
@@ -9441,7 +9441,7 @@ def run_frontend_improvements(token: str, state: dict) -> None:
             f":computer: *Frontend Bot* (task {idx + 1}/5): \n"
             f"{ai}"
         )
-        post_to_slack(
+        post_to_chat(
             token, "squad-frontend", msg,
             username="Frontend Bot", icon_emoji=":computer:",
         )
@@ -9515,7 +9515,7 @@ def quick_main() -> int:
                 resp = generate_thread_response(t)
                 if resp and not is_duplicate(state, resp):
                     agent_name, agent_emoji = _CHANNEL_AGENT_IDENTITY.get(ch, ("QuantEdge Bot", ":robot_face:"))
-                    r = post_to_slack(token, ch, resp, username=agent_name,
+                    r = post_to_chat(token, ch, resp, username=agent_name,
                                       icon_emoji=agent_emoji, thread_ts=t["parent_ts"])
                     if r.get("ok"):
                         posts_made += 1
@@ -9532,7 +9532,7 @@ def quick_main() -> int:
             for cmd in cmds[:2]:
                 resp = handle_thread_command(cmd["command"], token=token, state=state)
                 if resp and not is_duplicate(state, resp):
-                    r = post_to_slack(token, ch, resp, username="QuantEdge Bot",
+                    r = post_to_chat(token, ch, resp, username="QuantEdge Bot",
                                       icon_emoji=":robot_face:", thread_ts=cmd["thread_ts"])
                     if r.get("ok"):
                         posts_made += 1
@@ -9561,7 +9561,7 @@ def quick_main() -> int:
     try:
         for p in incidents_channel()[:2]:
             if not is_duplicate(state, p.text):
-                r = post_to_slack(token, p.channel, p.text,
+                r = post_to_chat(token, p.channel, p.text,
                                   username=p.username, icon_emoji=p.icon_emoji)
                 if r.get("ok"):
                     posts_made += 1
@@ -9574,7 +9574,7 @@ def quick_main() -> int:
     if event_name == "push":
         for p in _short_vp_engineering():
             if not is_duplicate(state, p.text):
-                r = post_to_slack(token, p.channel, p.text,
+                r = post_to_chat(token, p.channel, p.text,
                                   username=p.username, icon_emoji=p.icon_emoji)
                 if r.get("ok"):
                     posts_made += 1
@@ -9582,7 +9582,7 @@ def quick_main() -> int:
     elif event_name == "pull_request":
         for p in code_review_channel()[:1]:
             if not is_duplicate(state, p.text):
-                r = post_to_slack(token, p.channel, p.text,
+                r = post_to_chat(token, p.channel, p.text,
                                   username=p.username, icon_emoji=p.icon_emoji)
                 if r.get("ok"):
                     posts_made += 1
@@ -9678,9 +9678,9 @@ def precompute_main() -> int:
 
 def code_request_main() -> int:
     """
-    Triggered by slack-code-request.yml workflow.
+    Triggered by chat-code-request.yml workflow.
     Reads CODE_REQUEST env var, uses free agents to implement it,
-    posts result to Slack. Dev never stops even when Claude Code is unavailable.
+    posts result to Discord. Dev never stops even when Claude Code is unavailable.
     """
     verify_zero_spend()
     state = load_state()
@@ -9712,7 +9712,7 @@ Keep it under 200 words."""
 
     plan = call_best_agent(plan_prompt, max_tokens=300)
 
-    # Post plan to Slack
+    # Post plan to Discord
     if token and plan:
         ch_id = get_channel_id(token, channel)
         if ch_id:
@@ -9747,7 +9747,7 @@ def review_employees_main() -> int:
     For each employee, asks the LLM to score (0-10) based on:
       - What work exists in the codebase for their domain
       - Recent git commits in their area
-      - Whether their Slack channel is posting substantive content
+      - Whether their Discord channel is posting substantive content
 
     Posts a consolidated "Daily Team Review" to #leadership-summary with
     scores and a 1-sentence verdict per employee.  Also posts a short
@@ -9849,7 +9849,7 @@ def review_employees_main() -> int:
 
     full_report = "\n".join(lines)
 
-    post_to_slack(
+    post_to_chat(
         token, "leadership-summary", full_report,
         username="CTO Review Bot",
         icon_emoji=":clipboard:",
@@ -9866,7 +9866,7 @@ def review_employees_main() -> int:
         summary_parts.append(f":eyes: Needs attention: {', '.join(n.capitalize() for n in needs_attention)}")
     summary_parts.append(f"Team average score: *{avg_score:.1f}/10*. Full details in #leadership-summary.")
 
-    post_to_slack(
+    post_to_chat(
         token, "allquantedge", "\n".join(summary_parts),
         username="CTO Review Bot",
         icon_emoji=":clipboard:",
@@ -9936,7 +9936,7 @@ def run_experiments_main() -> int:
             f"You are the ML Research Lead at QuantEdge. A new experiment has just been queued.\n\n"
             f"Config file: {cfg_path.name}\n"
             f"Config contents:\n{cfg_text}\n\n"
-            f"Write a concise Slack post (2-3 sentences) announcing this experiment has been queued. "
+            f"Write a concise Discord post (2-3 sentences) announcing this experiment has been queued. "
             f"Include: the model type, symbol/asset, key hyperparameters, and what outcome metric we're "
             f"optimizing for. Be specific and technical. Start with an emoji."
         )
@@ -9949,7 +9949,7 @@ def run_experiments_main() -> int:
                 f"Awaiting worker to pick up and run."
             )
 
-        post_to_slack(
+        post_to_chat(
             token, "ml-experiments", announcement,
             username="ML Experiment Runner",
             icon_emoji=":test_tube:",
@@ -9973,7 +9973,7 @@ def run_experiments_main() -> int:
             f"Nothing new to queue. Add a new YAML to `backend/experiments/configs/` to trigger a run."
         )
 
-    post_to_slack(
+    post_to_chat(
         token, "ml-experiments", summary,
         username="ML Experiment Runner",
         icon_emoji=":bar_chart:",
@@ -10051,7 +10051,7 @@ def review_gemini_changes_main() -> int:
         "You are the VP Engineering at QuantEdge, an institutional quantitative trading platform "
         "(FastAPI backend, React frontend, PyTorch ML, Alpaca/Binance/Polymarket brokers). "
         "Review AI-generated code changes for correctness, security, and regressions. "
-        "Be specific — cite file names and line numbers. Use Slack *bold* for issues. "
+        "Be specific — cite file names and line numbers. Use Discord *bold* for issues. "
         "Max 180 words."
     )
     review_user = (
@@ -10112,7 +10112,7 @@ def review_gemini_changes_main() -> int:
     if not ai_review:
         print(f"  [review] All providers exhausted for REVIEW_PROVIDER={review_provider}")
 
-    # Build Slack post
+    # Build Discord post
     reviewer_label = (
         f"claude-haiku" if "claude" in provider.lower()
         else provider.split(":")[0] if provider else "free-llm"
@@ -10137,7 +10137,7 @@ def review_gemini_changes_main() -> int:
     text = "\n".join(blocks)
 
     if token:
-        post_to_slack(token, "code-review", text, username="Code Review Bot", icon_emoji=":mag:")
+        post_to_chat(token, "code-review", text, username="Code Review Bot", icon_emoji=":mag:")
         print(f"[review] Posted to #code-review via {reviewer_label}")
     else:
         print(f"[review] No CHAT_ENABLED — review:\n{text}")
@@ -10149,7 +10149,7 @@ def review_gemini_changes_main() -> int:
         subprocess.run(["git", "push", "origin", "HEAD:main"],
                        cwd=str(REPO_ROOT))
         if token:
-            post_to_slack(token, "incidents",
+            post_to_chat(token, "incidents",
                           f":rotating_light: *Auto-reverted* last Gemini commit — syntax errors in: "
                           + ", ".join(syntax_errors[:3]),
                           username="Safety Bot", icon_emoji=":rotating_light:")
@@ -10188,7 +10188,7 @@ def summons_only_main() -> int:
         )
         for ch in ["general", "help", "engineering"]:
             try:
-                post_to_slack(token, ch, handle_msg, username=bot_name, icon_emoji=":robot_face:")
+                post_to_chat(token, ch, handle_msg, username=bot_name, icon_emoji=":robot_face:")
             except Exception:
                 pass
         state["bot_handle_announced"] = True
@@ -10235,11 +10235,11 @@ def summons_only_main() -> int:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Page Status Reporter — each employee audits their assigned dashboard pages
-# Posts rich text "page walkthroughs" to their Slack channel every 4 hours.
+# Posts rich text "page walkthroughs" to their Discord channel every 4 hours.
 # Reads actual TSX source so the LLM reasons about REAL code, not mock data.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Page → (owner_emp_key, slack_channel, emoji, what_to_check)
+# Page → (owner_emp_key, chat_channel, emoji, what_to_check)
 _PAGE_ASSIGNMENTS: list[tuple[str, str, str, str, str]] = [
     (
         "Dashboard.tsx",
@@ -10357,7 +10357,7 @@ def _read_page_source(page_filename: str, max_chars: int = 3000) -> str:
 def run_page_status_reports(token: str, state: dict) -> int:
     """
     Each assigned employee audits their dashboard pages from the TSX source.
-    Posts a rich-text page walkthrough to their Slack channel.
+    Posts a rich-text page walkthrough to their Discord channel.
     Rotates through pages — each run covers ~4 pages (cooldown 4h per page).
     Returns number of posts made.
     """
@@ -10416,7 +10416,7 @@ def run_page_status_reports(token: str, state: dict) -> int:
             print(f"  [page_reports] {page_file}: provider exhausted — skipping")
             continue
 
-        # Format the Slack post
+        # Format the Discord post
         emp_persona = _EMPLOYEE_PERSONAS.get(emp_key, "")
         # Extract employee display name from persona (first sentence)
         emp_display = emp_key.replace("_", " ").title()
@@ -10437,7 +10437,7 @@ def run_page_status_reports(token: str, state: dict) -> int:
             state.setdefault("post_dedup", {})[f"{channel}:{ck}"] = time.time()
             continue
 
-        r = post_to_slack(token, channel, msg,
+        r = post_to_chat(token, channel, msg,
                           username=f"{emp_display[:30]} (Page Audit)",
                           icon_emoji=emoji)
         if r.get("ok"):
@@ -10559,7 +10559,7 @@ def post_honest_progress_report(token: str, state: dict) -> None:
 
     msg = "\n".join(progress_lines)
     if not is_duplicate(state, msg):
-        r = post_to_slack(
+        r = post_to_chat(
             token, "leadership-summary", msg,
             username="CRO Progress Report", icon_emoji=":clipboard:",
         )
@@ -10571,7 +10571,7 @@ def post_honest_progress_report(token: str, state: dict) -> None:
 def page_reports_main() -> int:
     """
     Standalone page audit mode: all assigned employees audit their pages and post
-    text-based walkthroughs to Slack. Triggered by page-reporter.yml workflow.
+    text-based walkthroughs to Discord. Triggered by page-reporter.yml workflow.
     """
     verify_zero_spend()
     if not CHAT_ENABLED:

@@ -7,9 +7,9 @@ Chain of events (fully autonomous, no human in loop):
   3. RiskAgent        → Kelly size + drawdown check
   4. TradeAgent       → places paper order via Alpaca REST
   5. MonitorAgent     → tracks fill + P&L
-  6. LeadReviewer     → reviews entire chain, flags issues to Slack
+  6. LeadReviewer     → reviews entire chain, flags issues to Discord
 
-All inter-agent communication logged to Slack #desk-research channel.
+All inter-agent communication logged to Discord #desk-research channel.
 Runs as GitHub Action every 30 minutes.
 """
 
@@ -31,10 +31,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 from llm_common import llm, chat_post, memory_write
 
 
-# ── Slack wrapper (preserves thread_ts return behaviour) ──────────────────────
+# ── Discord wrapper (preserves thread_ts return behaviour) ──────────────────────
 
-def slack(channel: str, text: str, thread_ts: str | None = None) -> str | None:
-    """Post to Slack, return thread_ts for threading replies."""
+def chat(channel: str, text: str, thread_ts: str | None = None) -> str | None:
+    """Post to Discord, return thread_ts for threading replies."""
     resp = chat_post(channel, text, thread_ts)
     return resp.get("ts")
 
@@ -102,7 +102,7 @@ class ResearchAgent:
 
     def run(self, thread_ts: str | None) -> list[dict]:
         print("[ResearchAgent] Scanning markets...")
-        slack("#desk-research", "🔬 *ResearchAgent* scanning markets...", thread_ts)
+        chat("#desk-research", "🔬 *ResearchAgent* scanning markets...", thread_ts)
 
         # Collect real market data
         market_summary = []
@@ -147,9 +147,9 @@ Respond as JSON array only:
 
         if ideas:
             summary = "\n".join([f"  • {i.get('symbol')} {i.get('side','?').upper()} — conf={i.get('confidence','?')} — {i.get('rationale','?')}" for i in ideas])
-            slack("#desk-research", f"📊 *ResearchAgent found {len(ideas)} ideas:*\n{summary}\n\nMarket data:\n```{context}```", thread_ts)
+            chat("#desk-research", f"📊 *ResearchAgent found {len(ideas)} ideas:*\n{summary}\n\nMarket data:\n```{context}```", thread_ts)
         else:
-            slack("#desk-research", f"⚠️ *ResearchAgent:* No ideas generated (LLM unavailable or parse failed)\nMarket context:\n```{context}```", thread_ts)
+            chat("#desk-research", f"⚠️ *ResearchAgent:* No ideas generated (LLM unavailable or parse failed)\nMarket context:\n```{context}```", thread_ts)
 
         return ideas
 
@@ -159,7 +159,7 @@ class SignalAgent:
 
     def run(self, ideas: list[dict], thread_ts: str | None) -> list[dict]:
         print(f"[SignalAgent] Validating {len(ideas)} ideas...")
-        slack("#desk-research", f"⚡ *SignalAgent* validating {len(ideas)} research ideas...", thread_ts)
+        chat("#desk-research", f"⚡ *SignalAgent* validating {len(ideas)} research ideas...", thread_ts)
 
         validated = []
         for idea in ideas:
@@ -226,7 +226,7 @@ class SignalAgent:
         for i in ideas:
             icon = "✅" if i.get("signal_validated") else "❌"
             msg += f"  {icon} {i.get('symbol')} {i.get('side','?')}: {i.get('signal_reason','?')}\n"
-        slack("#desk-research", msg, thread_ts)
+        chat("#desk-research", msg, thread_ts)
 
         return validated
 
@@ -239,7 +239,7 @@ class RiskAgent:
 
     def run(self, ideas: list[dict], thread_ts: str | None) -> list[dict]:
         print(f"[RiskAgent] Sizing {len(ideas)} validated signals...")
-        slack("#desk-research", f"🛡️ *RiskAgent* applying risk rules to {len(ideas)} signals...", thread_ts)
+        chat("#desk-research", f"🛡️ *RiskAgent* applying risk rules to {len(ideas)} signals...", thread_ts)
 
         approved = []
         msg_lines = []
@@ -270,7 +270,7 @@ class RiskAgent:
                 f"(Kelly={fraction:.1%} conf={conf})"
             )
 
-        slack("#desk-research",
+        chat("#desk-research",
               f"🛡️ *RiskAgent:* {len(approved)}/{len(ideas)} approved\n" + "\n".join(msg_lines),
               thread_ts)
         return approved
@@ -285,10 +285,10 @@ class TradeAgent:
 
     def run(self, ideas: list[dict], thread_ts: str | None) -> list[dict]:
         print(f"[TradeAgent] Placing {len(ideas)} paper orders...")
-        slack("#desk-research", f"📈 *TradeAgent* placing {len(ideas)} paper orders...", thread_ts)
+        chat("#desk-research", f"📈 *TradeAgent* placing {len(ideas)} paper orders...", thread_ts)
 
         if not self.API_KEY or not self.API_SECRET:
-            slack("#desk-research", "⚠️ *TradeAgent:* No Alpaca keys — orders simulated (paper only)", thread_ts)
+            chat("#desk-research", "⚠️ *TradeAgent:* No Alpaca keys — orders simulated (paper only)", thread_ts)
             for idea in ideas:
                 idea["order_id"] = f"SIMULATED_{idea['symbol']}_{int(time.time())}"
                 idea["order_status"] = "simulated"
@@ -348,7 +348,7 @@ class TradeAgent:
             status = idea.get("order_status", "?")
             icon = "✅" if status in ("accepted", "pending_new", "simulated") else ("⏭️" if "skip" in status else "❌")
             msg += f"  {icon} {idea.get('symbol')} {idea.get('side','?')}: {status} (order={idea.get('order_id','?')[:16]})\n"
-        slack("#desk-research", msg, thread_ts)
+        chat("#desk-research", msg, thread_ts)
         return ideas
 
 
@@ -361,12 +361,12 @@ class MonitorAgent:
 
     def run(self, ideas: list[dict], thread_ts: str | None) -> dict:
         print("[MonitorAgent] Checking fills and portfolio P&L...")
-        slack("#desk-research", "📊 *MonitorAgent* checking fills + P&L...", thread_ts)
+        chat("#desk-research", "📊 *MonitorAgent* checking fills + P&L...", thread_ts)
 
         pnl_summary = {"total_equity": None, "cash": None, "positions": [], "orders_filled": 0}
 
         if not self.API_KEY or not self.API_SECRET:
-            slack("#desk-research", "⚠️ *MonitorAgent:* No Alpaca keys — skipping live P&L", thread_ts)
+            chat("#desk-research", "⚠️ *MonitorAgent:* No Alpaca keys — skipping live P&L", thread_ts)
             return pnl_summary
 
         try:
@@ -397,11 +397,11 @@ class MonitorAgent:
             msg = (f"📊 *MonitorAgent Portfolio Snapshot:*\n"
                    f"  Equity: *${equity:,.2f}* | Cash: ${cash:,.2f} | Today: {pnl_icon} ${pnl:+.2f}\n"
                    f"*Open Positions:*\n{pos_text}")
-            slack("#desk-research", msg, thread_ts)
+            chat("#desk-research", msg, thread_ts)
             pnl_summary["orders_filled"] = len([i for i in ideas if i.get("order_status") in ("accepted", "filled", "simulated")])
 
         except Exception as e:
-            slack("#desk-research", f"⚠️ *MonitorAgent* error: {e}", thread_ts)
+            chat("#desk-research", f"⚠️ *MonitorAgent* error: {e}", thread_ts)
 
         return pnl_summary
 
@@ -440,8 +440,8 @@ Sign off as "Lead Reviewer" if approved, "Lead Reviewer [REVIEW NEEDED]" if issu
         # Post to both research and lead channels
         icon = "✅" if "[REVIEW NEEDED]" not in verdict else "⚠️"
         msg = f"{icon} *Lead Reviewer:*\n_{verdict}_"
-        slack("#desk-research", msg, thread_ts)
-        slack("#desk-lead-review", f"*Cycle at {datetime.now(timezone.utc).strftime('%H:%M UTC')}*\n{msg}")
+        chat("#desk-research", msg, thread_ts)
+        chat("#desk-lead-review", f"*Cycle at {datetime.now(timezone.utc).strftime('%H:%M UTC')}*\n{msg}")
 
 
 # ── Main pipeline ─────────────────────────────────────────────────────────────
@@ -450,8 +450,8 @@ def main() -> None:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     print(f"\n=== Research-to-Trade Pipeline | {ts} ===\n")
 
-    # Open a Slack thread for this entire cycle
-    thread_ts = slack(
+    # Open a Discord thread for this entire cycle
+    thread_ts = chat(
         "#desk-research",
         f"🚀 *Research-to-Trade Pipeline started* — {ts}\n"
         f"Chain: ResearchAgent → SignalAgent → RiskAgent → TradeAgent → Monitor → LeadReview"
@@ -474,7 +474,7 @@ def main() -> None:
         lead.run(len(raw_ideas), len(validated), len(executed), pnl, thread_ts)
 
         # Summary
-        slack("#desk-research",
+        chat("#desk-research",
               f"✅ *Pipeline complete:* {len(raw_ideas)} researched → "
               f"{len(validated)} validated → {len(approved)} approved → "
               f"{len(executed)} traded",
@@ -484,7 +484,7 @@ def main() -> None:
 
     except Exception as e:
         tb = traceback.format_exc()
-        slack("#desk-research", f"🔴 *Pipeline ERROR:* {e}\n```{tb[:500]}```", thread_ts)
+        chat("#desk-research", f"🔴 *Pipeline ERROR:* {e}\n```{tb[:500]}```", thread_ts)
         print(f"Pipeline error: {e}")
         raise
 

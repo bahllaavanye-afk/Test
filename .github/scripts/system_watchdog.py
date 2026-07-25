@@ -1,6 +1,6 @@
 """
 System Watchdog — runs every 5 minutes.
-Checks all critical systems, self-heals what it can, posts health to Slack.
+Checks all critical systems, self-heals what it can, posts health to Discord.
 Ensures zero-downtime even if Claude Code session ends.
 """
 from __future__ import annotations

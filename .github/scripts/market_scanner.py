@@ -724,7 +724,7 @@ def scan_cross_asset_risk() -> dict:
     return result
 
 
-# ── Slack report formatter ────────────────────────────────────────────────────
+# ── Discord report formatter ────────────────────────────────────────────────────
 
 def _regime_emoji(regime: str) -> str:
     return {
@@ -938,7 +938,7 @@ def main() -> None:
         ),
     })
 
-    # Build and post Slack report
+    # Build and post Discord report
     report = build_report(macro, active_syms, gaps, rel_vol, momentum,
                           breakouts, rsi, sectors, crypto, earnings, cross_asset)
     print("\n" + report, flush=True)

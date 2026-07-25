@@ -26,7 +26,7 @@ This module provides three things:
 
 3. ContextBudget — assembles the final context blob within a token budget.
    Priorities: (1) CORE memory, (2) retrieved relevant episodes,
-               (3) recent Slack insights, (4) recent trade outcomes.
+               (3) recent Discord insights, (4) recent trade outcomes.
    Ensures total injected context never exceeds the budget.
 
 All state lives in .github/state/company_brain.json — the single source of truth
@@ -288,7 +288,7 @@ class ContextBudget:
     Priority order (highest → lowest):
       1. CORE stable facts (regime, top strategies, risk status) — always included
       2. Relevant episodic memory retrieved by semantic search on the current query
-      3. Recent Slack insights (last 2 entries)
+      3. Recent Discord insights (last 2 entries)
       4. Recent trade outcomes (last 2 entries)
       5. Relevant skills/solutions
 
@@ -344,7 +344,7 @@ class ContextBudget:
                     parts.append("RELEVANT MEMORY:\n" + relevant)
                     used += token_est
 
-        # 3. Recent Slack insights
+        # 3. Recent Discord insights
         chat_insights = brain.get("chat_insights", [])[-2:]
         if chat_insights and used < self.budget:
             chat_lines = [i.get("summary", "")[:100] for i in chat_insights if i.get("summary")]

@@ -7,7 +7,7 @@ build that shared context by pulling from every source and distilling it
 into a compact (~1000 token) company memory that every agent reads first.
 
 Sources aggregated (every 15 minutes):
-  1. Slack threads — messages from the last 2 hours across key channels
+  1. Discord threads — messages from the last 2 hours across key channels
      (not just posted, but REPLIES too — full conversation context)
   2. GitHub — recent PR review comments, issue discussions, CI status
   3. Trade outcomes — from .github/state/trade_log.json
@@ -49,10 +49,10 @@ KNOWLEDGE_CHANNELS = [
     "desk-crypto", "desk-equities", "strategy-performance",
 ]
 
-LOOKBACK_SECONDS = 7200   # 2 hours of Slack history
+LOOKBACK_SECONDS = 7200   # 2 hours of Discord history
 
 # Discord channels where the desks post their real run summaries (funnel,
-# orders, P&L, regime). This is where the trading actually reports to — Slack
+# orders, P&L, regime). This is where the trading actually reports to — Discord
 # is dead (invalid_auth), so without reading these the company brain never saw
 # a single real desk outcome.
 DESK_CHANNELS = [
@@ -71,9 +71,9 @@ def resolve_channel_ids() -> dict[str, str]:
         return {}
 
 
-def fetch_slack_knowledge(channel_ids: dict[str, str]) -> list[dict]:
+def fetch_chat_knowledge(channel_ids: dict[str, str]) -> list[dict]:
     """
-    Pull recent Slack messages from key channels.
+    Pull recent Discord messages from key channels.
     Returns list of {channel, text, thread_ts, is_reply, ts}.
     Filters out bot noise and trivial messages.
     """
@@ -203,7 +203,7 @@ def fetch_recent_code_reviews() -> list[str]:
 
 
 def synthesize_insights(
-    slack_msgs: list[dict],
+    chat_msgs: list[dict],
     github_items: list[dict],
     code_findings: list[str],
     desk_items: list[dict] | None = None,
@@ -213,7 +213,7 @@ def synthesize_insights(
     This is the company's collective intelligence step.
     """
     desk_items = desk_items or []
-    if not slack_msgs and not github_items and not code_findings and not desk_items:
+    if not chat_msgs and not github_items and not code_findings and not desk_items:
         return {}
 
     # Build compact synthesis prompt — efficiency first
@@ -223,9 +223,9 @@ def synthesize_insights(
         desk_text = "\n".join(f"[{d['channel']}] {d['text']}" for d in desk_items[:8])
         parts.append(f"DESK RESULTS (latest run per desk):\n{desk_text}")
 
-    if slack_msgs:
-        slack_sample = slack_msgs[:10]
-        chat_text = "\n".join(f"[{m['channel']}] {m.get('user','?')}: {m['text']}" for m in slack_sample)
+    if chat_msgs:
+        chat_sample = chat_msgs[:10]
+        chat_text = "\n".join(f"[{m['channel']}] {m.get('user','?')}: {m['text']}" for m in chat_sample)
         parts.append(f"CHAT (last 2h):\n{chat_text}")
 
     if github_items:
@@ -266,10 +266,10 @@ def update_company_brain():
 
     # 1. Fetch all knowledge sources in parallel (sequential here for simplicity)
     channel_ids = resolve_channel_ids()
-    print(f"Resolved {len(channel_ids)} Slack channels")
+    print(f"Resolved {len(channel_ids)} Discord channels")
 
-    slack_msgs = fetch_slack_knowledge(channel_ids)
-    print(f"Fetched {len(slack_msgs)} Slack messages")
+    chat_msgs = fetch_chat_knowledge(channel_ids)
+    print(f"Fetched {len(chat_msgs)} Discord messages")
 
     github_items = fetch_github_knowledge()
     print(f"Fetched {len(github_items)} GitHub discussion items")
@@ -281,8 +281,8 @@ def update_company_brain():
     print(f"Fetched {len(desk_items)} desk run summaries")
 
     # 2. Synthesize into structured insights
-    if slack_msgs or github_items or code_findings or desk_items:
-        synthesis = synthesize_insights(slack_msgs, github_items, code_findings, desk_items)
+    if chat_msgs or github_items or code_findings or desk_items:
+        synthesis = synthesize_insights(chat_msgs, github_items, code_findings, desk_items)
         insights = synthesis.get("insights", [])
         print(f"Synthesized {len(insights)} insights")
 
@@ -305,15 +305,15 @@ def update_company_brain():
                 "source": "desk_run_summary",
             })
 
-        # Write Slack-derived insights
-        if slack_msgs:
+        # Write Discord-derived insights
+        if chat_msgs:
             summary = llm(
-                "Summarize these Slack messages in 1-2 sentences: " +
-                " | ".join(m["text"][:100] for m in slack_msgs[:5]),
+                "Summarize these Discord messages in 1-2 sentences: " +
+                " | ".join(m["text"][:100] for m in chat_msgs[:5]),
                 max_tokens=100,
                 inject_company_context=False,
             )
-            memory_write("chat_insights", {"summary": summary, "msg_count": len(slack_msgs)})
+            memory_write("chat_insights", {"summary": summary, "msg_count": len(chat_msgs)})
 
         # Write GitHub-derived insights
         if github_items:
@@ -352,13 +352,13 @@ def update_company_brain():
     brain = _load_brain()
     episodic_count = len(brain.get("episodic", []))
     skills_count = len(brain.get("skills", []))
-    slack_count = len(brain.get("chat_insights", []))
+    chat_count = len(brain.get("chat_insights", []))
     desk_count = len(brain.get("desk_outcomes", []))
 
     print(f"Company brain updated:")
     print(f"  Episodic memory: {episodic_count} entries")
     print(f"  Skills library: {skills_count} entries")
-    print(f"  Slack insights: {slack_count} entries")
+    print(f"  Discord insights: {chat_count} entries")
     print(f"  Desk outcomes: {desk_count} entries")
     print(f"  Risk status: {risk_status}")
     print(f"  Context size: {len(get_context_preview())} chars")

@@ -5,7 +5,7 @@ QuantEdge CI LSTM Trainer
 Self-contained training script for GitHub Actions (CPU only, no app imports).
 Downloads 3 years of SPY + BTC-USD daily data via yfinance,
 trains a lightweight BiLSTM, evaluates out-of-sample Sharpe,
-saves model artifacts, and posts results to Slack #ml-experiments.
+saves model artifacts, and posts results to Discord #ml-experiments.
 
 Runtime: ~15-20 min on ubuntu-latest (CPU).
 Runs weekly (Sunday 02:00 UTC) via lstm-training.yml.
@@ -250,9 +250,9 @@ def compute_oos_sharpe(model: nn.Module, test_ds: TensorDataset) -> float:
     return float(daily_ret.mean() / daily_ret.std() * math.sqrt(252))
 
 
-# ── Slack ─────────────────────────────────────────────────────────────────────
+# ── Discord ─────────────────────────────────────────────────────────────────────
 
-def _post_slack(channel: str, text: str) -> None:
+def _post_chat(channel: str, text: str) -> None:
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
     import notify
     notify.post(channel, text)
@@ -360,7 +360,7 @@ def main() -> int:
             print(f"\n  ERROR training {sym}: {e}")
             results.append({"symbol": sym, "error": str(e)})
 
-    # Post summary to Slack #ml-experiments
+    # Post summary to Discord #ml-experiments
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     lines = [f":brain: *LSTM Training Run Complete* | {now_str}", ""]
     for r in results:
@@ -385,7 +385,7 @@ def main() -> int:
         "_Next: download artifact and commit to repo, or run on Kaggle GPU for full-quality training._",
         "_Quality gate: OOS Sharpe ≥ 0.8 AND Test Acc ≥ 55% before deployment to InferenceService._",
     ]
-    _post_slack("ml-experiments", "\n".join(lines))
+    _post_chat("ml-experiments", "\n".join(lines))
 
     print(f"\n✅ Done — {sum(1 for r in results if 'error' not in r)}/{len(results)} models trained")
     return 0

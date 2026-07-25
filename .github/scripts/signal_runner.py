@@ -2,7 +2,7 @@
 Signal Runner — every 5 minutes across all desks.
 Reads live prices (Binance public API for crypto, yfinance for equity).
 Runs all strategy signal logic without executing orders (paper mode).
-Posts signals + P&L summary to Slack #signals channel.
+Posts signals + P&L summary to Discord #signals channel.
 """
 from __future__ import annotations
 import os, sys, json, importlib.util, glob, time
