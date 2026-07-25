@@ -300,7 +300,14 @@ async def main_async() -> None:
         if await probe_service(sid):
             any_patched = True
     if any_patched:
-        print("\n✅ Patched DATABASE_URL to a verified-working pooler. Redeploying.")
+        # Deliberately not "verified-working": when the correct cluster was
+        # identified via BAD_PASSWORD, the host is now right but the credential
+        # is still stale, so the connection will NOT succeed until a human
+        # rotates the password. Claiming success here would send the next
+        # debugger looking in the wrong place.
+        print("\n✅ Patched DATABASE_URL to the cluster that recognises this tenant. Redeploying.")
+        print("   If the probe reported bad_password, the DB password is still stale —")
+        print("   reset it in Supabase → Settings → Database, then update Render DATABASE_URL.")
     else:
         print("\nNo change made (current URL fine, or no working host found).")
 
