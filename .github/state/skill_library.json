@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Validate CSV logic",
-    "Implement idempotence",
-    "- Which trading strategies/components failed",
     "Check cache expiry",
     "**Thread safety review**: `self_improver` is actively reviewing thread safety in `src/trading/` to prevent potential concurrency issues.",
     "A new **SPY EMA-RSI DualMomentum** strategy has been proposed, with a Sharpe ratio estimated around 0.9, based on a 20-period EMA crossover filtered by a 14-day RSI < 30.",
@@ -199,8 +196,11 @@
     "Log trade retries",
     "Check dependency",
     "Monitor latency trends",
-    "Analyze signal accuracy"
+    "Analyze signal accuracy",
+    "Validate user input",
+    "Track CPU usage",
+    "Limit trade volume"
   ],
-  "last_updated": "2026-07-25T13:17:05.337494+00:00",
+  "last_updated": "2026-07-25T14:46:00.292801+00:00",
   "total": 200
 }
