@@ -1,5 +1,10 @@
 """Trade archive replay endpoints."""
-from fastapi import APIRouter, Depends, Query, HTTPException
+from datetime import date, datetime
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Path
+from pydantic import BaseModel, Field, validator
+
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.archive.trade_archiver import replay, list_archives
@@ -21,57 +26,88 @@ ERR_RETRIEVE_ARCHIVE: str = "Failed to retrieve archive: {exc}"
 router = APIRouter(prefix=ARCHIVE_PREFIX, tags=[ARCHIVE_TAG])
 
 
-@router.get("/index")
-async def get_index(current_user: User = Depends(get_current_user)):
-    """
-    Return a list of available archives.
-    Handles the case where the underlying function returns None.
-    """
-    archives = list_archives()
-    # Ensure a list is always returned
-    return archives if archives else []
+class ArchiveQueryParams(BaseModel):
+    """Query parameters for archive retrieval."""
 
-
-@router.get("/{category}")
-async def get_archive(
-    category: str,
-    date: str | None = Query(
-        None, description=DATE_DESCRIPTION
-    ),
-    limit: int = Query(
-        DEFAULT_LIMIT,
+    date: Optional[date] = Field(
+        default=None,
+        description=DATE_DESCRIPTION,
+        example="2023-09-15",
+    )
+    limit: int = Field(
+        default=DEFAULT_LIMIT,
         ge=MIN_LIMIT,
         le=MAX_LIMIT,
         description=LIMIT_DESCRIPTION,
+        example=100,
+    )
+
+    @validator("date", pre=True)
+    def empty_string_to_none(cls, v):
+        """Treat empty string as None for optional date."""
+        if v == "":
+            return None
+        return v
+
+
+class Trade(BaseModel):
+    """Schema representing a single trade record."""
+
+    trade_id: str = Field(..., description="Unique identifier for the trade")
+    timestamp: datetime = Field(..., description="Timestamp of the trade execution")
+    symbol: str = Field(..., description="Ticker symbol")
+    side: str = Field(
+        ...,
+        description="Side of the trade, either 'buy' or 'sell'",
+        example="buy",
+    )
+    quantity: float = Field(..., description="Number of shares or contracts")
+    price: float = Field(..., description="Execution price per unit")
+
+    @validator("side")
+    def validate_side(cls, v):
+        allowed = {"buy", "sell"}
+        if v.lower() not in allowed:
+            raise ValueError(f"side must be one of {allowed}")
+        return v.lower()
+
+
+@router.get(
+    "/index",
+    response_model=List[str],
+    summary="List available archives",
+    description="Return a list of available archives. Ensures an empty list is returned if none exist.",
+)
+async def get_index(current_user: User = Depends(get_current_user)):
+    archives = list_archives()
+    return archives if archives else []
+
+
+@router.get(
+    "/{category}",
+    response_model=List[Trade],
+    summary="Replay trades from an archive",
+    description=(
+        "Replay trades for a given category and optional date. "
+        "Empty date strings are treated as None. "
+        "Limit is validated to be within allowed bounds. "
+        "Returns an empty list if no trades are found."
     ),
+)
+async def get_archive(
+    category: str = Path(..., description="Archive category", example="equities"),
+    params: ArchiveQueryParams = Depends(),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Replay trades for a given category and optional date.
-    Edge‑case handling:
-    * `date` empty string is treated as None.
-    * `limit` is validated to be at least 1.
-    * Returns an empty list if the replay yields no data.
-    """
-    # Normalize empty date strings
-    if date == "":
-        date = None
-
-    # Defensive check for limit (should already be enforced by Query)
-    if limit < MIN_LIMIT:
-        raise HTTPException(
-            status_code=400,
-            detail=ERR_LIMIT_POSITIVE,
-        )
+    if params.limit < MIN_LIMIT:
+        raise HTTPException(status_code=400, detail=ERR_LIMIT_POSITIVE)
 
     try:
-        result = replay(category, date, limit)
+        result = replay(category, params.date, params.limit)
     except Exception as exc:
-        # Convert unexpected errors to a client‑friendly response
         raise HTTPException(
             status_code=500,
             detail=ERR_RETRIEVE_ARCHIVE.format(exc=exc),
         ) from exc
 
-    # Ensure the endpoint always returns a list
     return result if result else []
