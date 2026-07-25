@@ -1,12 +1,5 @@
 {
   "skills": [
-    "Implement Temporal Fusion",
-    "Sanitize inputs",
-    "**Research and Experiments**: The `research_scientist` and `run_experiments` agents are currently working on undisclosed tasks, but may require input from developers or engineers to progress.",
-    "Verify SSL certs",
-    "* **Bandit algorithm updates**: Updating the UCB1 selection logic in `src/bandits/` to improve performance, and reviewing code for thread safety in `src/trading/`.",
-    "Track thread timeouts",
-    "Log system calls",
     "Validate order IDs",
     "Verify trading hours",
     "Implement circuit breakers",
@@ -199,8 +192,15 @@
     "Flush log buffers",
     "Monitor system health.",
     "Track timeout errors.",
-    "Verify dependency updates."
+    "Verify dependency updates.",
+    "Check DB connections",
+    "Validate config files",
+    "Monitor CPU usage",
+    "Track memory leaks",
+    "Parse peer-learned issues",
+    "Update exit codes",
+    "Enable strict mypy"
   ],
-  "last_updated": "2026-07-25T22:51:43.652774+00:00",
+  "last_updated": "2026-07-25T23:57:03.637639+00:00",
   "total": 200
 }
