@@ -878,7 +878,7 @@ _DEFAULT_BRAIN: dict = {
     },
     "episodic": [],          # last 200 events with lessons
     "skills": [],            # reusable solutions
-    "slack_insights": [],    # lessons from Slack threads
+    "chat_insights": [],    # lessons from Discord channels
     "github_insights": [],   # lessons from PR reviews + issues
     "trade_outcomes": [],    # recent P&L + what worked
     "experiment_results": [], # ML experiment outcomes
@@ -946,7 +946,7 @@ def get_company_context(max_tokens: int = 600) -> str:
     core = brain.get("core", {})
     recent_lessons = brain.get("episodic", [])[-5:]
     top_skills = brain.get("skills", [])[-3:]
-    slack_insights = brain.get("slack_insights", [])[-2:]
+    chat_insights = brain.get("chat_insights", [])[-2:]
     trade_outcomes = brain.get("trade_outcomes", [])[-2:]
     desk_outcomes = brain.get("desk_outcomes", [])[-3:]
 
@@ -981,8 +981,8 @@ def get_company_context(max_tokens: int = 600) -> str:
         if lessons:
             parts.append("Recent lessons: " + "; ".join(lessons[:3]))
 
-    if slack_insights:
-        parts.append("Slack: " + " | ".join(i.get("summary", "") for i in slack_insights if i.get("summary")))
+    if chat_insights:
+        parts.append("Chat: " + " | ".join(i.get("summary", "") for i in chat_insights if i.get("summary")))
 
     if top_skills:
         parts.append("Known solutions: " + " | ".join(s.get("name", s) if isinstance(s, dict) else str(s) for s in top_skills))
@@ -994,13 +994,13 @@ def get_company_context(max_tokens: int = 600) -> str:
 
 
 def memory_write(category: str, entry: dict) -> None:
-    """Write an entry to shared company brain. Category: episodic|skills|slack_insights|github_insights|trade_outcomes|experiment_results"""
+    """Write an entry to shared company brain. Category: episodic|skills|chat_insights|github_insights|trade_outcomes|experiment_results"""
     brain = _load_brain()
     entry["ts"] = time.time()
     lst = brain.setdefault(category, [])
     lst.append(entry)
     # Rolling window caps
-    caps = {"episodic": 200, "skills": 100, "slack_insights": 100, "github_insights": 100,
+    caps = {"episodic": 200, "skills": 100, "chat_insights": 100, "github_insights": 100,
             "trade_outcomes": 200, "experiment_results": 100, "desk_outcomes": 100}
     if len(lst) > caps.get(category, 200):
         brain[category] = lst[-caps.get(category, 200):]
@@ -1028,56 +1028,16 @@ def core_get(key: str, default: Any = None) -> Any:
 
 # ── Slack helpers ─────────────────────────────────────────────────────────────
 
-def slack_post(channel: str, text: str, thread_ts: str | None = None) -> dict:
-    """Post to Slack. Returns the message object (ts, channel)."""
-    token = os.environ.get("SLACK_BOT_TOKEN", "")
-    if not token:
-        return {}
-    body: dict = {"channel": channel, "text": text}
-    if thread_ts:
-        body["thread_ts"] = thread_ts
-    data = json.dumps(body).encode()
-    req = urllib.request.Request(
-        "https://slack.com/api/chat.postMessage",
-        data=data,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-    )
+def chat_post(channel: str, text: str, thread_ts: str | None = None) -> dict:
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    return notify.post(channel, text)
+
+
+def chat_read_channel(channel: str, limit: int = 50) -> list[dict]:
+    """Read recent messages from a Discord channel (newest first)."""
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read())
-    except Exception as e:
-        logger.debug("slack_post failed: %s", e)
-        return {}
-
-
-def slack_read_thread(channel: str, thread_ts: str, limit: int = 20) -> list[dict]:
-    """Read full thread history — so agents can see replies directed at them."""
-    token = os.environ.get("SLACK_BOT_TOKEN", "")
-    if not token:
+        import notify
+    except Exception:  # pragma: no cover
         return []
-    url = f"https://slack.com/api/conversations.replies?channel={channel}&ts={thread_ts}&limit={limit}"
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-            return data.get("messages", [])
-    except Exception:
-        return []
-
-
-def slack_read_channel(channel: str, limit: int = 50, oldest: float = 0) -> list[dict]:
-    """Read recent messages from a channel."""
-    token = os.environ.get("SLACK_BOT_TOKEN", "")
-    if not token:
-        return []
-    params = f"channel={channel}&limit={limit}"
-    if oldest:
-        params += f"&oldest={oldest}"
-    url = f"https://slack.com/api/conversations.history?{params}"
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-            return data.get("messages", [])
-    except Exception:
-        return []
+    return notify.read_channel_recent(channel, limit=limit)

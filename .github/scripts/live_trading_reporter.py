@@ -32,7 +32,8 @@ except ImportError:
 # ── Constants ──────────────────────────────────────────────────────────────────
 ALPACA_KEY     = os.environ.get("ALPACA_API_KEY", "")
 ALPACA_SECRET  = os.environ.get("ALPACA_SECRET_KEY", "")
-SLACK_TOKEN    = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 TRADING_MODE   = os.environ.get("TRADING_MODE", "paper").lower()
 ALPACA_BASE    = "https://paper-api.alpaca.markets"
 DATA_BASE      = "https://data.alpaca.markets"
@@ -71,31 +72,12 @@ def get(path: str, params: dict | None = None, base: str = ALPACA_BASE) -> dict 
 
 
 # ── Slack helpers ──────────────────────────────────────────────────────────────
-def post_slack(channel: str, text: str, username: str = "Live Trading Bot",
+def post_chat(channel: str, text: str, username: str = "Live Trading Bot",
                emoji: str = ":chart_with_upwards_trend:") -> bool:
     # Discord-first (operator's live surface); Slack only if a token exists.
-    try:
-        import sys as _sys
-        from pathlib import Path as _Path
-        _sys.path.insert(0, str(_Path(__file__).resolve().parent))
-        from notify import discord_post
-        discord_post(channel, text, username=username)
-    except Exception as _exc:  # noqa: BLE001
-        print(f"[discord] {_exc}", flush=True)
-    if not SLACK_TOKEN:
-        print(f"[SLACK:{channel}]\n{text}\n")
-        return True
-    r = requests.post(
-        "https://slack.com/api/chat.postMessage",
-        headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-        json={"channel": channel, "text": text, "username": username, "icon_emoji": emoji},
-        timeout=10,
-    )
-    data = r.json()
-    if not data.get("ok"):
-        print(f"  [slack] #{channel}: {data.get('error')}", file=sys.stderr)
-        return False
-    return True
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    return notify.post(channel, text)
 
 
 def _pct_color(pct: float) -> str:
@@ -351,8 +333,8 @@ def main() -> int:
     account = data.get("account", {})
     if not account:
         print("⚠️ Could not reach Alpaca API — check secrets")
-        if SLACK_TOKEN:
-            post_slack("engineering",
+        if CHAT_ENABLED:
+            post_chat("engineering",
                        ":warning: *Live Reporter*: Could not reach Alpaca paper API — check ALPACA_API_KEY / ALPACA_SECRET_KEY secrets",
                        username="System Monitor", emoji=":warning:")
         return 1
@@ -398,7 +380,7 @@ def main() -> int:
     # Post all
     posted = 0
     for channel, text, username, emoji in posts:
-        ok = post_slack(channel, text, username=username, emoji=emoji)
+        ok = post_chat(channel, text, username=username, emoji=emoji)
         if ok:
             posted += 1
             print(f"  ✓ #{channel}")

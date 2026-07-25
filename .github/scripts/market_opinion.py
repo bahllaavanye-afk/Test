@@ -27,7 +27,7 @@ from pathlib import Path
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import core_update, memory_write, slack_post, llm
+from llm_common import core_update, memory_write, chat_post, llm
 
 ALLOW_PAID = os.environ.get("ALLOW_PAID_APIS", "False")
 if ALLOW_PAID.lower() == "true":
@@ -242,7 +242,7 @@ def main() -> None:
         "lesson": opinion["summary"],
     })
 
-    # Post to Slack
+    # Post to Discord
     regime_emoji = {
         "strong_bull": "🟢🟢", "bull": "🟢", "neutral": "🟡",
         "high_vol": "⚡", "bear": "🔴", "strong_bear": "🔴🔴",
@@ -272,12 +272,12 @@ def main() -> None:
     if breadth_info:
         msg_lines.append(f"  • Market breadth: {breadth_info.get('breadth_pct', '?')}% sectors above 20-SMA")
 
-    slack_post("#market-analysis", "\n".join(msg_lines))
+    chat_post("#market-analysis", "\n".join(msg_lines))
     print("Posted morning brief to #market-analysis", flush=True)
 
     # Also post regime change alert to #signals if regime is bear/strong_bear
     if regime in ("bear", "strong_bear"):
-        slack_post("#signals", (
+        chat_post("#signals", (
             f"⚠️ *REGIME ALERT: {regime.replace('_', ' ').upper()}* — "
             f"Directional strategies PAUSED. Only arbitrage strategies active."
         ))

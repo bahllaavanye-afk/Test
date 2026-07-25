@@ -3,7 +3,7 @@ Tests for role-based employee key lookup and new agent registration.
 Covers: split-bug fix for multi-segment keys (e.g. 'vp_eng', 'alpha_dir'),
 account dict completeness for all core employees, and new agent persona coverage.
 
-All tests are fully offline — no real Slack token or LLM keys required.
+All tests are fully offline — no chat credentials or LLM keys required.
 """
 
 import os
@@ -53,7 +53,7 @@ _litellm_stub.completion = MagicMock(side_effect=RuntimeError("litellm not avail
 sys.modules.setdefault("litellm", _litellm_stub)
 
 # Now import the module under test
-import slack_agent_team as sat  # noqa: E402
+import agent_team as sat  # noqa: E402
 
 
 # ===========================================================================

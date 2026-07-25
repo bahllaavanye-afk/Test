@@ -326,35 +326,44 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         ),
     )
 
-    async def _slack_employee_report() -> None:
-        """Post hourly employee status to Slack #engineering."""
+    async def _employee_report() -> None:
+        """Post hourly employee status to the Discord #engineering channel.
+
+        NOTE: this used to call `post_message()`, which has never existed on the
+        notifier — so every hourly run raised AttributeError straight into the
+        `except` below and the report was never actually delivered. It now uses
+        the real `send()` interface and reports structured fields.
+        """
         try:
-            from app.notifications.slack import slack
+            from app.notifications.discord import discord
             from app.main import app as _app
 
             algo = getattr(_app.state, "algo_agent", None)
             research = getattr(_app.state, "research_sci", None)
 
-            # Build a simple status payload; actual implementation may vary.
-            payload = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "algo_agent_running": bool(algo),
-                "research_scientist_active": bool(research),
-            }
-            await slack.post_message(channel="#engineering", text=str(payload))
-            logger.info("Slack employee report posted")
+            ok = await discord.send(
+                "system",
+                "system",
+                "🧑‍💻 Employee status",
+                fields={
+                    "Algo agent": "running" if algo else "stopped",
+                    "Research scientist": "active" if research else "inactive",
+                    "As of": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+                },
+            )
+            logger.info("Employee report posted", delivered=ok)
         except Exception as exc:
-            logger.error("Slack employee report failed", error=str(exc))
+            logger.error("Employee report failed", error=str(exc))
 
-    # Schedule the Slack reporting job
+    # Schedule the hourly employee-status report
     _add_job(
         scheduler,
         SchedulerJobConfig(
-            job_id="slack_report",
+            job_id="employee_report",
             trigger="interval",
             trigger_args={"hours": 1},
-            func=_slack_employee_report,
-            description="Post hourly employee status to Slack.",
+            func=_employee_report,
+            description="Post hourly employee status to Discord.",
         ),
     )
 
@@ -591,7 +600,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
 
         Deterministic read-only rollup: account equity, open positions, and the
         day's closed trades. Delivery rides the notifications layer, which
-        already fails over Slack → Discord.
+        delivers via Discord.
         """
         try:
             from sqlalchemy import func
@@ -600,7 +609,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             from app.database import AsyncSessionLocal
             from app.models.position import Position
             from app.models.trade import Trade
-            from app.notifications.slack import slack
+            from app.notifications.discord import discord
 
             today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
             async with AsyncSessionLocal() as db:
@@ -618,7 +627,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
                 )
 
             n_closed, pnl_today = int(closed_today[0]), float(closed_today[1])
-            await slack.send(
+            await discord.send(
                 channel="orders",  # CHANNEL_MAP: orders → #pnl-daily
                 event_type="info" if pnl_today >= 0 else "warning",
                 title=f"📊 Daily P&L digest — {'▲' if pnl_today >= 0 else '▼'} ${pnl_today:,.2f}",
@@ -640,7 +649,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             trigger="cron",
             trigger_args={"hour": 21, "minute": 10},  # ~after US close, daily
             func=_daily_pnl_digest,
-            description="End-of-day P&L rollup to the trading channel (Slack→Discord failover).",
+            description="End-of-day P&L rollup to the trading channel (Discord).",
         ),
     )
 
@@ -665,7 +674,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             from app.database import AsyncSessionLocal
             from app.models.account import AccountSnapshot
             from app.models.position import Position
-            from app.notifications.slack import slack
+            from app.notifications.discord import discord
 
             breaches: list[str] = []
             async with AsyncSessionLocal() as db:
@@ -702,7 +711,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
                     breaches.append(f"Gross exposure {lev:.2f}× equity ≥ {GROSS_LEVERAGE:.1f}×")
 
             if breaches:
-                await slack.send(
+                await discord.send(
                     channel="alerts",  # CHANNEL_MAP: alerts → #risk-alerts
                     event_type="risk_alert",
                     title="🛡️ Risk surveillance — threshold breach",
@@ -842,8 +851,8 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
             except Exception as exc:
                 logger.debug("Standup: Google Doc append skipped", error=str(exc))
 
-            from app.notifications.slack import slack
-            await slack.send(
+            from app.notifications.discord import discord
+            await discord.send(
                 channel="system",  # CHANNEL_MAP: system → #engineering
                 event_type="info",
                 title="🗓️ Hourly standup",
@@ -866,7 +875,7 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
     # main.py calls start_scheduler() and stores the result without calling .start()
     # itself, so this MUST return a *running* scheduler. A rewrite dropped the start()
     # call, which registered jobs but never ran them (snapshot/retrain/order_sync/
-    # slack_report were silently dead). Guard against double-start.
+    # employee_report were silently dead). Guard against double-start.
     if not scheduler.running:
         scheduler.start()
     return scheduler

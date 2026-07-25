@@ -33,7 +33,6 @@ jobs:
 
       - name: Run experiments agent
         env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -55,13 +54,13 @@ jobs:
           LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
           LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
           ALLOW_PAID_APIS: "False"
-        run: python .github/scripts/slack_agent_team.py --run-experiments
+        run: python .github/scripts/agent_team.py --run-experiments
       - name: Push changes
         continue-on-error: true
         run: |
           git config user.email "agents@quantedge.ai"
           git config user.name "QuantEdge Agent Team"
-          STATE_FILE=".github/state/slack_state.json"
+          STATE_FILE=".github/state/agent_state.json"
           if [ -f "$STATE_FILE" ]; then
             git add "$STATE_FILE"
             git diff --cached --quiet || git commit -m "chore: persist agent state [skip ci]"

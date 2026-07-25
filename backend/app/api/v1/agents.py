@@ -35,7 +35,7 @@ AGENT_ROLES = {
     "desk_trader":           "Paper trades across crypto/equity/polymarket desks",
     "system_watchdog":       "Health checks, self-heals state files every 5 min",
     "ml_trainer":            "Trains and evaluates ML models on historical data",
-    "standup_agent":         "Posts daily standups and OKR tracking to Slack",
+    "standup_agent":         "Posts daily standups and OKR tracking to Discord",
     "investor_pipeline":     "Tracks investor pipeline, auto-advances stages",
     "run_experiments":       "Runs strategy experiments, saves results to JSON",
     "algo_agent":            "UCB1 bandit exploration of strategy candidates",
@@ -46,8 +46,8 @@ AGENT_ROLES = {
 
 GITHUB_WORKFLOWS = [
     "continuous-improvement", "collective-learning", "signal-runner",
-    "quick-backtest", "system-watchdog", "slack-agent-team",
-    "daily-standup", "slack-pulse", "gemini-ml-training",
+    "quick-backtest", "system-watchdog", "multi-agent-discussion",
+    "daily-standup", "discord-commands-sync", "gemini-ml-training",
     "run-experiments-agent", "free-agent-engineer", "strategy-health",
     "peer-review", "agent-health-monitor", "token-usage-monitor",
 ]

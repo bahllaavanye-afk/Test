@@ -45,7 +45,8 @@ os.environ.setdefault("STRATEGY_ANALYZE_BUDGET_S", "8")
 
 ALPACA_API_KEY    = os.environ.get("ALPACA_API_KEY", "")
 ALPACA_SECRET_KEY = os.environ.get("ALPACA_SECRET_KEY", "")
-SLACK_BOT_TOKEN   = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 DESK_FILTER       = os.environ.get("DESK_FILTER", "").strip().lower()
 
 # ── Desk configuration ────────────────────────────────────────────────────────
@@ -1320,39 +1321,9 @@ async def run_desk(desk: DeskConfig, account: dict) -> list[dict]:
 # ── Slack helper ──────────────────────────────────────────────────────────────
 
 def _post_slack(channel: str, message: str) -> None:
-    """Deliver a desk update to the team chat. Discord is the operator's live
-    surface (the Slack token is dead), so post there via the shared notify helper;
-    Slack is attempted too when a token exists. Named _post_slack for its many
-    call sites — it is really 'post to the desk channel on every wired surface'."""
-    # Discord first — it's where the operator actually reads desk activity.
-    try:
-        import sys as _sys
-        from pathlib import Path as _Path
-        _sys.path.insert(0, str(_Path(__file__).resolve().parent))
-        from notify import discord_post
-        discord_post(channel, message, username="QuantEdge Desk")
-    except Exception as exc:  # noqa: BLE001 — delivery must never break trading
-        print(f"  ⚠ Discord post failed on {channel}: {exc}", flush=True)
-
-    if not SLACK_BOT_TOKEN:
-        return
-    try:
-        import urllib.request
-        payload = json.dumps({"channel": channel, "text": message})
-        req = urllib.request.Request(
-            "https://slack.com/api/chat.postMessage",
-            data=payload.encode(),
-            headers={
-                "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
-                "Content-Type":  "application/json",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            body = json.loads(resp.read())
-            if not body.get("ok"):
-                print(f"  ⚠ Slack error on {channel}: {body.get('error')}", flush=True)
-    except Exception as exc:
-        print(f"  ⚠ Slack post failed on {channel}: {exc}", flush=True)
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(channel, message)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

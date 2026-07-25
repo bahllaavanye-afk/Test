@@ -1,5 +1,5 @@
 """
-Agent Status Checker — posts a "health roll call" to Slack every 4 hours.
+Agent Status Checker — posts a "health roll call" to Discord every 4 hours.
 
 For each of the 18 agents:
 1. Reads their last activity from agent_memory.json
@@ -21,14 +21,14 @@ from pathlib import Path
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post as _lc_slack_post
+from llm_common import llm, chat_post as _lc_chat_post
 
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 if ALLOW_PAID_APIS.lower() == "true":
     sys.exit(1)
 
-SLACK_TOKEN    = os.environ.get("SLACK_BOT_TOKEN", "")
-
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 REPO_ROOT    = Path(__file__).resolve().parents[2]
 MEMORY_FILE  = REPO_ROOT / ".github" / "state" / "agent_memory.json"
 SKILL_FILE   = REPO_ROOT / ".github" / "state" / "skill_library.json"
@@ -47,7 +47,7 @@ AGENTS = [
     ("desk_trader",          "📊", "Paper trades across crypto/equity/polymarket desks"),
     ("system_watchdog",      "🛡️",  "Health checks and self-heals the platform every 5 min"),
     ("ml_trainer",           "🏋️",  "Trains ML models: LSTM, TFT, XGBoost, Lorentzian KNN"),
-    ("standup_agent",        "📋", "Posts daily standups and OKR tracking to Slack"),
+    ("standup_agent",        "📋", "Posts daily standups and OKR tracking to Discord"),
     ("investor_pipeline",    "💼", "Tracks investor pipeline, auto-advances stages"),
     ("run_experiments",      "🔬", "Runs strategy experiments, saves results to JSON"),
     ("algo_agent",           "🎰", "UCB1 bandit for strategy exploration"),
@@ -57,30 +57,11 @@ AGENTS = [
 ]
 
 
-def post_slack(channel: str, text: str, username: str = "QuantEdge",
+def post_chat(channel: str, text: str, username: str = "QuantEdge",
                icon: str = "robot_face", thread_ts: str | None = None) -> str | None:
-    if not SLACK_TOKEN:
-        print(f"[#{channel}] {username}: {text[:120]}")
-        return "local-ts"
-    payload = {
-        "channel": channel, "text": text, "mrkdwn": True,
-        "username": username, "icon_emoji": f":{icon}:",
-    }
-    if thread_ts:
-        payload["thread_ts"] = thread_ts
-    try:
-        r = requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-            json=payload, timeout=15,
-        )
-        d = r.json()
-        if not d.get("ok"):
-            print(f"Slack error: {d.get('error')}")
-        return d.get("ts")
-    except Exception as e:
-        print(f"Slack: {e}")
-        return None
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    return notify.post(channel, text)
 
 
 def _make_agent_prompt(agent_name: str, role: str, stats: dict,
@@ -156,7 +137,7 @@ def main():
         })
         print(f"  {emoji} {agent_name}: {reply[:80]}")
 
-    # Post to Slack as a threaded roll call
+    # Post to Discord as a threaded roll call
     total_runs = sum(
         v.get("runs", 0) for v in stats_map.values()
     )
@@ -169,11 +150,11 @@ def main():
         f"_{len(AGENTS)} agents online · {total_runs} total runs · {sr_pct}% success rate · {skill_count} shared skills_\n"
         f"_Showing {len(batch)} of {len(AGENTS)} agents (rotating batch)_"
     )
-    thread_ts = post_slack("engineering", header, username="QuantEdge Status Bot", icon="white_check_mark")
+    thread_ts = post_chat("engineering", header, username="QuantEdge Status Bot", icon="white_check_mark")
 
     for s in agent_statuses:
         line = f"{s['emoji']} *{s['agent']}* ({s['runs']} runs)\n_{s['reply']}_"
-        post_slack("engineering", line, username=f"Agent: {s['agent']}",
+        post_chat("engineering", line, username=f"Agent: {s['agent']}",
                    icon="robot_face", thread_ts=thread_ts)
 
     # Save status to state file for frontend dashboard

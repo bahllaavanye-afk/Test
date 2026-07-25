@@ -83,23 +83,23 @@ class SlippageTracker:
                 algo=request.execution_algo,
             )
 
-            from app.notifications.slack import slack
+            from app.notifications.discord import discord
             from app.notifications.tracker import tracker
             tracker.record("order_filled", "order",
                             f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
                             slippage_bps=round(slippage_bps, 2), algo=request.execution_algo)
-            await slack.notify_order_filled(
+            await discord.notify_order_filled(
                 request.symbol, request.side, request.quantity,
                 result.avg_fill_price, slippage_bps=round(slippage_bps, 2),
                 algo=request.execution_algo,
             )
 
-            from app.notifications.slack import slack
+            from app.notifications.discord import discord
             from app.notifications.tracker import tracker
             tracker.record("order_filled", "order",
                             f"{request.symbol} {request.side} filled @ {result.avg_fill_price}",
                             slippage_bps=round(slippage_bps, 2), algo=request.execution_algo)
-            await slack.notify_order_filled(
+            await discord.notify_order_filled(
                 request.symbol, request.side, request.quantity,
                 result.avg_fill_price, slippage_bps=round(slippage_bps, 2),
                 algo=request.execution_algo,

@@ -35,7 +35,6 @@ jobs:
       - name: Run token usage monitor
         continue-on-error: true
         env:
-          SLACK_BOT_TOKEN:    ${{ secrets.SLACK_BOT_TOKEN }}
           GEMINI_API_KEY:     ${{ secrets.GEMINI_API_KEY_1 }}
           # Paid backstop: free-tier keys rate-limit silently; ai-pr-review proved
           # these work. Without them every conversation dies quiet (Discord silence).

@@ -44,18 +44,17 @@ jobs:
           NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
           TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           ALLOW_PAID_APIS: "False"
           ANTHROPIC_API_KEY: "disabled"
 
-      - name: Post Slack report
+      - name: Post run report to Discord
         run: |
           python - <<'PYEOF'
           import os, re, sys
           sys.path.insert(0, ".github/scripts")
-          import notify_slack
+          import notify
 
           output = ""
           try:
@@ -77,19 +76,24 @@ jobs:
           providers = re.findall(r"\(via ([^)]+)\)", output)
           provider_summary = ", ".join(sorted(set(providers))) if providers else "see logs"
 
-          run_url = notify_slack.RUN_URL
+          # Discord markdown — Slack's "<url|label>" and ":emoji:" render as
+          # literal text in Discord, so use a real emoji and a bare URL.
+          run_url = (
+              f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/"
+              f"{os.environ.get('GITHUB_REPOSITORY', '')}/actions/runs/"
+              f"{os.environ.get('GITHUB_RUN_ID', '')}"
+          )
           text = (
-              ":busts_in_silhouette: *Employee Conversations* — Run complete\n"
+              "👥 **Employee Conversations** — run complete\n"
               f"Responded: {responded}/47 employees\n"
               f"Providers used: {provider_summary}\n"
               f"Failed: {failed_str}\n"
-              f"<{run_url}|View details →>"
+              f"[View details →]({run_url})"
           )
-          notify_slack._post("#engineering", text)
+          notify.post("#engineering", text, username="Employee Conversations")
           PYEOF
         continue-on-error: true
         env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           GITHUB_RUN_ID: ${{ github.run_id }}

@@ -19,7 +19,8 @@ from pathlib import Path
 
 import httpx
 
-SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 ALPACA_KEY  = os.environ.get("ALPACA_API_KEY", "")
 ALPACA_SEC  = os.environ.get("ALPACA_SECRET_KEY", "")
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -158,24 +159,10 @@ def discord_post(channel: str, text: str) -> None:
         print(f"  Discord error: {e}")
 
 
-def slack_post(channel: str, text: str) -> None:
-    if not SLACK_TOKEN:
-        discord_post(channel, text)
-        return
-    try:
-        r = httpx.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
-            json={"channel": channel, "text": text, "mrkdwn": True},
-            timeout=10,
-        )
-        data = r.json()
-        if not data.get("ok"):
-            print(f"  Slack error ({channel}): {data.get('error')}")
-            discord_post(channel, text)
-    except Exception as e:
-        print(f"  Slack error: {e}")
-        discord_post(channel, text)
+def chat_post(channel: str, text: str) -> None:
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(channel, text)
 
 
 def load_state() -> dict:
@@ -241,9 +228,9 @@ def main() -> None:
                 f"Detected: {now_utc()}\n"
                 f"Impact: {'Trading may be affected' if svc['critical'] else 'Non-critical service'}"
             )
-            slack_post(CHANNEL, msg)
+            chat_post(CHANNEL, msg)
             if svc.get("slack_channel") and svc["slack_channel"] != CHANNEL:
-                slack_post(svc["slack_channel"], msg)
+                chat_post(svc["slack_channel"], msg)
             print(f"    → OUTAGE ALERT sent to {CHANNEL}")
 
         elif healthy and not was_healthy:
@@ -253,7 +240,7 @@ def main() -> None:
                 f"Status: `{detail}`\n"
                 f"Recovered: {now_utc()}"
             )
-            slack_post(CHANNEL, msg)
+            chat_post(CHANNEL, msg)
             print(f"    → RECOVERY alert sent")
 
         state[name] = {"healthy": healthy, "detail": detail, "ts": now_utc()}
@@ -266,7 +253,7 @@ def main() -> None:
         all_count = len(SERVICES)
         summary   = "✅ All systems operational" if ok_count == all_count else f"⚠️ {all_count - ok_count}/{all_count} services degraded"
         digest = f"*🔭 Third-Party Status · {now_utc()}*\n{summary}\n\n" + "\n".join(status_lines)
-        slack_post(CHANNEL, digest)
+        chat_post(CHANNEL, digest)
 
     if any_down:
         sys.exit(1)  # Non-zero exit → GitHub Actions marks step as failed

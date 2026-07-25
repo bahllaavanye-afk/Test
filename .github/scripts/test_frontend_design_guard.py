@@ -20,7 +20,7 @@ def _load_agent():
     # stub the LLM layer so importing the agent needs no network/keys
     stub = types.ModuleType("llm_common")
     stub.llm = lambda *a, **k: None
-    stub.slack_post = lambda *a, **k: None
+    stub.chat_post = lambda *a, **k: None
     stub.memory_write = lambda *a, **k: None
     sys.modules["llm_common"] = stub
     spec = importlib.util.spec_from_file_location("fda_under_test", _SCRIPTS / "frontend_design_agent.py")

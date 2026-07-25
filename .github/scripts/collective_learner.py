@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post, memory_write
+from llm_common import llm, chat_post, memory_write
 
 
 def _locked_json_write(path: Path, data: dict) -> None:
@@ -138,19 +138,10 @@ def prune_task_registry(tasks: dict) -> dict:
     return tasks
 
 
-def post_slack(channel: str, text: str):
-    if not SLACK_TOKEN:
-        print(f"[#{channel}] {text[:200]}")
-        return
-    try:
-        requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-            json={"channel": channel, "text": text, "mrkdwn": True},
-            timeout=10
-        )
-    except Exception as e:
-        print(f"Slack: {e}")
+def post_chat(channel: str, text: str):
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(channel, text)
 
 
 def main():
@@ -253,7 +244,7 @@ def main():
     except Exception as e:
         print(f"  company_brain write error: {e}")
 
-    # Post to Slack if new skills were learned
+    # Post to Discord if new skills were learned
     if added:
         lines = [f"*Collective Learning Update — {now.strftime('%H:%M UTC')}*"]
         lines.append(f"Agents ran {total_runs} total tasks | {total_successes} successes")
@@ -261,7 +252,7 @@ def main():
         for skill in added:
             lines.append(f"  • {skill}")
         lines.append(f"Skill library: {len(current_skills)} total patterns")
-        post_slack("engineering", "\n".join(lines))
+        post_chat("engineering", "\n".join(lines))
 
     print(f"✓ Skills: {len(current_skills)} total, +{len(added)} new | Agent runs: {total_runs}")
 

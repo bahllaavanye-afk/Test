@@ -18,7 +18,8 @@ def _resolve_key(*names: str) -> str:
             if v: return v
     return ""
 
-SLACK_TOKEN     = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 GEMINI_API_KEY  = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
 GROQ_API_KEY    = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
 DEEPSEEK_KEYS   = [k for k in [
@@ -219,21 +220,10 @@ def self_heal_state() -> list[str]:
     return actions
 
 
-def post_slack(channel: str, text: str) -> bool:
-    if not SLACK_TOKEN:
-        print(f"[#{channel}] {text[:200]}")
-        return False
-    try:
-        r = requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-            json={"channel": channel, "text": text, "mrkdwn": True},
-            timeout=10
-        )
-        return r.status_code == 200 and r.json().get("ok")
-    except Exception as e:
-        print(f"Slack error: {e}")
-        return False
+def post_chat(channel: str, text: str) -> bool:
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    return notify.post(channel, text)
 
 
 def fmt(ok: bool, detail: str) -> str:
@@ -278,7 +268,7 @@ def main():
     except Exception as e:
         print(f"Memory update error: {e}")
 
-    # Post to Slack — always post full health, alert on failures
+    # Post to Discord — always post full health, alert on failures
     lines = [f"*System Health — {now.strftime('%H:%M UTC')}*"]
     for name, (ok, detail) in checks.items():
         lines.append(f"  {fmt(ok, f'{name}: {detail}')}")
@@ -294,9 +284,9 @@ def main():
     msg = "\n".join(lines)
 
     # Always post to engineering, alert to incidents on failures
-    post_slack("engineering", msg)
+    post_chat("engineering", msg)
     if failing:
-        post_slack("incidents", f":rotating_light: *SYSTEM ALERT — {len(failing)} service(s) down*\n{msg}")
+        post_chat("incidents", f":rotating_light: *SYSTEM ALERT — {len(failing)} service(s) down*\n{msg}")
 
     # Save summary
     summary = {

@@ -23,8 +23,8 @@ if not _any_llm_key():
     print("No LLM keys available — skipping real conversations")
     sys.exit(0)
 
-# ── Imports from slack_agent_team (only if keys exist) ───────────────────────
-from slack_agent_team import employee_provider_prompt, _EMPLOYEE_PERSONAS  # noqa: E402
+# ── Imports from agent_team (only if keys exist) ───────────────────────
+from agent_team import employee_provider_prompt, _EMPLOYEE_PERSONAS  # noqa: E402
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 REPO_ROOT   = Path(__file__).resolve().parents[2]

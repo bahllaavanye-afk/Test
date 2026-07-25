@@ -20,11 +20,12 @@ except ImportError:
 # ── Config ─────────────────────────────────────────────────────────────────────
 ALPACA_API_KEY    = os.environ.get("ALPACA_API_KEY", "")
 ALPACA_SECRET_KEY = os.environ.get("ALPACA_SECRET_KEY", "")
-SLACK_BOT_TOKEN   = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 ALPACA_BASE_URL   = os.environ.get("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
 DAYS              = int(os.environ.get("DAYS", "1"))
 
-SLACK_CHANNEL = "#pnl-daily"
+CHAT_CHANNEL = "#pnl-daily"
 
 
 def _alpaca(path: str, params: dict | None = None) -> dict | list:
@@ -45,29 +46,9 @@ def _alpaca(path: str, params: dict | None = None) -> dict | list:
 
 def _post_slack(text: str, blocks: list | None = None) -> None:
     # Discord-first (operator's live surface); Slack only if a token exists.
-    try:
-        import sys as _sys
-        from pathlib import Path as _Path
-        _sys.path.insert(0, str(_Path(__file__).resolve().parent))
-        from notify import discord_post
-        discord_post(SLACK_CHANNEL, text, username="QuantEdge P&L")
-    except Exception as _exc:  # noqa: BLE001
-        print(f"[discord] {_exc}", flush=True)
-    if not SLACK_BOT_TOKEN:
-        print(f"[SLACK (dry-run)]\n{text}")
-        return
-    payload: dict = {"channel": SLACK_CHANNEL, "text": text}
-    if blocks:
-        payload["blocks"] = blocks
-    resp = requests.post(
-        "https://slack.com/api/chat.postMessage",
-        headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=10,
-    )
-    data = resp.json()
-    if not data.get("ok"):
-        print(f"Slack error: {data.get('error')}", file=sys.stderr)
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(CHANNEL if "CHANNEL" in globals() else "engineering", text)
 
 
 def main() -> None:
@@ -146,7 +127,7 @@ def main() -> None:
             from notify import discord_post_chart
             top = ranked[:12]
             discord_post_chart(
-                SLACK_CHANNEL,
+                CHAT_CHANNEL,
                 title=f"Net notional by symbol — {date_str}",
                 labels=[sym for sym, _ in top],
                 series={"net $ (buy − sell)": [s["side_vol"] for _, s in top]},

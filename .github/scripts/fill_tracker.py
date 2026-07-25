@@ -25,7 +25,8 @@ from pathlib import Path
 
 ALPACA_API_KEY    = os.environ.get("ALPACA_API_KEY", "")
 ALPACA_SECRET_KEY = os.environ.get("ALPACA_SECRET_KEY", "")
-SLACK_BOT_TOKEN   = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 TRADING_MODE      = os.environ.get("TRADING_MODE", "paper")
 ALLOW_PAID        = os.environ.get("ALLOW_PAID_APIS", "False")
 
@@ -61,27 +62,9 @@ def _alpaca_get(path: str, params: dict | None = None, data_api: bool = False) -
 
 def _post_slack(channel: str, text: str) -> None:
     # Discord-first (operator's live surface); Slack only if a token exists.
-    try:
-        import sys as _sys
-        from pathlib import Path as _Path
-        _sys.path.insert(0, str(_Path(__file__).resolve().parent))
-        from notify import discord_post
-        discord_post(channel, text, username="QuantEdge Fills")
-    except Exception as _exc:  # noqa: BLE001
-        print(f"[discord] {_exc}", flush=True)
-    if not SLACK_BOT_TOKEN:
-        return
-    try:
-        payload = json.dumps({"channel": channel, "text": text}).encode()
-        req = urllib.request.Request(
-            "https://slack.com/api/chat.postMessage",
-            data=payload,
-            headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}", "Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=10):
-            pass
-    except Exception as e:
-        print(f"  ⚠ Slack post failed: {e}", flush=True)
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(channel, text)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────

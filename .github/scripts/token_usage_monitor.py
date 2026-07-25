@@ -1,5 +1,5 @@
 """
-Token Usage Monitor — posts every 15 min to #token-usage Slack channel.
+Token Usage Monitor — posts every 15 min to the #token-usage Discord channel.
 Tracks LLM spend by provider, workflow, and improvement type.
 Auto-analyzes and suggests optimizations using the cheapest available LLM.
 """
@@ -18,7 +18,6 @@ def _resolve_key(*names: str) -> str:
             if v: return v
     return ""
 
-SLACK_TOKEN     = os.environ.get("SLACK_BOT_TOKEN", "")
 GH_TOKEN        = os.environ.get("GH_TOKEN", "")
 GH_REPO         = os.environ.get("GH_REPO", "bahllaavanye-afk/test")
 GEMINI_API_KEY  = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
@@ -62,8 +61,8 @@ WORKFLOW_ESTIMATES = {
     "investor-pipeline-update":       {"prompt": 1000,  "completion": 300,  "runs_per_day": 6},
     "gemini-ml-training":             {"prompt": 6000,  "completion": 3000, "runs_per_day": 3},
     "run-experiments-agent":          {"prompt": 5000,  "completion": 2000, "runs_per_day": 4},
-    "slack-agent-team":               {"prompt": 2000,  "completion": 800,  "runs_per_day": 24},
-    "slack-pulse":                    {"prompt": 1500,  "completion": 600,  "runs_per_day": 24},
+    "agent-team":                     {"prompt": 2000,  "completion": 800,  "runs_per_day": 24},
+    "multi-agent-discussion":         {"prompt": 1500,  "completion": 600,  "runs_per_day": 24},
     "channel-monitor":                {"prompt": 2000,  "completion": 500,  "runs_per_day": 24},
 }
 
@@ -226,20 +225,17 @@ Format: numbered list, under 200 words total."""
 
     return "No LLM available for optimization suggestions."
 
-def post_slack(channel: str, blocks: list[dict], fallback: str) -> bool:
-    if not SLACK_TOKEN:
-        print(f"No SLACK_BOT_TOKEN — would post to #{channel}:\n{fallback}")
-        return False
+def post_report(channel: str, blocks: list[dict], fallback: str) -> bool:
+    """Post the usage report to Discord (Slack removed 2026-07-25).
+
+    Discord has no Slack "blocks"; `blocks` is accepted for call-site
+    compatibility and the plain-text `fallback` is what gets delivered.
+    """
     try:
-        resp = requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-            json={"channel": channel, "blocks": blocks, "text": fallback},
-            timeout=15
-        )
-        return resp.status_code == 200 and resp.json().get("ok")
+        import notify
+        return notify.post(channel, fallback, username="Token Usage Monitor")
     except Exception as e:
-        print(f"Slack post error: {e}")
+        print(f"notify post error: {e}")
         return False
 
 def main():
@@ -279,7 +275,7 @@ def main():
 
     save_token_log(log)
 
-    # ── Build Slack message ──────────────────────────────────────────────────
+    # ── Build the report message ──────────────────────────────────────────────────
     total = breakdown["totals"]["total"]
     gemini_used = breakdown["by_provider"]["gemini_flash"]
     gemini_limit = FREE_LIMITS["gemini_flash"]["daily_tokens"]
@@ -346,7 +342,7 @@ def main():
         ]}
     ]
 
-    posted = post_slack("token-usage", blocks, text)
+    posted = post_report("token-usage", blocks, text)
     print(f"{'✓' if posted else '⚠'} Posted to #token-usage")
     print(f"  Total today: {total:,} tokens")
     print(f"  Gemini: {gemini_pct}% of free tier")

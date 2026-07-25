@@ -1,15 +1,15 @@
 """
-QuantEdge multi-agent Slack team — real engineering work, real reports.
+QuantEdge multi-agent Discord team — real engineering work, real reports.
 
 Each agent reads actual codebase state (git log, files, test counts,
-backtest JSONs, open issues/PRs) and posts findings to Slack with their
+backtest JSONs, open issues/PRs) and posts findings to Discord with their
 own identity (custom username + emoji avatar via chat:write.customize).
 
 Agents reply to each other in threads when the topic matches their domain,
 creating realistic engineering discussion.
 
 Required env:
-    SLACK_BOT_TOKEN   xoxb-... with: chat:write, chat:write.public,
+    DISCORD_BOT_TOKEN / DISCORD_WEBHOOK_URL — Discord delivery credentials
                       chat:write.customize (optional but recommended),
                       channels:read (optional), groups:read (optional)
     The bot works with ONLY chat:write + chat:write.public — the rest are
@@ -34,6 +34,9 @@ import time
 import urllib.parse
 import urllib.request
 import urllib.error
+
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -63,7 +66,7 @@ except ImportError:
     _LITELLM_AVAILABLE = False
 
 REPO_ROOT  = Path(__file__).resolve().parents[2]
-STATE_PATH = REPO_ROOT / ".github" / "state" / "slack_state.json"
+STATE_PATH = REPO_ROOT / ".github" / "state" / "agent_state.json"
 BRAIN_FILE = REPO_ROOT / ".github" / "state" / "company_brain.json"
 
 
@@ -116,7 +119,7 @@ _STATE_DEFAULTS: dict = {
     "last_run_ts": 0,
     "last_commit_sha": "",
     "posted_hashes": [],        # MD5[:12] of recent message texts — capped at 1000
-    "replied_to": [],           # Slack ts values already replied to — capped at 500
+    "replied_to": [],           # message ids already replied to — capped at 500
     "post_dedup": {},           # {channel:content_key → epoch timestamp}
     "response_cache": {},       # {hash → {text, ts}} — capped at 200
     "posted_today": [],         # agent names that posted this run (serialized as list)
@@ -153,7 +156,7 @@ def _init_governance(state: dict) -> None:
         q = quotas.setdefault(emp, {})
         if q.get("date") != today:
             q["calls"] = MAX_CALLS_PER_EMPLOYEE_PER_RUN
-            q["slack_posts"] = 8
+            q["chat_posts"] = 8
             q["tokens"] = MAX_TOKENS_PER_CALL * MAX_CALLS_PER_EMPLOYEE_PER_RUN
             q["date"] = today
 
@@ -415,7 +418,7 @@ def batch_generate(
     delimiters = {e: f"==={e.upper()}===" for e in names}
 
     lines = [
-        "Generate a short Slack post (2-4 sentences, professional but direct) for each person.",
+        "Generate a short Discord post (2-4 sentences, professional but direct) for each person.",
         "Use exactly these section delimiters — no extra text between sections.\n",
     ]
     for emp, topic in employee_topics:
@@ -487,7 +490,7 @@ _STRIP_PATTERNS: list[tuple[str, str]] = [
     (r'(?i)(api[_-]?key|secret|token|password|bearer)\s*[=:]\s*\S+', '[REDACTED_CREDENTIAL]'),
     # Alpaca / broker key formats
     (r'\bPK[A-Z0-9]{18,}\b', '[REDACTED_ALPACA_KEY]'),
-    (r'\bxoxb-[0-9A-Za-z-]+\b', '[REDACTED_SLACK_TOKEN]'),
+    (r'\bxoxb-[0-9A-Za-z-]+\b', '[REDACTED_TOKEN]'),
     # Private keys / wallet addresses
     (r'0x[0-9a-fA-F]{40,}', '[REDACTED_ADDRESS]'),
     # IP addresses
@@ -523,7 +526,7 @@ _STRICT_OUTPUT_REQUIREMENTS = (
     " STRICT OUTPUT REQUIREMENTS: (1) Always include at least one specific file path, metric name, or number."
     " (2) Never give generic advice like 'we should improve X' without specifying HOW."
     " (3) If you cannot give a specific concrete answer, say 'INSUFFICIENT DATA' rather than guessing."
-    " (4) Slack format: use *bold* for key points, no headers, max 150 words."
+    " (4) Discord format: use **bold** for key points, no headers, max 150 words."
 )
 
 _EMPLOYEE_PERSONAS: dict[str, str] = {
@@ -2174,12 +2177,12 @@ def read_unresponded_threads(
     ch_id = get_channel_id(token, channel_name)
     if not ch_id:
         return []
-    history = slack_call(token, "conversations.history", {"channel": ch_id, "limit": limit})
+    history = chat_call("conversations.history", {"channel": ch_id, "limit": limit})
     if not history.get("ok"):
         err = history.get("error", "unknown")
         if err == "not_in_channel":
-            slack_call(token, "conversations.join", {"channel": ch_id})
-            history = slack_call(token, "conversations.history", {"channel": ch_id, "limit": limit})
+            chat_call("conversations.join", {"channel": ch_id})
+            history = chat_call("conversations.history", {"channel": ch_id, "limit": limit})
         if not history.get("ok"):
             print(f"  [threads] #{channel_name}: {history.get('error', err)}")
             return []
@@ -2189,7 +2192,7 @@ def read_unresponded_threads(
         if not msg.get("reply_count"):
             continue
         ts = msg.get("ts")
-        replies_data = slack_call(token, "conversations.replies",
+        replies_data = chat_call("conversations.replies",
                                   {"channel": ch_id, "ts": ts, "limit": 20})
         if not replies_data.get("ok"):
             continue
@@ -2354,12 +2357,12 @@ def detect_agent_summons(
     ch_id = get_channel_id(token, channel_name)
     if not ch_id:
         return []
-    history = slack_call(token, "conversations.history", {"channel": ch_id, "limit": limit})
+    history = chat_call("conversations.history", {"channel": ch_id, "limit": limit})
     if not history.get("ok"):
         err = history.get("error", "unknown")
         if err == "not_in_channel":
-            slack_call(token, "conversations.join", {"channel": ch_id})
-            history = slack_call(token, "conversations.history", {"channel": ch_id, "limit": limit})
+            chat_call("conversations.join", {"channel": ch_id})
+            history = chat_call("conversations.history", {"channel": ch_id, "limit": limit})
         if not history.get("ok"):
             print(f"  [summon] #{channel_name}: {history.get('error', err)}")
             return []
@@ -2454,7 +2457,7 @@ def _detect_persona_override(question: str) -> tuple[str | None, str | None]:
 
 def _fetch_thread_context(token: str, ch_id: str, thread_ts: str, limit: int = 5) -> list[str]:
     """Fetch the last N messages from a thread for LLM context (excludes the root message)."""
-    data = slack_call(token, "conversations.replies",
+    data = chat_call("conversations.replies",
                       {"channel": ch_id, "ts": thread_ts, "limit": limit + 1})
     if not data.get("ok"):
         return []
@@ -2472,7 +2475,7 @@ def _fetch_thread_context(token: str, ch_id: str, thread_ts: str, limit: int = 5
 
 def _react(token: str, ch_id: str, ts: str, emoji: str) -> None:
     """Add a reaction emoji to a Slack message. Silently ignores already_reacted."""
-    result = slack_call(token, "reactions.add", {"channel": ch_id, "timestamp": ts, "name": emoji})
+    result = chat_call("reactions.add", {"channel": ch_id, "timestamp": ts, "name": emoji})
     if not result.get("ok") and result.get("error") not in ("already_reacted", "no_permission"):
         print(f"  [react] {emoji} failed: {result.get('error')}")
 
@@ -2536,11 +2539,11 @@ def _post_with_blocks(
     }
     if thread_ts:
         payload["thread_ts"] = thread_ts
-    result = slack_call(token, "chat.postMessage", payload)
+    result = chat_call("chat.postMessage", payload)
     if not result.get("ok"):
         # Retry without blocks (Block Kit might not be enabled on this workspace)
         payload.pop("blocks", None)
-        result = slack_call(token, "chat.postMessage", payload)
+        result = chat_call("chat.postMessage", payload)
     return result
 
 
@@ -2839,7 +2842,7 @@ def ensure_channels_exist(token: str) -> None:
 
     print(f"  ℹ Creating {len(missing)} missing channel(s): {', '.join(f'#{n}' for n in missing[:8])}{'...' if len(missing) > 8 else ''}")
     for name in missing:
-        result = slack_call(token, "conversations.create", {
+        result = chat_call("conversations.create", {
             "name": name,
             "is_private": False,
         })
@@ -2861,7 +2864,7 @@ def ensure_channels_exist(token: str) -> None:
             continue
         if isinstance(_ch, dict) and _ch.get("is_private", False):
             continue
-        r = slack_call(token, "conversations.join", {"channel": _ch_id})
+        r = chat_call("conversations.join", {"channel": _ch_id})
         if r.get("ok") or r.get("error") in ("already_in_channel", "method_not_supported_for_channel_type"):
             joined += 1
     print(f"  ✓ Bot joined/confirmed in {joined} channels")
@@ -2939,7 +2942,7 @@ def _run_inline_health_check(token: str, state: dict) -> None:
             msg_lines.append(f"  :wrench: Auto-healed: {h}")
     msg_lines.append("_Full diagnostic: trigger agent-health-monitor workflow_")
     # Use slack_call directly to avoid forward-reference to post_to_slack
-    slack_call(token, "chat.postMessage", {
+    chat_call("chat.postMessage", {
         "channel": "incidents",
         "text": "\n".join(msg_lines),
         "username": "Health Monitor",
@@ -3088,7 +3091,7 @@ def post_api_guard_map(token: str, state: dict) -> None:
         "_Trigger: Actions → QuantEdge ML Training → Run workflow_",
     ]
 
-    slack_call(token, "chat.postMessage", {
+    chat_call("chat.postMessage", {
         "channel": ch_id,
         "text": "\n".join(lines),
         "username": "API Guardian",
@@ -3169,7 +3172,7 @@ The self-healer runs every 30 min, auto-fixes failing tests and broken imports.
 _All agents use free LLM APIs — $0.00/month cost guaranteed._
 _Type `/capacity` to see live API key usage and daily limits._"""
 
-    slack_call(token, "chat.postMessage", {
+    chat_call("chat.postMessage", {
         "channel": ch_id,
         "text": guide,
         "username": "QuantEdge Agent Team",
@@ -3200,7 +3203,7 @@ def check_usage_alerts(token: str, state: dict) -> None:
     if alerts:
         ch_id = get_channel_id(token, "agent-api-usage")
         if ch_id:
-            slack_call(token, "chat.postMessage", {
+            chat_call("chat.postMessage", {
                 "channel": ch_id,
                 "text": "*:rotating_light: API Limit Alerts*\n" + "\n".join(alerts) + "\n_Approaching limits — cascade will auto-fallback to next provider_",
                 "username": "Limit Monitor",
@@ -3305,7 +3308,7 @@ def post_api_usage_report(token: str, state: dict, run_posts: int = 0) -> None:
     lines += dept_lines
 
     text = "\n".join(lines)
-    slack_call(token, "chat.postMessage", {"channel": "agent-api-usage", "text": text,
+    chat_call("chat.postMessage", {"channel": "agent-api-usage", "text": text,
                "username": "API Monitor", "icon_emoji": ":bar_chart:"})
     print(f"  [api-usage] posted to #agent-api-usage")
 
@@ -3331,7 +3334,7 @@ def post_cto_review_feed(token: str, state: dict) -> None:
             f"> {entry['text'][:200]}{'...' if len(entry['text']) > 200 else ''}"
         )
     lines.append("\n_Reply in thread with feedback to improve agent prompts._")
-    slack_call(token, "chat.postMessage", {
+    chat_call("chat.postMessage", {
         "channel": "cto-audit",
         "text": "\n".join(lines),
     })
@@ -3370,7 +3373,7 @@ def post_cto_quality_digest(token: str, state: dict) -> None:
             f"(score {best.get('score','?')})"
         )
     text = "\n".join(lines)
-    slack_call(token, "chat.postMessage", {
+    chat_call("chat.postMessage", {
         "channel": ch_id,
         "text": text,
         "username": "CTO Quality Bot",
@@ -3413,7 +3416,7 @@ def post_governance_report(token: str, state: dict) -> None:
     ]
 
     text = "\n".join(lines)
-    slack_call(token, "chat.postMessage", {
+    chat_call("chat.postMessage", {
         "channel": ch_id,
         "text": text,
         "username": "CTO Oversight Bot",
@@ -3438,7 +3441,7 @@ def scan_for_commands(
     ch_id = get_channel_id(token, channel_name)
     if not ch_id:
         return []
-    history = slack_call(token, "conversations.history", {"channel": ch_id, "limit": limit})
+    history = chat_call("conversations.history", {"channel": ch_id, "limit": limit})
     if not history.get("ok"):
         return []
 
@@ -3456,7 +3459,7 @@ def scan_for_commands(
         # /command inside a thread reply
         if not msg.get("reply_count"):
             continue
-        replies_data = slack_call(token, "conversations.replies",
+        replies_data = chat_call("conversations.replies",
                                   {"channel": ch_id, "ts": ts, "limit": 20})
         if not replies_data.get("ok"):
             continue
@@ -3742,14 +3745,14 @@ def new_commits_since_last_run(state: dict) -> list[dict]:
 # The workspace died silently on 2026-06-29: every chat.postMessage came back
 # `message_limit_exceeded` (free-plan message quota exhausted by sheer post
 # volume) while the workflow kept reporting green. Two defenses, both enforced
-# at the single chat.postMessage choke point in slack_call():
-#   1. A per-run post cap (SLACK_MAX_POSTS_PER_RUN, default 12; was ~59+/run)
+# at the single chat.postMessage choke point in chat_call():
+#   1. A per-run post cap (DISCORD_MAX_POSTS_PER_RUN, default 12; was ~59+/run)
 #      so the agent waves can't burn the workspace quota again.
 #   2. A hard stop on fatal-class errors (quota exhausted / dead token) — no
 #      point attempting the remaining posts against a dead workspace.
 # _posting_health_exit_code() turns "posts attempted, zero landed" into a
 # non-zero exit so the workflow can raise a fallback alarm instead of green.
-_POST_CAP = int(os.environ.get("SLACK_MAX_POSTS_PER_RUN", "12"))
+_POST_CAP = int(os.environ.get("DISCORD_MAX_POSTS_PER_RUN", "12"))
 _FATAL_POST_ERRORS = {
     "message_limit_exceeded", "invalid_auth", "account_inactive",
     "token_revoked", "not_authed",
@@ -3829,58 +3832,40 @@ def _posting_health_exit_code() -> int:
     return 0
 
 
-def slack_call(token: str, method: str, payload: dict) -> dict:
+def chat_call(method: str, payload: dict) -> dict:
+    """Discord-backed stand-in for the old Slack Web API dispatcher.
+
+    Slack was removed 2026-07-25. Rather than rewrite ~60 call sites spread over
+    this file, the dispatcher itself now translates the handful of Slack methods
+    that were used into Discord operations, and returns Slack-shaped dicts so the
+    callers' `.get("ok")` / `.get("messages")` handling still works.
+
+    Methods with no Discord equivalent (join/create/reactions) are successful
+    no-ops: channels are provisioned by discord_setup_channels.py.
+    """
+    try:
+        import notify
+    except Exception:
+        return {"ok": False, "error": "notify_unavailable"}
+
     if method == "chat.postMessage":
-        if _post_stats["fatal_error"]:
-            _post_stats["skipped"] += 1
-            # Slack is dead this run — keep the message flowing via Discord
-            _discord_post(payload.get("channel", "?"), payload.get("username", "bot"),
-                          payload.get("text", ""))
-            return {"ok": False, "error": f"skipped_after_{_post_stats['fatal_error']}"}
         if _post_stats["attempted"] >= _POST_CAP:
             _post_stats["skipped"] += 1
             return {"ok": False, "error": "skipped_post_cap"}
         _post_stats["attempted"] += 1
+        ok = notify.post(payload.get("channel", "engineering"),
+                         payload.get("text", ""),
+                         username=payload.get("username", "QuantEdge"))
+        # `ts` is used by callers only as a thread handle; Discord has none.
+        return {"ok": ok, "ts": "", "channel": payload.get("channel", "")}
 
-    url = f"https://slack.com/api/{method}"
-    data = json.dumps(payload).encode()
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json; charset=utf-8",
-    }
+    if method in ("conversations.history", "conversations.replies"):
+        msgs = notify.read_channel_recent(payload.get("channel", ""),
+                                          limit=int(payload.get("limit", 15) or 15))
+        return {"ok": True, "messages": msgs}
 
-    def _do_request() -> dict:
-        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                return json.loads(resp.read())
-        except urllib.error.HTTPError as e:
-            return {"ok": False, "error": f"http_{e.code}", "body": e.read().decode()[:200]}
-
-    result = _do_request()
-    if isinstance(result, dict) and result.get("error") == "ratelimited":
-        retry_after = int(result.get("headers", {}).get("Retry-After", 5))
-        time.sleep(min(retry_after, 30))
-        result = _do_request()
-
-    if method == "chat.postMessage" and isinstance(result, dict):
-        if result.get("ok"):
-            _post_stats["ok"] += 1
-        else:
-            _post_stats["failed"] += 1
-            err = result.get("error", "")
-            if err in _FATAL_POST_ERRORS:
-                _post_stats["fatal_error"] = err
-                print(f"[slack] FATAL post error '{err}' — halting all further posts this run")
-                # Don't lose the message that hit the wall — deliver it via Discord
-                _discord_post(payload.get("channel", "?"), payload.get("username", "bot"),
-                              payload.get("text", ""))
-    return result
-
-
-_channels_cache: dict[str, dict] = {}
-_list_attempted = False
-
+    # join / create / reactions.add / anything else: nothing to do on Discord.
+    return {"ok": True}
 
 def get_channel_id(token: str, name: str) -> str | None:
     global _channels_cache, _list_attempted
@@ -3891,7 +3876,7 @@ def get_channel_id(token: str, name: str) -> str | None:
             payload: dict = {"types": "public_channel,private_channel", "limit": 200}
             if cursor:
                 payload["cursor"] = cursor
-            data = slack_call(token, "conversations.list", payload)
+            data = chat_call("conversations.list", payload)
             if not data.get("ok"):
                 print(f"  [slack] conversations.list failed: {data.get('error')} — will post by name")
                 break
@@ -3915,17 +3900,17 @@ def _post_raw(token: str, channel_ref: str, text: str, username: str, icon_emoji
     }
     if thread_ts:
         payload["thread_ts"] = thread_ts
-    result = slack_call(token, "chat.postMessage", payload)
+    result = chat_call("chat.postMessage", payload)
 
     # Fallback: chat:write.customize scope missing → retry without custom identity
     if not result.get("ok") and result.get("error") in (
         "not_allowed_token_type", "missing_scope",
     ):
-        print(f"  [slack] {result.get('error')} — retrying without custom username/icon")
-        fallback: dict = {"channel": channel_ref, "text": f"*[{username}]* {text}", "mrkdwn": True}
+        print(f"  [chat] {result.get('error')} — retrying without custom username/icon")
+        fallback: dict = {"channel": channel_ref, "text": f"**[{username}]** {text}", "mrkdwn": True}
         if thread_ts:
             fallback["thread_ts"] = thread_ts
-        result = slack_call(token, "chat.postMessage", fallback)
+        result = chat_call("chat.postMessage", fallback)
     return result
 
 
@@ -3981,7 +3966,7 @@ def post_to_slack(
         # Auto-join public channels (cheap if already a member)
         ch = _channels_cache.get(channel, {})
         if not ch.get("is_private", False):
-            slack_call(token, "conversations.join", {"channel": ch_id})
+            chat_call("conversations.join", {"channel": ch_id})
         result = _post_raw(token, ch_id, text, username, icon_emoji, thread_ts)
     else:
         # No channel ID — try posting by name directly (#channel-name)
@@ -4270,7 +4255,7 @@ def dispatch_to_gemini_runner(title: str, body: str, context: str = "") -> int |
     full_body = body.strip()
     if context:
         full_body += f"\n\n## Context\n{context.strip()}"
-    full_body += "\n\n_Dispatched by slack_agent_team.py — handled by gemini-task-runner workflow._"
+    full_body += "\n\n_Dispatched by agent_team.py — handled by gemini-task-runner workflow._"
     resp = github_create_issue(title, full_body, labels=["gemini-task"])
     if resp and isinstance(resp, dict):
         num = resp.get("number")
@@ -5267,7 +5252,7 @@ def finance_eng_finance() -> list[Post]:
         "Give a specific burn rate analysis with: (1) current monthly cost in dollars with per-service breakdown, "
         "(2) the first cost trigger (which service hits a paid tier first and at what usage threshold), "
         "(3) one concrete cost-saving recommendation with expected dollar impact. "
-        "Slack format, *bold* key numbers, max 150 words."
+        "Discord format, **bold** key numbers, max 150 words."
     )
     ai_text, _provider = employee_provider_prompt("ml_researcher", prompt, state=state)
     if not ai_text:
@@ -5299,7 +5284,7 @@ def compliance_eng_compliance() -> list[Post]:
         f"audit_log API at backend/app/api/v1/audit_log.py is {audit_api_status}. "
         "Give 3 specific compliance actions with: (1) the exact file to create or modify, "
         "(2) what SEC/FINRA rule it satisfies, (3) priority (P0/P1/P2). "
-        "Focus on the highest-risk gap. Slack format, *bold* key points, max 150 words."
+        "Focus on the highest-risk gap. Discord format, **bold** key points, max 150 words."
     )
     ai_text, _provider = employee_provider_prompt("ml_researcher", prompt, state=state)
     if not ai_text:
@@ -5378,7 +5363,7 @@ def ci_eng_ci() -> list[Post]:
         "(1) current test status with emoji indicator, "
         "(2) if any failures, the root cause and fix command, "
         "(3) one CI improvement recommendation. "
-        "Be specific and technical. Slack format."
+        "Be specific and technical. Discord format."
     )
     ai, _ = employee_provider_prompt("ci_eng", task, state=state)
     if not ai:
@@ -5409,8 +5394,8 @@ def devops_dir_deploy_readiness() -> list[Post]:
             if parts:
                 deployed.append(parts[0].split("(")[0].strip())
     has_alpaca = bool(os.environ.get("ALPACA_API_KEY"))
-    has_slack = bool(os.environ.get("SLACK_BOT_TOKEN"))
-    secrets_ctx = f"Secrets present: ALPACA_API_KEY={'yes' if has_alpaca else 'NO'}, SLACK_BOT_TOKEN={'yes' if has_slack else 'NO'}."
+    has_chat = CHAT_ENABLED
+    secrets_ctx = f"Secrets present: ALPACA_API_KEY={'yes' if has_alpaca else 'NO'}, DISCORD={'yes' if has_chat else 'NO'}."
     infra_ctx = (f"Deployed: {', '.join(deployed[:5]) or 'none'}. "
                  f"Blocked: {', '.join(not_deployed[:5]) or 'none'}.")
     task = (
@@ -6316,7 +6301,7 @@ def ceo_ceo() -> list[Post]:
         "(1) one concrete metric milestone or gap vs Sharpe>2.0 target, "
         "(2) the single highest-priority engineering task for this week with owner role, "
         "(3) one risk or compliance note. "
-        "Tone: direct, data-driven, no fluff. Slack format with *bold* headers."
+        "Tone: direct, data-driven, no fluff. Discord format with **bold** headers."
     )
     ai, _ = moa_employee_prompt("ceo", task, state=state)
     if not ai:
@@ -6786,7 +6771,7 @@ def allquantedge_channel() -> list[Post]:
         "(1) one concrete achievement or milestone from this week, "
         "(2) one key priority or challenge the whole team should know about, "
         "(3) a forward-looking sentence on trajectory toward Sharpe>2.0. "
-        "Tone: energising, transparent, data-driven. Slack format. "
+        "Tone: energising, transparent, data-driven. Discord format. "
         "Address as 'team' not individuals. No bullet lists — flowing prose with *bold* emphasis."
     )
     ai, _ = moa_employee_prompt("ceo", task, state=state)
@@ -7633,13 +7618,13 @@ AGENT_HANDLES: dict[str, str] = {
 }
 
 
-_AGENT_SLACK_USER_IDS: dict[str, str] = {}   # handle → real Slack user ID (populated at startup)
+_AGENT_USER_IDS: dict[str, str] = {}   # handle → chat user ID (populated at startup)
 
 
 def _lookup_agent_user_ids(token: str) -> None:
-    """Populate _AGENT_SLACK_USER_IDS by scanning workspace member list once at startup."""
-    global _AGENT_SLACK_USER_IDS
-    if _AGENT_SLACK_USER_IDS:
+    """Populate _AGENT_USER_IDS by scanning the member list once at startup."""
+    global _AGENT_USER_IDS
+    if _AGENT_USER_IDS:
         return
     try:
         cursor = ""
@@ -7648,7 +7633,7 @@ def _lookup_agent_user_ids(token: str) -> None:
             params: dict = {"limit": 200}
             if cursor:
                 params["cursor"] = cursor
-            r = slack_call(token, "users.list", params)
+            r = chat_call("users.list", params)
             if not r.get("ok"):
                 break
             members.extend(r.get("members", []))
@@ -7663,8 +7648,8 @@ def _lookup_agent_user_ids(token: str) -> None:
         for handle in AGENT_HANDLES.values():
             uid = handle_map.get(handle.lower())
             if uid:
-                _AGENT_SLACK_USER_IDS[handle] = uid
-        print(f"  [agents] resolved {len(_AGENT_SLACK_USER_IDS)} user IDs from workspace members")
+                _AGENT_USER_IDS[handle] = uid
+        print(f"  [agents] resolved {len(_AGENT_USER_IDS)} user IDs from workspace members")
     except Exception as e:
         print(f"  [agents] user ID lookup failed (non-fatal): {e}")
 
@@ -7672,7 +7657,7 @@ def _lookup_agent_user_ids(token: str) -> None:
 def _m(role: str) -> str:
     """Return Slack mention for a role. Uses <@USER_ID> if ID is known, else display @handle."""
     handle = AGENT_HANDLES.get(role, role.split()[0].lower())
-    uid = _AGENT_SLACK_USER_IDS.get(handle)
+    uid = _AGENT_USER_IDS.get(handle)
     if uid:
         return f"<@{uid}>"
     return "@" + handle
@@ -7680,7 +7665,7 @@ def _m(role: str) -> str:
 
 def add_reaction(token: str, channel_id: str, ts: str, emoji: str) -> None:
     """Add an emoji reaction to an existing message."""
-    slack_call(token, "reactions.add", {"channel": channel_id, "timestamp": ts, "name": emoji})
+    chat_call("reactions.add", {"channel": channel_id, "timestamp": ts, "name": emoji})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -8432,7 +8417,7 @@ def post_task_queue_status(token: str, channel: str = "#cto-audit") -> None:
     text = f"*Agent Task Queue* — {len(pending)} pending, {len(claimed)} in progress\n"
     for t in pending[:5]:
         text += f"  • [{t['priority']}] {t['type']} → {t['channel']} (`{t['id']}`)\n"
-    slack_call(token, "chat.postMessage", {"channel": channel, "text": text})
+    chat_call("chat.postMessage", {"channel": channel, "text": text})
 
 def broadcast_to_desk_agents(token: str, message: str, source_channel: str, state: dict) -> None:
     """
@@ -8449,7 +8434,7 @@ def broadcast_to_desk_agents(token: str, message: str, source_channel: str, stat
     }
     targets = CROSS_NOTIFY_MAP.get(source_channel, [])
     for ch in targets:
-        slack_call(token, "chat.postMessage", {
+        chat_call("chat.postMessage", {
             "channel": ch,
             "text": f":satellite: *Cross-desk alert from <#{source_channel}>*\n{message}",
         })
@@ -8484,28 +8469,19 @@ def _tag_employees_for_content(text: str) -> str:
 
 def main() -> int:
     verify_zero_spend()
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
-    if not token.startswith("xoxb-"):
-        if _DISCORD_WEBHOOK:
-            # Full Discord mode — no Slack workspace required. Pre-marking the
-            # fatal flag makes every chat.postMessage short-circuit straight
-            # into the Discord delivery path (per-employee bot profiles,
-            # per-channel routing), so the whole company runs on Discord.
-            _post_stats["fatal_error"] = "no_slack_token"
-            print("ℹ Slack token absent/invalid — Discord is the primary channel for this run")
-        else:
-            print("")
-            print("╔══════════════════════════════════════════════════════════════════╗")
-            print("║  ⚠  SLACK SILENT — agents ran but NO messages were posted       ║")
-            print("║                                                                  ║")
-            print("║  SLACK_BOT_TOKEN is missing or invalid (must start with xoxb-)  ║")
-            print("║  Add SLACK_BOT_TOKEN — or DISCORD_WEBHOOK_URL — to repo secrets ║")
-            print("║  Settings → Secrets and variables → Actions → New secret        ║")
-            print("╚══════════════════════════════════════════════════════════════════╝")
-            print("")
-            return 0
+    if not CHAT_ENABLED:
+        print("")
+        print("╔══════════════════════════════════════════════════════════════════╗")
+        print("║  ⚠  DISCORD SILENT — agents ran but NO messages were posted     ║")
+        print("║                                                                  ║")
+        print("║  Set DISCORD_BOT_TOKEN (per-channel routing) or                 ║")
+        print("║  DISCORD_WEBHOOK_URL in repo secrets:                           ║")
+        print("║  Settings → Secrets and variables → Actions → New secret        ║")
+        print("╚══════════════════════════════════════════════════════════════════╝")
+        print("")
+        return 0
 
-    auth = slack_call(token, "auth.test", {})
+    auth = chat_call("auth.test", {})
     if not auth.get("ok"):
         print(f"⚠️  auth.test failed ({auth.get('error', 'unknown')}) — continuing without bot_user_id (non-fatal)")
         bot_user_id = ""
@@ -8794,7 +8770,7 @@ def main() -> int:
                 max_tokens=400,
             )
             if result:
-                slack_call(token, "chat.postMessage", {
+                chat_call("chat.postMessage", {
                     "channel": task["channel"],
                     "text": f":white_check_mark: *{agent.name}* completed task `{task['type']}`:\n{result}",
                 })
@@ -8993,7 +8969,7 @@ def _slack_channel_has_recent_bot_post(
         if not ch_id:
             return False
         oldest = str(time.time() - hours * 3600)
-        resp = slack_call(token, "conversations.history", {
+        resp = chat_call("conversations.history", {
             "channel": ch_id, "limit": 50, "oldest": oldest
         })
         if not resp or not resp.get("ok"):
@@ -9486,11 +9462,10 @@ def quick_main() -> int:
     Uses free agent cascade — no Claude Sonnet, keeps cost near zero.
     """
     verify_zero_spend()
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
-    if not token.startswith("xoxb-"):
+    if not CHAT_ENABLED:
         return 0
 
-    auth = slack_call(token, "auth.test", {})
+    auth = chat_call("auth.test", {})
     if not auth.get("ok"):
         # Non-fatal: bot can still post without knowing its own user_id.
         # Failing auth.test usually means missing auth:read scope — not a blocker.
@@ -9668,7 +9643,6 @@ def precompute_main() -> int:
     """
     verify_zero_spend()
     state = load_state()
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
 
     # Pre-compute the most expensive analyses: git summary, test results, open issues
     repo_context = _get_repo_context()
@@ -9711,7 +9685,6 @@ def code_request_main() -> int:
     verify_zero_spend()
     state = load_state()
     _init_governance(state)
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
     request = os.environ.get("CODE_REQUEST", "").strip()
     channel = os.environ.get("REPORT_CHANNEL", "engineering").strip()
 
@@ -9744,7 +9717,7 @@ Keep it under 200 words."""
         ch_id = get_channel_id(token, channel)
         if ch_id:
             safe_request = _sanitize(request)
-            slack_call(token, "chat.postMessage", {
+            chat_call("chat.postMessage", {
                 "channel": ch_id,
                 "text": f"*:robot_face: Free Agent Code Request*\n*Request:* {safe_request}\n\n*Plan:*\n{plan}\n\n_Implementing now via free agents (Groq/Cerebras/Gemini)..._",
                 "username": "QuantEdge Free Agent",
@@ -9759,9 +9732,8 @@ Keep it under 200 words."""
 def frontend_improvements_main() -> int:
     verify_zero_spend()
     state = load_state()
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
     if not token:
-        print("[frontend] No SLACK_BOT_TOKEN — skipping")
+        print("[frontend] No CHAT_ENABLED — skipping")
         return 0
     run_frontend_improvements(token, state)
     save_state(state)
@@ -9782,9 +9754,8 @@ def review_employees_main() -> int:
     summary to #allquantedge.
     """
     verify_zero_spend()
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
     if not token:
-        print("[review_employees] No SLACK_BOT_TOKEN — skipping")
+        print("[review_employees] No CHAT_ENABLED — skipping")
         return 0
 
     state = load_state()
@@ -9917,9 +9888,8 @@ def run_experiments_main() -> int:
     Posts a final summary to #ml-experiments.
     """
     verify_zero_spend()
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
     if not token:
-        print("[run_experiments] No SLACK_BOT_TOKEN — skipping")
+        print("[run_experiments] No CHAT_ENABLED — skipping")
         return 0
 
     state = load_state()
@@ -10020,7 +9990,6 @@ def review_gemini_changes_main() -> int:
     verify_zero_spend()
     import subprocess
 
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
     state = load_state()
 
     # Find commits from the Gemini runner in the last N hours
@@ -10171,7 +10140,7 @@ def review_gemini_changes_main() -> int:
         post_to_slack(token, "code-review", text, username="Code Review Bot", icon_emoji=":mag:")
         print(f"[review] Posted to #code-review via {reviewer_label}")
     else:
-        print(f"[review] No SLACK_BOT_TOKEN — review:\n{text}")
+        print(f"[review] No CHAT_ENABLED — review:\n{text}")
 
     # Auto-revert if syntax errors (safety net)
     if syntax_errors and os.environ.get("AUTO_REVERT", "false").lower() == "true":
@@ -10193,12 +10162,11 @@ def summons_only_main() -> int:
     """Lightweight summon-watcher: scans all monitored channels for @agent / ask: / ??
     messages and answers them via the free LLM cascade. Runs every 5 min."""
     verify_zero_spend()
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
-    if not token.startswith("xoxb-"):
-        print("[summons] No valid SLACK_BOT_TOKEN — skipping")
+    if not CHAT_ENABLED:
+        print("[summons] No valid CHAT_ENABLED — skipping")
         return 0
 
-    auth = slack_call(token, "auth.test", {})
+    auth = chat_call("auth.test", {})
     if not auth.get("ok"):
         print(f"[summons] auth.test failed: {auth.get('error', 'unknown')} — continuing")
         bot_user_id = ""
@@ -10606,9 +10574,8 @@ def page_reports_main() -> int:
     text-based walkthroughs to Slack. Triggered by page-reporter.yml workflow.
     """
     verify_zero_spend()
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
-    if not token.startswith("xoxb-"):
-        print("[page_reports] No valid SLACK_BOT_TOKEN — skipping")
+    if not CHAT_ENABLED:
+        print("[page_reports] No valid CHAT_ENABLED — skipping")
         return 0
 
     state = load_state()

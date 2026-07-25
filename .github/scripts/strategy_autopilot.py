@@ -28,7 +28,7 @@ from typing import Any
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import core_update, memory_write, memory_read, slack_post, llm, core_get
+from llm_common import core_update, memory_write, memory_read, chat_post, llm, core_get
 
 ALLOW_PAID = os.environ.get("ALLOW_PAID_APIS", "False")
 if ALLOW_PAID.lower() == "true":
@@ -639,7 +639,7 @@ def main() -> None:
 
     slack_report = "\n".join(lines)
     print("\n" + slack_report, flush=True)
-    slack_post("#strategy-lab", slack_report)
+    chat_post("#strategy-lab", slack_report)
 
     print("Autopilot complete.", flush=True)
 

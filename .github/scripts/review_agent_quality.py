@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Autonomous quality review for the Slack agent team.
-Checks slack_agent_team.py for hardcoded content and quality violations.
+Checks agent_team.py for hardcoded content and quality violations.
 Exits 0 if clean, exits 1 if critical issues found (blocks merge).
 
 Checks performed:
@@ -16,7 +16,7 @@ import re
 import sys
 from pathlib import Path
 
-SCRIPT = Path(".github/scripts/slack_agent_team.py")
+SCRIPT = Path(".github/scripts/agent_team.py")
 REPORT = Path("review_report.json")
 
 # Sentinel: patterns that look like real secrets (long enough to be real tokens).

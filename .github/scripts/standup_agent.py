@@ -36,9 +36,10 @@ import sys
 import requests
 from datetime import datetime, timezone
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post, memory_write
+from llm_common import llm, chat_post, memory_write
 
-SLACK_TOKEN    = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 GH_TOKEN       = os.environ.get("GH_TOKEN", "")
 GH_REPO        = os.environ.get("GH_REPO", "bahllaavanye-afk/test")
 EVENT_TYPE     = os.environ.get("EVENT_TYPE", "auto")
@@ -72,25 +73,10 @@ def get_github_context() -> dict:
 
 # ── Slack ─────────────────────────────────────────────────────────────────────
 
-def post_slack(channel: str, text: str, username: str = "QuantEdge CTO", icon: str = "robot_face") -> bool:
-    if not SLACK_TOKEN:
-        print(f"[no token] Would post to #{channel}: {text[:100]}")
-        return False
-    try:
-        resp = requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-            json={"channel": channel, "text": text, "mrkdwn": True, "username": username, "icon_emoji": f":{icon}:"},
-            timeout=15
-        )
-        result = resp.json()
-        ok = result.get("ok", False)
-        if not ok:
-            print(f"  Slack error #{channel}: {result.get('error')}")
-        return ok
-    except Exception as e:
-        print(f"  Slack exception #{channel}: {e}")
-        return False
+def post_chat(channel: str, text: str, username: str = "QuantEdge CTO", icon: str = "robot_face") -> bool:
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    return notify.post(channel, text)
 
 # ── Event handlers ────────────────────────────────────────────────────────────
 
@@ -142,7 +128,7 @@ Under 150 words. Slack markdown. No headers."""
     channels = ["engineering", "general", "ml-research", "backend", "desk-equities", "desk-crypto"]
     posted = 0
     for ch in channels:
-        if post_slack(ch, message, username="CTO · QuantEdge AI", icon="robot_face"):
+        if post_chat(ch, message, username="CTO · QuantEdge AI", icon="robot_face"):
             posted += 1
     print(f"✓ All-hands standup posted to {posted} channels")
 
@@ -170,7 +156,7 @@ Be specific to {squad}. Tone: direct, technical, fast."""
         if not content:
             content = f"• Shipped improvements overnight\n• Focus today: {squad} quality and performance\n• No blockers"
         msg = f"*{icon} {squad} Standup — {date_str}*\n{content}\n_— {lead}_"
-        post_slack(channel, msg, username=f"{lead} (Squad Lead)", icon="speech_balloon")
+        post_chat(channel, msg, username=f"{lead} (Squad Lead)", icon="speech_balloon")
     print(f"✓ Squad standups posted to {len(squads)} channels")
 
 def run_alpha_review(ctx: dict):
@@ -205,8 +191,8 @@ Under 120 words. Tone: academic yet decisive. Use Slack markdown."""
     if not content:
         content = "• Momentum factor refresh showing improved 12-1 month signal on crypto\n• Evaluating PCA stat-arb on ETF pairs for equity desk\n• Tracking: 'Conditional momentum in crypto' (arXiv 2024)\n• Action: backtest both on 2023-2025 OOS data this week"
     msg = f"*📊 Daily Alpha Review — {datetime.now(timezone.utc).strftime('%H:%M UTC')}*\n\n{content}\n\n_— Marcus Polk, VP Research_"
-    post_slack("desk-equities", msg, username="VP Research · Marcus Polk", icon="chart_with_upwards_trend")
-    post_slack("ml-research", msg, username="VP Research · Marcus Polk", icon="chart_with_upwards_trend")
+    post_chat("desk-equities", msg, username="VP Research · Marcus Polk", icon="chart_with_upwards_trend")
+    post_chat("ml-research", msg, username="VP Research · Marcus Polk", icon="chart_with_upwards_trend")
     print("✓ Alpha review posted")
 
 def run_risk_eod(ctx: dict):
@@ -253,8 +239,8 @@ Under 120 words. Slack markdown."""
             f"Circuit breakers: None triggered | Status: 🟢 GREEN"
         )
     msg = f"*🛡️ Risk EOD Report — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}*\n\n{content}\n\n_— Marina Volkov, CRO_"
-    post_slack("risk", msg, username="CRO · Marina Volkov", icon="shield")
-    post_slack("engineering", msg, username="CRO · Marina Volkov", icon="shield")
+    post_chat("risk", msg, username="CRO · Marina Volkov", icon="shield")
+    post_chat("engineering", msg, username="CRO · Marina Volkov", icon="shield")
     print("✓ Risk EOD report posted")
 
 # ── Main ──────────────────────────────────────────────────────────────────────

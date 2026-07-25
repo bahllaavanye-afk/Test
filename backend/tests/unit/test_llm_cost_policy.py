@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 LLM_COMMON = ROOT / ".github" / "scripts" / "llm_common.py"
-AGENT_TEAM = ROOT / ".github" / "scripts" / "slack_agent_team.py"
+AGENT_TEAM = ROOT / ".github" / "scripts" / "agent_team.py"
 
 
 def _src(p: Path) -> str:

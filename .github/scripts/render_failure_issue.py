@@ -31,8 +31,8 @@ RENDER_API_KEY    = os.environ.get("RENDER_API_KEY", "")
 RENDER_SERVICE_ID = os.environ.get("RENDER_SERVICE_ID", "")
 GH_TOKEN          = os.environ.get("GITHUB_TOKEN", "")
 GH_REPO           = os.environ.get("GH_REPO", "bahllaavanye-afk/QuantEdge")
-SLACK_TOKEN       = os.environ.get("SLACK_BOT_TOKEN", "")
-
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 ISSUE_TITLE_PREFIX = "🔴 Render Deploy Failure"
 
 
@@ -79,17 +79,9 @@ def gh_request(method: str, path: str, payload: dict | None = None) -> dict | li
 
 
 def slack(msg: str) -> None:
-    if not SLACK_TOKEN:
-        return
-    try:
-        httpx.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
-            json={"channel": "#infra-alerts", "text": msg, "mrkdwn": True},
-            timeout=10,
-        )
-    except Exception:
-        pass
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(CHANNEL if "CHANNEL" in globals() else "engineering", msg)
 
 
 def find_or_create_issue(deploy_id: str, status: str, logs: str, commit_msg: str) -> dict | None:

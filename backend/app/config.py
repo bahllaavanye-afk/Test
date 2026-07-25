@@ -80,18 +80,18 @@ class Settings(BaseSettings):
     arb_bucket_pct: float = 0.70         # 70% capital to arbitrage bucket
     ml_bucket_pct: float = 0.30          # 30% capital to ML bucket
 
-    # Anthropic — for CTO agent Slack review and alpha mining
+    # Anthropic — for the CTO review agent and alpha mining
     anthropic_api_key: str = ""        # sk-ant-... from console.anthropic.com
 
-    # Slack — bot token (preferred) or webhooks per channel
-    slack_bot_token: str = ""          # xoxb-... (chat:write + chat:write.public scopes)
-    slack_signing_secret: str = ""     # Slack App → Basic Information → Signing Secret (verifies /slack/events)
-    slack_webhook_default: str = ""
-    slack_webhook_orders: str = ""
-    slack_webhook_signals: str = ""
-    slack_webhook_alerts: str = ""
-    slack_webhook_experiments: str = ""
-    slack_webhook_system: str = ""
+    # Discord — the only chat integration. Slack was removed 2026-07-25 (its
+    # free-plan quota died 2026-06-29 and every alert had been going to Discord
+    # via failover ever since). Bot token routes each alert to its OWN channel;
+    # webhooks are the failover when no bot token is present.
+    discord_bot_token: str = ""        # Bot token from the Discord developer portal
+    discord_guild_id: str = ""         # Pin the server; skips /users/@me/guilds
+    discord_webhook_url: str = ""      # Catch-all failover webhook
+    # Per-channel overrides are read from the environment as
+    # DISCORD_WEBHOOK_URL_<CHANNEL_SLUG> (e.g. DISCORD_WEBHOOK_URL_RISK_ALERTS).
 
     # Google OAuth (optional — set to enable Google login)
     google_client_id: str = ""

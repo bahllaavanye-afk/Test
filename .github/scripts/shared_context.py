@@ -37,7 +37,7 @@ AGENT_ROLES = {
     "desk_trader":           "Paper trades across crypto/equity/polymarket desks",
     "system_watchdog":       "Health checks, self-heals state files every 5 min",
     "ml_trainer":            "Trains and evaluates ML models on historical data",
-    "standup_agent":         "Posts daily standups and OKR tracking to Slack",
+    "standup_agent":         "Posts daily standups and OKR tracking to Discord",
     "investor_pipeline":     "Tracks investor pipeline, auto-advances stages",
     "run_experiments":       "Runs strategy experiments, saves results to JSON",
 }

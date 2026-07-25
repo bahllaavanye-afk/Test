@@ -228,7 +228,7 @@ class SemanticRetriever:
             List of memory dicts sorted by relevance, most relevant first.
         """
         brain = self._load_brain()
-        search_cats = categories or ["episodic", "skills", "slack_insights",
+        search_cats = categories or ["episodic", "skills", "chat_insights",
                                      "github_insights", "trade_outcomes", "experiment_results"]
 
         # Collect all candidate entries with their text
@@ -345,11 +345,11 @@ class ContextBudget:
                     used += token_est
 
         # 3. Recent Slack insights
-        slack_insights = brain.get("slack_insights", [])[-2:]
-        if slack_insights and used < self.budget:
-            slack_lines = [i.get("summary", "")[:100] for i in slack_insights if i.get("summary")]
-            if slack_lines:
-                text = "SLACK: " + " | ".join(slack_lines)
+        chat_insights = brain.get("chat_insights", [])[-2:]
+        if chat_insights and used < self.budget:
+            chat_lines = [i.get("summary", "")[:100] for i in chat_insights if i.get("summary")]
+            if chat_lines:
+                text = "CHAT: " + " | ".join(chat_lines)
                 if used + self._est_tokens(text) <= self.budget:
                     parts.append(text)
                     used += self._est_tokens(text)

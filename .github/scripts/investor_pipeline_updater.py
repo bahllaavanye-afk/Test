@@ -6,7 +6,7 @@ import os, json, sys
 from datetime import datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post, memory_write
+from llm_common import llm, chat_post, memory_write
 
 PIPELINE_FILE = "data/investor_pipeline.json"
 

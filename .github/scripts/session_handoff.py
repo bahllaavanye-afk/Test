@@ -19,7 +19,8 @@ def _resolve_key(*names: str) -> str:
             if v: return v
     return ""
 
-SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 ALLOW_PAID_APIS = os.environ.get("ALLOW_PAID_APIS", "False")
 
 if ALLOW_PAID_APIS.lower() == "true":
@@ -48,21 +49,10 @@ def load_memory() -> dict:
         return {}
 
 
-def post_slack(channel: str, text: str) -> bool:
-    if not SLACK_TOKEN:
-        print(text)
-        return False
-    try:
-        r = requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-            json={"channel": channel, "text": text, "mrkdwn": True},
-            timeout=10
-        )
-        return r.status_code == 200 and r.json().get("ok")
-    except Exception as e:
-        print(f"Slack: {e}")
-        return False
+def post_chat(channel: str, text: str) -> bool:
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    return notify.post(channel, text)
 
 
 def main():
@@ -107,13 +97,13 @@ def main():
         "  • `0 13 * * *` — daily-standup",
         "",
         "*To continue:* Open a new Claude Code session. The system runs autonomously via GitHub Actions.",
-        "*Key secrets needed:* GEMINI_API_KEY_1, GROQ_API_KEY_1, DEEPSEEK_API_KEY_1/2/3, SLACK_BOT_TOKEN",
+        "*Key secrets needed:* GEMINI_API_KEY_1, GROQ_API_KEY_1, DEEPSEEK_API_KEY_1/2/3, CHAT_ENABLED",
         "",
         "_All employees continue working via GitHub Actions — no session required for core operations._",
     ]
 
     msg = "\n".join(lines)
-    post_slack("engineering", msg)
+    post_chat("engineering", msg)
     print(msg)
     return 0
 

@@ -40,8 +40,8 @@ GH_TOKEN = os.environ.get("GH_TOKEN", os.environ.get("GITHUB_TOKEN", ""))
 GH_REPO = os.environ.get("GH_REPO", "bahllaavanye-afk/Test")
 GEMINI_API_KEY = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
 GROQ_API_KEY = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
-SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
-
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 # ── Team lead definitions ──────────────────────────────────────────────────────
 
 TEAM_LEADS: list[dict] = [
@@ -320,38 +320,11 @@ def create_issue(title: str, body: str, labels: list[str]) -> dict | None:
 
 # ── Slack notification ─────────────────────────────────────────────────────────
 
-def slack_post(channel: str, text: str, username: str) -> None:
+def chat_post(channel: str, text: str, username: str) -> None:
     # Discord-first (the operator's live surface); Slack only if a token exists.
-    try:
-        import sys as _sys
-        from pathlib import Path as _Path
-        _sys.path.insert(0, str(_Path(__file__).resolve().parent))
-        from notify import discord_post
-        discord_post(channel, text, username=username)
-    except Exception as _exc:  # noqa: BLE001
-        print(f"[discord] {_exc}", flush=True)
-
-    if not SLACK_TOKEN:
-        return
-    url = "https://slack.com/api/chat.postMessage"
-    payload = {
-        "channel": channel,
-        "text": text,
-        "username": username,
-        "mrkdwn": True,
-    }
-    req = urllib.request.Request(
-        url, data=json.dumps(payload).encode(),
-        headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            result = json.loads(resp.read())
-            if not result.get("ok"):
-                print(f"[slack] {result.get('error')}")
-    except Exception as e:
-        print(f"[slack] {e}")
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(channel, text)
 
 
 # ── Issue generation per team lead ─────────────────────────────────────────────
@@ -465,12 +438,12 @@ def run_team_lead(lead: dict, context: str, existing_titles: set[str], dry_run: 
     # Post summary to Slack
     if created_titles:
         issue_list = "\n".join(f"• {t}" for t in created_titles)
-        slack_text = (
+        chat_text = (
             f"*{lead['slack_name']}* filed {len(created_titles)} new issues for the {lead['team']}:\n"
             f"{issue_list}\n\n"
             f"_These are queued for agent auto-fix (label: agent-fix-needed)_"
         )
-        slack_post(lead["channel"], slack_text, username=lead["slack_name"])
+        chat_post(lead["channel"], chat_text, username=lead["slack_name"])
         print(f"  📣 Posted to #{lead['channel']}")
 
     return created_urls

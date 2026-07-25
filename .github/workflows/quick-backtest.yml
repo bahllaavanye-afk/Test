@@ -42,7 +42,6 @@ jobs:
       - name: Run backtests
         continue-on-error: true
         env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           ALLOW_PAID_APIS: "False"
         run: python .github/scripts/quick_backtest_runner.py
 

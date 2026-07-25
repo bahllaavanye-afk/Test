@@ -26,9 +26,10 @@ from pathlib import Path
 
 # Use shared LLM infrastructure — no more copy-paste cascade
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm, slack_post, slack_read_thread, memory_write, get_company_context
+from llm_common import llm, chat_post, chat_read_channel, memory_write, get_company_context
 
-SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 ALLOW_PAID = os.environ.get("ALLOW_PAID_APIS", "False")
 if ALLOW_PAID.lower() == "true":
     sys.exit(1)
@@ -140,30 +141,22 @@ EMPLOYEES = [
 # ── Slack helpers — delegates to llm_common ───────────────────────────────────
 
 def resolve_channels() -> dict[str, str]:
-    """Return {channel_name: channel_id} for all channels."""
-    import urllib.request
-    if not SLACK_TOKEN:
-        return {}
+    """Return {channel_name: channel_id} from Discord (Slack removed 2026-07-25)."""
     try:
-        req = urllib.request.Request(
-            "https://slack.com/api/conversations.list?limit=200&types=public_channel,private_channel",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-            return {ch["name"]: ch["id"] for ch in data.get("channels", [])}
+        import notify
+        return notify._load_channel_ids()
     except Exception:
         return {}
 
 
 def post(channel_id: str, text: str, thread_ts: str | None = None) -> str | None:
-    result = slack_post(channel_id, text, thread_ts=thread_ts)
+    result = chat_post(channel_id, text, thread_ts=thread_ts)
     return result.get("ts") if result else None
 
 
 def read_thread(channel_id: str, thread_ts: str) -> list[dict]:
     """Read actual Slack thread so replies see what was really said."""
-    return slack_read_thread(channel_id, thread_ts, limit=15)
+    return chat_read_channel(channel_id, thread_ts, limit=15)
 
 
 # ── Prompt builders ───────────────────────────────────────────────────────────
@@ -322,7 +315,7 @@ def run_channel_conversations(channel_name: str, channel_id: str, members: list[
             print(f"[intros]   {author['name']}: follow-up posted")
 
             # Write to company brain — what did employees actually discuss?
-            memory_write("slack_insights", {
+            memory_write("chat_insights", {
                 "summary": f"#{channel_name}: {author['name']} and team discussed: {intro['text'][:100]}",
                 "participants": [m["name"] for m in members],
                 "channel": channel_name,
@@ -331,8 +324,8 @@ def run_channel_conversations(channel_name: str, channel_id: str, members: list[
 
 
 def main() -> None:
-    if not SLACK_TOKEN:
-        print("[intros] No SLACK_BOT_TOKEN — dry run only")
+    if not CHAT_ENABLED:
+        print("[intros] No CHAT_ENABLED — dry run only")
         # Dry-run: print what would happen
         for emp in EMPLOYEES[:3]:
             print(f"  {emp['name']} ({emp['title']}) → channels: {emp['channels']}")
@@ -343,7 +336,7 @@ def main() -> None:
 
     channel_map = resolve_channels()
     if not channel_map:
-        print("[intros] Could not resolve channels — check SLACK_BOT_TOKEN")
+        print("[intros] Could not resolve channels — check CHAT_ENABLED")
         return
 
     # Build per-channel member list dynamically

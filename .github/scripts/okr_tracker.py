@@ -3,8 +3,8 @@ from datetime import datetime, timedelta, timezone
 
 GH_TOKEN = os.environ["GH_TOKEN"]
 GH_REPO = os.environ.get("GH_REPO", "bahllaavanye-afk/test")
-SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
-
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 def get_commits_last_24h():
     """Count commits across all branches in last 24h"""
     since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
@@ -120,20 +120,9 @@ _OKR targets: pipeline ≥10, Series A by D90, ≥50 commits/day, zero P0 >24h_"
     return text
 
 def post_to_slack(text, channel="okr-updates"):
-    if not SLACK_BOT_TOKEN:
-        print("No SLACK_BOT_TOKEN — printing report instead:")
-        print(text)
-        return
-    resp = requests.post(
-        "https://slack.com/api/chat.postMessage",
-        headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}", "Content-Type": "application/json"},
-        json={"channel": channel, "text": text, "mrkdwn": True}
-    )
-    result = resp.json()
-    if result.get("ok"):
-        print(f"✓ Posted OKR report to #{channel}")
-    else:
-        print(f"✗ Slack error: {result.get('error')} — printing report:\n{text}")
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(channel, text)
 
 if __name__ == "__main__":
     import sys

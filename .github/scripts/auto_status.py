@@ -1,7 +1,7 @@
 """
 Auto-status / self-diagnose.
 ============================
-Probes the live system — LLM providers, Slack, Alpaca, backend — and regenerates
+Probes the live system — LLM providers, Discord, Alpaca, backend — and regenerates
 SYSTEM_STATUS.md so the repo always shows current truth. Run on a schedule (see
 system-status.yml). The point: nobody has to ask "what's working / what do I need
 to fix" — and the moment a missing key is added, the next run flips it to green.
@@ -44,20 +44,25 @@ def probe_providers() -> list[dict]:
     return rows
 
 
-def probe_slack() -> dict:
-    tok = os.environ.get("SLACK_BOT_TOKEN", "").strip()
+def probe_discord() -> dict:
+    """Is Discord delivery configured? (Slack removed 2026-07-25.)"""
+    tok = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+    hook = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
+    if not tok and not hook:
+        return {"ok": False, "detail": "no DISCORD_BOT_TOKEN or DISCORD_WEBHOOK_URL"}
     if not tok:
-        return {"ok": False, "detail": "no SLACK_BOT_TOKEN"}
+        return {"ok": True, "detail": "webhook only (no bot token — cannot route per-channel)"}
     try:
         req = urllib.request.Request(
-            "https://slack.com/api/auth.test", data=b"",
-            headers={"Authorization": f"Bearer {tok}", "User-Agent": UA}, method="POST",
+            "https://discord.com/api/v10/users/@me",
+            headers={"Authorization": f"Bot {tok}",
+                     "User-Agent": "DiscordBot (https://github.com/quantedge/quantedge, 1.0)"},
         )
         with urllib.request.urlopen(req, timeout=15) as r:
-            d = json.loads(r.read())
-        return {"ok": bool(d.get("ok")), "detail": d.get("team") or d.get("error") or "?"}
+            me = json.loads(r.read())
+        return {"ok": True, "detail": f"bot {me.get('username', '?')}"}
     except Exception as e:
-        return {"ok": False, "detail": type(e).__name__}
+        return {"ok": False, "detail": str(e)[:80]}
 
 
 def probe_alpaca() -> dict:
@@ -99,7 +104,7 @@ def render() -> str:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     providers = probe_providers()
     live = [p["name"] for p in providers if p["ok"]]
-    slack = probe_slack()
+    discord = probe_discord()
     alpaca = probe_alpaca()
     backend = probe_backend()
 
@@ -123,7 +128,7 @@ def render() -> str:
         "## Integrations",
         "| Service | Status | Detail |",
         "|---|---|---|",
-        f"| Slack | {mark(slack['ok'])} | {slack['detail']} |",
+        f"| Discord | {mark(discord['ok'])} | {discord['detail']} |",
         f"| Alpaca (trading/data) | {mark(alpaca['ok'])} | {alpaca['detail']} |",
         f"| Backend API | {mark(backend['ok'])} | {backend['detail']} |",
         "",

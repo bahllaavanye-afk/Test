@@ -2,7 +2,7 @@
 QuantEdge Real Page Screenshot Runner
 ======================================
 Takes actual browser screenshots of every dashboard page and uploads them
-to Slack channels. Requires Playwright (installed by the CI workflow).
+to Discord channels. Requires Playwright (installed by the CI workflow).
 
 Usage:
     python page_screenshot_runner.py [--base-url URL] [--output-dir DIR]
@@ -10,7 +10,7 @@ Usage:
 Default base URL: http://localhost:5173
 
 The screenshots are taken at 1440x900 (laptop) and 375x812 (mobile).
-Each screenshot is uploaded to the assigned Slack channel for that page.
+Each screenshot is uploaded to the assigned Discord channel for that page.
 """
 
 from __future__ import annotations
@@ -44,34 +44,25 @@ PAGES: list[tuple[str, str, str, str]] = [
 ]
 
 
-def _post_to_slack(token: str, channel: str, text: str, username: str = "Screenshot Bot",
+def _post_to_chat(token: str, channel: str, text: str, username: str = "Screenshot Bot",
                    icon_emoji: str = ":camera:") -> dict:
-    payload = {
-        "channel": channel,
-        "text": text,
-        "username": username,
-        "icon_emoji": icon_emoji,
-    }
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(
-        "https://slack.com/api/chat.postMessage",
-        data=data,
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read())
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    return notify.post(channel, text)
 
 
-def _upload_screenshot_to_slack(token: str, channel: str, file_path: Path,
-                                 title: str, comment: str) -> dict:
-    """Upload a PNG screenshot to a Slack channel via files.upload API."""
+def _upload_screenshot_to_chat(token: str, channel: str, file_path: Path,
+                               title: str, comment: str) -> dict:
+    """Upload a PNG screenshot to a Discord channel (Slack removed 2026-07-25).
+
+    Discord attaches files via multipart on the channel-messages endpoint, with
+    a `payload_json` part carrying the message body. Needs a bot token; without
+    one we degrade to a text-only post so the run still reports something.
+    """
     ch_id = _get_channel_id(token, channel)
     if not ch_id:
         print(f"  [screenshot] channel #{channel} not found — posting text only")
-        _post_to_slack(token, channel, f":camera: {comment}\n_(screenshot upload failed — channel not found)_")
+        _post_to_chat(token, channel, f"📷 {comment}\n_(screenshot upload skipped — channel not found)_")
         return {"ok": False, "error": "channel_not_found"}
 
     try:
@@ -80,71 +71,46 @@ def _upload_screenshot_to_slack(token: str, channel: str, file_path: Path,
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-    # Use multipart form upload
     boundary = "----FormBoundary7MA4YWxkTrZu0gW"
-    body_parts = []
-
-    def _field(name: str, value: str) -> bytes:
-        return (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
-            f"{value}\r\n"
-        ).encode()
-
-    body_parts.append(_field("channels", ch_id))
-    body_parts.append(_field("title", title))
-    body_parts.append(_field("initial_comment", comment))
-    body_parts.append(
-        (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="file"; filename="{file_path.name}"\r\n'
-            f"Content-Type: image/png\r\n\r\n"
-        ).encode() + file_data + b"\r\n"
-    )
-    body_parts.append(f"--{boundary}--\r\n".encode())
-    body = b"".join(body_parts)
+    payload = json.dumps({"content": f"**{title}**\n{comment}"[:1900]})
+    body = b"".join([
+        (f"--{boundary}\r\n"
+         'Content-Disposition: form-data; name="payload_json"\r\n'
+         "Content-Type: application/json\r\n\r\n"
+         f"{payload}\r\n").encode(),
+        (f"--{boundary}\r\n"
+         f'Content-Disposition: form-data; name="files[0]"; filename="{file_path.name}"\r\n'
+         "Content-Type: image/png\r\n\r\n").encode(),
+        file_data,
+        f"\r\n--{boundary}--\r\n".encode(),
+    ])
 
     req = urllib.request.Request(
-        "https://slack.com/api/files.upload",
+        f"https://discord.com/api/v10/channels/{ch_id}/messages",
         data=body,
         headers={
             "Content-Type": f"multipart/form-data; boundary={boundary}",
-            "Authorization": f"Bearer {token}",
+            "Authorization": f"Bot {token}",
+            "User-Agent": "DiscordBot (https://github.com/quantedge/quantedge, 1.0)",
         },
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
-            result = json.loads(resp.read())
-            if not result.get("ok"):
-                # Fall back to text post with description
-                _post_to_slack(
-                    token, channel,
-                    f":camera: {comment}\n_(image upload failed: {result.get('error', 'unknown')})_",
-                )
-            return result
+            if resp.status in (200, 201):
+                return {"ok": True}
+            return {"ok": False, "error": f"http_{resp.status}"}
     except Exception as e:
-        _post_to_slack(token, channel, f":camera: {comment}\n_(upload error: {e})_")
+        _post_to_chat(token, channel, f"📷 {comment}\n_(upload error: {e})_")
         return {"ok": False, "error": str(e)}
 
 
 def _get_channel_id(token: str, channel_name: str) -> str | None:
-    clean = channel_name.lstrip("#")
-    url = (
-        "https://slack.com/api/conversations.list"
-        f"?limit=200&exclude_archived=true"
-    )
-    req = urllib.request.Request(
-        url, headers={"Authorization": f"Bearer {token}"}
-    )
+    """Resolve a Discord channel name to its id via the shared notify cache."""
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-        for ch in data.get("channels", []):
-            if ch.get("name") == clean:
-                return ch["id"]
+        import notify
+        return notify._load_channel_ids().get(channel_name.lstrip("#").lower())
     except Exception:
-        pass
-    return None
+        return None
 
 
 def take_screenshots(base_url: str, output_dir: Path, token: str) -> int:
@@ -204,14 +170,14 @@ def take_screenshots(base_url: str, output_dir: Path, token: str) -> int:
 
             page.close()
 
-            # Upload to Slack
+            # Upload to Discord
             if token.startswith("xoxb-"):
                 comment = (
                     f"{emoji} *{page_name.title()} — Live Screenshot* | {now_str}\n"
                     f"_Reported by {employee} · 1440×900 desktop view_\n"
                     f"URL: `{url}`"
                 )
-                result = _upload_screenshot_to_slack(
+                result = _upload_screenshot_to_chat(
                     token, channel, screenshot_path,
                     title=f"QuantEdge {page_name.title()} — {now_str}",
                     comment=comment,
@@ -221,7 +187,7 @@ def take_screenshots(base_url: str, output_dir: Path, token: str) -> int:
                     print(f"  [screenshot] ✓ {page_name} → #{channel}")
                 else:
                     print(f"  [screenshot] ✗ {page_name} → #{channel}: {result.get('error')}")
-                time.sleep(1.5)  # Slack rate limit
+                time.sleep(1.5)  # Discord rate limit
             else:
                 print(f"  [screenshot] (no token) saved to {screenshot_path}")
                 posted += 1
@@ -242,7 +208,7 @@ def post_screenshot_summary(token: str, pages_done: int, pages_total: int) -> No
         f"• Each page posted to its assigned team channel for review\n"
         f"_All employees: check your channel for latest UI screenshots and flag any issues._"
     )
-    _post_to_slack(token, "squad-frontend", msg,
+    _post_to_chat(token, "squad-frontend", msg,
                    username="Screenshot Bot", icon_emoji=":camera_flash:")
 
 
@@ -253,13 +219,13 @@ def main() -> int:
     parser.add_argument("--output-dir", default="/tmp/quantedge-screenshots", help="Screenshot output directory")
     args = parser.parse_args()
 
-    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
+    token = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
     output_dir = Path(args.output_dir)
 
     print(f"📸 QuantEdge Screenshot Runner")
     print(f"   Base URL: {args.base_url}")
     print(f"   Output:   {output_dir}")
-    print(f"   Slack:    {'✅ token present' if token.startswith('xoxb-') else '⚠️ no token'}")
+    print(f"   Discord:  {'✅ bot token present' if token else '⚠️ no bot token'}")
     print(f"   Pages:    {len(PAGES)}")
     print()
 

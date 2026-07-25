@@ -36,7 +36,8 @@ from typing import Generator, Optional
 REPO_ROOT    = Path(__file__).resolve().parents[2]
 STATE_FILE   = REPO_ROOT / "pipeline_runs.json"
 MAX_RUNS     = 50          # keep last N runs in the JSON
-SLACK_TOKEN  = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 RUN_ID       = os.environ.get("GITHUB_RUN_ID", f"local-{int(time.time())}")
 WORKFLOW     = os.environ.get("GITHUB_WORKFLOW", "local")
 REPO         = os.environ.get("GITHUB_REPOSITORY", "unknown/unknown")
@@ -56,7 +57,7 @@ class Stage:
     MODEL_TRAINING      = "model_training"
     BACKTESTING         = "backtesting"
     EVALUATION          = "evaluation"
-    SLACK_REPORT        = "slack_report"
+    EMPLOYEE_REPORT        = "employee_report"
     COMMIT_RESULTS      = "commit_results"
     # Trading pipeline
     MARKET_STATUS       = "market_status"
@@ -110,22 +111,9 @@ class PipelineRunRecord:
 # ─── Slack helpers ─────────────────────────────────────────────────────────────
 
 def _slack_post(channel: str, text: str) -> None:
-    if not SLACK_TOKEN:
-        print(f"  [pipeline] no SLACK_BOT_TOKEN — skip: {text[:80]}", flush=True)
-        return
-    payload = json.dumps({"channel": channel, "text": text}).encode()
-    req = urllib.request.Request(
-        "https://slack.com/api/chat.postMessage",
-        data=payload,
-        headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=8) as r:
-            body = json.loads(r.read())
-            if not body.get("ok"):
-                print(f"  [pipeline] Slack error: {body.get('error')}", flush=True)
-    except Exception as exc:
-        print(f"  [pipeline] Slack post failed: {exc}", flush=True)
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    import notify
+    notify.post(channel, text)
 
 
 # ─── Main tracker ──────────────────────────────────────────────────────────────

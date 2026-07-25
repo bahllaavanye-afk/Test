@@ -16,7 +16,7 @@ Employee → Provider assignment:
 
 Each employee:
   1. Gets git diff for their domain paths since last review
-  2. Reviews through their own expertise lens (persona from slack_agent_team.py)
+  2. Reviews through their own expertise lens (persona from agent_team.py)
   3. Uses a pinned independent LLM (different per employee → zero cross-contamination)
   4. Writes their own report to docs/agent-reviews/<domain>-<date>-<employee>.md
   5. Posts findings to their Slack channel
@@ -38,11 +38,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm_with_provider, slack_post, memory_write, core_get
+from llm_common import llm_with_provider, chat_post, memory_write, core_get
 
 # Employee personas — imported for review system identity
 try:
-    from slack_agent_team import _EMPLOYEE_PERSONAS as _EMP_PERSONAS  # type: ignore
+    from agent_team import _EMPLOYEE_PERSONAS as _EMP_PERSONAS  # type: ignore
 except Exception:
     _EMP_PERSONAS: dict = {}
 
@@ -59,7 +59,7 @@ DATE_STR = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 TIME_STR = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 # Each agent: (domain, slack_channel, path_prefixes, provider_name, emp_key, focus_instruction)
-# emp_key = the QuantEdge employee responsible for this domain (from slack_agent_team.py personas)
+# emp_key = the QuantEdge employee responsible for this domain (from agent_team.py personas)
 AGENTS: list[tuple[str, str, list[str], str, str, str]] = [
     (
         "strategies",
@@ -284,7 +284,7 @@ def main() -> None:
     print(f"[review] Employee Deep Code Review — {TIME_STR}", flush=True)
     print(f"[review] {len(AGENTS)} employees, each reviewing their domain via an independent LLM", flush=True)
 
-    slack_post("#engineering",
+    chat_post("#engineering",
         f"*Employee Deep Code Review* ({DATE_STR})\n"
         f"8 employees reviewing their own domains (each pinned to a different LLM):\n"
         + "\n".join(
@@ -388,7 +388,7 @@ def main() -> None:
 
         # Count critical issues
         p0_count = len(re.findall(r"P0|P1|Critical|CRITICAL", review))
-        slack_post(f"#{channel}",
+        chat_post(f"#{channel}",
             f"*Code Review: {domain}* [Grade: {grade}]\n"
             f"Reviewed by: `{emp_key}` ({emp_role}) via _{used_provider}_\n"
             f"{p0_count} critical issue(s) flagged.\n"
@@ -415,7 +415,7 @@ def main() -> None:
             inject_company_context=True,
         )
         if synthesis and "unavailable" not in synthesis.lower():
-            slack_post("#engineering",
+            chat_post("#engineering",
                 f"*CRO System Health Synthesis* ({DATE_STR})\n"
                 f"Grades: {grades_str}\n\n{synthesis}")
             memory_write("episodic", {
@@ -426,13 +426,13 @@ def main() -> None:
 
     # Summary of all priority items
     if all_priority_lines:
-        slack_post("#engineering",
+        chat_post("#engineering",
             f"*Daily Deep Review Summary ({DATE_STR}) — Top Priorities*\n"
             + "\n".join(f"• {line}" for line in all_priority_lines[:8]))
 
     commit_and_push(n_agents=len(completed))
 
-    slack_post("#engineering",
+    chat_post("#engineering",
         f"✅ *Employee Deep Code Review complete* — {len(completed)}/{len(AGENTS)} employees\n"
         f"Completed: {', '.join(f'`{a}`' for a in completed)}\n"
         f"All reports committed → `docs/agent-reviews/` via reward-gated PR (automerge label)\n"

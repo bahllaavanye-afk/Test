@@ -48,7 +48,7 @@ PIPELINE_DEFS = {
             {"name": "feature_engineering", "label": "Feature Engineering", "channel": "#alpha-research"},
             {"name": "backtesting",         "label": "Backtesting",         "channel": "#ml-experiments"},
             {"name": "evaluation",          "label": "Evaluation",          "channel": "#ml-experiments"},
-            {"name": "slack_report",        "label": "Slack Report",        "channel": "#ml-experiments"},
+            {"name": "employee_report",     "label": "Employee Report",     "channel": "#ml-experiments"},
             {"name": "commit_results",      "label": "Commit Results",      "channel": None},
         ],
     },
@@ -69,7 +69,7 @@ PIPELINE_DEFS = {
         "stages": [
             {"name": "data_fetch",    "label": "Data Fetch",    "channel": None},
             {"name": "agent_dispatch","label": "Agent Dispatch","channel": None},
-            {"name": "agent_posts",   "label": "Slack Posts",   "channel": "#engineering"},
+            {"name": "agent_posts",   "label": "Discord Posts", "channel": "#engineering"},
         ],
     },
 }

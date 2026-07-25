@@ -30,10 +30,11 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import llm as _llm_shared, slack_post, memory_write
+from llm_common import llm as _llm_shared, chat_post, memory_write
 
 REPO_ROOT   = Path(__file__).parent.parent
-SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 ALPACA_KEY  = os.environ.get("ALPACA_API_KEY", "")
 ALPACA_SEC  = os.environ.get("ALPACA_SECRET_KEY", "")
 ALPACA_URL  = os.environ.get("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
@@ -58,10 +59,10 @@ def _llm(prompt: str, max_tokens: int = 600) -> str | None:
 
 
 def slack(channel: str, msg: str, thread_ts: str | None = None) -> str | None:
-    if not SLACK_TOKEN:
+    if not CHAT_ENABLED:
         print(f"[Slack #{channel}] {msg[:100]}")
         return None
-    resp = slack_post(f"#{channel}", msg, thread_ts)
+    resp = chat_post(f"#{channel}", msg, thread_ts)
     return resp.get("ts")
 
 

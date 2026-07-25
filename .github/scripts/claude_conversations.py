@@ -32,7 +32,8 @@ def _resolve_key(*names: str) -> str:
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 GEMINI_API_KEY    = _resolve_key("GEMINI_API_KEY", "GEMINI_API_KEY_1")
 GROQ_API_KEY      = _resolve_key("GROQ_API_KEY", "GROQ_API_KEY_1")
 DEEPSEEK_API_KEY  = _resolve_key("DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY_1")
@@ -461,7 +462,7 @@ def get_employee_response(emp_key: str, context: str) -> tuple[str, str]:
     """7-provider cascade for employee response. Returns (text, provider)."""
     sys.path.insert(0, str(REPO_ROOT / ".github" / "scripts"))
     try:
-        from slack_agent_team import _EMPLOYEE_PERSONAS
+        from agent_team import _EMPLOYEE_PERSONAS
         persona = _EMPLOYEE_PERSONAS.get(emp_key, "You are a senior quant engineer.")
     except Exception:
         persona = "You are a senior quant engineer at QuantEdge, an algorithmic trading platform."
@@ -470,7 +471,7 @@ def get_employee_response(emp_key: str, context: str) -> tuple[str, str]:
         f"Claude (platform AI) just posted this to your Slack channel:\n\n"
         f"\"{context}\"\n\n"
         f"Reply directly and concisely as yourself. Be specific — cite file names, metrics, "
-        f"numbers. Max 120 words. Slack format (*bold* for emphasis). No headers."
+        f"numbers. Max 120 words. Discord format (**bold** for emphasis). No headers."
     )
 
     # Full 7-provider cascade — first success wins
@@ -498,23 +499,40 @@ def get_employee_response(emp_key: str, context: str) -> tuple[str, str]:
 
 # ── Slack helpers ──────────────────────────────────────────────────────────────
 
-def slack_api(method: str, payload: dict) -> dict:
-    url = f"https://slack.com/api/{method}"
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode(),
-        headers={
-            "Authorization": f"Bearer {SLACK_TOKEN}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read())
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+def chat_call(method: str, payload: dict) -> dict:
+    """Discord-backed stand-in for the old Slack Web API dispatcher.
 
+    Slack was removed 2026-07-25. Rather than rewrite ~60 call sites spread over
+    this file, the dispatcher itself now translates the handful of Slack methods
+    that were used into Discord operations, and returns Slack-shaped dicts so the
+    callers' `.get("ok")` / `.get("messages")` handling still works.
+
+    Methods with no Discord equivalent (join/create/reactions) are successful
+    no-ops: channels are provisioned by discord_setup_channels.py.
+    """
+    try:
+        import notify
+    except Exception:
+        return {"ok": False, "error": "notify_unavailable"}
+
+    if method == "chat.postMessage":
+        if _post_stats["attempted"] >= _POST_CAP:
+            _post_stats["skipped"] += 1
+            return {"ok": False, "error": "skipped_post_cap"}
+        _post_stats["attempted"] += 1
+        ok = notify.post(payload.get("channel", "engineering"),
+                         payload.get("text", ""),
+                         username=payload.get("username", "QuantEdge"))
+        # `ts` is used by callers only as a thread handle; Discord has none.
+        return {"ok": ok, "ts": "", "channel": payload.get("channel", "")}
+
+    if method in ("conversations.history", "conversations.replies"):
+        msgs = notify.read_channel_recent(payload.get("channel", ""),
+                                          limit=int(payload.get("limit", 15) or 15))
+        return {"ok": True, "messages": msgs}
+
+    # join / create / reactions.add / anything else: nothing to do on Discord.
+    return {"ok": True}
 
 def get_channel_id(channel_name: str) -> str | None:
     name = channel_name.lstrip("#")
@@ -524,7 +542,7 @@ def get_channel_id(channel_name: str) -> str | None:
         payload: dict = {"limit": 200, "types": "public_channel,private_channel"}
         if cursor:
             payload["cursor"] = cursor
-        resp = slack_api("conversations.list", payload)
+        resp = chat_call("conversations.list", payload)
         if resp.get("ok"):
             for ch in resp.get("channels", []):
                 if ch.get("name") == name:
@@ -543,7 +561,7 @@ def get_or_create_channel(channel_name: str) -> str | None:
     if ch_id:
         return ch_id
     name = channel_name.lstrip("#")
-    resp = slack_api("conversations.create", {"name": name, "is_private": False})
+    resp = chat_call("conversations.create", {"name": name, "is_private": False})
     if resp.get("ok"):
         ch_id = resp.get("channel", {}).get("id")
         print(f"  ✅ Created missing channel #{name} → {ch_id}")
@@ -572,47 +590,34 @@ def post_message(channel: str, text: str, thread_ts: str | None = None,
         payload["username"] = username
     if icon_emoji:
         payload["icon_emoji"] = icon_emoji
-    return slack_api("chat.postMessage", payload)
+    return chat_call("chat.postMessage", payload)
 
 
 def ensure_in_channel(channel_id: str) -> None:
-    slack_api("conversations.join", {"channel": channel_id})
+    chat_call("conversations.join", {"channel": channel_id})
 
 
 # ── Thread follow-up helpers ───────────────────────────────────────────────────
 
 def get_channel_history(channel_id: str, limit: int = 10) -> list[dict]:
-    """Read recent messages from a Slack channel."""
-    if not SLACK_TOKEN:
-        return []
+    """Read recent messages from a Discord channel (Slack removed 2026-07-25)."""
     try:
-        req = urllib.request.Request(
-            f"https://slack.com/api/conversations.history?channel={channel_id}&limit={limit}",
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
-            method="GET"
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-            return data.get("messages", []) if data.get("ok") else []
+        import notify
+        return notify.read_channel_recent(channel_id, limit=limit)
     except Exception:
         return []
 
 def get_thread_replies(channel_id: str, thread_ts: str) -> list[dict]:
-    """Read replies in a specific thread."""
-    if not SLACK_TOKEN:
-        return []
+    """Discord has no Slack-style threads; recent channel messages stand in."""
     try:
-        url = f"https://slack.com/api/conversations.replies?channel={channel_id}&ts={thread_ts}&limit=20"
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {SLACK_TOKEN}"}, method="GET")
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-            return data.get("messages", [])[1:] if data.get("ok") else []  # skip root message
+        import notify
+        return notify.read_channel_recent(channel_id, limit=20)
     except Exception:
         return []
 
 def follow_up_on_threads(memory: dict):
     """Read recent threads in all channels and have employees respond to new messages."""
-    if not SLACK_TOKEN:
+    if not CHAT_ENABLED:
         return
 
     thread_state = memory.setdefault("thread_state", {})
@@ -660,7 +665,7 @@ def follow_up_on_threads(memory: dict):
                     "thread_ts": ts,
                     "username": config["slack_name"],
                 }
-                slack_api("chat.postMessage", reply_payload)
+                chat_call("chat.postMessage", reply_payload)
                 print(f"  ↩ Follow-up in #{channel_name} thread by {config['slack_name']}")
 
             # Update state
@@ -681,8 +686,8 @@ def run_conversation(channel_name: str) -> dict:
     print(f"Channel: #{channel_name} → {config['name']}")
     print(f"{'='*60}")
 
-    if not SLACK_TOKEN:
-        print("⚠️  No SLACK_BOT_TOKEN — conversation will be logged only, not posted to Slack.")
+    if not CHAT_ENABLED:
+        print("⚠️  No CHAT_ENABLED — conversation will be logged only, not posted to Slack.")
 
     # Step 1: Post Claude's opening message
     claude_text = (
@@ -694,7 +699,7 @@ def run_conversation(channel_name: str) -> dict:
     thread_ts = None
     ch_id = None
 
-    if SLACK_TOKEN:
+    if CHAT_ENABLED:
         ch_id = get_or_create_channel(channel_name)
         if not ch_id:
             print(f"⚠️  Channel #{channel_name} not found/created — skipping Slack post")
@@ -718,7 +723,7 @@ def run_conversation(channel_name: str) -> dict:
     print(f"[{config['name']} via {provider}]:\n{emp_text}\n")
 
     # Step 3: Post employee response as reply in thread
-    if SLACK_TOKEN and ch_id:
+    if CHAT_ENABLED and ch_id:
         formatted = (
             f"*{config['slack_name']}* {config['emoji']}\n"
             f"_{provider}_\n\n"
@@ -742,7 +747,7 @@ def run_conversation(channel_name: str) -> dict:
         "provider": provider,
         "claude_message": config["claude_opener"],
         "employee_response": emp_text,
-        "posted_to_slack": bool(SLACK_TOKEN and ch_id and thread_ts),
+        "posted_to_slack": bool(CHAT_ENABLED and ch_id and thread_ts),
     }
 
 

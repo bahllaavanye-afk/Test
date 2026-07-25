@@ -26,7 +26,7 @@ from pathlib import Path
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
-from llm_common import slack_post as _lc_slack_post
+from llm_common import chat_post as _lc_chat_post
 
 
 def _resolve_key(*names: str) -> str:
@@ -76,7 +76,8 @@ DEEPSEEK_KEYS: list[str] = [
 ]
 DEEPSEEK_API_KEY = DEEPSEEK_KEYS[0] if DEEPSEEK_KEYS else ""  # backward compat
 
-SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+                    or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
 GH_REPO = os.environ.get("GH_REPO", "bahllaavanye-afk/test")
 
 # Groq model rotation for variety
@@ -278,11 +279,11 @@ class MultiAgentLLM:
             "• Add `PERPLEXITY_API_KEY` → https://www.perplexity.ai/settings/api (paid but cheap)\n"
             f"_Current pool: {len(GEMINI_KEYS)} Gemini, {len(GROQ_KEYS)} Groq, {len(DEEPSEEK_KEYS)} DeepSeek_"
         )
-        if not SLACK_TOKEN:
+        if not CHAT_ENABLED:
             print(msg)
             return
         for ch in ["engineering", "incidents"]:
-            _lc_slack_post(f"#{ch}", msg)
+            _lc_chat_post(f"#{ch}", msg)
         print("✓ Quota alert posted to Slack")
 
     def status(self) -> dict:

@@ -60,9 +60,11 @@ jobs:
           uv pip install --system pytest pytest-timeout pandas
 
       - name: Run agent script tests
-        # All .github/scripts/test_*.py (slack agents, strategy gate/trimmer, and
-        # the desk bars-batch regression that keeps the desks fed with data).
-        run: python -m pytest .github/scripts/test_*.py -v --tb=short -x --timeout=30
+        # .github/scripts/test_*.py (agent team, strategy gate/trimmer, and the
+        # desk bars-batch regression that keeps the desks fed with data) PLUS
+        # .github/tests/ — 24 employee-registry tests that were never executed
+        # because this glob only covered the scripts directory (found 2026-07-25).
+        run: python -m pytest .github/scripts/test_*.py .github/tests/ -v --tb=short -x --timeout=30
 
   test:
     runs-on: ubuntu-latest

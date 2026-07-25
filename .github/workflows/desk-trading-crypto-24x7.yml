@@ -65,7 +65,6 @@ jobs:
         env:
           ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
-          SLACK_BOT_TOKEN:   ${{ secrets.SLACK_BOT_TOKEN }}
           DESK_FILTER:       crypto
           TRADING_MODE:      paper
           # Hardcoded paper-trading key — not a production secret

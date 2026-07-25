@@ -1,4 +1,4 @@
-"""Integrations endpoints: Notion sync, Slack test, etc."""
+"""Integrations endpoints: Notion sync, etc."""
 from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user
 from app.integrations.notion_sync import get_notion_sync
