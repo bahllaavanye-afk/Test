@@ -44,7 +44,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install deps
-        run: pip install httpx --quiet
+        run: pip install httpx asyncpg --quiet
       - name: Guard — Render secrets present?
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
@@ -63,6 +63,19 @@ jobs:
           SUPABASE_REGION: ${{ github.event.inputs.region || 'us-west-1' }}
           SUPABASE_POOLER_PORT: "6543"
         run: python .github/scripts/render_fix_db_url.py
+      - name: Probe pooler cluster + patch Render to a host that accepts the tenant
+        # The region can be right yet Supavisor still answer "tenant not found"
+        # when the URL points at the wrong pooler CLUSTER/port (aws-0 vs aws-1,
+        # :6543 vs :5432). Runners reach Postgres directly, so we TEST each
+        # candidate with a real SELECT 1 and only patch to one that works.
+        if: env.SKIP != '1'
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_WORKER_SERVICE_ID: ${{ secrets.RENDER_WORKER_SERVICE_ID }}
+          SUPABASE_REGION: ${{ github.event.inputs.region || 'us-west-1' }}
+          SUPABASE_POOLER_PORTS: "6543,5432"
+        run: python .github/scripts/render_probe_pooler.py || echo "pooler probe failed (fail-soft)"
       - name: Report live DB status after the run
         if: env.SKIP != '1'
         run: |
