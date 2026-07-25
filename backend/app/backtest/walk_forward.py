@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-import pandas as pd
+import logging
+import time
 from dataclasses import dataclass, field
 
-from app.backtest.engine import run_backtest, BacktestMetrics
+import pandas as pd
+
+from app.backtest.engine import BacktestMetrics, run_backtest
 from app.backtest.cpcv import deflated_sharpe_ratio
 
 # Constants
@@ -32,6 +35,8 @@ KEY_MAX_DRAWDOWN = "max_drawdown"
 KEY_TOTAL_RETURN = "total_return"
 KEY_NUM_TRADES = "num_trades"
 KEY_ERROR = "error"
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -105,9 +110,12 @@ def _run_window(
     - equity curve produced by the backtest (empty if error)
     - updated equity carry for the next window
     """
+    start_time = time.time()
     try:
         test_signals = signals_fn(train, test)
         metrics: BacktestMetrics = run_backtest(test_signals, test, initial_equity=equity_carry)
+        duration = time.time() - start_time
+
         new_carry = (
             metrics.equity_curve[-1]["equity"]
             if metrics.equity_curve
@@ -121,13 +129,35 @@ def _run_window(
             KEY_TOTAL_RETURN: metrics.total_return,
             KEY_NUM_TRADES: metrics.num_trades,
         }
+
+        _logger.info(
+            "Walk-forward window completed",
+            extra={
+                "window_start": window_info[KEY_START],
+                "window_end": window_info[KEY_END],
+                "signal_count": len(test_signals),
+                "exec_time_sec": round(duration, 4),
+                "pnl": metrics.total_return,
+                "sharpe": metrics.sharpe,
+            },
+        )
         return window_info, metrics.equity_curve, new_carry
     except Exception as e:
+        duration = time.time() - start_time
         error_info = {
             KEY_START: str(test.index[0].date()),
             KEY_END: str(test.index[-1].date()),
             KEY_ERROR: str(e),
         }
+        _logger.error(
+            "Error in walk-forward window",
+            extra={
+                "window_start": error_info[KEY_START],
+                "window_end": error_info[KEY_END],
+                "error": str(e),
+                "exec_time_sec": round(duration, 4),
+            },
+        )
         return error_info, [], equity_carry
 
 
@@ -185,4 +215,17 @@ def walk_forward(
     result.consistency = verdict["consistency"]
     result.is_robust = verdict["is_robust"]
     result.verdict = verdict["verdict"]
+
+    _logger.info(
+        "Walk-forward validation completed",
+        extra={
+            "total_windows": result.n_windows,
+            "avg_sharpe": result.avg_sharpe,
+            "avg_drawdown": result.avg_drawdown,
+            "deflated_sharpe": result.deflated_sharpe,
+            "consistency": result.consistency,
+            "is_robust": result.is_robust,
+            "verdict": result.verdict,
+        },
+    )
     return result
