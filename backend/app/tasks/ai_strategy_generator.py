@@ -14,10 +14,11 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, List
+
+from pydantic import BaseModel, Field, ValidationError, validator
 
 from app.tasks.free_llm_router import call_consensus, available_providers
 from app.tasks.agent_memory import AgentMemory
@@ -65,6 +66,89 @@ class {class_name}(AbstractStrategy):
 '''
 
 
+class StrategyProposal(BaseModel):
+    """
+    Pydantic schema for AI‑generated strategy proposals.
+    Provides validation, field descriptions, and example values.
+    """
+
+    name: str = Field(
+        ...,
+        description="Unique snake_case identifier for the strategy.",
+        example="rsi_momentum",
+    )
+    class_name: str = Field(
+        ...,
+        description="PascalCase class name used in the generated Python file.",
+        example="RsiMomentum",
+    )
+    hypothesis: str = Field(
+        ...,
+        description="One‑sentence hypothesis explaining why the strategy should work.",
+        example="Combines RSI oversold signals with upward momentum.",
+    )
+    market_type: str = Field(
+        ...,
+        description="Target market type; either 'equity' or 'crypto'.",
+        example="equity",
+    )
+    risk_bucket: str = Field(
+        ...,
+        description="Risk bucket classification; either 'directional' or 'arbitrage'.",
+        example="directional",
+    )
+    tick_interval: int = Field(
+        ...,
+        ge=1,
+        description="Tick interval in seconds for the strategy execution loop.",
+        example=3600,
+    )
+    expected_sharpe: float = Field(
+        ...,
+        ge=0,
+        description="Expected Sharpe ratio for the strategy based on back‑test assumptions.",
+        example=0.8,
+    )
+    entry_conditions: List[str] = Field(
+        ...,
+        min_items=1,
+        description="List of entry condition expressions interpreted by the strategy.",
+        example=["rsi < 30", "price > ema_21"],
+    )
+    exit_conditions: List[str] = Field(
+        ...,
+        min_items=1,
+        description="List of exit condition expressions interpreted by the strategy.",
+        example=["rsi > 70"],
+    )
+
+    @validator("name")
+    def validate_name(cls, v: str) -> str:
+        """Ensure snake_case naming convention."""
+        if not re.fullmatch(r"^[a-z][a-z0-9_]*$", v):
+            raise ValueError("name must be snake_case starting with a letter")
+        return v
+
+    @validator("class_name")
+    def validate_class_name(cls, v: str) -> str:
+        """Ensure PascalCase naming convention."""
+        if not re.fullmatch(r"^[A-Z][A-Za-z0-9]*$", v):
+            raise ValueError("class_name must be PascalCase")
+        return v
+
+    @validator("market_type")
+    def validate_market_type(cls, v: str) -> str:
+        if v not in {"equity", "crypto"}:
+            raise ValueError("market_type must be either 'equity' or 'crypto'")
+        return v
+
+    @validator("risk_bucket")
+    def validate_risk_bucket(cls, v: str) -> str:
+        if v not in {"directional", "arbitrage"}:
+            raise ValueError("risk_bucket must be either 'directional' or 'arbitrage'")
+        return v
+
+
 class AIStrategyGenerator:
     def __init__(self, redis_client: Any = None):
         self._memory = AgentMemory(redis_client) if redis_client else None
@@ -85,16 +169,19 @@ class AIStrategyGenerator:
                     written.append(p)
 
             if self._memory and written:
-                await self._memory.write("strategy_proposals", {
-                    "count": len(written),
-                    "proposals": [w.get("name", "?") for w in written],
-                    "status": "staging",
-                })
+                await self._memory.write(
+                    "strategy_proposals",
+                    {
+                        "count": len(written),
+                        "proposals": [w.get("name", "?") for w in written],
+                        "status": "staging",
+                    },
+                )
             logger.info("AIStrategyGenerator: wrote %d staging strategies", len(written))
         except Exception as e:
             logger.exception("AIStrategyGenerator error: %s", e)
 
-    async def _generate_proposals(self) -> list[dict]:
+    async def _generate_proposals(self) -> List[dict]:
         system = """You are a senior quantitative analyst. Propose trading strategy parameters.
 Output ONLY a JSON array of exactly 2 strategies, no other text."""
 
@@ -123,7 +210,7 @@ For each strategy, provide:
         if not responses:
             return []
 
-        all_proposals: list[dict] = []
+        all_proposals: List[dict] = []
         seen = set()
         for resp in responses:
             try:
@@ -131,12 +218,18 @@ For each strategy, provide:
                 start, end = content.find("["), content.rfind("]") + 1
                 if start < 0 or end <= start:
                     continue
-                proposals = json.loads(content[start:end])
-                for p in proposals:
-                    name = p.get("name", "")
-                    if name and name not in seen:
-                        seen.add(name)
-                        all_proposals.append(p)
+                raw_proposals = json.loads(content[start:end])
+                for raw in raw_proposals:
+                    name = raw.get("name", "")
+                    if not name or name in seen:
+                        continue
+                    try:
+                        validated = StrategyProposal(**raw)
+                    except ValidationError as ve:
+                        logger.debug("Invalid proposal discarded: %s", ve)
+                        continue
+                    seen.add(validated.name)
+                    all_proposals.append(validated.dict())
             except Exception:
                 continue
 
