@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Inspect model logs",
-    "Based on the collective knowledge, here are 3 concise bullet points:",
-    "docstrings on ml/models/lstm.py: success \u2014 tests green",
     "Here are 3 concise bullet points of the most important, actionable knowledge synthesized from recent agent learnings:",
     "Test network ping",
     "Log trade errors",
@@ -199,8 +196,11 @@
     "Implement idempotence",
     "Based on the collective learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
     "Check system clocks",
-    "* **Documentation standards set**: Docstrings have been standardized across the codebase, as seen in recent learnings on `docstrings` in `ml/features/technical.py` and `execution/limit_first.py`."
+    "* **Documentation standards set**: Docstrings have been standardized across the codebase, as seen in recent learnings on `docstrings` in `ml/features/technical.py` and `execution/limit_first.py`.",
+    "Verify market hours",
+    "Check connection retries",
+    "Sanitize API responses"
   ],
-  "last_updated": "2026-07-25T05:17:43.275114+00:00",
+  "last_updated": "2026-07-25T06:14:01.569034+00:00",
   "total": 200
 }
