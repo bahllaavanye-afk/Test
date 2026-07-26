@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-26T09:36:04.486986+00:00",
+  "last_updated": "2026-07-26T09:58:07.183941+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -4849,6 +4849,30 @@
       "timestamp": "2026-07-26T06:35:49.274941+00:00",
       "provider": "llm",
       "round": "strategy_alpha"
+    },
+    "2026-07-26T09:58:11.623144+00:00": {
+      "channel": "ml-research",
+      "speaker": "ml_trainer",
+      "message": "The latest training run on\u202f2026\u201107\u201124 updated\u202f`backend/app/ml/models/mean_reversion.pkl` (MAE\u202f=\u202f0.012),\u202f`backend/app/ml/models/lstm_predictor.pt` (AUC\u202f\u2248\u202f0.91) and\u202f`backend/app/ml/models/xgboost",
+      "timestamp": "2026-07-26T09:58:11.623144+00:00",
+      "provider": "llm",
+      "round": "ml_models"
+    },
+    "2026-07-26T09:58:13.744906+00:00": {
+      "channel": "ml-research",
+      "speaker": "research_scientist",
+      "message": "I\u2019ll prototype a Temporal Fusion Transformer (TFT)\u202f\u2014\u202fLim\u202fet\u202fal.,\u202f2020\u202f[NeurIPS]\u2014to jointly model the high\u2011frequency price series and the static macro features we already feed into the XGBoost model; the attention\u2011based gating and variable\u2011selection network should capture long\u2011range dependencies that the current LSTM misses. I\u2019ll add the implementation under `backend/app/ml/models/tft_predictor.py` and update the training pipeline in `backend/app/ml/pipelines/train_tft.py` to compare MAE against ",
+      "timestamp": "2026-07-26T09:58:13.744906+00:00",
+      "provider": "llm",
+      "round": "ml_models"
+    },
+    "2026-07-26T09:58:15.949987+00:00": {
+      "channel": "ml-research",
+      "speaker": "modeling_engineer",
+      "message": "I recommend retraining the Temporal Fusion Transformer (`backend/app/ml/models/tft_predictor.py`) via the updated pipeline (`backend/app/ml/pipelines/train_tft.py`) and evaluating its MAE against the current `mean_reversion.pkl`. If the TFT achieves lower MAE and higher AUC, we should deploy the new `tft_predictor.pkl` to replace the existing `lstm_predictor.pt` in production.",
+      "timestamp": "2026-07-26T09:58:15.949987+00:00",
+      "provider": "llm",
+      "round": "ml_models"
     }
   },
   "employee_context": {
@@ -5027,6 +5051,15 @@
             "channel": "ml-research",
             "topic": "ml_models"
           }
+        },
+        {
+          "ts": "2026-07-26T09:58:10+00:00",
+          "kind": "discussion",
+          "text": "The latest training run on\u202f2026\u201107\u201124 updated\u202f`backend/app/ml/models/mean_reversion.pkl` (MAE\u202f=\u202f0.012),\u202f`backend/app/ml/models/lstm_predictor.pt` (AUC\u202f\u2248\u202f0.91) and\u202f`backend/app/ml/models/xgboost",
+          "meta": {
+            "channel": "ml-research",
+            "topic": "ml_models"
+          }
         }
       ],
       "facts": {},
@@ -5051,6 +5084,15 @@
             "channel": "ml-research",
             "topic": "ml_models"
           }
+        },
+        {
+          "ts": "2026-07-26T09:58:13+00:00",
+          "kind": "discussion",
+          "text": "I\u2019ll prototype a Temporal Fusion Transformer (TFT)\u202f\u2014\u202fLim\u202fet\u202fal.,\u202f2020\u202f[NeurIPS]\u2014to jointly model the high\u2011frequency price series and the static macro features we already feed into the XGBoost model; the attention\u2011based gating and variable\u2011selection network should capture long\u2011range dependencies that the current LSTM misses. I\u2019ll add the implementation under `backend/app/ml/models/tft_predictor.py` and update the training pipeline in `backend/app/ml/pipelines/train_tft.py` to compare MAE against the existing `mean_reversion.pkl`. This should also let us experiment with the TFT\u2019s \u201cfuture\u2011known\u201d covariate handling to improve the AUC of the `lstm_predictor.pt` baseline.",
+          "meta": {
+            "channel": "ml-research",
+            "topic": "ml_models"
+          }
         }
       ],
       "facts": {},
@@ -5071,6 +5113,15 @@
           "ts": "2026-07-25T22:54:48+00:00",
           "kind": "discussion",
           "text": "I\u2019ll replace the LSTM encoder in `training/pipeline_mean_reversion.py` with the Temporal Fusion Transformer model at `backend/app/ml/models/tft_mean_reversion.pkl` and retrain using the static covariates from `data/feature_engineering/static_features.csv`. Once retrained, I\u2019ll push the updated pipeline to production for live mean\u2011reversion trading.",
+          "meta": {
+            "channel": "ml-research",
+            "topic": "ml_models"
+          }
+        },
+        {
+          "ts": "2026-07-26T09:58:15+00:00",
+          "kind": "discussion",
+          "text": "I recommend retraining the Temporal Fusion Transformer (`backend/app/ml/models/tft_predictor.py`) via the updated pipeline (`backend/app/ml/pipelines/train_tft.py`) and evaluating its MAE against the current `mean_reversion.pkl`. If the TFT achieves lower MAE and higher AUC, we should deploy the new `tft_predictor.pkl` to replace the existing `lstm_predictor.pt` in production.",
           "meta": {
             "channel": "ml-research",
             "topic": "ml_models"
@@ -5423,8 +5474,8 @@
     "last_drawdown_pct": 12.3,
     "last_signal_run": "2026-06-09T10:47:42.157419+00:00",
     "signal_count_today": 0,
-    "last_discussion": "2026-07-26T06:35:41.210245+00:00",
-    "total_discussions": 220,
+    "last_discussion": "2026-07-26T09:58:07.183941+00:00",
+    "total_discussions": 221,
     "heartbeat_count": 2,
     "last_watchdog_run": "2026-07-26T09:36:04.486986+00:00",
     "health_status": "3 failing",
@@ -5467,9 +5518,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[modeling_engineer in #ml-research @ 2026-07-22T23:02] I recommend retraining the **risk_classifier_v2** model to include the probabilistic attention\u2011based gating layer and the static\u2011metadata encoder, usi",
-    "[continuous_improver in #engineering @ 2026-07-23T02:39] I tightened the UI contrast in\u202f`src/ui/theme/DarkTheme.tsx` by adjusting the `primary",
-    "[peer_reviewer in #engineering @ 2026-07-23T02:39] I\u2019d prioritize adding type\u2011safety and unit tests for the data\u2011pipeline scripts in\u202f`.github/scripts/token_cleanup.py` to catch stale\u2011token edge cases e",
     "[free_agent_engineer in #engineering @ 2026-07-23T02:39] I'll start by refactoring\u202f`backend/app/ml/model_loader.py`\u202fto add explicit version validation and robust missing\u2011file handling. This will tighten runt",
     "[investor_pipeline @ 2026-07-23T02:42] We need to respond as investor_pipeline agent, give one-sentence status update, specific, first person, concise, referencing real file paths. Should m",
     "[run_experiments @ 2026-07-23T02:42] We need to respond as the run_experiments agent. Provide one sentence status update, referencing real file paths. Should be concise, 2 sentences max. ",
@@ -5666,7 +5714,10 @@
     "[quick_backtest @ 2026-07-26T06:36] We need to respond as quick_backtest agent. One sentence status update, active work right now. Should be concise, 2 sentences max, but they ask one se",
     "[peer_reviewer @ 2026-07-26T06:36] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As peer_reviewer agent, we need to respond in one sent",
     "[frontend_design @ 2026-07-26T06:36] I\u2019m currently refactoring the `src/components/TradeTable.tsx` to use styled\u2011components that match Bloomberg\u2019s dark theme while optimizing memoization ",
-    "[token_monitor @ 2026-07-26T06:36] I'm currently scanning the latest API usage logs in `/var/log/quantedge/api_usage.log` to detect anomalies and prepare optimization suggestions for th"
+    "[token_monitor @ 2026-07-26T06:36] I'm currently scanning the latest API usage logs in `/var/log/quantedge/api_usage.log` to detect anomalies and prepare optimization suggestions for th",
+    "[ml_trainer in #ml-research @ 2026-07-26T09:58] The latest training run on\u202f2026\u201107\u201124 updated\u202f`backend/app/ml/models/mean_reversion.pkl` (MAE\u202f=\u202f0.012),\u202f`backend/app/ml/models/lstm_predictor.pt` (AUC",
+    "[research_scientist in #ml-research @ 2026-07-26T09:58] I\u2019ll prototype a Temporal Fusion Transformer (TFT)\u202f\u2014\u202fLim\u202fet\u202fal.,\u202f2020\u202f[NeurIPS]\u2014to jointly model the high\u2011frequency price series and the static macro ",
+    "[modeling_engineer in #ml-research @ 2026-07-26T09:58] I recommend retraining the Temporal Fusion Transformer (`backend/app/ml/models/tft_predictor.py`) via the updated pipeline (`backend/app/ml/pipelines/"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
