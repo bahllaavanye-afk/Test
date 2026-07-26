@@ -15,16 +15,38 @@ from pathlib import Path
 
 import pytest
 
-os.environ.setdefault("SECRET_KEY", "test-secret-key-32-bytes-hex-xxxxxx")
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_desk_sync.db")
+# ----------------------------------------------------------------------
+# Constants
+# ----------------------------------------------------------------------
+ENV_SECRET_KEY = "SECRET_KEY"
+ENV_SECRET_KEY_DEFAULT = "test-secret-key-32-bytes-hex-xxxxxx"
+ENV_DATABASE_URL = "DATABASE_URL"
+ENV_DATABASE_URL_DEFAULT = "sqlite+aiosqlite:///./test_desk_sync.db"
 
-_DESK_MOD = Path(__file__).parents[3] / ".github" / "scripts" / "desk_order_placer.py"
+DESK_MODULE_REL_PATH = Path(".github") / "scripts" / "desk_order_placer.py"
+DESK_MODULE_SKIP_MSG = f"{DESK_MODULE_REL_PATH.name} not present in this checkout"
+DESK_MODULE_SPEC_NAME = "dop_sync_test"
+
+FX_DESK_FILENAME = "fx_desk.py"
+FX_DESK_SKIP_MSG = f"{FX_DESK_FILENAME} not present"
+FX_SPEC_NAME = "fx_sync_test"
+
+ASSERT_DESK_MSG_TEMPLATE = "desks reference unknown/unloadable strategies: {missing}"
+ASSERT_FX_MSG_TEMPLATE = "FX desk references unknown strategies: {missing}"
+
+# ----------------------------------------------------------------------
+# Environment setup
+# ----------------------------------------------------------------------
+os.environ.setdefault(ENV_SECRET_KEY, ENV_SECRET_KEY_DEFAULT)
+os.environ.setdefault(ENV_DATABASE_URL, ENV_DATABASE_URL_DEFAULT)
+
+_DESK_MOD = Path(__file__).parents[3] / DESK_MODULE_REL_PATH
 
 
 def _load_desks():
     if not _DESK_MOD.exists():
-        pytest.skip("desk_order_placer.py not present in this checkout")
-    spec = importlib.util.spec_from_file_location("dop_sync_test", _DESK_MOD)
+        pytest.skip(DESK_MODULE_SKIP_MSG)
+    spec = importlib.util.spec_from_file_location(DESK_MODULE_SPEC_NAME, _DESK_MOD)
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)  # type: ignore[union-attr]
     return m
@@ -40,17 +62,17 @@ def test_every_desk_strategy_exists_in_registry():
         for s in d.strategy_names
         if STRATEGY_REGISTRY.get(s) is None
     }
-    assert not missing, f"desks reference unknown/unloadable strategies: {sorted(missing)}"
+    assert not missing, ASSERT_DESK_MSG_TEMPLATE.format(missing=sorted(missing))
 
 
 def test_fx_desk_strategies_exist_in_registry():
     from app.strategies import STRATEGY_REGISTRY
 
-    fx_mod = _DESK_MOD.parent / "fx_desk.py"
+    fx_mod = _DESK_MOD.parent / FX_DESK_FILENAME
     if not fx_mod.exists():
-        pytest.skip("fx_desk.py not present")
-    spec = importlib.util.spec_from_file_location("fx_sync_test", fx_mod)
+        pytest.skip(FX_DESK_SKIP_MSG)
+    spec = importlib.util.spec_from_file_location(FX_SPEC_NAME, fx_mod)
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)  # type: ignore[union-attr]
     missing = [s for s in m.STRATEGIES if STRATEGY_REGISTRY.get(s) is None]
-    assert not missing, f"FX desk references unknown strategies: {missing}"
+    assert not missing, ASSERT_FX_MSG_TEMPLATE.format(missing=missing)
