@@ -1,6 +1,5 @@
 {
   "skills": [
-    "Historical performance suggests that adding 15-minute momentum entry and earnings-beat filters can add 0.4-0.6 \u03b1 while maintaining volatility, contributing to the high Sharpe ratio expectations.",
     "Optimize Sharpe ratios",
     "Test API rate limits",
     "Test DB connections",
@@ -199,8 +198,9 @@
     "Add type checking",
     "Tighten health checks",
     "Test SSL certificates",
-    "Rotate log files"
+    "Rotate log files",
+    "Test database conn"
   ],
-  "last_updated": "2026-07-26T21:28:07.624014+00:00",
+  "last_updated": "2026-07-26T22:31:38.978445+00:00",
   "total": 200
 }
