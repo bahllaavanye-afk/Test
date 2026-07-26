@@ -147,17 +147,47 @@ class InferenceService:
             ensemble_prob = sum(v * self.weights.get(n, 1.0) for n, v in predictions.items()) / total_w
             confidence = abs(ensemble_prob - 0.5) * 2
 
-            if ensemble_prob > 0.5 + 0.05:
+            # Confirmation filters
+            price_momentum = None
+            volume_trend = None
+            if "close" in data.columns:
+                price_momentum = data["close"].pct_change().iloc[-1]
+            if "volume" in data.columns:
+                vol_change = data["volume"].pct_change().iloc[-1]
+                volume_trend = vol_change
+
+            # Tighten entry conditions
+            def strong_up():
+                return (
+                    ensemble_prob > 0.58
+                    and confidence > 0.6
+                    and (price_momentum is None or price_momentum > 0.001)
+                    and (volume_trend is None or volume_trend > 0.0)
+                )
+
+            def strong_down():
+                return (
+                    ensemble_prob < 0.42
+                    and confidence > 0.6
+                    and (price_momentum is None or price_momentum < -0.001)
+                    and (volume_trend is None or volume_trend > 0.0)
+                )
+
+            if strong_up():
                 prediction = "up"
-            elif ensemble_prob < 0.5 - 0.05:
+            elif strong_down():
                 prediction = "down"
             else:
                 prediction = "neutral"
+
+            # Exit signal: low confidence after a non‑neutral prior signal
+            exit_signal = confidence < 0.3 and prediction != "neutral"
 
             result = {
                 "prediction": prediction,
                 "probability": round(ensemble_prob, 4),
                 "confidence": round(confidence, 4),
+                "exit_signal": exit_signal,
                 "individual": {k: round(v, 4) for k, v in predictions.items()},
             }
 
