@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Check DB connections",
-    "Monitor model drift",
     "Historical performance suggests that adding 15-minute momentum entry and earnings-beat filters can add 0.4-0.6 \u03b1 while maintaining volatility, contributing to the high Sharpe ratio expectations.",
     "Optimize Sharpe ratios",
     "Test API rate limits",
@@ -199,8 +197,10 @@
     "Log user agents",
     "Run mypy strictly",
     "Add type checking",
-    "Tighten health checks"
+    "Tighten health checks",
+    "Test SSL certificates",
+    "Rotate log files"
   ],
-  "last_updated": "2026-07-26T20:28:22.608706+00:00",
+  "last_updated": "2026-07-26T21:28:07.624014+00:00",
   "total": 200
 }
