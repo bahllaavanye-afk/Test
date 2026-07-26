@@ -11,7 +11,6 @@ import numpy as np
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
 
 
 class Regime(str, Enum):
@@ -72,7 +71,7 @@ def _hurst_exponent(prices: np.ndarray, max_lag: int = 20) -> float:
     lags = range(2, min(max_lag, len(returns) // 2))
     rs_values = []
     for lag in lags:
-        chunks = [returns[i:i+lag] for i in range(0, len(returns) - lag, lag)]
+        chunks = [returns[i:i + lag] for i in range(0, len(returns) - lag, lag)]
         if not chunks:
             continue
         rs_per_chunk = []
@@ -106,8 +105,11 @@ def detect_regime(prices: list[float], high_vol_threshold: float = 0.25) -> Regi
     arr = np.array(prices, dtype=float)
     if len(arr) < 30:
         return RegimeState(
-            regime=Regime.UNKNOWN, confidence=0.0, vol_20d=0.0,
-            hurst=0.5, sizing_multiplier=REGIME_SIZING_MULTIPLIER[Regime.UNKNOWN],
+            regime=Regime.UNKNOWN,
+            confidence=0.0,
+            vol_20d=0.0,
+            hurst=0.5,
+            sizing_multiplier=REGIME_SIZING_MULTIPLIER[Regime.UNKNOWN],
             updated_at=datetime.now(timezone.utc),
         )
 
@@ -116,7 +118,7 @@ def detect_regime(prices: list[float], high_vol_threshold: float = 0.25) -> Regi
     vol_20d = float(np.std(rets) * np.sqrt(252))
 
     # Hurst exponent on last 60+ bars
-    hurst = _hurst_exponent(arr[-min(100, len(arr)):])
+    hurst = _hurst_exponent(arr[-min(100, len(arr)) :])
 
     # Classify
     if vol_20d > high_vol_threshold:
