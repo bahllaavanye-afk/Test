@@ -1,6 +1,5 @@
 {
   "skills": [
-    "Use circuit breaker pattern",
     "Update exit codes",
     "Reference config files",
     "Handle API rate limits",
@@ -199,8 +198,9 @@
     "Implement rate limiter",
     "Parse error logs",
     "Validate payloads",
-    "Update pipelines"
+    "Update pipelines",
+    "Check RAM allocation"
   ],
-  "last_updated": "2026-07-26T17:59:21.649844+00:00",
+  "last_updated": "2026-07-26T19:22:51.625234+00:00",
   "total": 200
 }
