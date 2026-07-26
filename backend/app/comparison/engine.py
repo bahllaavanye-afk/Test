@@ -3,10 +3,12 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
-from dataclasses import dataclass, field
+
 from datetime import date
+from typing import Any, Dict
 
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 from scipy import stats
 
 from app.backtest.engine import run_backtest, BacktestMetrics
@@ -14,22 +16,96 @@ from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stat
 from app.utils.logging import logger
 
 
-@dataclass
-class ComparisonResult:
-    strategy_name: str
-    symbol: str
-    interval: str
-    start_date: date
-    end_date: date
-    manual: BacktestMetrics | None = None
-    ml_enhanced: BacktestMetrics | None = None
-    benchmark_curves: dict = field(default_factory=dict)
-    benchmark_stats: dict = field(default_factory=dict)
-    ml_improvement_sharpe: float = 0.0
-    t_statistic: float = 0.0
-    p_value: float = 1.0
-    is_significant: bool = False
-    winner: str = "neither"
+class ComparisonResult(BaseModel):
+    strategy_name: str = Field(
+        ...,
+        description="Name of the strategy being compared.",
+        example="mean_rev_20_2",
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol of the asset under analysis.",
+        example="AAPL",
+    )
+    interval: str = Field(
+        ...,
+        description="Time interval for the price data (e.g., '15m', '1h').",
+        example="15m",
+    )
+    start_date: date = Field(
+        ...,
+        description="Start date of the backtest period.",
+        example="2023-01-01",
+    )
+    end_date: date = Field(
+        ...,
+        description="End date of the backtest period.",
+        example="2023-06-30",
+    )
+    manual: BacktestMetrics | None = Field(
+        None,
+        description="Backtest metrics for the manual signal set.",
+    )
+    ml_enhanced: BacktestMetrics | None = Field(
+        None,
+        description="Backtest metrics for the ML‑enhanced signal set.",
+    )
+    benchmark_curves: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Benchmark equity curves fetched for the period.",
+    )
+    benchmark_stats: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Statistical summary of benchmark performance.",
+    )
+    ml_improvement_sharpe: float = Field(
+        0.0,
+        description="Difference in Sharpe ratio (ML – manual).",
+        example=0.12,
+    )
+    t_statistic: float = Field(
+        0.0,
+        description="T‑statistic from the two‑sample test between ML and manual returns.",
+        example=1.85,
+    )
+    p_value: float = Field(
+        1.0,
+        description="P‑value corresponding to the t‑statistic.",
+        example=0.067,
+    )
+    is_significant: bool = Field(
+        False,
+        description="Indicates if the p‑value is below the significance threshold (0.05).",
+    )
+    winner: str = Field(
+        "neither",
+        description="Identifies the better performing approach: 'ml', 'manual', or 'neither'.",
+        example="ml",
+    )
+
+    @validator("end_date")
+    def check_date_order(cls, v: date, values: dict) -> date:
+        start = values.get("start_date")
+        if start and v < start:
+            raise ValueError("end_date cannot be earlier than start_date.")
+        return v
+
+    @validator("winner")
+    def validate_winner(cls, v: str) -> str:
+        allowed = {"ml", "manual", "neither"}
+        if v not in allowed:
+            raise ValueError(f"winner must be one of {allowed}.")
+        return v
+
+    @validator("p_value")
+    def validate_p_value(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("p_value must be between 0 and 1.")
+        return v
+
+    class Config:
+        arbitrary_types_allowed = True
+        json_encoders = {pd.Series: lambda s: s.tolist()}
 
 
 class StrategyComparisonEngine:
