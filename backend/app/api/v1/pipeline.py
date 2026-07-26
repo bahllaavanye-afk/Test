@@ -7,114 +7,152 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
-
 def _resolve_state_file() -> Path:
-    """Locate pipeline_runs.json without a hardcoded ancestor depth.
+    """Locate ``pipeline_runs.json`` without a hard‑coded ancestor depth.
 
-    The old `parents[5]` assumed a fixed directory depth and crashed the ENTIRE
-    app at import on Render (IndexError: 5) — there the file is /app/app/api/v1/
-    pipeline.py, only 5 parents (0-4), so index 5 doesn't exist. This searches
-    ancestors for the file (it's written to the repo root by GitHub Actions),
-    honours a PIPELINE_STATE_FILE override, and falls back to a repo-root-ish
-    default that simply may not exist (readers already handle absence). Never
-    raises at import.
+    The previous implementation used ``parents[5]`` which raised ``IndexError``
+    when the directory depth was smaller than expected.  This function walks
+    up the directory tree looking for the file, respects the ``PIPELINE_STATE_FILE``
+    environment override, and falls back to a reasonable default without raising
+    at import time.
     """
     override = os.environ.get("PIPELINE_STATE_FILE")
     if override:
         return Path(override)
+
     here = Path(__file__).resolve()
     for parent in here.parents:
         candidate = parent / "pipeline_runs.json"
-        if candidate.exists():
+        if candidate.is_file():
             return candidate
-    idx = min(4, len(here.parents) - 1)
-    return here.parents[idx] / "pipeline_runs.json"
+
+    # Fallback: use a parent that is guaranteed to exist (at most 4 levels up)
+    fallback_idx = min(4, len(here.parents) - 1)
+    return here.parents[fallback_idx] / "pipeline_runs.json"
 
 
 _STATE_FILE = _resolve_state_file()
 
-PIPELINE_DEFS = {
+PIPELINE_DEFS: Dict[str, Dict[str, Any]] = {
     "ml_experiments": {
         "label": "ML Experiments",
         "stages": [
-            {"name": "data_fetch",          "label": "Data Fetch",          "channel": "#squad-data"},
-            {"name": "cache_check",         "label": "Cache Check",         "channel": "#squad-data"},
+            {"name": "data_fetch", "label": "Data Fetch", "channel": "#squad-data"},
+            {"name": "cache_check", "label": "Cache Check", "channel": "#squad-data"},
             {"name": "feature_engineering", "label": "Feature Engineering", "channel": "#alpha-research"},
-            {"name": "backtesting",         "label": "Backtesting",         "channel": "#ml-experiments"},
-            {"name": "evaluation",          "label": "Evaluation",          "channel": "#ml-experiments"},
-            {"name": "employee_report",     "label": "Employee Report",     "channel": "#ml-experiments"},
-            {"name": "commit_results",      "label": "Commit Results",      "channel": None},
+            {"name": "backtesting", "label": "Backtesting", "channel": "#ml-experiments"},
+            {"name": "evaluation", "label": "Evaluation", "channel": "#ml-experiments"},
+            {"name": "employee_report", "label": "Employee Report", "channel": "#ml-experiments"},
+            {"name": "commit_results", "label": "Commit Results", "channel": None},
         ],
     },
     "desk_trading": {
         "label": "Desk Trading",
         "stages": [
-            {"name": "market_status",    "label": "Market Status",    "channel": None},
-            {"name": "data_fetch",       "label": "Data Fetch",       "channel": "#squad-data"},
-            {"name": "signal_generation","label": "Signal Generation","channel": None},
-            {"name": "risk_check",       "label": "Risk Check",       "channel": "#risk-alerts"},
-            {"name": "order_execution",  "label": "Order Execution",  "channel": None},
-            {"name": "fill_tracking",    "label": "Fill Tracking",    "channel": None},
-            {"name": "pnl_snapshot",     "label": "P&L Snapshot",     "channel": "#pnl-daily"},
+            {"name": "market_status", "label": "Market Status", "channel": None},
+            {"name": "data_fetch", "label": "Data Fetch", "channel": "#squad-data"},
+            {"name": "signal_generation", "label": "Signal Generation", "channel": None},
+            {"name": "risk_check", "label": "Risk Check", "channel": "#risk-alerts"},
+            {"name": "order_execution", "label": "Order Execution", "channel": None},
+            {"name": "fill_tracking", "label": "Fill Tracking", "channel": None},
+            {"name": "pnl_snapshot", "label": "P&L Snapshot", "channel": "#pnl-daily"},
         ],
     },
     "agent_team": {
         "label": "Agent Team",
         "stages": [
-            {"name": "data_fetch",    "label": "Data Fetch",    "channel": None},
-            {"name": "agent_dispatch","label": "Agent Dispatch","channel": None},
-            {"name": "agent_posts",   "label": "Discord Posts", "channel": "#engineering"},
+            {"name": "data_fetch", "label": "Data Fetch", "channel": None},
+            {"name": "agent_dispatch", "label": "Agent Dispatch", "channel": None},
+            {"name": "agent_posts", "label": "Discord Posts", "channel": "#engineering"},
         ],
     },
 }
 
+def _load_runs(limit: int = 50) -> List[Dict[str, Any]]:
+    """Load recent pipeline runs from the state file.
 
-def _load_runs(limit: int = 50) -> list[dict]:
-    if not _STATE_FILE.exists():
+    Returns an empty list when the file is missing, malformed, or when ``limit``
+    is non‑positive.  The function is defensive against ``None`` or unexpected
+    data structures.
+    """
+    if limit <= 0:
         return []
+
+    if not _STATE_FILE.is_file():
+        return []
+
     try:
-        data = json.loads(_STATE_FILE.read_text())
+        raw_text = _STATE_FILE.read_text(encoding="utf-8")
+        data = json.loads(raw_text)
         if not isinstance(data, list):
             return []
-        return sorted(data, key=lambda r: r.get("started_at", ""), reverse=True)[:limit]
+        # Sort by ``started_at`` descending; missing keys default to empty string.
+        sorted_data = sorted(data, key=lambda r: r.get("started_at", ""), reverse=True)
+        return sorted_data[:limit]
     except Exception:
         return []
 
+def _enrich_run(run: Dict[str, Any]) -> Dict[str, Any]:
+    """Add stage definitions so the frontend knows the expected stage order.
 
-def _enrich_run(run: dict) -> dict:
-    """Add stage definitions so the frontend knows the expected stage order."""
+    Handles ``None`` or malformed ``run`` dictionaries gracefully, and copes
+    with missing or empty ``stages`` collections.
+    """
+    if not isinstance(run, dict):
+        return {}
+
     pipeline = run.get("pipeline", "")
     defn = PIPELINE_DEFS.get(pipeline, {})
-    stage_order = [s["name"] for s in defn.get("stages", [])]
-    run = dict(run)
+    stage_defs = defn.get("stages", [])
+    if not isinstance(stage_defs, list):
+        stage_defs = []
+
+    stage_order = [s.get("name") for s in stage_defs if isinstance(s, dict) and "name" in s]
+
+    # Ensure we have a list for actual stages
+    actual_stages = run.get("stages", [])
+    if not isinstance(actual_stages, list):
+        actual_stages = []
 
     # Index actual stage results by name
-    actual: dict[str, dict] = {s["name"]: s for s in run.get("stages", [])}
+    actual: Dict[str, Dict[str, Any]] = {}
+    for s in actual_stages:
+        if isinstance(s, dict):
+            name = s.get("name")
+            if isinstance(name, str):
+                actual[name] = s
 
     # Build merged list: definition order, with actual data filled in
-    merged = []
-    for sdef in defn.get("stages", []):
-        sname = sdef["name"]
+    merged: List[Dict[str, Any]] = []
+    for sdef in stage_defs:
+        if not isinstance(sdef, dict):
+            continue
+        sname = sdef.get("name")
+        if not isinstance(sname, str):
+            continue
         if sname in actual:
             merged.append({**sdef, **actual[sname]})
         else:
             merged.append({**sdef, "status": "pending"})
 
     # Append any extra stages not in definition
-    for s in run.get("stages", []):
-        if s["name"] not in stage_order:
+    for s in actual_stages:
+        if not isinstance(s, dict):
+            continue
+        sname = s.get("name")
+        if sname not in stage_order:
             merged.append(s)
 
-    run["stages"] = merged
-    run["pipeline_label"] = defn.get("label", pipeline)
-    return run
-
+    enriched = dict(run)  # shallow copy
+    enriched["stages"] = merged
+    enriched["pipeline_label"] = defn.get("label", pipeline)
+    return enriched
 
 @router.get("/status")
 def pipeline_status(
@@ -122,37 +160,45 @@ def pipeline_status(
     desk: Optional[str] = Query(None),
     limit: int = Query(20, le=50),
 ):
-    """Return recent pipeline runs, optionally filtered by pipeline name or desk."""
+    """Return recent pipeline runs, optionally filtered by pipeline name or desk.
+
+    ``limit`` is capped at 50 by the query validator; we also guard against
+    non‑positive values to avoid off‑by‑one slicing issues.
+    """
+    if limit <= 0:
+        return []
+
+    # Load a buffer larger than the requested limit to allow filtering before slicing.
     runs = _load_runs(limit * 2)
     if pipeline:
         runs = [r for r in runs if r.get("pipeline") == pipeline]
     if desk:
         runs = [r for r in runs if r.get("desk") == desk]
+    # Slice to the exact limit after filtering.
     return [_enrich_run(r) for r in runs[:limit]]
-
 
 @router.get("/status/latest")
 def pipeline_status_latest():
-    """Return the most recent run for each pipeline type."""
-    runs    = _load_runs(100)
-    seen:   set[str] = set()
-    latest: list[dict] = []
+    """Return the most recent run for each distinct ``pipeline:desk`` combination."""
+    runs = _load_runs(100)
+    seen: set[str] = set()
+    latest: List[Dict[str, Any]] = []
     for run in runs:
+        if not isinstance(run, dict):
+            continue
         key = f"{run.get('pipeline')}:{run.get('desk', '')}"
         if key not in seen:
             seen.add(key)
             latest.append(_enrich_run(run))
     return latest
 
-
 @router.get("/status/{run_id}")
 def pipeline_run_detail(run_id: str):
     """Return full detail for a specific pipeline run."""
     for run in _load_runs(100):
-        if run.get("run_id") == run_id:
+        if isinstance(run, dict) and run.get("run_id") == run_id:
             return _enrich_run(run)
     raise HTTPException(status_code=404, detail=f"Run {run_id!r} not found")
-
 
 @router.get("/definitions")
 def pipeline_definitions():
