@@ -1,6 +1,5 @@
 {
   "skills": [
-    "Validate order IDs",
     "Verify trading hours",
     "Implement circuit breakers",
     "**API Input Validation**: Focus on enhancing `backend/app/api/request_validator.py` to add explicit validation for malformed JSON bodies and ensure endpoints return relevant errors.",
@@ -199,8 +198,9 @@
     "Track memory leaks",
     "Parse peer-learned issues",
     "Update exit codes",
-    "Enable strict mypy"
+    "Enable strict mypy",
+    "Verify SSL certs"
   ],
-  "last_updated": "2026-07-25T23:57:03.637639+00:00",
+  "last_updated": "2026-07-26T02:53:42.600210+00:00",
   "total": 200
 }
