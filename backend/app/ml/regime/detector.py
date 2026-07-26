@@ -13,7 +13,32 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
+# ----------------------------------------------------------------------
+# Constants
+# ----------------------------------------------------------------------
+MIN_PRICES_REQUIRED: int = 30
+MAX_LAG_DEFAULT: int = 20
+MAX_BARS_FOR_HURST: int = 100
+VOL_WINDOW_DAYS: int = 21
+ANNUALIZATION_FACTOR: float = np.sqrt(252)
 
+HURST_TREND_THRESHOLD: float = 0.55
+HURST_MEAN_THRESHOLD: float = 0.45
+HURST_CLIP_MIN: float = 0.1
+HURST_CLIP_MAX: float = 0.9
+
+HIGH_VOL_THRESHOLD_DEFAULT: float = 0.25
+VOL_TIEBREAK_THRESHOLD: float = 0.15
+
+CONFIDENCE_TREND_SCALE: float = 4.0
+CONFIDENCE_MEAN_SCALE: float = 4.0
+CONFIDENCE_HIGH_VOL_BASE: float = 0.6
+
+UNKNOWN_SIZING_MULTIPLIER: float = 0.75
+
+# ----------------------------------------------------------------------
+# Enums and mappings
+# ----------------------------------------------------------------------
 class Regime(str, Enum):
     TRENDING = "trending"
     MEAN_REVERTING = "mean_reverting"
@@ -25,10 +50,13 @@ REGIME_SIZING_MULTIPLIER: dict[Regime, float] = {
     Regime.TRENDING: 1.0,
     Regime.MEAN_REVERTING: 0.85,
     Regime.HIGH_VOL: 0.50,
-    Regime.UNKNOWN: 0.75,
+    Regime.UNKNOWN: UNKNOWN_SIZING_MULTIPLIER,
 }
 
 
+# ----------------------------------------------------------------------
+# Data structures
+# ----------------------------------------------------------------------
 @dataclass
 class RegimeState:
     regime: Regime
@@ -59,14 +87,17 @@ class RegimeState:
         return "Unknown regime. Using conservative sizing."
 
 
-def _hurst_exponent(prices: np.ndarray, max_lag: int = 20) -> float:
+# ----------------------------------------------------------------------
+# Helper functions
+# ----------------------------------------------------------------------
+def _hurst_exponent(prices: np.ndarray, max_lag: int = MAX_LAG_DEFAULT) -> float:
     """
     Hurst exponent via rescaled range (R/S) analysis.
-    H > 0.55 → trending (momentum works)
-    H < 0.45 → mean-reverting (reversion works)
+    H > HURST_TREND_THRESHOLD → trending (momentum works)
+    H < HURST_MEAN_THRESHOLD → mean-reverting (reversion works)
     H ≈ 0.5 → random walk
     """
-    if len(prices) < 30:
+    if len(prices) < MIN_PRICES_REQUIRED:
         return 0.5
     returns = np.diff(np.log(prices + 1e-10))
     lags = range(2, min(max_lag, len(returns) // 2))
@@ -92,10 +123,10 @@ def _hurst_exponent(prices: np.ndarray, max_lag: int = 20) -> float:
     lags_log = np.log([x[0] for x in rs_values])
     rs_log = np.log([x[1] for x in rs_values])
     hurst = np.polyfit(lags_log, rs_log, 1)[0]
-    return float(np.clip(hurst, 0.1, 0.9))
+    return float(np.clip(hurst, HURST_CLIP_MIN, HURST_CLIP_MAX))
 
 
-def detect_regime(prices: list[float], high_vol_threshold: float = 0.25) -> RegimeState:
+def detect_regime(prices: list[float], high_vol_threshold: float = HIGH_VOL_THRESHOLD_DEFAULT) -> RegimeState:
     """
     Classify market regime from a list of close prices (min 30 required).
 
@@ -104,33 +135,36 @@ def detect_regime(prices: list[float], high_vol_threshold: float = 0.25) -> Regi
         high_vol_threshold: Annualized vol above this → HIGH_VOL regime.
     """
     arr = np.array(prices, dtype=float)
-    if len(arr) < 30:
+    if len(arr) < MIN_PRICES_REQUIRED:
         return RegimeState(
-            regime=Regime.UNKNOWN, confidence=0.0, vol_20d=0.0,
-            hurst=0.5, sizing_multiplier=REGIME_SIZING_MULTIPLIER[Regime.UNKNOWN],
+            regime=Regime.UNKNOWN,
+            confidence=0.0,
+            vol_20d=0.0,
+            hurst=0.5,
+            sizing_multiplier=REGIME_SIZING_MULTIPLIER[Regime.UNKNOWN],
             updated_at=datetime.now(timezone.utc),
         )
 
     # 20-day realized volatility (annualized)
-    rets = np.diff(np.log(arr[-21:] + 1e-10))
-    vol_20d = float(np.std(rets) * np.sqrt(252))
+    rets = np.diff(np.log(arr[-VOL_WINDOW_DAYS:] + 1e-10))
+    vol_20d = float(np.std(rets) * ANNUALIZATION_FACTOR)
 
-    # Hurst exponent on last 60+ bars
-    hurst = _hurst_exponent(arr[-min(100, len(arr)):])
+    # Hurst exponent on recent bars
+    hurst = _hurst_exponent(arr[-min(MAX_BARS_FOR_HURST, len(arr)):])
 
     # Classify
     if vol_20d > high_vol_threshold:
         regime = Regime.HIGH_VOL
-        confidence = min(1.0, (vol_20d - high_vol_threshold) / high_vol_threshold + 0.6)
-    elif hurst > 0.55:
+        confidence = min(1.0, (vol_20d - high_vol_threshold) / high_vol_threshold + CONFIDENCE_HIGH_VOL_BASE)
+    elif hurst > HURST_TREND_THRESHOLD:
         regime = Regime.TRENDING
-        confidence = min(1.0, (hurst - 0.5) * 4)
-    elif hurst < 0.45:
+        confidence = min(1.0, (hurst - 0.5) * CONFIDENCE_TREND_SCALE)
+    elif hurst < HURST_MEAN_THRESHOLD:
         regime = Regime.MEAN_REVERTING
-        confidence = min(1.0, (0.5 - hurst) * 4)
+        confidence = min(1.0, (0.5 - hurst) * CONFIDENCE_MEAN_SCALE)
     else:
         # borderline — use vol to tiebreak
-        regime = Regime.TRENDING if vol_20d < 0.15 else Regime.MEAN_REVERTING
+        regime = Regime.TRENDING if vol_20d < VOL_TIEBREAK_THRESHOLD else Regime.MEAN_REVERTING
         confidence = 0.5
 
     return RegimeState(
@@ -143,6 +177,9 @@ def detect_regime(prices: list[float], high_vol_threshold: float = 0.25) -> Regi
     )
 
 
+# ----------------------------------------------------------------------
+# Regime monitor
+# ----------------------------------------------------------------------
 class RegimeMonitor:
     """
     Caches per-symbol regime states. Updated by PriceFeed task.
@@ -161,7 +198,7 @@ class RegimeMonitor:
 
     def get_multiplier(self, symbol: str) -> float:
         state = self._states.get(symbol)
-        return state.sizing_multiplier if state else 0.75
+        return state.sizing_multiplier if state else UNKNOWN_SIZING_MULTIPLIER
 
     def all_states(self) -> dict[str, dict]:
         return {sym: state.to_dict() for sym, state in self._states.items()}
