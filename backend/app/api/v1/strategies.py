@@ -8,6 +8,7 @@ from app.models.strategy import Strategy
 from app.models.user import User
 from app.strategies import STRATEGY_REGISTRY, list_desks, strategies_by_desk
 from pydantic import BaseModel, ConfigDict
+import uuid
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
 
@@ -123,6 +124,14 @@ async def toggle_strategy(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
 ):
+    # Input validation
+    if not isinstance(strategy_id, str) or not strategy_id.strip():
+        raise ValueError("strategy_id must be a non-empty string")
+    try:
+        uuid.UUID(strategy_id)
+    except ValueError:
+        raise ValueError("strategy_id must be a valid UUID string")
+
     result = await db.execute(select(Strategy).where(Strategy.id == strategy_id))
     strategy = result.scalar_one_or_none()
     if not strategy:
