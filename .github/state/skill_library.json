@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Use timeout exceptions",
-    "Test DNS resolution",
     "Centralize logging",
     "Based on the collective learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
     "Implement timeout for API calls",
@@ -199,8 +197,10 @@
     "Validate trade sizes",
     "Parse issues logs",
     "Scan model drift logs",
-    "Update knowledge base"
+    "Update knowledge base",
+    "Monitor CPU load",
+    "Check disk space"
   ],
-  "last_updated": "2026-07-26T05:57:59.716785+00:00",
+  "last_updated": "2026-07-26T08:31:35.956028+00:00",
   "total": 200
 }
