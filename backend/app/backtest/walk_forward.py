@@ -1,9 +1,18 @@
-"""Walk-forward validation: train on N years, test on M months, roll forward."""
+"""Walk‑forward validation utilities.
+
+This module provides functions to evaluate a trading strategy using a
+walk‑forward (rolling‑window) scheme.  The main entry point is :func:`walk_forward`,
+which iterates over a price series, repeatedly training on a fixed‑length
+historical window and testing on a subsequent out‑of‑sample window.  Results
+include per‑window performance metrics, aggregated averages, and a robustness
+verdict based on the documented over‑fit gate protocol.
+"""
 
 from __future__ import annotations
 
 import pandas as pd
 from dataclasses import dataclass, field
+from typing import Callable, List, Dict, Any, Optional, Tuple
 
 from app.backtest.engine import run_backtest, BacktestMetrics
 from app.backtest.cpcv import deflated_sharpe_ratio
@@ -36,25 +45,53 @@ KEY_ERROR = "error"
 
 @dataclass
 class WalkForwardResult:
-    windows: list[dict] = field(default_factory=list)
+    """Container for the outcome of a walk‑forward evaluation.
+
+    Attributes
+    ----------
+    windows: List[Dict[str, Any]]
+        Per‑window dictionaries containing performance metrics or error information.
+    avg_sharpe: float
+        Average Sharpe ratio across windows that reported a Sharpe.
+    avg_drawdown: float
+        Average maximum drawdown across windows that reported a drawdown.
+    combined_equity: List[Dict[str, Any]]
+        Concatenated equity‑curve entries from all windows.
+    n_windows: int
+        Number of out‑of‑sample windows evaluated.
+    deflated_sharpe: float
+        Deflated Sharpe ratio (DSR) across windows, applying a multiple‑testing haircut.
+    consistency: float
+        Fraction of windows with Sharpe ≥ ``MIN_OOS_SHARPE``.
+    is_robust: bool
+        Whether the strategy passes the full robustness protocol.
+    verdict: str
+        Human‑readable assessment of robustness or reason for failure.
+    """
+    windows: List[Dict[str, Any]] = field(default_factory=list)
     avg_sharpe: float = 0.0
     avg_drawdown: float = 0.0
-    combined_equity: list[dict] = field(default_factory=list)
-    # Overfit gate (populated by walk_forward()):
+    combined_equity: List[Dict[str, Any]] = field(default_factory=list)
     n_windows: int = 0
-    deflated_sharpe: float = 0.0   # DSR over the window Sharpes (multiple‑testing haircut)
-    consistency: float = 0.0       # fraction of windows with Sharpe ≥ MIN_OOS_SHARPE
-    is_robust: bool = False        # passes the full protocol → safe to promote
+    deflated_sharpe: float = 0.0
+    consistency: float = 0.0
+    is_robust: bool = False
     verdict: str = "insufficient_data"
 
 
-def robustness_verdict(sharpes: list[float]) -> dict:
-    """Grade a walk‑forward's per‑window Sharpes against the documented protocol.
+def robustness_verdict(sharpes: List[float]) -> Dict[str, Any]:
+    """Evaluate a series of out‑of‑sample Sharpe ratios against the robustness protocol.
 
-    Pure + side‑effect free so it can be unit‑tested directly. A strategy is
-    ``robust`` only if it has enough OOS windows, an average and a majority of
-    windows clearing the per‑window bar, AND a positive Deflated Sharpe (so a
-    handful of lucky windows can't carry it past the multiple‑testing haircut).
+    Parameters
+    ----------
+    sharpes: List[float]
+        Sharpe ratios obtained from each walk‑forward window.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Mapping containing the number of windows, the deflated Sharpe, the
+        consistency fraction, a boolean ``is_robust`` flag, and a textual verdict.
     """
     n = len(sharpes)
     if n == 0:
@@ -95,15 +132,34 @@ def robustness_verdict(sharpes: list[float]) -> dict:
 def _run_window(
     train: pd.Series,
     test: pd.Series,
-    signals_fn,
+    signals_fn: Callable[[pd.Series, pd.Series], pd.Series],
     equity_carry: float,
-) -> tuple[dict, list[dict], float]:
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]], float]:
     """Execute a single walk‑forward window.
 
-    Returns a tuple of:
-    - window result dict (either metrics or error)
-    - equity curve produced by the backtest (empty if error)
-    - updated equity carry for the next window
+    The provided ``signals_fn`` is called with the training and testing price
+    series and must return a ``pd.Series`` of signals aligned with ``test``.
+    The backtest is then run on the test slice, and the resulting equity curve
+    (if any) is returned together with updated equity carry for the next window.
+
+    Parameters
+    ----------
+    train: pd.Series
+        Historical price data used for training.
+    test: pd.Series
+        Out‑of‑sample price data used for testing.
+    signals_fn: Callable[[pd.Series, pd.Series], pd.Series]
+        Function that generates trading signals for the test period.
+    equity_carry: float
+        Starting equity for the backtest; may be updated with the ending equity
+        of the current window.
+
+    Returns
+    -------
+    Tuple[Dict[str, Any], List[Dict[str, Any]], float]
+        * Window result dictionary (metrics or error information).
+        * Equity‑curve list produced by the backtest (empty on error).
+        * Updated equity carry for the subsequent window.
     """
     try:
         test_signals = signals_fn(train, test)
@@ -132,7 +188,13 @@ def _run_window(
 
 
 def _aggregate_averages(result: WalkForwardResult) -> None:
-    """Compute average Sharpe and drawdown from the collected windows."""
+    """Populate ``result`` with average Sharpe and drawdown across successful windows.
+
+    Parameters
+    ----------
+    result: WalkForwardResult
+        The result object whose ``windows`` attribute contains per‑window dictionaries.
+    """
     sharpe_vals = [w[KEY_SHARPE] for w in result.windows if KEY_SHARPE in w]
     drawdown_vals = [w[KEY_MAX_DRAWDOWN] for w in result.windows if KEY_MAX_DRAWDOWN in w]
 
@@ -141,15 +203,38 @@ def _aggregate_averages(result: WalkForwardResult) -> None:
 
 
 def walk_forward(
-    signals_fn,               # callable(train_df, test_df) -> pd.Series of signals on test_df
+    signals_fn: Callable[[pd.Series, pd.Series], pd.Series],
     prices: pd.Series,
-    train_years: int | None = None,
-    test_months: int | None = None,
-    initial_equity: float | None = None,
+    train_years: Optional[int] = None,
+    test_months: Optional[int] = None,
+    initial_equity: Optional[float] = None,
 ) -> WalkForwardResult:
-    """
-    Rolls a train/test window across entire history.
-    `signals_fn` receives (train_prices, test_prices) and must return signals for the test period only.
+    """Perform walk‑forward validation across the entire price history.
+
+    The function iteratively slices ``prices`` into training and testing windows,
+    invokes ``signals_fn`` to obtain trading signals for each test slice, and
+    runs a backtest.  After all windows have been processed, average performance
+    metrics are computed and a robustness verdict is attached.
+
+    Parameters
+    ----------
+    signals_fn: Callable[[pd.Series, pd.Series], pd.Series]
+        Callable that receives training and testing price series and returns a
+        signal series for the test period.
+    prices: pd.Series
+        Full historical price series indexed by datetime.
+    train_years: Optional[int]
+        Number of years to use for each training window; defaults to ``TIMEFRAME_TRAIN``.
+    test_months: Optional[int]
+        Number of months to use for each testing window; defaults to ``TIMEFRAME_TEST``.
+    initial_equity: Optional[float]
+        Starting equity for the first backtest; defaults to ``MAX_EQUITY``.
+
+    Returns
+    -------
+    WalkForwardResult
+        Aggregated results, including per‑window metrics, combined equity curve,
+        and robustness assessment.
     """
     train_bars = (train_years if train_years is not None else TIMEFRAME_TRAIN) * DAYS_PER_YEAR
     test_bars = (test_months if test_months is not None else TIMEFRAME_TEST) * DAYS_PER_MONTH
@@ -173,10 +258,8 @@ def walk_forward(
 
         i += test_bars
 
-    # Compute average metrics
     _aggregate_averages(result)
 
-    # Overfit gate: grade the OOS window distribution (DSR + consistency).
     verdict = robustness_verdict(
         [w[KEY_SHARPE] for w in result.windows if KEY_SHARPE in w]
     )
