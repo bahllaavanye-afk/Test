@@ -133,3 +133,119 @@ class StrategyComparisonEngine:
             is_significant=p_val < 0.05,
             winner=winner,
         )
+
+
+# ==============================
+# Unit tests for edge conditions
+# ==============================
+import pytest
+from unittest.mock import AsyncMock, Mock, patch
+
+
+@pytest.fixture
+def dummy_metrics():
+    """Create a simple mock BacktestMetrics object."""
+    mock = Mock()
+    mock.equity_curve = [{"equity": 100_000}, {"equity": 101_000}, {"equity": 102_000}]
+    mock.sharpe = 1.2
+    return mock
+
+
+@pytest.fixture
+def short_metrics():
+    """Metrics with very short equity curve to trigger fallback."""
+    mock = Mock()
+    mock.equity_curve = [{"equity": 100_000}, {"equity": 100_500}]
+    mock.sharpe = 0.8
+    return mock
+
+
+@pytest.mark.asyncio
+async def test_invalid_date_range_raises(dummy_metrics):
+    """start_date later than end_date should raise ValueError."""
+    engine = StrategyComparisonEngine()
+    dates = pd.date_range("2023-01-01", periods=5, freq="D")
+    manual = pd.Series([1, 0, 1, 0, 1], index=dates)
+    ml = pd.Series([0, 1, 0, 1, 0], index=dates)
+    prices = pd.Series([100, 101, 102, 103, 104], index=dates)
+
+    with patch("app.backtest.engine.run_backtest", return_value=dummy_metrics), \
+         patch("app.comparison.benchmarks.fetch_benchmark_curves", new=AsyncMock(return_value={})), \
+         patch("app.comparison.benchmarks.get_benchmark_stats", return_value={}):
+
+        start = date(2023, 2, 1)
+        end = date(2023, 1, 1)  # reversed
+        with pytest.raises(ValueError, match="start_date cannot be later than end_date"):
+            await engine.run_comparison(
+                manual, ml, prices,
+                strategy_name="test",
+                symbol="TEST",
+                interval="1d",
+                start_date=start,
+                end_date=end,
+                initial_equity=100_000,
+            )
+
+
+@pytest.mark.asyncio
+async def test_empty_manual_signals_raises(dummy_metrics):
+    """Empty manual_signals Series should raise ValueError."""
+    engine = StrategyComparisonEngine()
+    dates = pd.date_range("2023-01-01", periods=5, freq="D")
+    manual = pd.Series([], dtype=float, index=[])
+    ml = pd.Series([0, 1, 0, 1, 0], index=dates)
+    prices = pd.Series([100, 101, 102, 103, 104], index=dates)
+
+    with patch("app.backtest.engine.run_backtest", return_value=dummy_metrics), \
+         patch("app.comparison.benchmarks.fetch_benchmark_curves", new=AsyncMock(return_value={})), \
+         patch("app.comparison.benchmarks.get_benchmark_stats", return_value={}):
+
+        with pytest.raises(ValueError, match="manual_signals series cannot be empty"):
+            await engine.run_comparison(
+                manual, ml, prices,
+                strategy_name="test",
+                symbol="TEST",
+                interval="1d",
+                start_date=date(2023, 1, 1),
+                end_date=date(2023, 1, 5),
+                initial_equity=100_000,
+            )
+
+
+@pytest.mark.asyncio
+async def test_short_return_series_fallback(dummy_metrics, short_metrics):
+    """
+    When the overlapping return series length is <=10,
+    the engine should fallback to t_stat=0.0 and p_value=1.0.
+    """
+    engine = StrategyComparisonEngine()
+    dates = pd.date_range("2023-01-01", periods=3, freq="D")
+    manual = pd.Series([1, 0, 1], index=dates)
+    ml = pd.Series([0, 1, 0], index=dates)
+    prices = pd.Series([100, 101, 102], index=dates)
+
+    # manual uses dummy_metrics (sharpe 1.2), ml uses short_metrics (sharpe 0.8)
+    def side_effect(signals, price_series, equity):
+        return dummy_metrics if signals.equals(manual) else short_metrics
+
+    with patch("app.backtest.engine.run_backtest", side_effect=side_effect), \
+         patch("app.comparison.benchmarks.fetch_benchmark_curves", new=AsyncMock(return_value={})), \
+         patch("app.comparison.benchmarks.get_benchmark_stats", return_value={}):
+
+        result = await engine.run_comparison(
+            manual, ml, prices,
+            strategy_name="short_test",
+            symbol="SHORT",
+            interval="1d",
+            start_date=date(2023, 1, 1),
+            end_date=date(2023, 1, 3),
+            initial_equity=100_000,
+        )
+
+        assert result.t_statistic == 0.0
+        assert result.p_value == 1.0
+        # Winner should be 'neither' because improvement < 0.1
+        assert result.winner == "neither"
+        # Sharpe improvement rounded to 4 decimals
+        expected_improvement = round(short_metrics.sharpe - dummy_metrics.sharpe, 4)
+        assert result.ml_improvement_sharpe == expected_improvement
