@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Update exit codes",
-    "Reference config files",
-    "Handle API rate limits",
-    "Monitor memory usage",
     "Check DB connections",
     "Monitor model drift",
     "Historical performance suggests that adding 15-minute momentum entry and earnings-beat filters can add 0.4-0.6 \u03b1 while maintaining volatility, contributing to the high Sharpe ratio expectations.",
@@ -199,8 +195,12 @@
     "Parse error logs",
     "Validate payloads",
     "Update pipelines",
-    "Check RAM allocation"
+    "Check RAM allocation",
+    "Log user agents",
+    "Run mypy strictly",
+    "Add type checking",
+    "Tighten health checks"
   ],
-  "last_updated": "2026-07-26T19:22:51.625234+00:00",
+  "last_updated": "2026-07-26T20:28:22.608706+00:00",
   "total": 200
 }
