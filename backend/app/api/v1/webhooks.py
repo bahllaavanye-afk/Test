@@ -19,12 +19,21 @@ from fastapi import APIRouter, HTTPException, Request, status
 
 from app.utils.logging import logger
 
+# Constants
+TRADINGVIEW_WEBHOOK_ENV = "TRADINGVIEW_WEBHOOK_SECRET"
+ERROR_DISABLED = "TradingView webhook receiver disabled — set TRADINGVIEW_WEBHOOK_SECRET."
+ERROR_MALFORMED_BODY = "Body must be a JSON object."
+ERROR_BAD_SECRET = "Bad or missing webhook secret."
+MAX_RECENT_ALERTS = 200
+DEFAULT_RECENT_LIMIT = 50
+MIN_RECENT_LIMIT = 1
+REDIS_ALERT_CHANNEL = "tradingview:alerts"
+
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 # Ring buffer of the most recent alerts (process-local; visibility, not storage
 # of record). A dead Redis must not break the receiver.
 _RECENT_ALERTS: list[dict] = []
-_MAX_RECENT = 200
 
 
 def _normalize(payload: dict[str, Any]) -> dict[str, Any]:
@@ -48,11 +57,11 @@ def _float_or_none(v: Any) -> float | None:
 
 @router.post("/tradingview")
 async def receive_tradingview_alert(request: Request) -> dict:
-    secret = os.environ.get("TRADINGVIEW_WEBHOOK_SECRET", "").strip()
+    secret = os.environ.get(TRADINGVIEW_WEBHOOK_ENV, "").strip()
     if not secret:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="TradingView webhook receiver disabled — set TRADINGVIEW_WEBHOOK_SECRET.",
+            detail=ERROR_DISABLED,
         )
 
     try:
@@ -60,26 +69,36 @@ async def receive_tradingview_alert(request: Request) -> dict:
         if not isinstance(payload, dict):
             raise ValueError("payload must be a JSON object")
     except Exception:  # noqa: BLE001 — malformed body is a client error
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                            detail="Body must be a JSON object.")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=ERROR_MALFORMED_BODY,
+        )
 
     if str(payload.get("secret") or "") != secret:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Bad or missing webhook secret.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ERROR_BAD_SECRET,
+        )
 
     alert = _normalize(payload)
     _RECENT_ALERTS.append(alert)
-    del _RECENT_ALERTS[:-_MAX_RECENT]
-    logger.info("tradingview alert received",
-                symbol=alert["symbol"], side=alert["side"], strategy=str(alert["strategy"])[:40])
+    del _RECENT_ALERTS[:-MAX_RECENT_ALERTS]
+    logger.info(
+        "tradingview alert received",
+        symbol=alert["symbol"],
+        side=alert["side"],
+        strategy=str(alert["strategy"])[:40],
+    )
 
     # Best-effort fan-out to Redis subscribers (strategies/dashboards may listen).
     try:
         from app.redis_client import get_redis
+
         r = get_redis()
         if r is not None:
             import json as _json
-            await r.publish("tradingview:alerts", _json.dumps(alert))
+
+            await r.publish(REDIS_ALERT_CHANNEL, _json.dumps(alert))
     except Exception as exc:  # noqa: BLE001 — receiver must not depend on Redis
         logger.debug("tradingview alert: redis publish skipped", error=str(exc))
 
@@ -87,7 +106,7 @@ async def receive_tradingview_alert(request: Request) -> dict:
 
 
 @router.get("/tradingview/recent")
-async def recent_tradingview_alerts(limit: int = 50) -> dict:
+async def recent_tradingview_alerts(limit: int = DEFAULT_RECENT_LIMIT) -> dict:
     """Most recent received alerts (process-local ring buffer)."""
-    limit = max(1, min(limit, _MAX_RECENT))
+    limit = max(MIN_RECENT_LIMIT, min(limit, MAX_RECENT_ALERTS))
     return {"alerts": _RECENT_ALERTS[-limit:][::-1], "count": len(_RECENT_ALERTS)}
