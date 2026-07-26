@@ -12,7 +12,33 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from app.utils.logging import logger
 
-router = APIRouter(prefix="/positions", tags=["positions"])
+# Constants
+ROUTER_PREFIX = "/positions"
+ROUTER_TAGS = ["positions"]
+BROKER_ALPACA = "alpaca"
+DEFAULT_ZERO = 0
+DEFAULT_STRATEGY_NAME = "unknown"
+DEFAULT_STRATEGY_TYPE = "manual"
+DEFAULT_RISK_BUCKET = "directional"
+
+REDIS_POS_EXIT_KEY = "pos_exit:{symbol}"
+REDIS_PRICES_KEY = "prices:{symbol}"
+
+HTTP_503_SERVICE_UNAVAILABLE = 503
+HTTP_404_NOT_FOUND = 404
+HTTP_500_INTERNAL_ERROR = 500
+
+EXIT_STRATEGY_FIXED_STOP_LOSS = "fixed_stop_loss"
+EXIT_STRATEGY_FIXED_TAKE_PROFIT = "fixed_take_profit"
+EXIT_STRATEGY_TRAILING_STOP = "trailing_stop"
+EXIT_STRATEGY_ATR_STOP = "atr_stop"
+EXIT_STRATEGY_PROFIT_LOCK = "profit_lock"
+EXIT_STRATEGY_REGIME_EXIT = "regime_exit"
+EXIT_STRATEGY_ZSCORE_EXIT = "zscore_exit"
+EXIT_STRATEGY_TIME_EOD = "time_eod"
+EXIT_STRATEGY_MAX_LOSS = "max_loss"
+
+router = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
 
 
 class PositionOut(BaseModel):
@@ -29,14 +55,14 @@ class PositionOut(BaseModel):
 
 def _alpaca_position_to_out(p: dict) -> dict:
     """Map an Alpaca REST position dict to PositionOut-compatible shape."""
-    qty = float(p.get("qty", 0))
+    qty = float(p.get("qty", DEFAULT_ZERO))
     return {
         "id": p.get("asset_id"),
         "symbol": p.get("symbol", ""),
         "quantity": qty,
-        "avg_cost": float(p.get("avg_entry_price", 0)),
-        "current_price": float(p.get("current_price", 0)) if p.get("current_price") else None,
-        "unrealized_pnl": float(p.get("unrealized_pl", 0)) if p.get("unrealized_pl") is not None else None,
+        "avg_cost": float(p.get("avg_entry_price", DEFAULT_ZERO)),
+        "current_price": float(p.get("current_price", DEFAULT_ZERO)) if p.get("current_price") else None,
+        "unrealized_pnl": float(p.get("unrealized_pl", DEFAULT_ZERO)) if p.get("unrealized_pl") is not None else None,
         "side": "long" if qty >= 0 else "short",
     }
 
@@ -53,7 +79,7 @@ async def list_positions(
             select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
         )
         account = acct_result.scalar_one_or_none()
-        if account and account.broker == "alpaca" and account.encrypted_key:
+        if account and account.broker == BROKER_ALPACA and account.encrypted_key:
             from app.brokers.alpaca_orders import get_alpaca_positions
             try:
                 live_positions = await get_alpaca_positions(account)
@@ -66,7 +92,7 @@ async def list_positions(
         select(Position)
         .join(Account, Position.account_id == Account.id)
         .where(Account.user_id == current_user.id)
-        .where(Position.quantity != 0)
+        .where(Position.quantity != DEFAULT_ZERO)
     )
     if account_id:
         query = query.where(Position.account_id == account_id)
@@ -91,44 +117,44 @@ async def get_position_exit_config(
     redis_client = get_redis()
     if redis_client is None:
         raise HTTPException(
-            status_code=503,
+            status_code=HTTP_503_SERVICE_UNAVAILABLE,
             detail="Redis unavailable — exit config cannot be retrieved",
         )
 
     try:
-        raw = await redis_client.get(f"pos_exit:{symbol}")
+        raw = await redis_client.get(REDIS_POS_EXIT_KEY.format(symbol=symbol))
     except Exception as exc:
         logger.warning("get_position_exit_config: Redis read failed", symbol=symbol, error=str(exc))
-        raise HTTPException(status_code=503, detail="Failed to read exit config from Redis")
+        raise HTTPException(status_code=HTTP_503_SERVICE_UNAVAILABLE, detail="Failed to read exit config from Redis")
 
     if not raw:
         raise HTTPException(
-            status_code=404,
+            status_code=HTTP_404_NOT_FOUND,
             detail=f"No active exit config found for {symbol}",
         )
 
     try:
         config = json.loads(raw)
     except Exception:
-        raise HTTPException(status_code=500, detail="Malformed exit config in Redis")
+        raise HTTPException(status_code=HTTP_500_INTERNAL_ERROR, detail="Malformed exit config in Redis")
 
     entry_price = config.get("entry_price")
     peak_price = config.get("peak_price")
     stop_loss = config.get("stop_loss")
     take_profit = config.get("take_profit")
-    bars_held = config.get("bars_held", 0)
-    strategy_name = config.get("strategy_name", "unknown")
-    strategy_type = config.get("strategy_type", "manual")
-    risk_bucket = config.get("risk_bucket", "directional")
+    bars_held = config.get("bars_held", DEFAULT_ZERO)
+    strategy_name = config.get("strategy_name", DEFAULT_STRATEGY_NAME)
+    strategy_type = config.get("strategy_type", DEFAULT_STRATEGY_TYPE)
+    risk_bucket = config.get("risk_bucket", DEFAULT_RISK_BUCKET)
     stored_at = config.get("stored_at")
 
     # Compute P&L percentage if we have a current price from Redis
     pnl_pct: float | None = None
     try:
-        raw_price = await redis_client.get(f"prices:{symbol}")
+        raw_price = await redis_client.get(REDIS_PRICES_KEY.format(symbol=symbol))
         if raw_price:
             price_data = json.loads(raw_price)
-            current_price = float(price_data.get("last") or price_data.get("ask") or 0)
+            current_price = float(price_data.get("last") or price_data.get("ask") or DEFAULT_ZERO)
             if entry_price and current_price:
                 pnl_pct = round((current_price - float(entry_price)) / float(entry_price) * 100, 4)
     except Exception:
@@ -137,14 +163,19 @@ async def get_position_exit_config(
     # Determine which exit strategies are active
     exit_strategies_active: list[str] = []
     if stop_loss is not None:
-        exit_strategies_active.append("fixed_stop_loss")
+        exit_strategies_active.append(EXIT_STRATEGY_FIXED_STOP_LOSS)
     if take_profit is not None:
-        exit_strategies_active.append("fixed_take_profit")
+        exit_strategies_active.append(EXIT_STRATEGY_FIXED_TAKE_PROFIT)
     if strategy_type == "directional" or risk_bucket == "directional":
-        exit_strategies_active.extend(["trailing_stop", "atr_stop", "profit_lock", "regime_exit"])
+        exit_strategies_active.extend([
+            EXIT_STRATEGY_TRAILING_STOP,
+            EXIT_STRATEGY_ATR_STOP,
+            EXIT_STRATEGY_PROFIT_LOCK,
+            EXIT_STRATEGY_REGIME_EXIT,
+        ])
     if strategy_type == "arbitrage" or risk_bucket == "arbitrage":
-        exit_strategies_active.extend(["zscore_exit", "time_eod"])
-    exit_strategies_active.append("max_loss")
+        exit_strategies_active.extend([EXIT_STRATEGY_ZSCORE_EXIT, EXIT_STRATEGY_TIME_EOD])
+    exit_strategies_active.append(EXIT_STRATEGY_MAX_LOSS)
 
     return {
         "symbol": symbol,
