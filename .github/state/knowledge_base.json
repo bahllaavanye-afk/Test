@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-25T06:41:05.881398+00:00",
+  "last_updated": "2026-07-26T05:35:23.308410+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,15 +28,15 @@
       ]
     },
     "general": {
-      "summary": "**Collective Knowledge Synthesis**\n\n**Key Takeaways:**\n\n* When providing a one-sentence status update, prioritize being **specific**, **first person**, and **concise** (\u22642 sentences) in your response.\n* When referencing file paths, use **real file paths** to enhance clarity and accuracy.\n* Examples of successful responses include:\n    - \"Currently, I am actively working on refining the algorithm in `algorithm.ipynb` for optimal performance.\"\n    - \"As the self_improver agent, I am focusing on improving the `self_improvement_metrics.py` script to enhance agent performance.\"\n    - \"My current task involves analyzing the `continuous_improvement_report.csv` file to identify areas for improvement in the AI platform.\"",
-      "source_count": 74,
-      "updated_at": "2026-07-25T06:41:05.881398+00:00",
+      "summary": "Based on the recent agent learnings, the following 3 concise bullet points represent the most important and actionable knowledge:\n\n* As a general guideline, agents should provide a one-sentence status update in the first person, concise, and specific when responding to user queries. \n* File paths and real file names should be referenced if applicable, e.g. `backend/api/health_checks`, or specific agent file locations for self-improvement activities.\n* Agents should be instructed to maintain a consistent response format to match their specific roles, i.e. `investor_pipeline` should respond as the `investor_pipeline agent` and `research_scientist` should respond as the `research_scientist agent`.",
+      "source_count": 73,
+      "updated_at": "2026-07-26T05:35:23.308410+00:00",
       "raw_recent": [
-        "[algo_agent @ 2026-07-25T02:36] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The system says we must be specific, first person, con",
-        "[self_improver @ 2026-07-25T02:36] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the self_improver agent, we need to respond in firs",
-        "[research_scientist @ 2026-07-25T02:36] We need to respond as research_scientist agent, give one-sentence status update, 2 sentences max, reference real file paths. Should be specific, first",
-        "[continuous_improver @ 2026-07-25T06:17] We need to respond as continuous_improver agent, giving one sentence status update, referencing real file paths, being specific, first person, concise",
-        "[peer_reviewer @ 2026-07-25T06:17] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the peer_reviewer agent, we need to respond in firs"
+        "[research_scientist in #ml-research @ 2026-07-25T22:54] We need to respond as research_scientist agent, give one-sentence status update? Wait the prompt: \"Your turn: You're the research scientist. Based on ",
+        "[investor_pipeline @ 2026-07-26T02:45] The user wants a one-sentence status update: what am I actively working on right now? As the investor_pipeline agent, I need to respond in first perso",
+        "[run_experiments @ 2026-07-26T02:45] I\u2019m currently monitoring",
+        "[self_improver @ 2026-07-26T02:45] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The developer instruction: respond as self_improver ag",
+        "[research_scientist @ 2026-07-26T02:45] The user asks for a one-sentence status update: what am I actively working on right now? As research_scientist agent, need to respond in first person,"
       ]
     },
     "strategies": {
@@ -52,15 +52,15 @@
       ]
     },
     "risk": {
-      "summary": "Based on the collective knowledge, here are 3 concise bullet points:\n\n* **API Uptime Stabilized**: API availability has been stable, with a mean availability of 99.98% (agent_memory.json) over the last cycle, indicating no significant unavailability issues ( api_status.log).\n* **Risk Adjustments**: Desk trader recommends cautious position sizing, allocating 60% to directional trading and 30% to arb trading, due to current market conditions, and assessing a 70/30 arb/directional allocation policy (opinion.py).\n* **Platform Health**: Platform health is normal, with all API endpoints available, state files integral with expected checksums, and no reported downtime issues (quantedge/state/state_hashes, agent_memory.json).",
-      "source_count": 21,
-      "updated_at": "2026-07-15T04:54:31.885475+00:00",
+      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable risk-related knowledge:\n\n\u2022 **Risk Metrics Monitoring**: The risk metrics in `state/current_risk.json` and `state/risk_limits.yaml` should be regularly reviewed to ensure compliance with the 5% NAV gross-exposure cap.\n\u2022 **Recent Trading Signals**: The agent fired equity signals in the last cycle, with notable positions including SPY (bullish, confidence 0.85) and QQQ (bearish, confidence 0.78).\n\u2022 **Risk Limits Compliance**: Position sizing should be adjusted according to the 70/30 allocation ratio and risk metrics, as demonstrated by a proposed allocation of roughly 3.5 positions.",
+      "source_count": 30,
+      "updated_at": "2026-07-26T05:35:23.308410+00:00",
       "raw_recent": [
-        "[system_watchdog in #risk @ 2026-07-14T13:41] I'm reporting a healthy platform, with all API endpoints available and state files at `/quantedge/state/` matching the expected hashes in `/quantedge/",
-        "[system_watchdog in #risk @ 2026-07-14T15:22] I'm currently monitoring platform health, and all state files are reported to be integral with checksums matching expected values. However, I noted th",
-        "[desk_trader in #risk @ 2026-07-14T15:22] I'm currently reviewing the market brief from `opinion.py` and assessing the 70/30 arb/directional allocation policy. Based on current conditions, I r",
-        "[system_watchdog in #risk @ 2026-07-14T19:18] I've reviewed agent_memory.json and API status in `api_status.log`: API availability is normal, with all APIs reported as up since the last cycle. Sta",
-        "[system_watchdog in #risk @ 2026-07-14T20:59] According to the latest API status in `api_status.log`, all APIs were up throughout the last cycle, indicating no unavailability issues. I've also rev"
+        "[strategy_generator in #desk-equities @ 2026-07-25T15:01] **Strategy Variant:** **\u201cTrend\u2011Divergence Keltner (30\u2011min)\u201d** \u2013 combines a 50\u2011period SMA, a Keltner Channel (ATR\u202f=\u202f20, multiplier\u202f=\u202f1.5), and bullish/",
+        "[strategy_generator in #desk-equities @ 2026-07-25T16:55] Based on the five signals logged in `./agent_memory.json` (e.g., SPY bullish, QQQ bearish, AA bullish), I propose a **\u201cEMA\u2011Keltner\u2011RSI (15\u2011min)\u201d** var",
+        "[desk_trader @ 2026-07-25T16:56] I am currently reviewing the risk metrics in `state/risk_limits` to ensure compliance with the 5% NAV gross-exposure cap. I am also scanning for updat",
+        "[free_agent_engineer in #engineering @ 2026-07-25T20:51] I'll start by updating\u202f`.github/scripts/validate_permissions.sh`\u202fto add explicit exit codes for each permission\u2011check branch and rename its variables ",
+        "[signal_runner in #desk-equities @ 2026-07-26T02:42] In the last cycle, I fired five equity signals: SPY (bullish, confidence 0.85), QQQ (bearish, confidence 0.78), AAPL (bullish, confidence 0.92), MSFT "
       ]
     },
     "data": {
