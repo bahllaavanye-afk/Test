@@ -12,6 +12,8 @@ The implementation mirrors the original code base and adds no new
 behaviour; it merely enriches the DataFrame with a collection of common
 technical features such as returns, volatility, EMA distance, RSI, MACD,
 Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
+Additional composite signals are introduced to tighten entry conditions,
+provide confirmation filters, and improve exit logic.
 """
 
 from __future__ import annotations
@@ -103,10 +105,23 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     # --- EMA distance (normalized) ---
     for span in [9, 21, 50]:
         try:
-            ema = close.ewm(span=span).mean()
+            ema = close.ewm(span=span, adjust=False).mean()
             df[f"ema_{span}_diff"] = (close - ema) / (ema + 1e-9)
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute EMA distance for span %d", span, exc_info=exc)
+
+    # --- Simple Moving Averages and Crosses ---
+    for window in [20, 50, 200]:
+        try:
+            df[f"ma_{window}"] = close.rolling(window, min_periods=1).mean()
+        except Exception as exc:  # pragma: no cover
+            _logger.error("Failed to compute SMA %d", window, exc_info=exc)
+
+    try:
+        df["ma20_above_ma50"] = (df["ma_20"] > df["ma_50"]).astype(int)
+        df["ma50_above_ma200"] = (df["ma_50"] > df["ma_200"]).astype(int)
+    except Exception as exc:  # pragma: no cover
+        _logger.error("Failed to compute MA cross signals", exc_info=exc)
 
     # --- RSI ---
     rsi14 = _safe_apply(ta.rsi, close, length=14)
@@ -149,7 +164,7 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # --- Volume ratio ---
     try:
-        vol_ma = volume.rolling(20).mean()
+        vol_ma = volume.rolling(20, min_periods=1).mean()
         df["volume_ratio"] = volume / (vol_ma + 1e-9)
     except Exception as exc:  # pragma: no cover
         _logger.error("Failed to compute volume ratio", exc_info=exc)
@@ -179,5 +194,48 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             df["adx"] = adx_df["ADX_14"] / 100.0
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute ADX feature", exc_info=exc)
+
+    # ------------------------------------------------------------------
+    # Composite entry / exit signals – tighter conditions with confirmations
+    # ------------------------------------------------------------------
+    try:
+        # Price above EMA20 (using normalized diff)
+        price_above_ema20 = df["ema_20_diff"] > 0
+
+        # RSI between 30% and 70% (neither oversold nor overbought)
+        rsi_mid = (df["rsi_14"] > 0.30) & (df["rsi_14"] < 0.70)
+
+        # Positive MACD histogram indicates bullish momentum
+        macd_bull = df["macd_hist"] > 0
+
+        # ADX above 0.25 suggests a strong trend
+        adx_strong = df["adx"] > 0.25
+
+        # Volume ratio > 1 indicates increasing participation
+        vol_up = df["volume_ratio"] > 1.0
+
+        entry_cond = price_above_ema20 & rsi_mid & macd_bull & adx_strong & vol_up
+        # Shift to avoid look‑ahead bias; the signal is usable on the next bar
+        df["entry_signal"] = entry_cond.shift(1).fillna(False).astype(int)
+    except Exception as exc:  # pragma: no cover
+        _logger.error("Failed to compute entry_signal", exc_info=exc)
+
+    try:
+        # Price below EMA20
+        price_below_ema20 = df["ema_20_diff"] < 0
+
+        # MACD histogram turning negative
+        macd_bear = df["macd_hist"] < 0
+
+        # RSI over 80% (overbought)
+        rsi_overbought = df["rsi_14"] > 0.80
+
+        # ATR‑based stop: price drops more than 2 * ATR in a single period
+        atr_stop = (close - close.shift(1)) < -2 * df["atr_14"]
+
+        exit_cond = price_below_ema20 | macd_bear | rsi_overbought | atr_stop
+        df["exit_signal"] = exit_cond.shift(1).fillna(False).astype(int)
+    except Exception as exc:  # pragma: no cover
+        _logger.error("Failed to compute exit_signal", exc_info=exc)
 
     return df
