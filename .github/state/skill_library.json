@@ -1,13 +1,5 @@
 {
   "skills": [
-    "Optimize Sharpe ratios",
-    "Test API rate limits",
-    "Test DB connections",
-    "Review risk metrics",
-    "Check dependency versions",
-    "Based on the collective knowledge, here are three concise bullet points of actionable knowledge:",
-    "Verify trading hours",
-    "**Recent Trading Signals**: The agent fired equity signals in the last cycle, with notable positions including SPY (bullish, confidence 0.85) and QQQ (bearish, confidence 0.78).",
     "Validate input types",
     "Check OS updates",
     "Limit DB queries",
@@ -199,8 +191,16 @@
     "Tighten health checks",
     "Test SSL certificates",
     "Rotate log files",
-    "Test database conn"
+    "Test database conn",
+    "Implement timeout retries",
+    "Check disk space usage",
+    "Monitor CPU utilization",
+    "Verify API key validity",
+    "Scan for malware threats",
+    "Parse arXiv papers",
+    "Monitor model drift",
+    "Verify health checks"
   ],
-  "last_updated": "2026-07-26T22:31:38.978445+00:00",
+  "last_updated": "2026-07-26T23:57:07.996003+00:00",
   "total": 200
 }
