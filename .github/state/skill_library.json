@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Monitor system health.",
-    "Check DNS resolve",
-    "Check for duplicate orders",
-    "Check dependency",
-    "Check system clocks",
     "Use circuit breaker pattern",
     "Update exit codes",
     "Reference config files",
@@ -199,8 +194,13 @@
     "Check DB schema",
     "Set timeout thresholds",
     "Use load balancing",
-    "Retrain ML models"
+    "Retrain ML models",
+    "Check API keys",
+    "Implement rate limiter",
+    "Parse error logs",
+    "Validate payloads",
+    "Update pipelines"
   ],
-  "last_updated": "2026-07-26T16:55:13.387839+00:00",
+  "last_updated": "2026-07-26T17:59:21.649844+00:00",
   "total": 200
 }
