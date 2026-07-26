@@ -2,13 +2,14 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.comparison import ComparisonResult as ComparisonModel
 from app.models.user import User
 from app.comparison.benchmarks import get_benchmark_stats
-from pydantic import BaseModel, ConfigDict, ConfigDict
-from datetime import date
+from pydantic import BaseModel, ConfigDict
+
 
 router = APIRouter(prefix="/comparison", tags=["comparison"])
 
@@ -33,10 +34,13 @@ class ComparisonOut(BaseModel):
             base = float(m.manual_sharpe) or 1e-9
             improvement = (float(m.ml_sharpe) - float(m.manual_sharpe)) / abs(base)
         return cls(
-            id=m.id, strategy_name=m.strategy_name, symbol=m.symbol,
+            id=m.id,
+            strategy_name=m.strategy_name,
+            symbol=m.symbol,
             manual_sharpe=float(m.manual_sharpe) if m.manual_sharpe else None,
             ml_sharpe=float(m.ml_sharpe) if m.ml_sharpe else None,
-            is_significant=m.is_significant, winner=m.winner,
+            is_significant=m.is_significant,
+            winner=m.winner,
             spy_sharpe=float(m.spy_sharpe) if m.spy_sharpe else None,
             ml_improvement_pct=round(improvement, 4) if improvement else None,
         )
