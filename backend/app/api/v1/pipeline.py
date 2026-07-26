@@ -13,28 +13,29 @@ from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
-
 def _resolve_state_file() -> Path:
-    """Locate pipeline_runs.json without a hardcoded ancestor depth.
+    """Locate ``pipeline_runs.json`` without assuming a fixed directory depth.
 
-    The old `parents[5]` assumed a fixed directory depth and crashed the ENTIRE
-    app at import on Render (IndexError: 5) — there the file is /app/app/api/v1/
-    pipeline.py, only 5 parents (0-4), so index 5 doesn't exist. This searches
-    ancestors for the file (it's written to the repo root by GitHub Actions),
-    honours a PIPELINE_STATE_FILE override, and falls back to a repo-root-ish
-    default that simply may not exist (readers already handle absence). Never
-    raises at import.
+    The previous implementation used ``parents[5]`` which fails when the
+    repository layout differs (e.g., on Render). This function searches
+    upward from the current file for the JSON file, respects a
+    ``PIPELINE_STATE_FILE`` environment override, and falls back to a
+    reasonable default that may not exist (readers already handle the
+    missing file case). Import time side‑effects are avoided.
     """
-    override = os.environ.get("PIPELINE_STATE_FILE")
+    override = os.getenv("PIPELINE_STATE_FILE")
     if override:
         return Path(override)
+
     here = Path(__file__).resolve()
     for parent in here.parents:
         candidate = parent / "pipeline_runs.json"
         if candidate.exists():
             return candidate
-    idx = min(4, len(here.parents) - 1)
-    return here.parents[idx] / "pipeline_runs.json"
+
+    # Fallback: assume the file is a few levels up from this module.
+    fallback_idx = min(4, len(here.parents) - 1)
+    return here.parents[fallback_idx] / "pipeline_runs.json"
 
 
 _STATE_FILE = _resolve_state_file()
@@ -74,8 +75,8 @@ PIPELINE_DEFS = {
     },
 }
 
-
 def _load_runs(limit: int = 50) -> list[dict]:
+    """Load the most recent runs from the state file, bounded by *limit*."""
     if not _STATE_FILE.exists():
         return []
     try:
@@ -86,35 +87,59 @@ def _load_runs(limit: int = 50) -> list[dict]:
     except Exception:
         return []
 
+def _get_pipeline_def(pipeline_name: str) -> dict:
+    """Return the pipeline definition for *pipeline_name* or an empty dict."""
+    return PIPELINE_DEFS.get(pipeline_name, {})
+
+def _index_actual_stages(stages: list[dict]) -> dict[str, dict]:
+    """Create a mapping from stage name to its actual result dict."""
+    return {stage["name"]: stage for stage in stages if "name" in stage}
+
+def _build_merged_stages(
+    defn_stages: list[dict],
+    actual_index: dict[str, dict],
+) -> list[dict]:
+    """Merge definition order with actual stage data, inserting pending status where missing."""
+    merged: list[dict] = []
+    for sdef in defn_stages:
+        name = sdef["name"]
+        if name in actual_index:
+            merged.append({**sdef, **actual_index[name]})
+        else:
+            merged.append({**sdef, "status": "pending"})
+    return merged
+
+def _append_extra_stages(
+    merged: list[dict],
+    original_stages: list[dict],
+    known_names: set[str],
+) -> None:
+    """Append any stages present in *original_stages* that are not part of the definition."""
+    for stage in original_stages:
+        if stage.get("name") not in known_names:
+            merged.append(stage)
 
 def _enrich_run(run: dict) -> dict:
     """Add stage definitions so the frontend knows the expected stage order."""
-    pipeline = run.get("pipeline", "")
-    defn = PIPELINE_DEFS.get(pipeline, {})
-    stage_order = [s["name"] for s in defn.get("stages", [])]
-    run = dict(run)
+    pipeline_name = run.get("pipeline", "")
+    defn = _get_pipeline_def(pipeline_name)
 
-    # Index actual stage results by name
-    actual: dict[str, dict] = {s["name"]: s for s in run.get("stages", [])}
+    # Preserve original run dict while allowing modifications.
+    enriched = dict(run)
 
-    # Build merged list: definition order, with actual data filled in
-    merged = []
-    for sdef in defn.get("stages", []):
-        sname = sdef["name"]
-        if sname in actual:
-            merged.append({**sdef, **actual[sname]})
-        else:
-            merged.append({**sdef, "status": "pending"})
+    # Index actual stages for quick lookup.
+    actual_index = _index_actual_stages(enriched.get("stages", []))
 
-    # Append any extra stages not in definition
-    for s in run.get("stages", []):
-        if s["name"] not in stage_order:
-            merged.append(s)
+    # Merge definition order with actual data.
+    merged = _build_merged_stages(defn.get("stages", []), actual_index)
 
-    run["stages"] = merged
-    run["pipeline_label"] = defn.get("label", pipeline)
-    return run
+    # Append any extra stages that were not defined.
+    known_stage_names = {s["name"] for s in defn.get("stages", [])}
+    _append_extra_stages(merged, enriched.get("stages", []), known_stage_names)
 
+    enriched["stages"] = merged
+    enriched["pipeline_label"] = defn.get("label", pipeline_name)
+    return enriched
 
 @router.get("/status")
 def pipeline_status(
@@ -130,12 +155,11 @@ def pipeline_status(
         runs = [r for r in runs if r.get("desk") == desk]
     return [_enrich_run(r) for r in runs[:limit]]
 
-
 @router.get("/status/latest")
 def pipeline_status_latest():
     """Return the most recent run for each pipeline type."""
-    runs    = _load_runs(100)
-    seen:   set[str] = set()
+    runs = _load_runs(100)
+    seen: set[str] = set()
     latest: list[dict] = []
     for run in runs:
         key = f"{run.get('pipeline')}:{run.get('desk', '')}"
@@ -144,7 +168,6 @@ def pipeline_status_latest():
             latest.append(_enrich_run(run))
     return latest
 
-
 @router.get("/status/{run_id}")
 def pipeline_run_detail(run_id: str):
     """Return full detail for a specific pipeline run."""
@@ -152,7 +175,6 @@ def pipeline_run_detail(run_id: str):
         if run.get("run_id") == run_id:
             return _enrich_run(run)
     raise HTTPException(status_code=404, detail=f"Run {run_id!r} not found")
-
 
 @router.get("/definitions")
 def pipeline_definitions():
