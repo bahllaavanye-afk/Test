@@ -4,7 +4,6 @@ from sqlalchemy import String, ForeignKey, Numeric, DateTime, Date, Integer, JSO
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
-
 class BacktestRun(Base):
     __tablename__ = "backtest_runs"
 
@@ -43,3 +42,83 @@ class BacktestResult(Base):
     trades_log: Mapped[list | None] = mapped_column(JSON)     # [{entry, exit, pnl}, ...]
 
     run: Mapped["BacktestRun"] = relationship("BacktestRun", back_populates="result")
+
+
+# ==============================
+# Unit tests for edge cases
+# ==============================
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+@pytest.fixture
+def session():
+    """Create an in‑memory SQLite session for isolated testing."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    return Session()
+
+def test_backtestrun_dates_boundary(session):
+    """Boundary test where start_date equals end_date."""
+    today = date.today()
+    run = BacktestRun(
+        user_id="user123",
+        strategy_name="test_strategy",
+        symbol="AAPL",
+        interval="1d",
+        start_date=today,
+        end_date=today,
+        created_at=datetime.utcnow(),
+    )
+    session.add(run)
+    session.commit()
+    fetched = session.query(BacktestRun).filter_by(id=run.id).one()
+    assert fetched.start_date == fetched.end_date == today
+
+def test_backtestresult_relationship(session):
+    """Ensure the one‑to‑one relationship between BacktestRun and BacktestResult works."""
+    run = BacktestRun(
+        user_id="user456",
+        strategy_name="rel_test",
+        symbol="GOOG",
+        interval="1h",
+        start_date=date(2023, 1, 1),
+        end_date=date(2023, 1, 2),
+        created_at=datetime.utcnow(),
+    )
+    result = BacktestResult(
+        total_return=0.05,
+        annualized_return=0.12,
+        sharpe_ratio=1.5,
+        run=run,
+    )
+    session.add_all([run, result])
+    session.commit()
+    fetched_result = session.query(BacktestResult).filter_by(id=result.id).one()
+    assert fetched_result.run.id == run.id
+    # The back‑reference from run should point to the same result
+    assert fetched_result.run.result.id == fetched_result.id
+
+def test_default_params_and_json_fields(session):
+    """Validate default JSON fields and that optional JSON columns remain None when not set."""
+    run = BacktestRun(
+        user_id="user789",
+        strategy_name="json_test",
+        symbol="MSFT",
+        interval="5m",
+        start_date=date(2022, 6, 1),
+        end_date=date(2022, 6, 30),
+        created_at=datetime.utcnow(),
+    )
+    session.add(run)
+    session.commit()
+    fetched_run = session.query(BacktestRun).filter_by(id=run.id).one()
+    assert fetched_run.params == {}
+    # Create a result without explicit equity_curve/trades_log
+    result = BacktestResult(run_id=fetched_run.id)
+    session.add(result)
+    session.commit()
+    fetched_result = session.query(BacktestResult).filter_by(id=result.id).one()
+    assert fetched_result.equity_curve is None
+    assert fetched_result.trades_log is None
