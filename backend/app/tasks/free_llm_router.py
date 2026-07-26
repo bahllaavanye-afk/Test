@@ -23,7 +23,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, List
 
 import httpx
 
@@ -42,7 +42,7 @@ class LLMProvider:
     headers_extra: dict = field(default_factory=dict)
 
 
-PROVIDERS: list[LLMProvider] = [
+PROVIDERS: List[LLMProvider] = [
     LLMProvider(
         name="gemini",
         env_key="GEMINI_API_KEY",
@@ -103,16 +103,34 @@ class LLMResponse:
     tokens_used: int = 0
 
 
+def _validate_messages(messages: List[dict] | None) -> bool:
+    """Return True if messages is a non‑empty list of dicts; otherwise log and return False."""
+    if not messages:
+        logger.warning("free_llm_router: messages payload is None or empty")
+        return False
+    if not isinstance(messages, list):
+        logger.warning("free_llm_router: messages should be a list, got %s", type(messages))
+        return False
+    for idx, m in enumerate(messages):
+        if not isinstance(m, dict):
+            logger.warning("free_llm_router: message at index %d is not a dict", idx)
+            return False
+    return True
+
+
 # ── Core caller ───────────────────────────────────────────────────────────────
 
 async def _call_provider(
     provider: LLMProvider,
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int | None = None,
 ) -> LLMResponse | None:
     api_key = os.getenv(provider.env_key, "")
     if not api_key or api_key in ("disabled", ""):
+        return None
+
+    if not _validate_messages(messages):
         return None
 
     payload = {
@@ -132,7 +150,10 @@ async def _call_provider(
             )
             resp.raise_for_status()
             data = resp.json()
-            content = data["choices"][0]["message"]["content"]
+            # Guard against unexpected response structure
+            content = (
+                data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            )
             tokens = data.get("usage", {}).get("total_tokens", 0)
             latency = (time.monotonic() - t0) * 1000
             return LLMResponse(provider=provider.name, content=content, latency_ms=latency, tokens_used=tokens)
@@ -144,12 +165,15 @@ async def _call_provider(
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 async def call_race(
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int = 2048,
     timeout: float = 30.0,
 ) -> LLMResponse | None:
     """Call all available providers in parallel; return the first successful response."""
+    if not _validate_messages(messages):
+        return None
+
     tasks = {
         asyncio.create_task(_call_provider(p, messages, temperature, max_tokens)): p
         for p in PROVIDERS
@@ -176,12 +200,15 @@ async def call_race(
 
 
 async def call_consensus(
-    messages: list[dict],
+    messages: List[dict],
     temperature: float = 0.3,
     max_tokens: int = 512,
     timeout: float = 40.0,
-) -> list[LLMResponse]:
+) -> List[LLMResponse]:
     """Call all providers and return all successful responses for consensus analysis."""
+    if not _validate_messages(messages):
+        return []
+
     tasks = [
         _call_provider(p, messages, temperature, max_tokens)
         for p in PROVIDERS
@@ -193,6 +220,6 @@ async def call_consensus(
     return [r for r in results if isinstance(r, LLMResponse)]
 
 
-def available_providers() -> list[str]:
+def available_providers() -> List[str]:
     """Return names of providers with configured API keys."""
     return [p.name for p in PROVIDERS if os.getenv(p.env_key, "") not in ("", "disabled")]
