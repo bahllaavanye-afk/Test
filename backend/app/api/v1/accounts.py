@@ -9,7 +9,7 @@ from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.utils.security import encrypt_secret
 from app.utils.logging import logger
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -44,31 +44,60 @@ async def latest_total_equity(db: AsyncSession) -> float:
 
 
 class AccountCreate(BaseModel):
-    broker: str
-    label: str
-    mode: str = "paper"
-    api_key: str
-    api_secret: str
-    extra_config: dict = Field(default_factory=dict)
+    broker: str = Field(..., description="Broker name, e.g., 'alpaca'", example="alpaca")
+    label: str = Field(..., description="User-friendly label for the account", example="My Alpaca Paper Account")
+    mode: str = Field("paper", description="Trading mode, either 'paper' or 'live'", example="paper")
+    api_key: str = Field(..., description="API key for broker authentication", example="AK123456789")
+    api_secret: str = Field(..., description="API secret for broker authentication", example="secret123")
+    extra_config: dict = Field(
+        default_factory=dict,
+        description="Optional additional configuration for the broker",
+        example={"region": "us-east-1"},
+    )
+
+    @field_validator("mode")
+    def validate_mode(cls, v: str) -> str:
+        if v not in {"paper", "live"}:
+            raise ValueError("mode must be either 'paper' or 'live'")
+        return v
+
+    @field_validator("broker")
+    def validate_broker(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("broker must be a non-empty string")
+        return v
 
 
 class AccountOut(BaseModel):
-    id: str
-    broker: str
-    label: str
-    mode: str
-    extra_config: dict
+    id: str = Field(..., description="Unique account identifier", example="a1b2c3d4")
+    broker: str = Field(..., description="Broker name", example="alpaca")
+    label: str = Field(..., description="User-defined label", example="My Alpaca Paper Account")
+    mode: str = Field(..., description="Trading mode", example="paper")
+    extra_config: dict = Field(
+        default_factory=dict,
+        description="Additional broker configuration",
+        example={"region": "us-east-1"},
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class AccountEquityOut(BaseModel):
-    equity: float
-    cash: float
-    buying_power: float
-    portfolio_value: float
-    day_trade_count: int | None
-    pattern_day_trader: bool | None
+    equity: float = Field(..., description="Total equity value", example=10000.0, ge=0)
+    cash: float = Field(..., description="Cash balance", example=5000.0, ge=0)
+    buying_power: float = Field(..., description="Available buying power", example=15000.0, ge=0)
+    portfolio_value: float = Field(..., description="Total portfolio value", example=12000.0, ge=0)
+    day_trade_count: int | None = Field(
+        None,
+        description="Number of day trades today",
+        example=2,
+        ge=0,
+    )
+    pattern_day_trader: bool | None = Field(
+        None,
+        description="Whether the account is flagged as a pattern day trader",
+        example=False,
+    )
 
 
 @router.get("/", response_model=list[AccountOut])
