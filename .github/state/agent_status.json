@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-07-26T13:20:57.193461+00:00",
+  "checked_at": "2026-07-26T17:00:20.985034+00:00",
   "total_agents": 18,
   "batch_checked": 6,
   "total_runs": 0,
@@ -7,44 +7,44 @@
   "skill_count": 200,
   "agent_statuses": [
     {
-      "agent": "strategy_generator",
-      "emoji": "\ud83e\udde0",
-      "reply": "We need to respond as per developer instructions: \"You are the strategy_generator agent on QuantEdge... Be specific, first person, concise (2 sentences max). Reference real file paths.\" The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" So we need one sentence, first person, mention real file paths. Could say: \"I'm currently analyzing recent API usage logs in backend/app/api/usage_logs.py to identify patterns for a",
+      "agent": "investor_pipeline",
+      "emoji": "\ud83d\udcbc",
+      "reply": "We need to respond as investor_pipeline agent, with a concise status update: one sentence, first person, referencing real file paths. Should mention what we are actively working on. Possibly \"checking DB schema for investor pipeline\" etc. Must be 2 sentences max, but user asked one-sentence status update. So respond with one sentence. Provide path reference. Eg: \"I\u2019m currently scanning `backend/pipeline/investor_stage.py` to auto\u2011advance any leads in the",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "free_agent_engineer",
-      "emoji": "\ud83e\udd16",
-      "reply": "I\u2019m currently parsing",
+      "agent": "run_experiments",
+      "emoji": "\ud83d\udd2c",
+      "reply": "The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The assistant must respond in first person, concise, 2 sentences max (but they want a one-sentence status update). Should reference real file paths. As the run_experiments agent, currently likely starting up, checking DB schema or preparing experiment. So respond: \"I'm currently initializing the experiment pipeline by loading the strategy config from `experiments/config/strategy.yaml`",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "desk_trader",
-      "emoji": "\ud83d\udcca",
-      "reply": "I'm currently monitoring the trade execution logs in\u202f`/var/log",
+      "agent": "algo_agent",
+      "emoji": "\ud83c\udfb0",
+      "reply": "I\u2019m currently initializing the UCB1 bandit by",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "system_watchdog",
-      "emoji": "\ud83d\udee1\ufe0f",
-      "reply": "The user asks for a one-sentence status update: what are you actively working on right now? As system_watchdog agent, we need to respond in first person, concise, 2 sentences max, one sentence. Should reference real file paths. So we can say: \"Currently monitoring error logs in logs/error.log and analyzing API usage in backend/app/api/logs.py.\" Provide one sentence. Must be first person. Also referencing real file paths. Provide concise answer.",
+      "agent": "self_improver",
+      "emoji": "\ud83d\udd04",
+      "reply": "We need to respond as self_improver agent, giving one sentence status update, 2 sentences max, referencing real file paths. Should be concise, first person. Probably: \"I'm currently analyzing the data preprocessing pipeline in backend/data/preprocess.py to identify inefficiencies.\" That's one sentence. Could add second: \"I will refactor the function to reduce memory usage.\" But limit 2 sentences max. Provide one sentence as requested. So respond with one sentence.",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "ml_trainer",
-      "emoji": "\ud83c\udfcb\ufe0f",
-      "reply": "We need to follow developer instructions: respond as ml_trainer, 2 sentences max, first person, concise, referencing real file paths. Provide one-sentence status update. Should be 1 sentence, but can be up to 2. Should reference real file paths like backend/app/ml/models/... maybe mention training script. Let's craft: \"I'm currently loading the latest dataset and starting a hyperparameter search for the LSTM model located at backend/app/ml/models/lstm.py.\" That's",
+      "agent": "research_scientist",
+      "emoji": "\ud83d\udd2d",
+      "reply": "I'm currently analyzing the performance of the new transformer architecture in\u202f`backend/models/alpha_transformer.py`",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "standup_agent",
-      "emoji": "\ud83d\udccb",
-      "reply": "I'm currently initializing my daily standup routine by parsing the latest error logs from `backend/app/ml/models/` and preparing the OKR summary for the #standups channel.",
+      "agent": "modeling_engineer",
+      "emoji": "\u2699\ufe0f",
+      "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     }
