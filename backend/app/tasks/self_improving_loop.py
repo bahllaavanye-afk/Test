@@ -39,14 +39,16 @@ class SelfImprovingLoop:
             await self._auto_disable_underperformers(metrics)
             await self._llm_improvement_pass(metrics)
             await self._broadcast_regime(metrics)
-            logger.info("SelfImprovingLoop: cycle complete (%d strategies evaluated)", len(metrics))
+            logger.info(
+                "SelfImprovingLoop: cycle complete (%d strategies evaluated)", len(metrics)
+            )
         except Exception as e:
             logger.exception("SelfImprovingLoop cycle error: %s", e)
 
     # ── Metric collection ─────────────────────────────────────────────────────
 
     async def _collect_strategy_metrics(self) -> List[dict]:
-        """Pull per-strategy Sharpe + win-rate from trade history (last 30d)."""
+        """Pull per‑strategy Sharpe + win‑rate from trade history (last 30 d)."""
         cutoff = datetime.now(timezone.utc) - timedelta(days=30)
         async with self._factory() as session:
             result = await session.execute(
@@ -87,8 +89,10 @@ class SelfImprovingLoop:
     # ── Auto-disable ──────────────────────────────────────────────────────────
 
     async def _auto_disable_underperformers(self, metrics: List[dict]) -> None:
-        """Disable strategies with Sharpe < 0 and >= 10 trades in the last 30 days."""
-        underperformers = [m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10]
+        """Disable strategies with Sharpe < 0 and >= 10 trades in the last 30 d."""
+        underperformers = [
+            m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10
+        ]
         if not underperformers:
             return
 
@@ -115,21 +119,33 @@ class SelfImprovingLoop:
     # ── LLM improvement pass ──────────────────────────────────────────────────
 
     async def _llm_improvement_pass(self, metrics: List[dict]) -> None:
+        """Orchestrate the LLM improvement workflow."""
         if not metrics:
             return
 
         top, bottom = self._select_top_bottom_strategies(metrics)
-        prompt = self._build_llm_prompt(top, bottom)
+        response = await self._process_llm_improvement(top, bottom)
+        if response:
+            await self._store_llm_suggestion(response)
 
-        response = await call_race(
+    async def _process_llm_improvement(
+        self, top: List[dict], bottom: List[dict]
+    ) -> Any:
+        """Build the prompt, invoke the LLM and return its response."""
+        prompt = self._build_llm_prompt(top, bottom)
+        return await self._call_llm(prompt)
+
+    async def _call_llm(self, prompt: str) -> Any:
+        """Call the free LLM in race mode with the supplied prompt."""
+        return await call_race(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.4,
             max_tokens=512,
         )
-        if response:
-            await self._store_llm_suggestion(response)
 
-    def _select_top_bottom_strategies(self, metrics: List[dict]) -> Tuple[List[dict], List[dict]]:
+    def _select_top_bottom_strategies(
+        self, metrics: List[dict]
+    ) -> Tuple[List[dict], List[dict]]:
         """Return the top 5 and bottom 3 strategies based on Sharpe."""
         top = sorted(metrics, key=lambda m: m["sharpe"], reverse=True)[:5]
         bottom = sorted(metrics, key=lambda m: m["sharpe"])[:3]
@@ -161,7 +177,9 @@ Be concise. Each suggestion under 2 sentences."""
                 "suggestion": response.content,
             },
         )
-        logger.info("SelfImprovingLoop: LLM suggestion from %s stored", response.provider)
+        logger.info(
+            "SelfImprovingLoop: LLM suggestion from %s stored", response.provider
+        )
 
     # ── Regime broadcast ──────────────────────────────────────────────────────
 
@@ -170,7 +188,11 @@ Be concise. Each suggestion under 2 sentences."""
         total = len(metrics) or 1
         health = profitable / total
 
-        regime = "bull" if health > 0.6 else ("bear" if health < 0.3 else "sideways")
+        regime = (
+            "bull"
+            if health > 0.6
+            else ("bear" if health < 0.3 else "sideways")
+        )
         await self._memory.set_latest(
             "platform_health",
             {
@@ -182,6 +204,11 @@ Be concise. Each suggestion under 2 sentences."""
         )
 
         try:
-            await self._redis.publish("platform:regime", json.dumps({"regime": regime, "health": health}))
+            await self._redis.publish(
+                "platform:regime",
+                json.dumps({"regime": regime, "health": health}),
+            )
         except Exception as exc:  # noqa: BLE001 — subscribers just miss one regime tick
-            logger.debug("self-improving loop: regime publish failed: %s", exc)
+            logger.debug(
+                "self-improving loop: regime publish failed: %s", exc
+            )
