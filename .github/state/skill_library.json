@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Add retry mechanisms",
-    "Verify SSL certs",
-    "Based on the agent learnings, the following are the most important and actionable takeaways:",
-    "Analyze signal confidence",
     "Use timeout exceptions",
     "Test DNS resolution",
     "Centralize logging",
@@ -199,8 +195,12 @@
     "Analyze signal accuracy",
     "Check RAM usage",
     "Check dependency updates",
-    "Verify system status"
+    "Verify system status",
+    "Validate trade sizes",
+    "Parse issues logs",
+    "Scan model drift logs",
+    "Update knowledge base"
   ],
-  "last_updated": "2026-07-26T05:35:23.308410+00:00",
+  "last_updated": "2026-07-26T05:57:59.716785+00:00",
   "total": 200
 }
