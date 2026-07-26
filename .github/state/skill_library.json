@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Enable strict mypy checks",
-    "**API Input Validation**: Focus on enhancing `backend/app/api/request_validator.py` to add explicit validation for malformed JSON bodies and ensure endpoints return relevant errors.",
-    "Check API keys",
-    "error_handling on risk/manager.py: success \u2014 tests green",
     "Monitor system health.",
     "Check DNS resolve",
     "Check for duplicate orders",
@@ -199,8 +195,12 @@
     "Log system updates",
     "Monitor trade execution",
     "Analyze error logs daily",
-    "Optimize model pipelines"
+    "Optimize model pipelines",
+    "Check DB schema",
+    "Set timeout thresholds",
+    "Use load balancing",
+    "Retrain ML models"
   ],
-  "last_updated": "2026-07-26T15:37:17.127841+00:00",
+  "last_updated": "2026-07-26T16:55:13.387839+00:00",
   "total": 200
 }
