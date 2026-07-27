@@ -256,9 +256,7 @@ class LorentzianStrategy(AbstractStrategy):
         Run a full back‑test on historical data and return signal information.
 
         The method performs a walk‑forward split, incrementally updates the KNN library,
-        and applies the same confidence and SMA filters used in live trading. The result
-        is a :class:`BacktestSignals` object containing entry/exit timestamps,
-        positions, and a simple P&L approximation.
+        and applies the same confidence and SMA filters used in live trading.
 
         Parameters
         ----------
@@ -268,7 +266,9 @@ class LorentzianStrategy(AbstractStrategy):
         Returns
         -------
         BacktestSignals
-            Container with back‑test results (positions, returns, etc.).
+            Vectorised boolean series — ``entries``/``exits`` for the long leg and
+            ``short_entries``/``short_exits`` for the short leg. P&L is computed
+            downstream by VectorBT, not here.
         """
         start_time = time.perf_counter()
         model = LorentzianKNN(k=self.k, lookback=self.lookback, subsample=self.subsample)
@@ -318,26 +318,23 @@ class LorentzianStrategy(AbstractStrategy):
         long_exits = (prob_series < 0.5) | (price < sma20)
         short_exits = (prob_series > 0.5) | (price > sma20)
 
-        # Simple P&L approximation
-        returns = df["close"].pct_change().fillna(0)
-        position = pd.Series(0, index=df.index)
-        position[long_entries] = 1
-        position[short_entries] = -1
-        position = position.ffill().fillna(0)
-
-        # Apply exits by resetting position when exit signals occur
-        position[long_exits] = 0
-        position[short_exits] = 0
-        position = position.ffill().fillna(0)
-
-        # Assemble BacktestSignals (the concrete fields depend on the dataclass definition)
-        backtest = BacktestSignals(
-            positions=position,
-            returns=returns,
-            probabilities=pd.Series(probs, index=df.index),
-            execution_time_ms=(time.perf_counter() - start_time) * 1000,
+        # stdlib logger here, not structlog — keyword fields would raise TypeError
+        logger.debug(
+            "Lorentzian backtest signals computed: %d bars in %.1f ms",
+            len(df),
+            (time.perf_counter() - start_time) * 1000,
         )
-        return backtest
+
+        # BacktestSignals carries the vectorised boolean series VectorBT consumes —
+        # entries/exits/short_entries/short_exits. It does NOT take positions,
+        # returns, probabilities or execution_time_ms; passing those raised
+        # TypeError on every call, so this strategy could never be backtested.
+        return BacktestSignals(
+            entries=long_entries.fillna(False).astype(bool),
+            exits=long_exits.fillna(False).astype(bool),
+            short_entries=short_entries.fillna(False).astype(bool),
+            short_exits=short_exits.fillna(False).astype(bool),
+        )
 
 
 # ── Fail-soft guard (strategy contract) ───────────────────────────────────────

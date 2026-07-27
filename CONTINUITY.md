@@ -6,7 +6,7 @@
 > lost. Keep it current: when you finish or start something material, update this file in
 > the same commit.
 
-_Last updated: 2026-07-24._
+_Last updated: 2026-07-27._
 
 ## 🟢 DURABLE POSTGRES — CLUSTER FIX CONFIRMED LIVE 2026-07-25 07:36 UTC (password is the ONLY blocker)
 **CONFIRMED IN PRODUCTION 07:36 UTC:** `/health/detailed` now reports
@@ -39,6 +39,30 @@ Once that lands, the boot reaches Postgres → `alembic upgrade head` provisions
 (incl. catch-up `k6f7a8b9c0d1`) → durable state, and bot P&L stops resetting on every deploy.
 **Verify:** `/health/detailed` → `database.fallback` gone, `database_primary.ok` true.
 NOTE `database_primary` is a BOOT-time value, so it only changes after a restart.
+
+## 🩸 MONEY-PATH AUDIT — 4 passes done, one theme: code that looked like it worked
+Running audit of every `except` handler and result construction in `execution/`, `risk/`,
+`brokers/`, `strategies/`. Full detail in IMPROVEMENTS.md; the shape of what keeps turning up:
+a guard that reports a *different* failure than the one it hit, or a failed operation that
+returns something indistinguishable from success. Landed so far — `CompositeExit` returning
+"nothing to do" when every exit rule threw (#—); Alpaca brackets degrading to naked fills
+(#996); the bracket price guard that **had never once rejected an order** because it built
+`OrderResult(reason=…)`, a kwarg that does not exist, and the TypeError was swallowed by the
+enclosing handler (#1034); sliced executions (TWAP/VWAP/iceberg/Almgren-Chriss) returning
+`status="partial"` + a fabricated `broker_order_id` when every slice failed, which
+`strategy_runner` then wrote into Redis as a **phantom position** with a stop-loss on shares
+nobody owned (#1035).
+**Structural guard now in place:** `tests/unit/test_dataclass_kwargs.py` statically checks that
+no dataclass is constructed with a keyword that is not a field — the defect behind three of the
+above. Its first run found a fourth: `BacktestSignals(positions=…)` in `lorentzian_knn.py`,
+which meant that strategy **could never be backtested**, hence never validated under the
+walk-forward rule. Fixed.
+**Open for the user (trading-policy calls, deliberately not made unilaterally):**
+1. Should a rejected bracket fill naked at all, or abort the entry?
+2. `_select_algorithm` looks unreachable past its first branch — `OrderRequest.execution_algo`
+   defaults to `"limit_first"`, not `"auto"`, so size-based routing to TWAP/Almgren-Chriss/RL
+   has likely never run for any caller that doesn't set it explicitly (including
+   `strategy_runner`).
 
 ## 🗑️ SLACK REMOVED COMPLETELY — 2026-07-25 (user directive)
 Discord is now the ONLY chat integration. Removed: `app/notifications/slack.py`,
