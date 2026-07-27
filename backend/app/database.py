@@ -1,28 +1,56 @@
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 from app.config import settings
 
-_is_sqlite = settings.database_url.startswith("sqlite")
+# ----------------------------------------------------------------------
+# Constants
+# ----------------------------------------------------------------------
+SQLITE_PREFIX: str = "sqlite"
+SQLITE_CHECK_SAME_THREAD: bool = False
+SQLITE_POOL_CLASS = NullPool
+
+SERVER_SETTINGS_JIT: str = "off"
+COMMAND_TIMEOUT: int = 60
+POOL_SIZE: int = 5
+MAX_OVERFLOW: int = 10
+POOL_PRE_PING: bool = True
+POOL_RECYCLE: int = 1800
+POOL_TIMEOUT: int = 30
+
+PROBE_TIMEOUT_DEFAULT: float = 10.0
+MAX_ERROR_LENGTH: int = 300
+
+FALLBACK_MESSAGE: str = (
+    "PRIMARY DATABASE UNREACHABLE — falling back to local SQLite. "
+    "Data is epoxy until the primary is restored (Supabase: unpause the project)."
+)
+
+FALLBACK_SQLITE_URL: str = "sqlite+aiosqlite:///./fallback.db"
+
+# ----------------------------------------------------------------------
+# Engine configuration
+# ----------------------------------------------------------------------
+_is_sqlite: bool = settings.database_url.startswith(SQLITE_PREFIX)
 
 if _is_sqlite:
     # NullPool: each session gets a fresh connection — avoids cross-connection
     # visibility issues where pooled connections cache an empty schema.
-    from sqlalchemy.pool import NullPool as _NullPool
     _engine_kwargs: dict = {
-        "poolclass": _NullPool,
-        "connect_args": {"check_same_thread": False},
+        "poolclass": SQLITE_POOL_CLASS,
+        "connect_args": {"check_same_thread": SQLITE_CHECK_SAME_THREAD},
     }
 else:
     _engine_kwargs = {
         "connect_args": {
-            "server_settings": {"jit": "off"},
-            "command_timeout": 60,
+            "server_settings": {"jit": SERVER_SETTINGS_JIT},
+            "command_timeout": COMMAND_TIMEOUT,
         },
-        "pool_size": 5,
-        "max_overflow": 10,
-        "pool_pre_ping": True,
-        "pool_recycle": 1800,
-        "pool_timeout": 30,
+        "pool_size": POOL_SIZE,
+        "max_overflow": MAX_OVERFLOW,
+        "pool_pre_ping": POOL_PRE_PING,
+        "pool_recycle": POOL_RECYCLE,
+        "pool_timeout": POOL_TIMEOUT,
     }
 
 engine = create_async_engine(
@@ -47,10 +75,8 @@ class Base(DeclarativeBase):
 db_fallback_active: bool = False
 db_primary_error: str | None = None
 
-FALLBACK_SQLITE_URL = "sqlite+aiosqlite:///./fallback.db"
 
-
-async def ensure_database_alive(probe_timeout: float = 10.0):
+async def ensure_database_alive(probe_timeout: float = PROBE_TIMEOUT_DEFAULT):
     """Probe the configured DATABASE_URL; fall back to local SQLite if it's dead.
 
     The Supabase free tier auto-pauses after 7 idle days, which made every
@@ -77,7 +103,7 @@ async def ensure_database_alive(probe_timeout: float = 10.0):
         await _asyncio.wait_for(_probe(), timeout=probe_timeout)
         return engine
     except Exception as exc:  # noqa: BLE001 — any connect failure means "dead"
-        db_primary_error = str(exc)[:300]
+        db_primary_error = str(exc)[:MAX_ERROR_LENGTH]
 
     if _is_sqlite or not settings.db_fallback_to_sqlite:
         # Already on SQLite (nothing better to fall back to) or fallback disabled.
@@ -85,19 +111,13 @@ async def ensure_database_alive(probe_timeout: float = 10.0):
 
     from app.utils.logging import logger
 
-    logger.error(
-        "PRIMARY DATABASE UNREACHABLE — falling back to local SQLite. "
-        "Data is ephemeral until the primary is restored (Supabase: unpause the project).",
-        error=db_primary_error,
-    )
-
-    from sqlalchemy.pool import NullPool as _NullPool
+    logger.error(FALLBACK_MESSAGE, error=db_primary_error)
 
     old_engine = engine
     engine = create_async_engine(
         FALLBACK_SQLITE_URL,
-        poolclass=_NullPool,
-        connect_args={"check_same_thread": False},
+        poolclass=SQLITE_POOL_CLASS,
+        connect_args={"check_same_thread": SQLITE_CHECK_SAME_THREAD},
     )
     AsyncSessionLocal.configure(bind=engine)
     db_fallback_active = True
