@@ -64,9 +64,30 @@ async def seed_demo_bots() -> int:
             if not missing:
                 return 0  # fully seeded — idempotent
 
+            # A user having MORE THAN ONE account is normal — that is the whole
+            # point of the accounts table (alpaca|tradestation|binance|
+            # polymarket, paper and live). This used `.scalar_one_or_none()`,
+            # which raises MultipleResultsFound the moment a second account
+            # exists; the caller's except swallows it, logs "Demo bot seed
+            # skipped", and returns 0. Seeding then stays dead for good.
+            #
+            # That is exactly the frozen-fleet failure this module was written
+            # to fix, re-entering through a different door — and it fails
+            # SILENTLY, as a warning on a path nobody reads. Found via CI:
+            #   {"error": "Multiple rows were found when one or none was
+            #    required", "event": "Demo bot seed skipped"}
+            # which surfaced as `assert 0 == 61` in test_seed_additive.
+            #
+            # Prefer the paper account (the seeded bots are paper bots) and
+            # order by id so the choice is deterministic across runs.
             account = (
-                await db.execute(select(Account).where(Account.user_id == user.id))
-            ).scalar_one_or_none()
+                await db.execute(
+                    select(Account)
+                    .where(Account.user_id == user.id)
+                    .order_by((Account.mode != "paper"), Account.id)
+                    .limit(1)
+                )
+            ).scalars().first()
             if account is None:
                 account = Account(
                     user_id=user.id,
