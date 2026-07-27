@@ -1,10 +1,12 @@
 """
 Historical stress testing — overlay a strategy's signals on known crisis periods.
 
-Tests how a strategy would have performed during the most severe market dislocations,
-revealing tail-risk exposure that standard backtests can understate when they
-average across calm and turbulent regimes.
+This module provides utilities to evaluate a trading strategy under historically
+significant market dislocations. By restricting the back‑test to predefined
+stress windows, users can expose tail‑risk characteristics that are often hidden
+by full‑period back‑tests which blend calm and turbulent regimes.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,6 +19,22 @@ from app.backtest.engine import BacktestMetrics, run_backtest
 
 @dataclass
 class StressScenario:
+    """
+    Definition of a stress test window.
+
+    Attributes
+    ----------
+    name: str
+        Unique identifier used as a dictionary key in results.
+    label: str
+        Short human‑readable label for visualisations.
+    start: date
+        Inclusive start date of the stress window.
+    end: date
+        Inclusive end date of the stress window.
+    description: str
+        Brief narrative describing the market event.
+    """
     name: str
     label: str          # short label for charts
     start: date
@@ -80,6 +98,21 @@ STRESS_SCENARIOS: list[StressScenario] = [
 
 @dataclass
 class StressResult:
+    """
+    Outcome of a single stress scenario evaluation.
+
+    Attributes
+    ----------
+    scenario: StressScenario
+        The scenario that was evaluated.
+    metrics: BacktestMetrics | None
+        Back‑test performance metrics; ``None`` when the period could not be
+        evaluated (e.g., insufficient price data).
+    period_covered: bool
+        ``True`` if the price series contained enough data points for the window.
+    data_points: int
+        Number of price observations used in the back‑test.
+    """
     scenario: StressScenario
     # None if the price data doesn't cover this period
     metrics: BacktestMetrics | None
@@ -87,8 +120,28 @@ class StressResult:
     data_points: int
 
 
-def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timestamp) -> pd.Series | None:
-    """Vectorized slice of a Series using .loc; returns None if input is None."""
+def _slice_series(
+    series: pd.Series | None,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+) -> pd.Series | None:
+    """
+    Slice a pandas Series to the inclusive ``[start, end]`` window.
+
+    Parameters
+    ----------
+    series: pd.Series | None
+        Series to be sliced; ``None`` is propagated unchanged.
+    start: pd.Timestamp
+        Inclusive start of the slice.
+    end: pd.Timestamp
+        Inclusive end of the slice.
+
+    Returns
+    -------
+    pd.Series | None
+        The sliced series or ``None`` if the input was ``None``.
+    """
     if series is None:
         return None
     # .loc works for both DatetimeIndex and PeriodIndex; fallback to boolean mask if needed
@@ -110,10 +163,36 @@ def run_stress_tests(
     scenarios: list[StressScenario] | None = None,
 ) -> list[StressResult]:
     """
-    Run the strategy through each stress scenario window.
+    Execute back‑tests for each defined stress scenario.
 
-    Only scenarios where the price series has ≥ 5 data points are evaluated;
-    others return period_covered=False with metrics=None.
+    The function extracts the portion of the input time series that falls within
+    each scenario window and runs a standard back‑test using :func:`run_backtest`.
+    Scenarios with fewer than five price points are marked as not covered.
+
+    Parameters
+    ----------
+    signals : pd.Series
+        Strategy signal series (e.g., binary or continuous exposure values).
+    prices : pd.Series
+        Price series used for P&L calculation.
+    opens : pd.Series | None, optional
+        Optional open price series; if ``None`` the back‑test will use ``prices``.
+    volume : pd.Series | None, optional
+        Optional volume series for liquidity‑adjusted metrics.
+    initial_equity : float, default 100_000.0
+        Starting capital for the back‑test.
+    commission_pct : float, default 0.001
+        Commission cost expressed as a fraction of trade value.
+    slippage_pct : float, default 0.0005
+        Slippage cost expressed as a fraction of trade value.
+    scenarios : list[StressScenario] | None, optional
+        Custom list of stress windows; defaults to the built‑in
+        ``STRESS_SCENARIOS`` constant.
+
+    Returns
+    -------
+    list[StressResult]
+        One result object per scenario, containing metrics and coverage flags.
     """
     if scenarios is None:
         scenarios = STRESS_SCENARIOS
@@ -121,11 +200,11 @@ def run_stress_tests(
     results: list[StressResult] = []
 
     # Convert once to pandas Timestamp for efficient comparison
-    price_index = prices.index
+    price_index: pd.Index = prices.index
 
     for scenario in scenarios:
-        start_ts = pd.Timestamp(scenario.start)
-        end_ts = pd.Timestamp(scenario.end)
+        start_ts: pd.Timestamp = pd.Timestamp(scenario.start)
+        end_ts: pd.Timestamp = pd.Timestamp(scenario.end)
 
         # Fast check: if the scenario window does not intersect the price index, skip early
         if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
@@ -139,10 +218,14 @@ def run_stress_tests(
             )
             continue
 
-        s_signals = _slice_series(signals, start_ts, end_ts)
-        s_prices = _slice_series(prices, start_ts, end_ts)
-        s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
-        s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
+        s_signals: pd.Series | None = _slice_series(signals, start_ts, end_ts)
+        s_prices: pd.Series | None = _slice_series(prices, start_ts, end_ts)
+        s_opens: pd.Series | None = (
+            _slice_series(opens, start_ts, end_ts) if opens is not None else None
+        )
+        s_volume: pd.Series | None = (
+            _slice_series(volume, start_ts, end_ts) if volume is not None else None
+        )
 
         if s_prices is None or len(s_prices) < 5:
             results.append(
@@ -155,7 +238,7 @@ def run_stress_tests(
             )
             continue
 
-        metrics = run_backtest(
+        metrics: BacktestMetrics = run_backtest(
             signals=s_signals,
             prices=s_prices,
             opens=s_opens,
@@ -177,14 +260,26 @@ def run_stress_tests(
     return results
 
 
-def stress_summary(results: list[StressResult]) -> dict:
+def stress_summary(results: list[StressResult]) -> dict[str, dict]:
     """
-    Compact summary dict suitable for JSON serialisation.
+    Produce a JSON‑serialisable summary of stress test outcomes.
 
-    Returns per-scenario max_drawdown, total_return, and sharpe.
-    Only includes scenarios where period_covered=True.
+    For each scenario the function reports coverage information and, when
+    applicable, key performance indicators such as total return, maximum draw‑down,
+    Sharpe ratio, win rate and trade count.
+
+    Parameters
+    ----------
+    results : list[StressResult]
+        List returned by :func:`run_stress_tests`.
+
+    Returns
+    -------
+    dict[str, dict]
+        Mapping from scenario ``name`` to a dictionary containing human‑readable
+        fields and numeric metrics (rounded where appropriate).
     """
-    out: dict = {}
+    out: dict[str, dict] = {}
     for r in results:
         if not r.period_covered or r.metrics is None:
             out[r.scenario.name] = {
