@@ -1,21 +1,32 @@
 """Bot model — declarative trading bot definitions."""
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Boolean, JSON, Integer, DateTime
+
+from sqlalchemy import Boolean, DateTime, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.database import Base
 from app.models.base import TimestampMixin
 
 # Canonical market types / desks a bot can trade. The column stays a free string for
 # forward-compat, but this is the supported set the API advertises and the builder offers.
 # equity/crypto/polymarket were the originals; options/macro/rates added in desk consolidation.
-MARKET_TYPES: list[str] = ["equity", "crypto", "polymarket", "options", "macro", "rates"]
+MARKET_TYPES: list[str] = [
+    "equity",
+    "crypto",
+    "polymarket",
+    "options",
+    "macro",
+    "rates",
+]
 
 
 class Bot(Base, TimestampMixin):
     __tablename__ = "bots"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     account_id: Mapped[str | None] = mapped_column(String, nullable=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
@@ -33,10 +44,16 @@ class Bot(Base, TimestampMixin):
     # Soft-delete / retire: archived bots are hidden from active lists, the desk
     # summary, and the scheduler, but their row + config + linked trades are preserved
     # so they can be restored or audited later.
-    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
-    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_archived: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, index=True
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     run_count: Mapped[int] = mapped_column(Integer, default=0)
-    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_signal: Mapped[str | None] = mapped_column(String(16), nullable=True)  # buy|sell|hold|alert
     last_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
