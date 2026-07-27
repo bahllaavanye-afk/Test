@@ -402,6 +402,43 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         ),
     )
 
+    async def _top_up_bot_runner() -> None:
+        """Schedule any enabled bot that has no job yet.
+
+        Ignition alone was not enough. It fires once, at boot, and on the
+        ephemeral SQLite fallback the bots table is EMPTY at that moment — so
+        it scheduled zero bots and never looked again. The 61 bots seeded
+        afterwards stayed enabled-but-unscheduled indefinitely: zero orders,
+        zero trades, while the API happily reported 61 enabled bots.
+
+        This pass is idempotent by construction — `start(only_missing=True)`
+        skips bots that already hold a job, so it never resets an existing
+        bot's next_run_time.
+        """
+        try:
+            from app.main import app as _app
+
+            runner = getattr(_app.state, "bot_runner", None)
+            if runner is None:
+                await _ignite_bot_runner()
+                return
+            scheduled = await runner.start(only_missing=True)
+            if scheduled:
+                logger.info("BotRunner top-up scheduled new bots", count=scheduled)
+        except Exception as exc:
+            logger.error("BotRunner top-up failed", error=str(exc))
+
+    _add_job(
+        scheduler,
+        SchedulerJobConfig(
+            job_id="bot_runner_topup",
+            trigger="interval",
+            trigger_args={"minutes": 10},
+            func=_top_up_bot_runner,
+            description="Schedule enabled bots that ignition missed (empty DB at boot).",
+        ),
+    )
+
     async def _register_discord_commands() -> None:
         """Register the Discord slash commands on startup — fully hands-off.
 
