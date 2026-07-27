@@ -62,10 +62,18 @@ nothing capped size, nothing halted on drawdown, nothing enforced a stop, and th
 job that did run priced stops off yesterday's close.
 
 Pinned by `backend/tests/unit/test_exit_path_wiring.py` (8 tests; 5 fail on pre-fix code).
-**Still unwired, confirmed repo-wide:** `walk_forward_validate()` — root CLAUDE.md principle
-#5 is "Walk-forward only", enforced nowhere — plus `monte_carlo_simulation`,
-`run_stress_tests`, `probability_of_backtest_overfitting`, and the ML feature builders
-`add_sentiment_features` / `add_microstructure_features` / `add_alternative_features`.
+**Still unwired, confirmed repo-wide** — with one correction to my own first draft. I wrote
+that root CLAUDE.md principle #5 ("Walk-forward only") is "enforced nowhere". **Wrong.**
+There are TWO walk-forward implementations and I had found the dead one:
+- `app/backtest/walk_forward.walk_forward()` — **live**, called from `api/v1/backtests.py`
+  and `.github/scripts/ml_experiment.py`, with a `deflated_sharpe_ratio` overfit gate.
+- `app/ml/training/walk_forward.walk_forward_validate()` (torch) — dead.
+So the principle IS enforced for strategy backtests, and is NOT for ML model training.
+
+Genuinely dead, each referenced only by its own test: `probability_of_backtest_overfitting`,
+`probabilistic_sharpe_ratio`, `monte_carlo_simulation`. `run_stress_tests` has no reference
+at all. Plus the ML feature builders `add_sentiment_features` /
+`add_microstructure_features` / `add_alternative_features`, and `configure_logging`.
 
 ## 🚨 2026-07-27 — THE RISK ENGINE WAS NEVER SWITCHED ON (P0, fixed)
 First pass of the principal-engineer review, following the money path (risk → execution →

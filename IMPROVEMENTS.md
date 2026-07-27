@@ -21,7 +21,14 @@
 
 **Tests:** `backend/tests/unit/test_exit_path_wiring.py`, 8 tests. Verified against the pre-fix tree with the new helpers kept in place so individual tests could be seen to fail: **5 of 8 fail**, the other 3 being properties of the new helper itself. One of these tests was rewritten after its first draft matched **its own explanatory comment** quoting the old code — the same comment-is-not-a-call-site trap as the reachability guard; it is now AST-based.
 
-- [ ] **[P1] The unreferenced-function sweep found more.** Confirmed unreferenced repo-wide, not just in `app/`: `walk_forward_validate()` (125 lines) — and root `CLAUDE.md` Key Architectural Principle #5 is *"Walk-forward only: no in-sample-only backtests are accepted as valid"*, so **the platform's stated validation standard is enforced nowhere**. Also `monte_carlo_simulation()`, `run_stress_tests()`, `probability_of_backtest_overfitting()`, `probabilistic_sharpe_ratio()` (overfitting detection), and the ML feature builders `add_sentiment_features()`, `add_microstructure_features()`, `add_alternative_features()` — models train without them. `configure_logging()` is also never called.
+- [ ] **[P1] The unreferenced-function sweep found more.** Confirmed unreferenced repo-wide (not just in `app/`), grouped by what is actually at stake:
+
+  **CORRECTION to a first draft of this entry.** I wrote that root `CLAUDE.md` principle #5 — *"Walk-forward only: no in-sample-only backtests are accepted as valid"* — is "enforced nowhere". **That was wrong, and I checked it only after writing it down.** There are *two* walk-forward implementations and I had found the dead one:
+  - `app/backtest/walk_forward.walk_forward()` — **wired and live**, called from `api/v1/backtests.py:236` and `.github/scripts/ml_experiment.py:152`, with an overfit gate using `deflated_sharpe_ratio` (which *is* used in production, `walk_forward.py:71`). The principle IS enforced for strategy backtests.
+  - `app/ml/training/walk_forward.walk_forward_validate()` (125 lines, torch-specific) — **dead**. So the principle is enforced for strategy backtests and *not* for ML model training, which is the narrower and accurate claim.
+
+  Genuinely dead, each referenced only by its own unit test (i.e. tested, never run in production): `probability_of_backtest_overfitting()` and `probabilistic_sharpe_ratio()` (PBO/PSR overfit detection), `monte_carlo_simulation()`. `run_stress_tests()` has no reference at all, not even a test.
+  Also dead: the ML feature builders `add_sentiment_features()`, `add_microstructure_features()`, `add_alternative_features()` — models train without them — and `configure_logging()`.
 
 ## 🚨 PRINCIPAL REVIEW 2026-07-27 — the risk engine was never switched on
 
