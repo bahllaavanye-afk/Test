@@ -12,7 +12,17 @@ from app.models.account import Account
 from app.models.trade import Trade
 from app.models.user import User
 
-router = APIRouter(prefix="/trades", tags=["trades"])
+# Constants
+DEFAULT_LIMIT = 50
+MIN_LIMIT = 1
+MAX_LIMIT = 500
+SIDE_BUY = "buy"
+SIDE_SELL = "sell"
+VALID_SIDES = {SIDE_BUY, SIDE_SELL}
+ROUTER_PREFIX = "/trades"
+ROUTER_TAG = "trades"
+
+router = APIRouter(prefix=ROUTER_PREFIX, tags=[ROUTER_TAG])
 
 
 class TradeOut(BaseModel):
@@ -76,7 +86,7 @@ class TradeOut(BaseModel):
     @classmethod
     def validate_side(cls, v: str) -> str:
         """Ensure side is either 'buy' or 'sell'."""
-        if v not in {"buy", "sell"}:
+        if v not in VALID_SIDES:
             raise ValueError("side must be either 'buy' or 'sell'")
         return v
 
@@ -91,7 +101,7 @@ class TradeOut(BaseModel):
 
 @router.get("/", response_model=list[TradeOut])
 async def list_trades(
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(DEFAULT_LIMIT, ge=MIN_LIMIT, le=MAX_LIMIT),
     symbol: str | None = Query(None, description="Filter by symbol"),
     account_id: str | None = Query(None, description="Filter by account ID"),
     db: AsyncSession = Depends(get_db),
@@ -100,7 +110,7 @@ async def list_trades(
     """Return a list of recent trades for the current user with optional filters."""
     # Build a lightweight query that selects only needed columns and computes avg_fill_price in SQL.
     fill_price_expr = case(
-        (Trade.side == "buy", Trade.entry_price),
+        (Trade.side == SIDE_BUY, Trade.entry_price),
         else_=Trade.exit_price,
     ).label("avg_fill_price")
 
