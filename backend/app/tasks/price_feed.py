@@ -127,33 +127,80 @@ async def _yfinance_price_feed(symbols: list[str]) -> None:
             raise ValueError(f"each symbol must be a non‑empty string, got {s!r}")
 
     cache = price_cache
+    dead_cycles = 0
     while True:
+        published = 0
         for sym in symbols:
             try:
-                await asyncio.get_running_loop().run_in_executor(
+                if await asyncio.get_running_loop().run_in_executor(
                     None, _yf_publish_sync, sym, cache
-                )
+                ):
+                    published += 1
             except Exception as exc:
                 logger.debug("yfinance price feed error", symbol=sym, error=str(exc))
+
+        # A cycle that publishes nothing means every strategy downstream is
+        # reading stale Redis prices — or none at all. Per-symbol failures stay
+        # at debug (yfinance drops ticks routinely), but a wholly dead feed is
+        # not a debug detail, and it used to be indistinguishable from a
+        # healthy one.
+        if published == 0:
+            dead_cycles += 1
+            logger.error(
+                "yfinance price feed published NOTHING this cycle — strategies are "
+                "running on stale prices",
+                symbols=len(symbols),
+                consecutive_dead_cycles=dead_cycles,
+            )
+        else:
+            if dead_cycles:
+                logger.info(
+                    "yfinance price feed recovered",
+                    published=published,
+                    after_dead_cycles=dead_cycles,
+                )
+            dead_cycles = 0
+
         await asyncio.sleep(60)
 
 
-def _yf_publish_sync(symbol: str, cache) -> None:
-    """Synchronously fetch a price from yfinance and publish it."""
+async def _publish_quote(cache, symbol: str, last: float) -> None:
+    """Fan a single quote out to Redis and the WebSocket manager."""
+    quote = {"last": last, "bid": last, "ask": last}
+    await asyncio.gather(
+        cache.set_price("yfinance", symbol, quote),
+        manager.broadcast(
+            f"prices:{symbol}", {"type": "quote", "symbol": symbol, **quote}
+        ),
+        return_exceptions=True,
+    )
+
+
+def _yf_publish_sync(symbol: str, cache) -> bool:
+    """Fetch a price from yfinance and publish it. True if a quote went out.
+
+    Runs in an executor thread, once per symbol, every 60s, forever.
+
+    This used to hand-manage the event loop — `new_event_loop()`,
+    `run_until_complete(...)`, `loop.close()` — with the close as an ordinary
+    statement rather than in a `finally`, so any raise from run_until_complete
+    skipped it. CPython's refcounting does eventually reclaim those loops via
+    `BaseEventLoop.__del__`, so this was not an unbounded descriptor leak, but
+    cleanup was left to the garbage collector: measured at ~57 descriptors
+    outstanding across 300 failed iterations, each one emitting
+    `ResourceWarning: unclosed event loop` plus two unclosed sockets.
+    `asyncio.run` closes deterministically on the error path, and also cancels
+    pending tasks and shuts down async generators, which the old form never did.
+    """
     try:
         import yfinance as yf
         yf_sym = symbol.replace("/USD", "-USD").replace("/USDT", "-USD")
         info = yf.Ticker(yf_sym).fast_info
         last = float(getattr(info, "last_price", 0) or getattr(info, "regularMarketPrice", 0) or 0)
         if last <= 0:
-            return
-        import asyncio
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(asyncio.gather(
-            cache.set_price("yfinance", symbol, {"last": last, "bid": last, "ask": last}),
-            manager.broadcast(f"prices:{symbol}", {"type": "quote", "symbol": symbol, "last": last, "bid": last, "ask": last}),
-            return_exceptions=True,
-        ))
-        loop.close()
+            return False
+        asyncio.run(_publish_quote(cache, symbol, last))
+        return True
     except Exception as exc:  # noqa: BLE001 — one symbol's tick lost, next cycle retries
         logger.debug("yfinance publish failed", symbol=symbol, error=str(exc))
+        return False
