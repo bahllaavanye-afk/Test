@@ -1,0 +1,116 @@
+name: Pacemaker — keep the fleet alive without a human
+
+# THE PROBLEM THIS SOLVES
+#
+# 36 workflows — every desk, company-brain, error-triage, continuous-improvement,
+# employee-conversations — are chained off `workflow_run: workflows: ["CI"]`.
+# CI (test.yml) triggers ONLY on `pull_request` and `workflow_dispatch`.
+#
+# So the entire fleet is downstream of somebody opening a PR. Cron cannot cover
+# the gap: GitHub starves free-tier schedules under load, and it is measurable
+# here — desk-trading-crypto is configured `7,27,47 * * * *` (3x/hour) and
+# actually fired at 23:25, 01:05, 04:47, 08:39, 11:57. Gaps of 3.5 HOURS
+# overnight, roughly 10% of its intended rate, while the same workflow ran
+# near-hourly during the day when PRs were landing.
+#
+# Net effect, and exactly what was reported: "Discord is only active when this
+# chat resumes." The fleet was downstream of a human pushing code.
+#
+# HOW THIS FIXES IT
+#
+# One long-lived job sleeps, then dispatches CI. CI completing re-triggers this
+# workflow through workflow_run, which sleeps and dispatches again — a
+# self-sustaining heartbeat that needs neither cron nor a person. `schedule`
+# stays as a bootstrap in case the chain is ever broken; it is the backup here,
+# not the mechanism.
+#
+# workflow_dispatch with GITHUB_TOKEN is GitHub's documented exception to the
+# "a workflow's own token cannot trigger workflows" recursion guard —
+# auto-pr.yml already relies on this and it demonstrably works (19 of the last
+# 40 CI runs were dispatched by github-actions[bot]).
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  schedule:
+    - cron: "13 * * * *"      # bootstrap only — assumed unreliable
+  workflow_dispatch: {}
+
+permissions:
+  actions: write              # required to dispatch CI
+  contents: read
+
+# Exactly ONE pacemaker alive. A new CI completion supersedes any sleeper, so
+# a burst of PRs collapses to a single heartbeat instead of stacking dozens.
+concurrency:
+  group: pacemaker
+  cancel-in-progress: true
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      # Kill switch. Set repo variable PACEMAKER_DISABLED=true to stop the loop
+      # without editing or deleting this file.
+      - name: Check kill switch
+        id: killswitch
+        run: |
+          if [ "${{ vars.PACEMAKER_DISABLED }}" = "true" ]; then
+            echo "::warning::PACEMAKER_DISABLED is set — heartbeat stopped"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The interval. 50 minutes gives roughly hourly cadence and stays well
+      # inside the 75-minute job timeout, so a slow dispatch cannot orphan the
+      # chain.
+      - name: Wait out the interval
+        if: steps.killswitch.outputs.run == 'true'
+        run: sleep 3000
+
+      - name: Dispatch CI to drive the 36 downstream workflows
+        if: steps.killswitch.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/resp.txt -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/test.yml/dispatches" \
+            -d '{"ref":"main"}')
+          if [ "$code" = "204" ]; then
+            echo "✅ CI dispatched — fleet heartbeat delivered" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::CI dispatch failed (HTTP $code): $(cat /tmp/resp.txt)"
+            echo "❌ heartbeat NOT delivered (HTTP $code)" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      # If the dispatch fails the chain dies silently, which is the exact class
+      # of failure this repo keeps getting bitten by. Say so where it is seen.
+      - name: Alert if the heartbeat broke
+        if: failure()
+        continue-on-error: true
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, ".github/scripts")
+          try:
+              from notify import post
+              post("infra-alerts",
+                   "🚨 **Pacemaker heartbeat FAILED** — CI was not dispatched, so the "
+                   "36 workflows chained off it will not run until a PR lands. "
+                   "The fleet is asleep.",
+                   username="QuantEdge Pacemaker")
+          except Exception as exc:
+              print(f"alert failed: {exc}")
+          PY
