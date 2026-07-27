@@ -49,16 +49,16 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785186304.6286604,
+    "last_updated": 1785190200.7169673,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
       "mean_rev_20_2"
     ],
-    "last_autopilot_run": 1785181568.4722145,
+    "last_autopilot_run": 1785190200.6905973,
     "autopilot_best_sharpe": 0.1588,
-    "autopilot_best_oos_sharpe": 1.183,
-    "autopilot_best_blended": 0.4048,
+    "autopilot_best_oos_sharpe": 1.1758,
+    "autopilot_best_blended": 0.404,
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
