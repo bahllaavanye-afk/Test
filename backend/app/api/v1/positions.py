@@ -125,7 +125,10 @@ async def get_position_exit_config(
     # Compute P&L percentage if we have a current price from Redis
     pnl_pct: float | None = None
     try:
-        raw_price = await redis_client.get(f"prices:{symbol}")
+        # `prices:{symbol}` is the WebSocket topic, not the Redis key — nothing
+        # writes it, so pnl_pct was always None here.
+        from app.redis_client import exchange_for, price_key
+        raw_price = await redis_client.get(price_key(exchange_for(symbol), symbol))
         if raw_price:
             price_data = json.loads(raw_price)
             current_price = float(price_data.get("last") or price_data.get("ask") or 0)

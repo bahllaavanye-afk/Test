@@ -1,8 +1,15 @@
 """
-Active position monitoring loop. Runs every 30 seconds.
+Active position monitoring loop. Runs every 30 seconds, started as a supervised
+background task by `main._position_exit_monitor`.
+
+Until 2026-07-27 nothing started it. `start_position_monitor()` claimed to be a
+"factory function called from scheduler.py"; scheduler.py had no such job and
+nothing anywhere constructed a PositionMonitor. The strategy runner has been
+writing `pos_exit:<symbol>` on every fill the whole time, so every strategy
+stop-loss was recorded and none was enforced.
 
 For each open position:
-  1. Fetches current price from Redis (key: prices:<SYMBOL>)
+  1. Fetches current price from Redis
   2. Fetches stored exit config from Redis (key: pos_exit:<position_id>)
   3. Runs CompositeExit.should_exit()
   4. If exit triggered: submits close order via broker
@@ -10,11 +17,18 @@ For each open position:
   6. Broadcasts exit event via WebSocket manager
 
 Redis keys used:
-  prices:<SYMBOL>            -> {last: float, bid, ask, ts}
+  price:<exchange>:<SYMBOL>  -> {last: float, bid, ask}  (build via
+                                redis_client.price_key — this docstring used to
+                                say `prices:<SYMBOL>`, which is the WEBSOCKET
+                                TOPIC and is never written to Redis, and the
+                                code matched the docstring rather than reality)
   pos_exit:<position_id>     -> JSON {exit_strategies, entry_price, peak_price,
                                       bars_held, atr_at_entry, zscore}
   market:regime              -> "0"|"1"|"2"
   market:vix                 -> float
+
+Note position_id is the SYMBOL on the broker path (broker position dicts carry
+no "id"), which is what the strategy runner writes.
 """
 from __future__ import annotations
 
@@ -99,7 +113,11 @@ class PositionMonitor:
         current_price: float | None = None
         if self.redis is not None:
             try:
-                raw_price = await self.redis.get(f"prices:{symbol}")
+                # `prices:{symbol}` is the WebSocket topic, not the Redis key —
+                # nothing writes it, so this always missed and fell through to a
+                # broker quote on every position, every tick.
+                from app.redis_client import exchange_for, price_key
+                raw_price = await self.redis.get(price_key(exchange_for(symbol), symbol))
                 if raw_price:
                     price_data = json.loads(raw_price)
                     current_price = float(price_data.get("last") or price_data.get("ask") or 0)
@@ -328,9 +346,3 @@ class PositionMonitor:
                 position_id=position_id,
                 error=str(exc),
             )
-
-
-async def start_position_monitor(broker, redis_client, db_session_factory) -> None:
-    """Factory function called from scheduler.py."""
-    monitor = PositionMonitor(broker, redis_client, db_session_factory)
-    await monitor.start()

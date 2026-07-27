@@ -1219,10 +1219,12 @@ class BotEngine:
 async def _fetch_current_price(symbol: str, market_type: str = "equity") -> float | None:
     """Fetch latest close price via Redis cache or yfinance fallback."""
     try:
-        from app.redis_client import price_cache
-        raw = await price_cache.get(f"prices:{symbol}")
-        if raw:
-            data = json.loads(raw) if isinstance(raw, str) else raw
+        from app.redis_client import exchange_for, price_cache
+        # Was `price_cache.get(f"prices:{symbol}")` — the WebSocket topic name,
+        # not the Redis key. Nothing writes it, so this ALWAYS missed and every
+        # exit check silently fell through to the daily bar below.
+        data = await price_cache.get_price(exchange_for(symbol), symbol)
+        if data:
             price = data.get("last") or data.get("close") or data.get("ask")
             if price:
                 return float(price)
@@ -1233,9 +1235,16 @@ async def _fetch_current_price(symbol: str, market_type: str = "equity") -> floa
         import yfinance as yf
         yf_sym = _map_crypto_symbol(symbol) if market_type == "crypto" else symbol
         ticker = yf.Ticker(yf_sym)
-        hist = ticker.history(period="2d", interval="1d")
-        if not hist.empty:
-            return float(hist["Close"].iloc[-1])
+        # Intraday first. This is the fallback for a take-profit/stop-loss
+        # check: a daily close cannot tell you whether an intraday stop was
+        # breached, and until the key fix above it was the ONLY path.
+        for period, interval in (("1d", "1m"), ("2d", "1d")):
+            try:
+                hist = ticker.history(period=period, interval=interval)
+            except Exception:
+                continue
+            if not hist.empty:
+                return float(hist["Close"].iloc[-1])
     except Exception as exc:
         logger.debug("Price fetch failed", symbol=symbol, error=str(exc))
 

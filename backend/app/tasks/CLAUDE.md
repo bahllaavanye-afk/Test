@@ -40,10 +40,18 @@ scheduler.py (APScheduler)
 ```
 
 ## Redis Key Schema
-| Key Pattern                  | Type   | TTL  | Contents                          |
-|------------------------------|--------|------|-----------------------------------|
-| `prices:<SYMBOL>`            | HASH   | 60s  | {last, bid, ask, volume, ts}      |
-| `ohlcv:<SYMBOL>:<interval>`  | LIST   | 7d   | OHLCV JSON rows (ring buf 2000)   |
+> ⚠️ `prices:<SYMBOL>` is the **WebSocket topic**, NOT a Redis key. This table
+> used to list it as one, and all three Redis readers in the codebase believed
+> it — `bots/engine`, `tasks/position_monitor` and `api/v1/positions` each read
+> a key nothing writes. A miss is indistinguishable from a cold cache, so every
+> one silently took its fallback (the live bot exit checker ended up pricing
+> intraday stop-losses off a yfinance *daily* close). Build price keys with
+> `redis_client.price_key(exchange, symbol)` and nothing else.
+
+| Key Pattern                     | Type   | TTL  | Contents                          |
+|---------------------------------|--------|------|-----------------------------------|
+| `price:<exchange>:<SYMBOL>`     | STRING | 5s   | {last, bid, ask} — `price_key()`  |
+| `ohlcv:<exchange>:<SYM>:<intv>` | STRING | 60s  | OHLCV JSON rows                   |
 | `signal:<strategy>:<symbol>` | STRING | 5m   | Signal JSON (direction, size, ts) |
 | `account:<user_id>:nav`      | STRING | 1h   | Current NAV float                 |
 | `positions:<user_id>`        | HASH   | 5m   | {symbol: qty} map                 |

@@ -85,6 +85,35 @@ async def _risk_state_sync(risk_manager, broker, interval_seconds: int = 60) -> 
         await asyncio.sleep(interval_seconds)
 
 
+async def _position_exit_monitor(broker, interval_seconds: int = 30) -> None:
+    """Enforce stop-loss / take-profit / trailing exits on open positions.
+
+    PositionMonitor was never started. `start_position_monitor()`'s docstring
+    says "Factory function called from scheduler.py"; scheduler.py has no such
+    job, and nothing anywhere constructs a PositionMonitor. Meanwhile the
+    strategy runner faithfully writes `pos_exit:<symbol>` to Redis on every
+    fill — stop_loss, take_profit, peak_price — under the comment "Store exit
+    config in Redis for position_monitor.py". The producer ran; the consumer
+    did not exist. Every strategy stop-loss was recorded and none was enforced,
+    and the whole CompositeExit engine in execution/position_exit.py was
+    reachable only from here.
+
+    (Bot positions are separately covered by the `bot_exit_checker` scheduler
+    job — this is the strategy-runner path, which had nothing.)
+    """
+    from app.database import AsyncSessionLocal
+    from app.redis_client import get_redis
+    from app.tasks.position_monitor import PositionMonitor
+
+    monitor = PositionMonitor(broker, get_redis(), AsyncSessionLocal)
+    while True:
+        try:
+            await monitor.start()
+        except Exception as exc:
+            logger.warning("position exit monitor pass failed", error=str(exc))
+        await asyncio.sleep(interval_seconds)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("QuantEdge starting up", mode=settings.trading_mode)
@@ -190,6 +219,12 @@ async def lifespan(app: FastAPI):
         ))
     else:
         logger.warning("Risk manager running on seeded equity — no broker to sync from")
+
+    # Position exit monitor — the consumer for the exit configs the strategy
+    # runner has been writing to Redis all along. See _position_exit_monitor.
+    bg_tasks.append(asyncio.create_task(
+        _supervised(lambda: _position_exit_monitor(alpaca_broker), "position_exit_monitor")
+    ))
 
     # Load active strategies from DB; fall back to a sensible default set if DB
     # is not yet reachable at startup (e.g. first cold boot before migrations).
