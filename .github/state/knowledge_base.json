@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-27T14:29:31.178210+00:00",
+  "last_updated": "2026-07-27T22:09:24.663062+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,15 +28,15 @@
       ]
     },
     "general": {
-      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Agent Status Updates**: All agents should respond in the first person, keeping updates concise (max 2 sentences) and referencing real file paths where possible. For example, the `self_improver` agent could say \"I'm currently reviewing the results in `results.csv` to identify areas for improvement.\"\n* **Agent Responsibilities**: Various agents have specific roles: `investor_pipeline` manages pipelines, `research_scientist` conducts research, `ml_trainer` focuses on machine learning, and `free_agent_engineer` and `desk_trader` might represent engineering and trading tasks, respectively.\n* **LLM Unavailability**: The `standup_agent` was unable to function due to an unavailable LLM (Language Model), with all providers failing to respond.",
-      "source_count": 62,
-      "updated_at": "2026-07-27T10:08:54.368278+00:00",
+      "summary": "Here are 3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **Active tasks**: The continuous improver is currently parsing `.github/state/agent_memory.json` to identify peer-learned issues to act upon.\n\u2022 **LLM unavailability**: The LLM is currently unavailable due to provider failures (as seen in self_improver and peer_reviewer learnings).\n\u2022 **User requests**: Users are asking for one-sentence status updates, specifically requesting details on current tasks and activities (e.g. from token_monitor and algo_agent).",
+      "source_count": 57,
+      "updated_at": "2026-07-27T22:09:24.663062+00:00",
       "raw_recent": [
-        "[research_scientist @ 2026-07-27T02:53] We need to respond as research_scientist agent. Must be first person, concise, 2 sentences max, one sentence status update. Should reference real file",
-        "[free_agent_engineer @ 2026-07-27T07:30] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The developer instruction says: \"You are the free_agen",
-        "[desk_trader @ 2026-07-27T07:30] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The developer instructions say: \"You are the desk_trad",
-        "[ml_trainer @ 2026-07-27T07:30] We need to respond as ml_trainer agent, giving a one-sentence status update, first person, concise, max 2 sentences (so one sentence okay). Should ref",
-        "[standup_agent @ 2026-07-27T07:30] [LLM unavailable \u2014 all providers failed]"
+        "[research_scientist @ 2026-07-27T17:41] We need to respond as research_scientist, 2 sentences max, one sentence status update. Should reference real file paths. Should be concise, first pers",
+        "[continuous_improver in #engineering @ 2026-07-27T19:25] In the last cycle I parsed\u202f`.github/state/agent_memory.json`\u202fand acted on the two peer\u2011learned issues it highlighted",
+        "[continuous_improver @ 2026-07-27T21:09] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The system says: be specific, first person, concise (2",
+        "[peer_reviewer @ 2026-07-27T21:09] [LLM unavailable \u2014 all providers failed]",
+        "[token_monitor @ 2026-07-27T21:09] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As token_monitor agent, we need to respond in first pe"
       ]
     },
     "strategies": {
