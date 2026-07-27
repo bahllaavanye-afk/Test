@@ -1,9 +1,5 @@
 {
   "skills": [
-    "* Refactoring of Bloomberg-dark theme UI components is in progress: `src/components/` (`src/ui/theme/DarkTheme.tsx` and `src/components/UI/DarkMode.tsx` for specific files).",
-    "Monitor thread timeouts",
-    "Backtest strategy variants",
-    "Verify retraining pipeline",
     "Implement circuit breakers",
     "Enhance input validation",
     "Parse API usage logs",
@@ -199,8 +195,12 @@
     "Implement early-stopping callbacks",
     "Validate payloads",
     "Implement JSON schema validation",
-    "Validate input data"
+    "Validate input data",
+    "Log API errors",
+    "Test edge cases",
+    "Tighten type safety",
+    "Parse research papers"
   ],
-  "last_updated": "2026-07-27T14:29:31.178210+00:00",
+  "last_updated": "2026-07-27T16:14:28.574650+00:00",
   "total": 200
 }
