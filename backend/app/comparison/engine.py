@@ -3,8 +3,10 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Any
 
 import pandas as pd
 from scipy import stats
@@ -12,6 +14,18 @@ from scipy import stats
 from app.backtest.engine import run_backtest, BacktestMetrics
 from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stats
 from app.utils.logging import logger
+
+
+class ComparisonEngineError(Exception):
+    """Base exception for errors raised by StrategyComparisonEngine."""
+
+
+class BacktestError(ComparisonEngineError):
+    """Raised when a backtest execution fails."""
+
+
+class BenchmarkError(ComparisonEngineError):
+    """Raised when fetching benchmark data fails."""
 
 
 @dataclass
@@ -79,7 +93,7 @@ class StrategyComparisonEngine:
         if initial_equity <= 0:
             raise ValueError("initial_equity must be a positive number.")
 
-        # Ensure series are aligned on the same index (optional but helps consistency)
+        # Align series on a common index
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
             raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
@@ -87,12 +101,47 @@ class StrategyComparisonEngine:
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
 
-        manual_metrics = run_backtest(manual_signals, prices, initial_equity)
-        ml_metrics = run_backtest(ml_signals, prices, initial_equity)
+        try:
+            manual_metrics = run_backtest(manual_signals, prices, initial_equity)
+        except Exception as e:
+            logger.exception(
+                "Backtest execution failed for manual strategy",
+                strategy=strategy_name,
+                error=str(e),
+            )
+            raise BacktestError("Manual backtest execution failed") from e
 
-        benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
-        benchmark_stats = get_benchmark_stats()
+        try:
+            ml_metrics = run_backtest(ml_signals, prices, initial_equity)
+        except Exception as e:
+            logger.exception(
+                "Backtest execution failed for ML-enhanced strategy",
+                strategy=strategy_name,
+                error=str(e),
+            )
+            raise BacktestError("ML-enhanced backtest execution failed") from e
 
+        try:
+            benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
+        except Exception as e:
+            logger.exception(
+                "Failed to fetch benchmark curves",
+                start_date=start_date,
+                end_date=end_date,
+                error=str(e),
+            )
+            raise BenchmarkError("Benchmark curve retrieval failed") from e
+
+        try:
+            benchmark_stats = get_benchmark_stats()
+        except Exception as e:
+            logger.exception(
+                "Failed to compute benchmark statistics",
+                error=str(e),
+            )
+            raise BenchmarkError("Benchmark statistics computation failed") from e
+
+        # Equity curve processing
         manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
         ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
         manual_ret = manual_eq.pct_change().dropna()
