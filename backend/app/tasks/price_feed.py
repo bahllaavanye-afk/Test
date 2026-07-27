@@ -17,8 +17,15 @@ DEFAULT_CRYPTO_SYMBOLS = [
 ]
 
 
-async def _fetch_and_publish(broker, symbol: str, cache) -> None:
-    """Fetch a quote from the broker and publish it to Redis and WebSocket."""
+async def _fetch_and_publish(broker, symbol: str, cache, on_mark=None) -> None:
+    """Fetch a quote from the broker and publish it to Redis and WebSocket.
+
+    `on_mark(symbol, last)` is an optional synchronous sink for the last price.
+    The risk manager uses it to size market orders, which carry no limit price —
+    without a mark it cannot convert quantity into notional and has to skip the
+    position cap entirely. Kept as a plain callable rather than a RiskManager
+    reference so the feed stays decoupled from the risk layer.
+    """
     try:
         quote = await broker.get_quote(symbol)
         price_data = {
@@ -28,6 +35,12 @@ async def _fetch_and_publish(broker, symbol: str, cache) -> None:
             "last":    quote.last,
             "volume":  quote.volume,
         }
+        if on_mark is not None and quote.last is not None:
+            # Never let a sink failure cost us the Redis write or the broadcast.
+            try:
+                on_mark(symbol, float(quote.last))
+            except Exception as exc:
+                logger.debug("mark sink failed", symbol=symbol, error=str(exc))
         exchange = "crypto" if "/" in symbol else "alpaca"
         # Fire-and-forget: write to Redis and broadcast concurrently
         await asyncio.gather(
@@ -39,10 +52,12 @@ async def _fetch_and_publish(broker, symbol: str, cache) -> None:
         logger.debug("Price feed error", symbol=symbol, error=str(e))
 
 
-async def run_price_feed(broker, symbols: list[str]) -> None:
+async def run_price_feed(broker, symbols: list[str], on_mark=None) -> None:
     """
     Polls all symbols concurrently in batches of BATCH_SIZE every POLL_INTERVAL seconds.
     Concurrent fetches reduce end-to-end latency from O(N) to O(ceil(N/BATCH_SIZE)).
+
+    `on_mark` is forwarded to _fetch_and_publish; see its docstring.
     """
     # Input validation
     if broker is None or not callable(getattr(broker, "get_quote", None)):
@@ -63,7 +78,7 @@ async def run_price_feed(broker, symbols: list[str]) -> None:
         for i in range(0, len(symbols), BATCH_SIZE):
             batch = symbols[i : i + BATCH_SIZE]
             await asyncio.gather(
-                *[_fetch_and_publish(broker, sym, cache) for sym in batch],
+                *[_fetch_and_publish(broker, sym, cache, on_mark) for sym in batch],
                 return_exceptions=True,
             )
         await asyncio.sleep(POLL_INTERVAL)

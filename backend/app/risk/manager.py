@@ -69,6 +69,13 @@ class RiskManager:
         self._positions: dict[str, float] = {}   # symbol → market value USD
         self._returns_history: pd.DataFrame = pd.DataFrame()
         self._clusters: dict[str, list[str]] = {}
+        # symbol → last known mark price, fed by update_prices() from the price
+        # feed. Market orders carry no limit_price, so without this there is no
+        # way to convert quantity into notional (see _reference_price).
+        self._prices: dict[str, float] = {}
+        # Orders that passed without a notional check because no price was known.
+        # Surfaced by /risk so "the cap never fires" is visible instead of silent.
+        self.unpriced_orders: int = 0
 
         self.global_breaker = CircuitBreaker(
             name="global", max_drawdown_pct=max_drawdown_pct
@@ -115,6 +122,41 @@ class RiskManager:
             )
             raise PositionsUpdateError("Error updating positions") from exc
 
+    def update_prices(self, prices: dict[str, float]) -> None:
+        """Feed last-known marks so market orders can be sized.
+
+        Best-effort and non-raising: a bad price update must never take down the
+        gate that every order passes through. Non-positive and non-finite values
+        are dropped rather than stored, because they would silently disable the
+        position cap for that symbol.
+        """
+        if not isinstance(prices, dict):
+            return
+        for symbol, price in prices.items():
+            try:
+                value = float(price)
+            except (TypeError, ValueError):
+                continue
+            if value > 0 and value == value and value != float("inf"):
+                self._prices[str(symbol)] = value
+
+    def _reference_price(self, request: OrderRequest) -> float | None:
+        """Price used to turn quantity into notional, or None if genuinely unknown.
+
+        This previously defaulted to a hardcoded 100.0 for any order without a
+        limit price — i.e. every market order. That silently made the position
+        cap meaningless: 1 BTC priced at $100 instead of ~$60k reads as 0.1% of a
+        $100k account rather than 60%, and SHIB at $0.00001 reads 10-million-fold
+        too large. Returning None instead lets the caller skip the notional
+        checks *visibly* rather than enforce them against a fabricated number.
+        """
+        if request.limit_price is not None and request.limit_price > 0:
+            return float(request.limit_price)
+        mark = self._prices.get(request.symbol)
+        if mark is not None and mark > 0:
+            return float(mark)
+        return None
+
     def update_returns(self, returns_df: pd.DataFrame) -> None:
         try:
             if not isinstance(returns_df, pd.DataFrame):
@@ -158,25 +200,42 @@ class RiskManager:
             if self._equity <= 0:
                 return RiskDecision(False, "equity is zero or negative — orders halted")
 
-            # Position size cap
-            price = request.limit_price if request.limit_price is not None else 100.0
-            if price == 0:
-                raise ZeroDivisionError("limit_price is zero, cannot compute position size")
-            estimated_value = request.quantity * price
+            price = self._reference_price(request)
+            if price is None:
+                # No limit price and no mark. Both notional checks below are
+                # meaningless without one, so skip them and say so — do NOT
+                # invent a price and pretend the cap was enforced.
+                self.unpriced_orders += 1
+                logger.warning(
+                    "risk.manager: order not size-checked — no limit price and no known mark",
+                    symbol=request.symbol,
+                    quantity=request.quantity,
+                )
+                return RiskDecision(True, "allowed unpriced — no notional check", request.quantity)
+
+            # Position size cap. Capping ADJUSTS the order, it does not approve
+            # it: the correlation check below must still run against the capped
+            # notional. It previously returned here, so the largest orders — the
+            # only ones that reach this branch — were the ones that skipped the
+            # concentration limit entirely.
+            quantity = request.quantity
+            reason = "ok"
             max_allowed = self._equity * self.max_position_pct
-            if estimated_value > max_allowed:
-                adj_qty = max_allowed / price
+            if quantity * price > max_allowed:
+                quantity = max_allowed / price
+                reason = "size capped"
                 logger.warning(
                     "Position size capped",
                     symbol=request.symbol,
                     original=request.quantity,
-                    adjusted=adj_qty,
+                    adjusted=quantity,
                 )
-                return RiskDecision(True, "size capped", adj_qty)
+
+            estimated_value = quantity * price
 
             # Correlation cluster check
             if self._clusters:
-                allowed, reason = check_cluster_limits(
+                allowed, cluster_reason = check_cluster_limits(
                     request.symbol,
                     estimated_value,
                     self._positions,
@@ -185,9 +244,9 @@ class RiskManager:
                     self._equity,
                 )
                 if not allowed:
-                    return RiskDecision(False, reason)
+                    return RiskDecision(False, cluster_reason)
 
-            return RiskDecision(True, "ok", request.quantity)
+            return RiskDecision(True, reason, quantity)
         except RiskManagerError:
             # Propagate known risk manager errors without extra logging
             raise

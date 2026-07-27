@@ -61,6 +61,13 @@ def test_pacemaker_can_ignite_without_a_pull_request():
     because the only CI completion since the merge was an `action_required`
     run that never executed. A pacemaker keyed solely to CI reintroduces the
     very dependency it exists to remove.
+
+    Two things compound this, both measured rather than assumed:
+      * `workflow_run` does not fire for upstream runs on non-default branches,
+        so CI triggered by a `pull_request` cannot ignite anything.
+      * Free-tier cron in this repo is uniformly degraded to ~3-hour spacing —
+        every scheduled workflow, not just the desks. Multiple independently
+        phased sources are therefore load-bearing, not belt-and-braces.
     """
     on = _load(PACEMAKER)["_on"]
     sources = on["workflow_run"]["workflows"]
