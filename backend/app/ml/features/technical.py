@@ -17,7 +17,7 @@ Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -25,6 +25,30 @@ import pandas as pd
 import app.ml.features.pandas_ta_compat as ta
 
 _logger = logging.getLogger(__name__)
+
+
+def _log_error(
+    *, func_name: str, exc: BaseException, **context: Any
+) -> None:
+    """
+    Log an error in a structured way.
+
+    Parameters
+    ----------
+    func_name : str
+        Name of the function or operation where the error occurred.
+    exc : BaseException
+        The caught exception.
+    **context : Any
+        Additional contextual information to include in the log record.
+    """
+    _logger.error(
+        "Error in %s: %s",
+        func_name,
+        str(exc),
+        exc_info=exc,
+        extra={"error_context": context},
+    )
 
 
 def _safe_apply(func, *args, **kwargs) -> Optional[pd.DataFrame]:
@@ -46,12 +70,11 @@ def _safe_apply(func, *args, **kwargs) -> Optional[pd.DataFrame]:
     try:
         return func(*args, **kwargs)
     except (KeyError, ValueError, TypeError) as exc:
-        _logger.error(
-            "Technical feature computation failed in %s with args=%s, kwargs=%s",
-            func.__name__,
-            args,
-            kwargs,
-            exc_info=exc,
+        _log_error(
+            func_name=func.__name__,
+            exc=exc,
+            args=args,
+            kwargs=kwargs,
         )
         return None
 
@@ -89,24 +112,37 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     for n in [1, 5, 10, 21]:
         try:
             df[f"returns_{n}"] = close.pct_change(n)
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to compute returns_%d", n, exc_info=exc)
+        except (ZeroDivisionError, TypeError, ValueError) as exc:
+            _log_error(
+                func_name=f"returns_{n}",
+                exc=exc,
+                column="close",
+                period=n,
+            )
 
     # --- Volatility (rolling std of log returns) ---
     try:
         log_ret = np.log(close / close.shift(1))
         for n in [5, 21, 63]:
             df[f"vol_{n}"] = log_ret.rolling(n).std() * np.sqrt(252)
-    except Exception as exc:  # pragma: no cover
-        _logger.error("Failed to compute volatility features", exc_info=exc)
+    except (FloatingPointError, ValueError, TypeError) as exc:
+        _log_error(
+            func_name="volatility",
+            exc=exc,
+            columns=["close"],
+        )
 
     # --- EMA distance (normalized) ---
     for span in [9, 21, 50]:
         try:
             ema = close.ewm(span=span).mean()
             df[f"ema_{span}_diff"] = (close - ema) / (ema + 1e-9)
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to compute EMA distance for span %d", span, exc_info=exc)
+        except (ZeroDivisionError, ValueError, TypeError) as exc:
+            _log_error(
+                func_name=f"ema_{span}_diff",
+                exc=exc,
+                span=span,
+            )
 
     # --- RSI ---
     rsi14 = _safe_apply(ta.rsi, close, length=14)
@@ -123,8 +159,16 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             df["macd"] = macd_df["MACD_12_26_9"] / (close + 1e-9)
             df["macd_signal"] = macd_df["MACDs_12_26_9"] / (close + 1e-9)
             df["macd_hist"] = macd_df["MACDh_12_26_9"] / (close + 1e-9)
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to normalize MACD components", exc_info=exc)
+        except (KeyError, ZeroDivisionError, TypeError) as exc:
+            _log_error(
+                func_name="macd_normalization",
+                exc=exc,
+                required_columns=[
+                    "MACD_12_26_9",
+                    "MACDs_12_26_9",
+                    "MACDh_12_26_9",
+                ],
+            )
 
     # --- Bollinger Bands ---
     bb = _safe_apply(ta.bbands, close, length=20, std=2.0)
@@ -136,23 +180,34 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             df["bb_upper_dist"] = (upper - close) / (close + 1e-9)
             df["bb_lower_dist"] = (close - lower) / (close + 1e-9)
             df["bb_width"] = (upper - lower) / (mid + 1e-9)
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to compute Bollinger Band features", exc_info=exc)
+        except (KeyError, ZeroDivisionError, TypeError) as exc:
+            _log_error(
+                func_name="bollinger_bands",
+                exc=exc,
+                required_columns=["BBU_20_2.0", "BBL_20_2.0", "BBM_20_2.0"],
+            )
 
     # --- OBV change (normalized) ---
     obv = _safe_apply(ta.obv, close, volume)
     if obv is not None:
         try:
             df["obv_change"] = obv.pct_change(5).fillna(0)
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to compute OBV change", exc_info=exc)
+        except (ZeroDivisionError, TypeError, ValueError) as exc:
+            _log_error(
+                func_name="obv_change",
+                exc=exc,
+                period=5,
+            )
 
     # --- Volume ratio ---
     try:
         vol_ma = volume.rolling(20).mean()
         df["volume_ratio"] = volume / (vol_ma + 1e-9)
-    except Exception as exc:  # pragma: no cover
-        _logger.error("Failed to compute volume ratio", exc_info=exc)
+    except (ZeroDivisionError, TypeError, ValueError) as exc:
+        _log_error(
+            func_name="volume_ratio",
+            exc=exc,
+        )
 
     # --- ATR ---
     atr = _safe_apply(ta.atr, high, low, close, length=14)
@@ -160,8 +215,11 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
         try:
             df["atr_14"] = atr
             df["atr_pct"] = atr / (close + 1e-9)
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to compute ATR related features", exc_info=exc)
+        except (ZeroDivisionError, TypeError, ValueError) as exc:
+            _log_error(
+                func_name="atr_features",
+                exc=exc,
+            )
 
     # --- Stochastic ---
     stoch = _safe_apply(ta.stoch, high, low, close, k=14, d=3)
@@ -169,15 +227,23 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
         try:
             df["stoch_k"] = stoch["STOCHk_14_3_3"] / 100.0
             df["stoch_d"] = stoch["STOCHd_14_3_3"] / 100.0
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to compute Stochastic Oscillator features", exc_info=exc)
+        except (KeyError, ZeroDivisionError, TypeError) as exc:
+            _log_error(
+                func_name="stochastic_features",
+                exc=exc,
+                required_columns=["STOCHk_14_3_3", "STOCHd_14_3_3"],
+            )
 
     # --- ADX ---
     adx_df = _safe_apply(ta.adx, high, low, close, length=14)
     if adx_df is not None:
         try:
             df["adx"] = adx_df["ADX_14"] / 100.0
-        except Exception as exc:  # pragma: no cover
-            _logger.error("Failed to compute ADX feature", exc_info=exc)
+        except (KeyError, ZeroDivisionError, TypeError) as exc:
+            _log_error(
+                func_name="adx_feature",
+                exc=exc,
+                required_columns=["ADX_14"],
+            )
 
     return df
