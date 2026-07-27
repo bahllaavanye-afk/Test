@@ -147,6 +147,21 @@ against a 1-day limit. Equity is downsampled (default hourly) and scaled by
 square-root-of-time, which assumes i.i.d. returns and understates tail risk under positive
 autocorrelation — a floor, not a ceiling.
 
+## ✅ 2026-07-27 — test suite is now deterministic (per-FILE DB isolation)
+`_create_tables` is session-scoped, so every file landing on the same xdist worker shared not
+just the schema but **every row**. Under `--dist loadfile` which files share a worker is a
+scheduler detail, so the suite was deterministic only by luck of packing. Two real failures
+came from this: `test_seed_additive`'s `assert 0 == 61`, and the `scalar_one_or_none`
+production bug in `bots/seed.py` that it finally surfaced.
+`conftest._isolate_each_file` (module-scoped, autouse) now wipes rows between files. Rows, not
+tables — schema is still built once per session, so runtime is unchanged (72s before/after).
+**Module** scope on purpose: within a file, tests building on each other is intended; only the
+accidental cross-file coupling had to go.
+Proven both ways on the exact CI failure: with the fixture it passes, without it fails
+`assert 0 == 61`. The tolerant workaround assert was reverted back to the strict
+`== len(BOT_TEMPLATES)`, which is stronger. 3 consecutive CI-invocation runs: 1897/1896/1896
+passed, 0 failed.
+
 ## ⚡ 2026-07-27 — the contract test was hitting the LIVE Yahoo API (7m15s → 4.5s)
 `test_strategy_contract.py`'s fixture is named `no_network` and patches Python's `socket` —
 but **yfinance fetches via `curl_cffi` → libcurl, which never touches Python's socket module**
