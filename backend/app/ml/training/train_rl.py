@@ -10,6 +10,7 @@ Or import and call directly:
 """
 import asyncio
 import logging
+import unittest
 from pathlib import Path
 
 import numpy as np
@@ -213,3 +214,52 @@ if __name__ == "__main__":
 
     trained = asyncio.run(train_rl_agent(demo_df, n_episodes=50, checkpoint_every=25))
     print(f"Trained agent: {trained}")
+
+
+# ------------------------------------------------------------------
+# Unit tests for edge cases
+# ------------------------------------------------------------------
+
+class TestTrainRL(unittest.TestCase):
+    def test_step_reward_last_index(self):
+        """_step_reward should return 0.0 when t points to the last row."""
+        df = pd.DataFrame({"close": [100.0, 101.0, 102.0]})
+        self.assertEqual(_step_reward(df, action=0, t=2), 0.0)
+        self.assertEqual(_step_reward(df, action=2, t=2), 0.0)
+        self.assertEqual(_step_reward(df, action=1, t=2), 0.0)
+
+    def test_build_features_constant_close(self):
+        """_build_features must handle constant close values without raising."""
+        df = pd.DataFrame(
+            {
+                "close": np.full(10, 100.0),
+                "volume": np.arange(10, dtype=float),
+            }
+        )
+        feats = _build_features(df)
+        self.assertEqual(feats.shape, (10, 3))
+        # Returns and log_vol should be zeros; RSI normalization will be NaN
+        np.testing.assert_array_almost_equal(feats[:, 0], np.zeros(10))
+        np.testing.assert_array_almost_equal(feats[:, 1], np.zeros(10))
+        self.assertTrue(np.isnan(feats[:, 2]).all())
+
+    def test_train_rl_agent_short_dataframe_raises(self):
+        """train_rl_agent should raise ValueError when the DataFrame is too short."""
+        df = pd.DataFrame(
+            {
+                "open": [1.0, 2.0, 3.0],
+                "high": [1.0, 2.0, 3.0],
+                "low": [1.0, 2.0, 3.0],
+                "close": [1.0, 2.0, 3.0],
+                "volume": [100.0, 200.0, 300.0],
+            }
+        )
+        async def run():
+            await train_rl_agent(df, n_episodes=1)
+        with self.assertRaises(ValueError):
+            asyncio.run(run())
+
+
+# Enable running tests via `python -m app.ml.training.train_rl test`
+if __name__ == "__main__" and "test" in globals():
+    unittest.main()
