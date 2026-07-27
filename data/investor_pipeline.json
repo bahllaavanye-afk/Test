@@ -1,32 +1,32 @@
 {
-  "last_updated": "2026-07-20",
+  "last_updated": "2026-07-27",
   "pipeline": [
     {
       "name": "a16z Crypto Fund",
-      "stage": "second_call",
+      "stage": "diligence",
       "contact": "scout@a16z.com",
-      "added": "2026-07-13",
+      "added": "2026-07-27",
       "notes": "Seed to Series A focus"
     },
     {
       "name": "Sequoia Capital",
-      "stage": "second_call",
+      "stage": "diligence",
       "contact": "founders@sequoiacap.com",
-      "added": "2026-07-13",
+      "added": "2026-07-27",
       "notes": "FinTech + AI portfolio"
     },
     {
       "name": "Coatue Management",
-      "stage": "second_call",
+      "stage": "diligence",
       "contact": "info@coatue.com",
-      "added": "2026-07-13",
+      "added": "2026-07-27",
       "notes": "Quant + tech focus"
     },
     {
       "name": "Two Sigma Ventures",
-      "stage": "second_call",
+      "stage": "diligence",
       "contact": "ventures@twosigma.com",
-      "added": "2026-07-13",
+      "added": "2026-07-27",
       "notes": "Quant finance background"
     },
     {
@@ -59,9 +59,9 @@
     },
     {
       "name": "Ribbit Capital",
-      "stage": "diligence",
+      "stage": "term_sheet",
       "contact": "info@ribbitcap.com",
-      "added": "2026-07-06",
+      "added": "2026-07-27",
       "notes": "FinTech specialists"
     },
     {
