@@ -1,9 +1,22 @@
 name: Run Experiments Agent
 
 on:
+  # GitHub drops/heavily delays free-tier cron, so `schedule` alone means this
+  # never runs — which is exactly what happened: ML experiments had not run at
+  # all, and the live service reports ml_models count 0. `workflow_run` events
+  # are NOT dropped, so CI completions are the reliable heartbeat (same pattern
+  # as oa-scout and model-audit). The gate step below keeps it to once a day
+  # regardless of how often CI fires.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   schedule:
     - cron: "0 */2 * * *"
   workflow_dispatch:
+
+concurrency:
+  group: run-experiments-agent
+  cancel-in-progress: false
 
 permissions:
 
@@ -18,20 +31,55 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      # CI completes many times a day; ML experiments should not. Skip unless
+      # the last SUCCESSFUL run of this workflow was over 20 hours ago. A manual
+      # dispatch always runs.
+      - name: Gate — at most one experiment run per day
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, urllib.request
+          from datetime import datetime, timezone, timedelta
+          if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
+              print("run=true"); raise SystemExit
+          req = urllib.request.Request(
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/"
+              "run-experiments-agent.yml/runs?status=success&per_page=1",
+              headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                       "Accept": "application/vnd.github+json"})
+          try:
+              runs = json.load(urllib.request.urlopen(req, timeout=30))["workflow_runs"]
+          except Exception as exc:
+              print(f"::warning::gate lookup failed ({exc}) — running anyway")
+              print("run=true"); raise SystemExit
+          if not runs:
+              print("run=true"); raise SystemExit          # never succeeded yet
+          last = datetime.fromisoformat(runs[0]["created_at"].replace("Z", "+00:00"))
+          age = datetime.now(timezone.utc) - last
+          print(f"::notice::last successful experiment run {age} ago")
+          print("run=true" if age > timedelta(hours=20) else "run=false")
+          PY
+
       - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
         with:
           ref: main
           fetch-depth: 0
 
       - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run == 'true'
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
         run: |
           pip install --quiet langfuse litellm google-generativeai groq || true
 
       - name: Run experiments agent
+        if: steps.gate.outputs.run == 'true'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
@@ -55,6 +103,7 @@ jobs:
           ALLOW_PAID_APIS: "False"
         run: python .github/scripts/agent_team.py --run-experiments
       - name: Push changes
+        if: steps.gate.outputs.run == 'true'
         continue-on-error: true
         run: |
           git config user.email "agents@quantedge.ai"
