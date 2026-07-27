@@ -1029,9 +1029,28 @@ def core_get(key: str, default: Any = None) -> Any:
 # ── Discord helpers ─────────────────────────────────────────────────────────────
 
 def chat_post(channel: str, text: str, thread_ts: str | None = None) -> dict:
-    """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
+    """Post to Discord via the shared notifier (Slack removed 2026-07-25).
+
+    Returns a Slack-shaped ``{"ok": bool, "ts": str | None}`` because that is
+    what this function is annotated to return and what callers do with it —
+    ``research_to_trade.chat`` and ``employee_intros.post`` both call
+    ``.get("ts")`` on the result.
+
+    It used to ``return notify.post(...)``, which is a **bool**. So the
+    annotation was a lie and every caller died with
+    ``AttributeError: 'bool' object has no attribute 'get'`` — that is what
+    took down the 24/7 Research → Trade pipeline on its very first post.
+
+    ``ts`` is the real Discord message id when the bot-token path was used, and
+    None when it went out over a webhook (which cannot report one). A None
+    ``ts`` with ``ok: True`` means "delivered, but not threadable".
+    """
     import notify
-    return notify.post(channel, text)
+    message_id = notify.post_returning_id(channel, text)
+    if message_id:
+        return {"ok": True, "ts": message_id}
+    # Fall back to the plain path so a webhook-only setup still delivers.
+    return {"ok": bool(notify.post(channel, text)), "ts": None}
 
 
 def chat_read_channel(channel: str, limit: int = 50,
