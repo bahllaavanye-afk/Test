@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-from pathlib import Path
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader, TensorDataset
@@ -76,9 +75,18 @@ async def train(
     # Save final model
     save_path = ARTIFACTS_DIR / experiment_name / "final_model.pt"
     save_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({"model_state_dict": model.state_dict(), "n_features": n_features,
-                "hidden_size": hidden_size, "num_layers": num_layers, "dropout": dropout,
-                "seq_len": seq_len, "experiment": experiment_name}, str(save_path))
+    torch.save(
+        {
+            "model_state_dict": model.state_dict(),
+            "n_features": n_features,
+            "hidden_size": hidden_size,
+            "num_layers": num_layers,
+            "dropout": dropout,
+            "seq_len": seq_len,
+            "experiment": experiment_name,
+        },
+        str(save_path),
+    )
 
     results["artifact_path"] = str(save_path)
     logger.info("LSTM training complete", **results)
