@@ -75,7 +75,6 @@ jobs:
           DEEPSEEK_API_KEY_2: ${{ secrets.DEEPSEEK_API_KEY_2 }}
           DEEPSEEK_API_KEY_3: ${{ secrets.DEEPSEEK_API_KEY_3 }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY_1 }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
           LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
           LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}

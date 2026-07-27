@@ -47,7 +47,6 @@ jobs:
           TOGETHER_API_KEY:   ${{ secrets.TOGETHER_API_KEY }}
           HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY }}
           NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           AUDIT_OUT: /tmp/model_audit.md
         run: python .github/scripts/model_audit.py
       - name: File an agent-fix-needed issue on drift
