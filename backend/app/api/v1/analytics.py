@@ -1028,6 +1028,31 @@ async def get_monthly_returns(
     return out
 
 
+def _json_safe(value):
+    """Replace non-finite floats with None, recursively.
+
+    Starlette's JSONResponse renders with ``allow_nan=False``, so a single NaN
+    or Infinity anywhere in the payload raises
+    ``ValueError: Out of range float values are not JSON compliant`` and the
+    endpoint 500s — with no clue which field was responsible.
+
+    The tearsheet is especially exposed: pandas ``.std()`` on a single trading
+    day returns NaN (ddof=1), and the yfinance SPY benchmark can hand back NaN
+    for a thin series. Every metric is individually guarded, but guarding the
+    payload means a NaN introduced by a future field cannot take the endpoint
+    down. `None` is the honest answer for "not computable", and it serialises.
+    """
+    import math as _math
+
+    if isinstance(value, float):
+        return value if _math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 @router.get("/tearsheet")
 async def get_tearsheet(
     days: int = Query(365, ge=90, le=730, description="Lookback window in days"),
@@ -1187,7 +1212,7 @@ async def get_tearsheet(
     except Exception as exc:
         logger.warning("SPY benchmark fetch failed in tearsheet", error=str(exc))
 
-    return {
+    return _json_safe({
         "period_days": days,
         "n_trading_days": len(day_keys),
         "n_trades": n_trades_total,
@@ -1214,7 +1239,7 @@ async def get_tearsheet(
         "equity_curve": equity_curve,
         "drawdown_curve": drawdown_curve,
         "computed_at": datetime.now(timezone.utc).isoformat(),
-    }
+    })
 
 
 
