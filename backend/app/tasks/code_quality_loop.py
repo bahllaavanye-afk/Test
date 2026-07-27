@@ -4,11 +4,13 @@ Runs every hour. Tracks LOC, test coverage, lint warnings.
 Does NOT modify source — just reports.
 """
 from __future__ import annotations
+
 import asyncio
 import json
-import os
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict, List
 
 from app.utils.logging import logger
 
@@ -72,53 +74,93 @@ def _count_tests(root: Path) -> dict:
 
 
 class CodeQualityLoop:
-    def __init__(self, interval_seconds: int = 3600):
+    """Periodically collects code‑quality metrics and persists them."""
+
+    def __init__(self, interval_seconds: int = 3600) -> None:
+        if interval_seconds <= 0:
+            raise ValueError("interval_seconds must be a positive integer")
         self.interval_seconds = interval_seconds
-        self._running = False
+        self._running = asyncio.Event()
+        self._task: asyncio.Task[None] | None = None
+        self._logger = logger
 
     async def _snapshot(self) -> dict:
+        """Collect a single snapshot of the repository state."""
         loop = asyncio.get_running_loop()
         loc = await loop.run_in_executor(None, _count_loc, BACKEND_ROOT)
         strat = await loop.run_in_executor(None, _count_strategies, BACKEND_ROOT)
         tests = await loop.run_in_executor(None, _count_tests, BACKEND_ROOT)
-        return {
+        snapshot = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             **loc,
             **strat,
             **tests,
         }
+        return snapshot
+
+    def _validate_snapshot(self, snapshot: Dict[str, Any]) -> bool:
+        """Confirm required fields exist before persisting."""
+        required = {"timestamp", "files", "code_lines"}
+        missing = required - snapshot.keys()
+        if missing:
+            self._logger.debug("code_quality: snapshot missing fields", missing=missing)
+            return False
+        return True
 
     def _persist(self, snapshot: dict) -> None:
+        """Append a validated snapshot to the JSON history file."""
+        if not self._validate_snapshot(snapshot):
+            return
         try:
-            history = json.loads(QUALITY_FILE.read_text()) if QUALITY_FILE.exists() else []
+            history: List[dict] = json.loads(QUALITY_FILE.read_text()) if QUALITY_FILE.exists() else []
             history.append(snapshot)
+            # Keep only the most recent 200 entries to bound file size.
             history = history[-200:]
             QUALITY_FILE.write_text(json.dumps(history, indent=2))
         except Exception as e:
-            logger.warning("code_quality: failed to persist snapshot", error=str(e))
+            self._logger.warning("code_quality: failed to persist snapshot", error=str(e))
 
-    async def run(self) -> None:
-        self._running = True
-        logger.info("CodeQualityLoop started", interval=self.interval_seconds)
-        while self._running:
+    async def _run_loop(self) -> None:
+        """Internal loop runner; respects the running event for graceful shutdown."""
+        self._logger.info("CodeQualityLoop started", interval=self.interval_seconds)
+        while self._running.is_set():
             try:
                 snapshot = await self._snapshot()
                 self._persist(snapshot)
-                logger.debug("Code quality snapshot", **snapshot)
+                self._logger.debug("Code quality snapshot", **snapshot)
             except asyncio.CancelledError:
-                return
+                break
             except Exception as e:
-                logger.warning("Quality snapshot failed", error=str(e))
+                self._logger.warning("Quality snapshot failed", error=str(e))
             await asyncio.sleep(self.interval_seconds)
 
+    async def start(self) -> None:
+        """Public method to start the background task."""
+        if self._task and not self._task.done():
+            self._logger.debug("CodeQualityLoop already running")
+            return
+        self._running.set()
+        self._task = asyncio.create_task(self._run_loop())
+
     async def stop(self) -> None:
-        self._running = False
+        """Signal the loop to stop and await task completion."""
+        self._running.clear()
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            self._task = None
+        self._logger.info("CodeQualityLoop stopped")
 
     def latest(self) -> dict | None:
+        """Return the most recent persisted snapshot, if any."""
         if not QUALITY_FILE.exists():
             return None
         try:
             history = json.loads(QUALITY_FILE.read_text())
             return history[-1] if history else None
         except Exception:
+            self._logger.debug("code_quality: failed to read latest snapshot")
             return None
