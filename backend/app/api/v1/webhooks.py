@@ -60,25 +60,35 @@ async def receive_tradingview_alert(request: Request) -> dict:
         if not isinstance(payload, dict):
             raise ValueError("payload must be a JSON object")
     except Exception:  # noqa: BLE001 — malformed body is a client error
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                            detail="Body must be a JSON object.")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Body must be a JSON object.",
+        )
 
     if str(payload.get("secret") or "") != secret:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Bad or missing webhook secret.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Bad or missing webhook secret.",
+        )
 
     alert = _normalize(payload)
     _RECENT_ALERTS.append(alert)
     del _RECENT_ALERTS[:-_MAX_RECENT]
-    logger.info("tradingview alert received",
-                symbol=alert["symbol"], side=alert["side"], strategy=str(alert["strategy"])[:40])
+    logger.info(
+        "tradingview alert received",
+        symbol=alert["symbol"],
+        side=alert["side"],
+        strategy=str(alert["strategy"])[:40],
+    )
 
     # Best-effort fan-out to Redis subscribers (strategies/dashboards may listen).
     try:
         from app.redis_client import get_redis
+
         r = get_redis()
         if r is not None:
             import json as _json
+
             await r.publish("tradingview:alerts", _json.dumps(alert))
     except Exception as exc:  # noqa: BLE001 — receiver must not depend on Redis
         logger.debug("tradingview alert: redis publish skipped", error=str(exc))
