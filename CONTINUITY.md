@@ -138,10 +138,20 @@ Pinned by `backend/tests/unit/test_risk_gate_wiring.py` (23 tests). Verified aga
 pre-fix tree: 9 of 11 originals fail on old code, and disabling the cluster refresh fails
 the two correlation tests. Two of the tests were themselves rewritten after failing that bar.
 
-Next: `factor_exposure.py` and `var.py` are diagrammed as gates in `risk/CLAUDE.md` but are
-not wired into `check_order()`. **Trap:** `historical_var()` returns a *default* `var_99=0.03`
-on fewer than 10 observations, so wiring it naively against the documented 2%-of-NAV limit
-would block every order at cold start — a fail-closed halt of the fleet dressed as a control.
+**VaR gate now wired — 4 of the 5 diagrammed gates run.** "Block if 1-day 99% VaR > 2% of
+NAV". Two traps, both pinned by tests: (1) `historical_var()` returns a *default*
+`var_99=0.03` below 10 observations, so a naive wiring would have blocked EVERY order at cold
+start — it checks the count AND the `method` sentinel and returns "no opinion" instead;
+(2) **units** — equity is polled every 60s, so raw returns give a 1-MINUTE VaR, ~30x too small
+against a 1-day limit. Equity is downsampled (default hourly) and scaled by
+square-root-of-time, which assumes i.i.d. returns and understates tail risk under positive
+autocorrelation — a floor, not a ceiling.
+
+**Still unwired: `factor_exposure.py`**, the last diagrammed gate. It needs an aligned SPY
+benchmark series at the same cadence as the portfolio series; nothing produces one, and a
+misaligned series yields a confident wrong beta — worse than no beta. Kept visible by
+`test_factor_exposure_is_still_honestly_unwired` rather than quietly forgotten, which is
+exactly how all five ended up unwired.
 
 ## ✅ 2026-07-27 — THREE DEAD AGENT PIPELINES REVIVED (all Slack-removal regressions)
 Read the failures landing in **#ci-failures** rather than the backlog, and found three
