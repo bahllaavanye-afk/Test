@@ -7,7 +7,7 @@ from app.api.deps import get_current_user
 from app.models.comparison import ComparisonResult as ComparisonModel
 from app.models.user import User
 from app.comparison.benchmarks import get_benchmark_stats
-from pydantic import BaseModel, ConfigDict, ConfigDict
+from pydantic import BaseModel, ConfigDict
 from datetime import date
 
 router = APIRouter(prefix="/comparison", tags=["comparison"])
@@ -33,10 +33,13 @@ class ComparisonOut(BaseModel):
             base = float(m.manual_sharpe) or 1e-9
             improvement = (float(m.ml_sharpe) - float(m.manual_sharpe)) / abs(base)
         return cls(
-            id=m.id, strategy_name=m.strategy_name, symbol=m.symbol,
+            id=m.id,
+            strategy_name=m.strategy_name,
+            symbol=m.symbol,
             manual_sharpe=float(m.manual_sharpe) if m.manual_sharpe else None,
             ml_sharpe=float(m.ml_sharpe) if m.ml_sharpe else None,
-            is_significant=m.is_significant, winner=m.winner,
+            is_significant=m.is_significant,
+            winner=m.winner,
             spy_sharpe=float(m.spy_sharpe) if m.spy_sharpe else None,
             ml_improvement_pct=round(improvement, 4) if improvement else None,
         )
@@ -44,7 +47,11 @@ class ComparisonOut(BaseModel):
 
 @router.get("/benchmarks")
 async def get_benchmarks():
-    return get_benchmark_stats()
+    """Return benchmark statistics after validating the result."""
+    stats = get_benchmark_stats()
+    if not isinstance(stats, dict):
+        raise ValueError("Benchmark stats must be a dictionary")
+    return stats
 
 
 @router.get("/results", response_model=list[ComparisonOut])
@@ -53,6 +60,11 @@ async def list_comparisons(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """List recent comparison results with input validation."""
+    if not isinstance(db, AsyncSession):
+        raise ValueError("`db` must be an instance of AsyncSession")
+    if not isinstance(current_user, User):
+        raise ValueError("`current_user` must be an instance of User")
     result = await db.execute(
         select(ComparisonModel).order_by(ComparisonModel.created_at.desc()).limit(20)
     )
