@@ -42,8 +42,26 @@ class BotRunner:
     def __init__(self, scheduler: AsyncIOScheduler):
         self._scheduler = scheduler
 
-    async def start(self) -> None:
-        """Load all enabled bots from DB and schedule them."""
+    def _has_job(self, bot_id: str) -> bool:
+        return self._scheduler.get_job(f"bot_{bot_id}") is not None
+
+    async def start(self, only_missing: bool = False) -> int:
+        """Load all enabled bots from DB and schedule them. Returns how many.
+
+        `only_missing` skips bots that already hold a scheduler job. That is
+        what makes this safe to re-run: a blanket reschedule would reset every
+        bot's `next_run_time` to `_first_run_time()` on every pass, so a bot on
+        a short interval would have its next run pushed back indefinitely and
+        never fire.
+
+        Ignition used to be a ONE-SHOT job at boot. On the ephemeral SQLite
+        fallback the bots table is empty at that moment, so it scheduled zero
+        bots, logged `count=0`, and never looked again — the 61 bots seeded
+        afterwards sat enabled-but-unscheduled forever. Observed live:
+        61 enabled bots, `jobs_total=11`, `bot_jobs=2` (the exit-checker and
+        lifecycle jobs), every bot at `last_run_at=None`, zero orders, zero
+        trades.
+        """
         try:
             from app.database import AsyncSessionLocal
             from app.models.bot import Bot
@@ -57,11 +75,29 @@ class BotRunner:
                 )
                 bots = result.scalars().all()
 
-            logger.info("BotRunner: scheduling bots", count=len(bots))
-            for bot in bots:
+            pending = [b for b in bots if not (only_missing and self._has_job(b.id))]
+            logger.info(
+                "BotRunner: scheduling bots",
+                enabled=len(bots), scheduling=len(pending), only_missing=only_missing,
+            )
+            for bot in pending:
                 await self.reschedule(bot)
+
+            # Enabled bots that ended up with no job are the whole failure mode:
+            # the fleet looks healthy in the API (is_enabled=True) while nothing
+            # can ever fire. Never let that be quiet.
+            unscheduled = [b.id for b in bots if not self._has_job(b.id)]
+            if unscheduled:
+                logger.error(
+                    "BotRunner: %d enabled bot(s) have NO scheduler job — they "
+                    "cannot fire and no orders will be placed",
+                    len(unscheduled),
+                    enabled=len(bots), unscheduled=len(unscheduled),
+                )
+            return len(pending)
         except Exception as exc:
-            logger.error("BotRunner.start failed", error=str(exc))
+            logger.error("BotRunner.start failed", error=str(exc), exc_info=exc)
+            return 0
 
     async def _run_bot(self, bot_id: str) -> None:
         """Called by scheduler — fetch bot from DB, evaluate, update."""
