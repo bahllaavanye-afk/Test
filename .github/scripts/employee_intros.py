@@ -155,8 +155,14 @@ def post(channel_id: str, text: str, thread_ts: str | None = None) -> str | None
 
 
 def read_thread(channel_id: str, thread_ts: str) -> list[dict]:
-    """Read actual Discord thread so replies see what was really said."""
-    return chat_read_channel(channel_id, thread_ts, limit=15)
+    """Read the channel so replies see what was really said.
+
+    `thread_ts` is a leftover from the Slack API and was still being passed as
+    a second positional arg — chat_read_channel takes (channel, limit, oldest),
+    so every call raised TypeError. Discord has no thread-reply model here; the
+    recent channel messages are what a reply needs to see.
+    """
+    return chat_read_channel(channel_id, limit=15)
 
 
 # ── Prompt builders ───────────────────────────────────────────────────────────
