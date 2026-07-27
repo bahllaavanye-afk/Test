@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785174608.2211726,
+    "last_updated": 1785176784.2652822,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,12 +109,12 @@
     },
     "opinion_score": 2,
     "macro_score": 2,
-    "vix": 19.39,
-    "market_scan_ts": 1785174608.191499,
+    "vix": 19.24,
+    "market_scan_ts": 1785176784.2273524,
     "sector_leaders": [
       "Energy",
-      "Healthcare",
-      "Financials"
+      "Financials",
+      "Healthcare"
     ],
     "sector_laggards": [
       "Materials",
@@ -127,26 +127,26 @@
       "NOW",
       "NVDA",
       "QQQ",
-      "ORCL",
       "GOOGL",
-      "GS",
-      "PANW",
-      "XLK",
       "ADBE",
-      "XLI",
-      "INTU",
-      "BAC",
-      "IWM",
-      "XLV",
       "JNJ",
-      "ABT",
-      "META",
-      "CRWD"
+      "XLI",
+      "BAC",
+      "GS",
+      "XLK",
+      "XLV",
+      "PANW",
+      "ORCL",
+      "INTU",
+      "TMO",
+      "AAPL",
+      "AMZN",
+      "META"
     ],
     "top_momentum": [
+      "MPC",
       "ADBE",
       "INTU",
-      "NOW",
       "AAPL",
       "SLB"
     ],
@@ -155,13 +155,6 @@
     "last_brain_update": 1785159016.6762145
   },
   "episodic": [
-    {
-      "lesson": "Investigate and fix the root cause of repeated auto-fix failures to reduce manual intervention and deployment errors.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784331244.018378
-    },
     {
       "lesson": "Implement a deployment rate limiter or queuing mechanism to stay within free tier limits while maintaining workflow.",
       "category": "strategy",
@@ -1976,6 +1969,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785174608.2269156
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Healthcare"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785176784.2697644
     }
   ],
   "github_insights": [
