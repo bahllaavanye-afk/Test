@@ -44,14 +44,43 @@ def test_pacemaker_exists():
     )
 
 
-def test_pacemaker_is_retriggered_by_ci_not_only_cron():
-    """Cron is starved on the free tier — the chain is the real mechanism."""
+def test_pacemaker_is_retriggered_by_a_workflow_chain_not_only_cron():
+    """Cron is uneven on the free tier — the chain is the real mechanism."""
     on = _load(PACEMAKER)["_on"]
     assert "workflow_run" in on, (
         "schedule alone was measured at ~10% of configured rate overnight; the "
-        "pacemaker must be re-armed by the CI chain it drives"
+        "pacemaker must be re-armed by the chain it drives"
     )
-    assert on["workflow_run"]["workflows"] == ["CI"]
+    assert "CI" in on["workflow_run"]["workflows"]
+
+
+def test_pacemaker_can_ignite_without_a_pull_request():
+    """CI cannot be the only ignition source — CI needs a PR to run at all.
+
+    Verified the hard way: after the first deploy the pacemaker had 0 runs,
+    because the only CI completion since the merge was an `action_required`
+    run that never executed. A pacemaker keyed solely to CI reintroduces the
+    very dependency it exists to remove.
+    """
+    on = _load(PACEMAKER)["_on"]
+    sources = on["workflow_run"]["workflows"]
+    non_ci = [w for w in sources if w != "CI"]
+    assert non_ci, (
+        "the pacemaker must also chain off workflows that fire on cron, or it "
+        "can never start from cold without someone opening a PR"
+    )
+
+    # Every named source must exist, or the trigger silently never fires.
+    names = set()
+    for path in WORKFLOWS.glob("*.yml"):
+        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if isinstance(doc, dict) and doc.get("name"):
+            names.add(doc["name"])
+    missing = [w for w in sources if w not in names]
+    assert not missing, (
+        f"workflow_run names must match a real workflow's `name:` exactly; "
+        f"these match nothing and will never trigger: {missing}"
+    )
 
 
 def test_pacemaker_can_dispatch_workflows():
