@@ -14,6 +14,33 @@ from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
 from app.utils.logging import logger
 
 
+def _mark_unprotected(
+    result: OrderResult,
+    reason: str,
+    *,
+    take_profit: float | None = None,
+    stop_loss: float | None = None,
+) -> OrderResult:
+    """Tag a filled entry whose protective legs are not in place.
+
+    A bracket whose TP/SL never made it to the broker leaves an open position
+    the strategy sized assuming a stop exists. Without this marker the returned
+    OrderResult is indistinguishable from a fully protected bracket, so the
+    exit sweep and risk layer have no way to notice.
+    """
+    payload = dict(result.raw_payload or {})
+    payload.update(
+        {
+            "bracket_unprotected": True,
+            "unprotected_reason": reason,
+            "intended_take_profit": take_profit,
+            "intended_stop_loss": stop_loss,
+        }
+    )
+    result.raw_payload = payload
+    return result
+
+
 @dataclass
 class BracketOrderConfig:
     entry: OrderRequest
@@ -30,13 +57,25 @@ class BracketOrder:
     def __init__(self, broker: AbstractBroker):
         self.broker = broker
 
-    async def _price_within_tolerance(self, entry: OrderRequest, market_price: float) -> bool:
-        """Validate that the entry price is within the configured tolerance."""
+    @staticmethod
+    def _price_within_tolerance(
+        entry: OrderRequest, market_price: float, tolerance: float
+    ) -> bool:
+        """Validate that the entry price is within the configured tolerance.
+
+        `tolerance` is passed in from BracketOrderConfig. It used to be read off
+        the OrderRequest behind a `hasattr` guard — OrderRequest has no such
+        field, so the guard always fell through to a hardcoded 0.02 and the
+        configured value was silently ignored.
+        """
         if entry.order_type != "limit" or entry.limit_price is None:
             # Market orders have no price to validate
             return True
+        if not market_price:
+            # An unusable quote is not evidence of a bad price — don't divide by it
+            return True
         deviation = abs(entry.limit_price - market_price) / market_price
-        return deviation <= entry.price_tolerance if hasattr(entry, "price_tolerance") else deviation <= 0.02
+        return deviation <= tolerance
 
     async def execute(self, config: BracketOrderConfig) -> OrderResult:
         # 0. Basic sanity checks
@@ -46,28 +85,49 @@ class BracketOrder:
         if config.entry.quantity <= 0:
             raise ValueError("Entry order quantity must be positive")
 
-        # 1. Optional confirmation filter – ensure entry price is reasonable
+        # 1. Confirmation filter — ensure the entry price is reasonable.
+        #
+        # Only the QUOTE FETCH may fail soft: with no quote there is nothing to
+        # check against. The decision itself is deliberately OUTSIDE the try.
+        # It used to be inside, and it built `OrderResult(reason=...)` — a kwarg
+        # that dataclass does not have. So every rejection raised TypeError
+        # straight into this handler, got logged as "failed to fetch market
+        # price", and the entry was submitted anyway. The guard has never once
+        # rejected an order.
+        market_price: float | None = None
         try:
             quote = await self.broker.get_quote(config.entry.symbol)
             market_price = quote.last
-            if not await self._price_within_tolerance(config.entry, market_price):
-                logger.warning(
-                    "Bracket entry price deviates beyond tolerance",
-                    symbol=config.entry.symbol,
-                    entry_price=config.entry.limit_price,
-                    market_price=market_price,
-                    tolerance=config.price_tolerance,
-                )
-                # Abort early – caller can decide to retry with a better price
-                return OrderResult(
-                    broker_order_id="",
-                    status="rejected",
-                    avg_fill_price=None,
-                    filled_qty=0,
-                    reason="price_tolerance_exceeded",
-                )
         except Exception as exc:
-            logger.warning("Failed to fetch market price for entry confirmation", error=str(exc))
+            logger.warning(
+                "Bracket: quote fetch failed — entry price NOT validated",
+                symbol=config.entry.symbol,
+                error=str(exc),
+            )
+
+        if market_price is not None and not self._price_within_tolerance(
+            config.entry, market_price, config.price_tolerance
+        ):
+            logger.warning(
+                "Bracket entry price deviates beyond tolerance — entry rejected",
+                symbol=config.entry.symbol,
+                entry_price=config.entry.limit_price,
+                market_price=market_price,
+                tolerance=config.price_tolerance,
+            )
+            # Abort early – caller can decide to retry with a better price
+            return OrderResult(
+                broker_order_id="",
+                status="rejected",
+                avg_fill_price=None,
+                filled_qty=0,
+                raw_payload={
+                    "reason": "price_tolerance_exceeded",
+                    "entry_price": config.entry.limit_price,
+                    "market_price": market_price,
+                    "tolerance": config.price_tolerance,
+                },
+            )
 
         # 2. Submit entry
         entry_result = await self.broker.place_order(config.entry)
@@ -90,12 +150,17 @@ class BracketOrder:
 
         if tp_price <= sl_price:
             logger.error(
-                "Invalid TP/SL configuration: TP price not greater than SL price",
+                "Invalid TP/SL configuration: TP price not greater than SL price — "
+                "entry FILLED with NO take-profit and NO stop-loss",
+                symbol=config.entry.symbol,
                 tp_price=tp_price,
                 sl_price=sl_price,
                 side=config.entry.side,
             )
-            return entry_result
+            return _mark_unprotected(
+                entry_result, "invalid_tp_sl_configuration",
+                take_profit=tp_price, stop_loss=sl_price,
+            )
 
         sl_side = tp_side  # both TP and SL close the position
 
@@ -125,9 +190,30 @@ class BracketOrder:
             risk_bucket=config.entry.risk_bucket,
         )
 
-        # 5. Submit TP/SL as OCO pair
+        # 5. Submit TP/SL as OCO pair.
+        #
+        # The entry has already FILLED by this point. If the OCO submission
+        # blows up we must not let the exception propagate: the caller would
+        # see a failure for a bracket that did open a position, and a retry
+        # would double the entry. Report the position, flagged as unprotected.
         oco = OCOOrder(self.broker)
-        oco_result = await oco.execute(tp_req, sl_req)
+        try:
+            oco_result = await oco.execute(tp_req, sl_req)
+        except Exception as exc:
+            logger.error(
+                "Bracket OCO submission FAILED — entry is filled and the position "
+                "has NO stop-loss/take-profit protection",
+                symbol=config.entry.symbol,
+                filled_qty=entry_result.filled_qty,
+                intended_take_profit=tp_price,
+                intended_stop_loss=sl_price,
+                error=str(exc),
+                exc_info=exc,
+            )
+            return _mark_unprotected(
+                entry_result, "oco_submission_failed",
+                take_profit=tp_price, stop_loss=sl_price,
+            )
 
         logger.info(
             "Bracket OCO submitted",
@@ -137,6 +223,21 @@ class BracketOrder:
             sl=sl_price,
             oco_order_id=getattr(oco_result, "broker_order_id", None),
         )
+
+        # An OCO that timed out had both legs pulled — the position this bracket
+        # opened is running bare from here on.
+        if oco_result is not None and (oco_result.raw_payload or {}).get("oco_timed_out"):
+            logger.error(
+                "Bracket OCO timed out and both legs were cancelled — position is "
+                "now running with NO stop-loss/take-profit",
+                symbol=config.entry.symbol,
+                intended_take_profit=tp_price,
+                intended_stop_loss=sl_price,
+            )
+            return _mark_unprotected(
+                oco_result, "oco_timed_out",
+                take_profit=tp_price, stop_loss=sl_price,
+            )
 
         # Return the OCO result if available, otherwise the entry result
         return oco_result or entry_result
@@ -153,7 +254,24 @@ class OCOOrder:
 
     async def execute(self, order_a: OrderRequest, order_b: OrderRequest) -> OrderResult:
         ra = await self.broker.place_order(order_a)
-        rb = await self.broker.place_order(order_b)
+        try:
+            rb = await self.broker.place_order(order_b)
+        except Exception:
+            # Leg A is already live. Leaving it resting with no counterpart is
+            # not an OCO — it is a lone unmanaged order nobody will cancel.
+            logger.error(
+                "OCO: leg B placement failed — cancelling the already-live leg A",
+                leg_a_order_id=ra.broker_order_id,
+                symbol=order_b.symbol,
+            )
+            try:
+                await self.broker.cancel_order(ra.broker_order_id)
+            except Exception as cancel_exc:  # noqa: BLE001
+                logger.error(
+                    "OCO: cancel of leg A FAILED — order %s is LIVE and unmanaged",
+                    ra.broker_order_id, exc_info=cancel_exc,
+                )
+            raise
 
         elapsed = 0
         while elapsed < self.max_wait_seconds:
@@ -182,15 +300,23 @@ class OCOOrder:
         # Timeout – cancel any remaining open orders to avoid orphaned positions.
         # A failed cancel here leaves a LIVE order running unattended — that must
         # never be silent (it was: bare `except: pass` hid broker rejections).
+        cancel_failed: list[str] = []
         for leg, res in (("A", ra), ("B", rb)):
             try:
                 await self.broker.cancel_order(res.broker_order_id)
             except Exception as exc:  # noqa: BLE001 — log and continue to next leg
+                cancel_failed.append(leg)
                 logger.error(
                     "OCO timeout: cancel of leg %s FAILED — order %s may still be live",
                     leg, res.broker_order_id, exc_info=exc,
                 )
         logger.warning("OCO timeout reached; cancellation attempted on both legs")
+        # Neither leg filled and both were pulled. For a bracket caller that means
+        # the position it opened is now running without TP or SL — say so rather
+        # than handing back what looks like a live protective order.
+        payload = dict(ra.raw_payload or {})
+        payload.update({"oco_timed_out": True, "oco_cancel_failed_legs": cancel_failed})
+        ra.raw_payload = payload
         return ra  # Returning the first order as a fallback result
 
 
