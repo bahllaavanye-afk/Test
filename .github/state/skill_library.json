@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Test SSL certificates",
-    "* The current net-used exposure is approximately 2.8% NAV, which is below the 5% NAV gross-exposure cap defined in `./state/risk_limits.yaml`.",
-    "Validate config",
-    "Verify dependency updates",
-    "Refactor code for optimization",
     "Update pipelines",
     "* As a general guideline, agents should provide a one-sentence status update in the first person, concise, and specific when responding to user queries.",
     "Track API calls",
@@ -199,8 +194,13 @@
     "Validate user inputs",
     "Verify config sync",
     "Validate user input",
-    "Verify JSON schema"
+    "Verify JSON schema",
+    "Validate trade IDs",
+    "Retry on timeout",
+    "Improve model accuracy",
+    "Enhance type safety",
+    "Optimize retraining"
   ],
-  "last_updated": "2026-07-27T22:09:24.663062+00:00",
+  "last_updated": "2026-07-27T22:57:22.835596+00:00",
   "total": 200
 }
