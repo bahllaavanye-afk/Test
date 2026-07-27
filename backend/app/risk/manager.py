@@ -17,6 +17,7 @@ from app.brokers.base import OrderRequest
 from app.risk.kelly import size_from_kelly
 from app.risk.correlation import compute_correlation_clusters, check_cluster_limits
 from app.risk.circuit_breaker import CircuitBreaker, BreakerState
+from app.risk.var import historical_var
 from app.utils.logging import logger
 
 
@@ -61,6 +62,9 @@ class RiskManager:
         initial_equity: float = 100_000.0,
         sample_interval_seconds: float = 300.0,
         cluster_refresh_seconds: float = 900.0,
+        max_var_pct: float = 0.02,
+        var_sample_interval_seconds: float = 3600.0,
+        min_samples_for_var: int = 20,
     ):
         self.max_position_pct = max_position_pct
         self.max_drawdown_pct = max_drawdown_pct
@@ -101,6 +105,28 @@ class RiskManager:
         # compute_correlation_clusters needs before it stops returning {}.
         self.min_samples_for_clusters: int = 21
 
+        # ── VaR gate ──────────────────────────────────────────────────────────
+        # risk/CLAUDE.md diagrams "var.py → block if 1-day 99% VaR > 2% of NAV".
+        # var.py was implemented and never called from check_order().
+        #
+        # UNITS ARE THE WHOLE PROBLEM HERE. _risk_state_sync polls equity every
+        # 60s, so returns built from every update are 1-MINUTE returns; a 99%
+        # VaR off those is a 1-minute VaR, roughly 30x too small against a
+        # 1-day limit. Equity is therefore downsampled to
+        # var_sample_interval_seconds (default hourly, matching the existing
+        # snapshot job) and the resulting VaR is scaled to one day by the
+        # square-root-of-time rule.
+        #
+        # sqrt-time assumes i.i.d. returns. It UNDERSTATES tail risk when
+        # returns are positively autocorrelated (trending drawdowns), which is
+        # the honest caveat on this number — it is a floor, not a ceiling.
+        self.max_var_pct = max_var_pct
+        self.var_sample_interval_seconds = float(var_sample_interval_seconds)
+        self.min_samples_for_var = int(min_samples_for_var)
+        self._equity_samples: deque[float] = deque(maxlen=max(min_samples_for_var * 6, 120))
+        self._last_equity_sample_at: float | None = None
+        self.last_var: dict[str, Any] = {}   # surfaced by /risk for visibility
+
         self.global_breaker = CircuitBreaker(
             name="global", max_drawdown_pct=max_drawdown_pct
         )
@@ -117,6 +143,7 @@ class RiskManager:
             self._equity = float(equity)
             self._equity_confirmed = True
             self.global_breaker.update(self._equity)
+            self._sample_equity(self._equity)
         except Exception as exc:
             logger.error(
                 "Failed to update equity",
@@ -145,6 +172,71 @@ class RiskManager:
                 exc_info=True,
             )
             raise PositionsUpdateError("Error updating positions") from exc
+
+    def _sample_equity(self, equity: float) -> None:
+        """Downsample the NAV stream for VaR. See the __init__ note on units."""
+        if equity <= 0:
+            # A clamped-to-zero equity (broker reporting negative NAV) is a halt
+            # signal, not an observation — a -100% return would poison the VaR
+            # series for as long as it stays in the window.
+            return
+        now = time.monotonic()
+        last = self._last_equity_sample_at
+        if last is not None and (now - last) < self.var_sample_interval_seconds:
+            return
+        self._last_equity_sample_at = now
+        self._equity_samples.append(float(equity))
+
+    def _var_decision(self) -> RiskDecision | None:
+        """1-day 99% VaR gate. Returns None when it must not express an opinion.
+
+        risk/CLAUDE.md: "block if 1-day 99% VaR > 2% of NAV".
+
+        FAILS OPEN ON THIN DATA, deliberately. historical_var() returns a
+        DEFAULT var_99 of 0.03 when it has fewer than 10 observations — wired
+        naively against a 2% limit, a cold start would block EVERY order until
+        enough samples accumulate, which is a fleet-wide halt dressed as a risk
+        control. Both the sample count and the returned `method` are checked.
+        """
+        if len(self._equity_samples) < self.min_samples_for_var:
+            return None
+
+        equity = list(self._equity_samples)
+        returns = [
+            (equity[i] - equity[i - 1]) / equity[i - 1]
+            for i in range(1, len(equity))
+            if equity[i - 1] > 0
+        ]
+        if len(returns) < self.min_samples_for_var - 1:
+            return None
+
+        try:
+            result = historical_var(returns, portfolio_value=self._equity)
+        except Exception as exc:
+            logger.warning("risk.manager: VaR computation failed", error=str(exc))
+            return None
+
+        if result.method == "default_insufficient_data":
+            return None
+
+        # Scale the per-sample VaR to a 1-day horizon (square-root-of-time).
+        periods_per_day = max(86_400.0 / max(self.var_sample_interval_seconds, 1.0), 1.0)
+        var_99_daily = float(result.var_99) * (periods_per_day ** 0.5)
+
+        self.last_var = {
+            "var_99_per_sample": round(float(result.var_99), 6),
+            "var_99_daily": round(var_99_daily, 6),
+            "limit": self.max_var_pct,
+            "n_observations": result.n_observations,
+            "sample_interval_seconds": self.var_sample_interval_seconds,
+        }
+
+        if var_99_daily > self.max_var_pct:
+            return RiskDecision(
+                False,
+                f"1-day 99% VaR {var_99_daily:.2%} exceeds limit {self.max_var_pct:.2%}",
+            )
+        return None
 
     def update_prices(self, prices: dict[str, float]) -> None:
         """Feed last-known marks so market orders can be sized.
@@ -323,6 +415,14 @@ class RiskManager:
                 )
                 if not allowed:
                     return RiskDecision(False, cluster_reason)
+
+            # Portfolio VaR gate — risk/CLAUDE.md's fifth documented check, and
+            # the last one that was diagrammed but never called. Returns None
+            # (no opinion) rather than blocking whenever it lacks the data to
+            # have one; see _var_decision.
+            var_block = self._var_decision()
+            if var_block is not None:
+                return var_block
 
             return RiskDecision(True, reason, quantity)
         except RiskManagerError:
