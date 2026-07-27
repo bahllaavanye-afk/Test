@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Parse API usage logs",
-    "Monitor model drift",
-    "**Recent Trading Signals**: The agent fired equity signals in the last cycle, with notable positions including SPY (bullish, confidence 0.85) and QQQ (bearish, confidence 0.78).",
-    "optimization on test/unit/test_bot_market_types.py: success \u2014 tests green",
-    "Test order routing",
     "Monitor queue sizes",
     "* The health-check endpoints in `backend/api/health_check.py` are running reliably with low latency (12 ms), as reported by `/v1/status` in the last cycles.",
     "Verify network",
@@ -199,8 +194,13 @@
     "Tighten type safety",
     "Parse research papers",
     "Monitor thread counts",
-    "Track memory usage"
+    "Track memory usage",
+    "Set socket timeouts",
+    "Bind thread pools",
+    "Validate schema definitions",
+    "Run static type checkers",
+    "Implement lazy evaluation tests"
   ],
-  "last_updated": "2026-07-27T18:00:55.948528+00:00",
+  "last_updated": "2026-07-27T20:02:50.752737+00:00",
   "total": 200
 }
