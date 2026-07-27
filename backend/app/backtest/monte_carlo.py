@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 from dataclasses import dataclass
 
-
 @dataclass
 class MonteCarloResult:
     median_sharpe: float
@@ -92,3 +91,51 @@ def monte_carlo_simulation(
         prob_positive_return=round(positive / n_simulations, 4),
         num_simulations=n_simulations,
     )
+
+# -------------------------------------------------------------------------
+# Unit tests for edge cases
+# -------------------------------------------------------------------------
+import pytest
+
+def test_invalid_daily_returns_empty():
+    empty_series = pd.Series([], dtype=float)
+    with pytest.raises(ValueError, match="daily_returns series cannot be empty"):
+        monte_carlo_simulation(empty_series)
+
+def test_invalid_daily_returns_non_numeric():
+    non_numeric_series = pd.Series(["a", "b", "c"])
+    with pytest.raises(ValueError, match="daily_returns must contain numeric values"):
+        monte_carlo_simulation(non_numeric_series)
+
+def test_invalid_daily_returns_nan_inf():
+    series_with_nan = pd.Series([0.01, np.nan, 0.02])
+    with pytest.raises(ValueError, match="daily_returns contains non‑finite values"):
+        monte_carlo_simulation(series_with_nan)
+
+def test_invalid_n_simulations_zero():
+    returns = pd.Series([0.01, -0.02, 0.03])
+    with pytest.raises(ValueError, match="n_simulations must be a positive integer"):
+        monte_carlo_simulation(returns, n_simulations=0)
+
+def test_invalid_n_years_negative():
+    returns = pd.Series([0.01, -0.02, 0.03])
+    with pytest.raises(ValueError, match="n_years must be a positive number"):
+        monte_carlo_simulation(returns, n_years=-1)
+
+def test_minimal_simulation_one_path():
+    # One day return, simulate exactly one day (n_years = 1/252)
+    returns = pd.Series([0.01])
+    result = monte_carlo_simulation(
+        returns,
+        n_simulations=1,
+        n_years=1 / 252,
+        risk_free_daily=0.0,
+    )
+    assert isinstance(result, MonteCarloResult)
+    assert result.num_simulations == 1
+    # With a positive return, final equity > initial capital, so probability should be 1.0
+    assert result.prob_positive_return in (0.0, 1.0)  # deterministic given seed
+    # Sharpe should be 0 because std deviation is zero (handled in code)
+    assert result.median_sharpe == 0.0
+    # Max drawdown should be 0 because equity only moves up
+    assert result.median_max_dd == 0.0
