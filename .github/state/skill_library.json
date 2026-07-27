@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Check health endpoints",
-    "Monitor RAM allocation",
-    "Verify thread counts",
-    "Run mypy strictly",
-    "Update model artifacts",
     "Check database connections",
     "* **Documentation standards set**: Docstrings have been standardized across the codebase, as seen in recent learnings on `docstrings` in `ml/features/technical.py` and `execution/limit_first.py`.",
     "Optimize signal batches",
@@ -199,8 +194,13 @@
     "Parse arXiv papers",
     "* **Improve observability and documentation:** Add centralized logging and comprehensive docstrings, including explicit return-type annotations, to `backend/app/trading/engine.py`.",
     "Refactor dark theme",
-    "Validate API responses"
+    "Validate API responses",
+    "Use try-except blocks",
+    "Log system resources",
+    "Monitor model drift metrics",
+    "Refactor code for quality",
+    "Verify RAM allocation"
   ],
-  "last_updated": "2026-07-27T05:54:08.171435+00:00",
+  "last_updated": "2026-07-27T06:47:50.843862+00:00",
   "total": 200
 }
