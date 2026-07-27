@@ -98,7 +98,6 @@ async def list_trades(
     current_user: User = Depends(get_current_user),
 ):
     """Return a list of recent trades for the current user with optional filters."""
-    # Build a lightweight query that selects only needed columns and computes avg_fill_price in SQL.
     fill_price_expr = case(
         (Trade.side == "buy", Trade.entry_price),
         else_=Trade.exit_price,
@@ -133,7 +132,6 @@ async def list_trades(
     if not rows:
         return []
 
-    # Convert rows to response models using a list comprehension for speed.
     return [
         TradeOut(
             id=row.id,
