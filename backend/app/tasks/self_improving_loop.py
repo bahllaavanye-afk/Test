@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, List, Tuple
 
@@ -34,12 +35,29 @@ class SelfImprovingLoop:
 
     async def run_cycle(self) -> None:
         logger.info("SelfImprovingLoop: starting hourly cycle")
+        start_ts = time.monotonic()
         try:
             metrics = await self._collect_strategy_metrics()
+            # Structured logging of key metrics
+            total_pnl = sum(m["total_pnl"] for m in metrics)
+            logger.info(
+                "SelfImprovingLoop: collected metrics",
+                extra={
+                    "strategy_count": len(metrics),
+                    "total_pnl": round(total_pnl, 3),
+                },
+            )
             await self._auto_disable_underperformers(metrics)
             await self._llm_improvement_pass(metrics)
             await self._broadcast_regime(metrics)
-            logger.info("SelfImprovingLoop: cycle complete (%d strategies evaluated)", len(metrics))
+            duration = time.monotonic() - start_ts
+            logger.info(
+                "SelfImprovingLoop: cycle complete",
+                extra={
+                    "strategy_count": len(metrics),
+                    "execution_time_seconds": round(duration, 3),
+                },
+            )
         except Exception as e:
             logger.exception("SelfImprovingLoop cycle error: %s", e)
 
