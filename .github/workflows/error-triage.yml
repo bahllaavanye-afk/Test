@@ -1,0 +1,91 @@
+name: Error Triage — read Discord failures and file them
+
+# The fleet posts errors into Discord all day and NOTHING read them.
+# channel_monitor watches for silence, p0_watchdog watches issue age,
+# render_failure_issue watches deploys — but the error text itself was
+# write-only. Every failure was announced to a room with nobody in it.
+#
+# This reads the error channels, collapses near-identical messages into
+# signatures, and files ONE deduped GitHub issue per recurring cause, labelled
+# `auto-triage` so the reward-gated improver fleet can pick it up.
+#
+# Trigger is workflow_run off CI, not cron: GitHub drops/heavily delays
+# free-tier cron, which is why oa-scout, model-audit and run-experiments-agent
+# all route off CI completions. The gate below keeps it to roughly hourly
+# regardless of how often CI fires.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: error-triage
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      # CI completes many times an hour; triage should not. Skip unless the
+      # last successful run was over 50 minutes ago. Fails OPEN — a duplicate
+      # triage pass is harmless, silently never running is the thing this
+      # whole workflow exists to prevent.
+      - name: Gate — at most one triage pass per hour
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, urllib.request
+          from datetime import datetime, timezone, timedelta
+          if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
+              print("run=true"); raise SystemExit
+          req = urllib.request.Request(
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/"
+              "error-triage.yml/runs?status=success&per_page=1",
+              headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                       "Accept": "application/vnd.github+json"})
+          try:
+              runs = json.load(urllib.request.urlopen(req, timeout=30))["workflow_runs"]
+          except Exception as exc:
+              print(f"::warning::gate lookup failed ({exc}) — running anyway")
+              print("run=true"); raise SystemExit
+          if not runs:
+              print("run=true"); raise SystemExit
+          last = datetime.fromisoformat(runs[0]["created_at"].replace("Z", "+00:00"))
+          age = datetime.now(timezone.utc) - last
+          print(f"::notice::last triage {age} ago")
+          print("run=true" if age > timedelta(minutes=50) else "run=false")
+          PY
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+        with:
+          # Pinned explicitly: a workflow_run/schedule trigger does not carry a
+          # ref, so an unpinned checkout can land on a stale commit. Enforced by
+          # test_script_safety.TestWorkflowYamls, which caught this in CI.
+          ref: main
+
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run == 'true'
+        with:
+          python-version: "3.11"
+
+      - name: Triage Discord errors into deduped issues
+        if: steps.gate.outputs.run == 'true'
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: python .github/scripts/discord_error_triage.py

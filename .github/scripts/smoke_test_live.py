@@ -129,8 +129,16 @@ def main() -> int:
         if newest:
             try:
                 ts = datetime.fromisoformat(newest.replace("Z", "+00:00"))
+                # The API returns last_run_at with NO timezone ("2026-07-27T09:33:21.698324"),
+                # so the Z-replace is a no-op and fromisoformat yields a NAIVE datetime.
+                # Subtracting that from an aware now() raises TypeError — which the
+                # `except ValueError` below does not catch, so it crashed the whole
+                # smoke test. This check could only ever pass while last_run_at was
+                # empty: it was guaranteed to break the moment bots actually ran.
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
                 fresh = datetime.now(timezone.utc) - ts < timedelta(hours=24)
-            except ValueError:
+            except (ValueError, TypeError):
                 pass
         check("bot scheduler alive (a bot ran in the last 24h)", fresh,
               f"newest last_run_at={newest or 'NEVER'}")
