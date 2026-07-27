@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -24,7 +23,48 @@ from app.tasks.agent_memory import AgentMemory
 
 logger = logging.getLogger(__name__)
 
+# --------------------------------------------------------------------------- #
+# Constants
+# --------------------------------------------------------------------------- #
 STAGING_DIR = Path(__file__).parent.parent / "strategies" / "staging"
+
+DEFAULT_MIN_ROWS = 50
+CONFIDENCE_THRESHOLD = 0.60
+DEFAULT_TICK_INTERVAL = 3600
+DEFAULT_ANALYZE_CONFIDENCE = 0.65
+ENTRY_RSI_THRESHOLD = 35
+EXIT_RSI_THRESHOLD = 65
+
+DEFAULT_ENTRY_CONDITIONS = ["rsi < 30"]
+DEFAULT_EXIT_CONDITIONS = ["rsi > 70"]
+NAME_REGEX = r'^[a-z][a-z0-9_]*$'
+
+PROPOSALS_LIMIT = 2
+TEMPERATURE = 0.6
+MAX_TOKENS = 1000
+
+PROMPT_SYSTEM = (
+    "You are a senior quantitative analyst. Propose trading strategy parameters.\n"
+    "Output ONLY a JSON array of exactly 2 strategies, no other text."
+)
+
+PROMPT_USER = (
+    "Propose 2 novel indicator-based trading strategy configurations.\n\n"
+    "Available indicators: RSI(14), EMA(8/21/55), MACD(12,26,9), Bollinger Bands(20,2), "
+    "ATR(14), ADX(14), Stochastic(14,3), VWAP.\n\n"
+    "For each strategy, provide:\n"
+    "{\n"
+    '  "name": "snake_case_name",\n'
+    '  "class_name": "PascalCaseName",\n'
+    '  "hypothesis": "one sentence why this works",\n'
+    '  "market_type": "equity|crypto",\n'
+    '  "risk_bucket": "directional|arbitrage",\n'
+    '  "tick_interval": 3600,\n'
+    '  "expected_sharpe": 0.8,\n'
+    '  "entry_conditions": ["rsi < 30", "price > ema_21"],\n'
+    '  "exit_conditions": ["rsi > 70"]\n'
+    "}"
+)
 
 _STRATEGY_TEMPLATE = '''"""
 Auto-generated strategy proposal by AIStrategyGenerator.
@@ -45,10 +85,10 @@ class {class_name}(AbstractStrategy):
     strategy_type = "manual"
     risk_bucket = "{risk_bucket}"
     tick_interval_seconds = {tick_interval}
-    confidence_threshold = 0.60
+    confidence_threshold = {confidence_threshold}
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        if len(df) < 50:
+        if len(df) < {min_rows}:
             return BacktestSignals(entries=pd.Series(False, index=df.index),
                                    exits=pd.Series(False, index=df.index))
 {backtest_body}
@@ -58,12 +98,11 @@ class {class_name}(AbstractStrategy):
         )
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
-        if len(data) < 50:
+        if len(data) < {min_rows}:
             return None
 {analyze_body}
         return None
 '''
-
 
 class AIStrategyGenerator:
     def __init__(self, redis_client: Any = None):
@@ -95,30 +134,11 @@ class AIStrategyGenerator:
             logger.exception("AIStrategyGenerator error: %s", e)
 
     async def _generate_proposals(self) -> list[dict]:
-        system = """You are a senior quantitative analyst. Propose trading strategy parameters.
-Output ONLY a JSON array of exactly 2 strategies, no other text."""
-
-        user = """Propose 2 novel indicator-based trading strategy configurations.
-
-Available indicators: RSI(14), EMA(8/21/55), MACD(12,26,9), Bollinger Bands(20,2), ATR(14), ADX(14), Stochastic(14,3), VWAP.
-
-For each strategy, provide:
-{
-  "name": "snake_case_name",
-  "class_name": "PascalCaseName",
-  "hypothesis": "one sentence why this works",
-  "market_type": "equity|crypto",
-  "risk_bucket": "directional|arbitrage",
-  "tick_interval": 3600,
-  "expected_sharpe": 0.8,
-  "entry_conditions": ["rsi < 30", "price > ema_21"],
-  "exit_conditions": ["rsi > 70"]
-}"""
-
         responses = await call_consensus(
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-            temperature=0.6,
-            max_tokens=1000,
+            messages=[{"role": "system", "content": PROMPT_SYSTEM},
+                      {"role": "user", "content": PROMPT_USER}],
+            temperature=TEMPERATURE,
+            max_tokens=MAX_TOKENS,
         )
         if not responses:
             return []
@@ -140,19 +160,19 @@ For each strategy, provide:
             except Exception:
                 continue
 
-        return all_proposals[:2]
+        return all_proposals[:PROPOSALS_LIMIT]
 
     def _write_staging_file(self, proposal: dict) -> Path | None:
         name = proposal.get("name", "")
-        if not name or not re.match(r'^[a-z][a-z0-9_]*$', name):
+        if not name or not re.match(NAME_REGEX, name):
             return None
 
         path = STAGING_DIR / f"{name}.py"
         if path.exists():
             return None
 
-        entry_conditions = proposal.get("entry_conditions", ["rsi < 30"])
-        exit_conditions = proposal.get("exit_conditions", ["rsi > 70"])
+        entry_conditions = proposal.get("entry_conditions", DEFAULT_ENTRY_CONDITIONS)
+        exit_conditions = proposal.get("exit_conditions", DEFAULT_EXIT_CONDITIONS)
 
         # Build simple backtest body from entry/exit conditions
         backtest_body = "        close = df['close']\n"
@@ -161,17 +181,17 @@ For each strategy, provide:
         backtest_body += "        entries = pd.Series(False, index=df.index)\n"
         backtest_body += "        exits = pd.Series(False, index=df.index)\n"
         backtest_body += f"        # Entry: {', '.join(entry_conditions)}\n"
-        backtest_body += "        entries = (rsi < 35) & (close > ema_21)\n"
+        backtest_body += f"        entries = (rsi < {ENTRY_RSI_THRESHOLD}) & (close > ema_21)\n"
         backtest_body += f"        # Exit: {', '.join(exit_conditions)}\n"
-        backtest_body += "        exits = rsi > 65\n"
+        backtest_body += f"        exits = rsi > {EXIT_RSI_THRESHOLD}\n"
 
         analyze_body = "        close = data['close']\n"
         analyze_body += "        rsi = ta.rsi(close, length=14)\n"
         analyze_body += "        if rsi is None or rsi.empty: return None\n"
         analyze_body += "        last_rsi = rsi.iloc[-1]\n"
         analyze_body += "        ema_21 = ta.ema(close, length=21).iloc[-1]\n"
-        analyze_body += "        if last_rsi < 35 and close.iloc[-1] > ema_21:\n"
-        analyze_body += "            return Signal(symbol=symbol, side='buy', confidence=0.65, strategy=self.name)\n"
+        analyze_body += f"        if last_rsi < {ENTRY_RSI_THRESHOLD} and close.iloc[-1] > ema_21:\n"
+        analyze_body += f"            return Signal(symbol=symbol, side='buy', confidence={DEFAULT_ANALYZE_CONFIDENCE}, strategy=self.name)\n"
 
         code = _STRATEGY_TEMPLATE.format(
             timestamp=datetime.now(timezone.utc).isoformat(),
@@ -181,7 +201,9 @@ For each strategy, provide:
             strategy_name=name,
             market_type=proposal.get("market_type", "equity"),
             risk_bucket=proposal.get("risk_bucket", "directional"),
-            tick_interval=proposal.get("tick_interval", 3600),
+            tick_interval=proposal.get("tick_interval", DEFAULT_TICK_INTERVAL),
+            confidence_threshold=CONFIDENCE_THRESHOLD,
+            min_rows=DEFAULT_MIN_ROWS,
             backtest_body=backtest_body,
             analyze_body=analyze_body,
         )
