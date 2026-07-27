@@ -28,6 +28,18 @@
   - `app/ml/training/walk_forward.walk_forward_validate()` (125 lines, torch-specific) — **dead**. So the principle is enforced for strategy backtests and *not* for ML model training, which is the narrower and accurate claim.
 
   Genuinely dead, each referenced only by its own unit test (i.e. tested, never run in production): `probability_of_backtest_overfitting()` and `probabilistic_sharpe_ratio()` (PBO/PSR overfit detection), `monte_carlo_simulation()`. `run_stress_tests()` has no reference at all, not even a test.
+- [x] **[P1] Validation maths that is tested but never run is not validation.** `probabilistic_sharpe_ratio()` and `monte_carlo_simulation()` now run on every walk-forward, **reported but NOT gated** — changing which strategies clear the promotion bar is a risk decision, not a wiring fix, so `is_robust` is untouched and pinned by a test.
+  PSR complements DSR rather than duplicating it: DSR corrects for **multiple testing** (best-of-n luck) from the dispersion of window Sharpes; PSR corrects for a **short, non-normal** track record (n_obs, skew, kurtosis) on the combined estimate. A strategy can pass one and fail the other.
+  **Two bugs found while wiring, both in my own work or in the dead code:**
+  - My first draft passed an **annualised** Sharpe to PSR. Its contract is that `observed_sr` must be on the same frequency as the moments, and skew/kurtosis are daily — annualising inflates it ~16× and wrecks both the denominator and the z-score. Fixed to the per-period Sharpe and pinned by a test that would fail on the annualised form.
+  - **`MonteCarloResult.p95_max_dd` is the LUCKY tail, despite reading like a risk number.** `max_dd = dd.min()`, so drawdowns are negative, and the 95th percentile of a negative series is the *mildest* drawdown. Surfacing it as "the bad case" would have understated risk by construction. Added `p5_max_dd` (the severe tail, consistent with `p5_sharpe` already meaning the unlucky end) and report that. Nothing consumed `p95_max_dd`, so nothing broke.
+
+  **Not wired, and why** — the same judgement as the ML features rather than wiring everything reachable:
+  - `probability_of_backtest_overfitting()` needs performance across N **configurations**; `walk_forward` runs one config across windows. Wrong call site — it belongs to a parameter sweep or the strategy-selection loop.
+  - `run_stress_tests()` needs the price history to actually span the named crisis windows; on a 2-year backtest nearly every scenario returns `period_covered=False`.
+
+  Monte Carlo is skipped rather than faked below 60 OOS observations (`mc_simulations` stays 0), and the whole diagnostic block is exception-isolated — it hangs off a backtest that already succeeded and must not fail it.
+  Tests: `backend/tests/unit/test_walk_forward_diagnostics.py`, 10 tests.
 - [x] **[P1] `configure_logging()` was never called — production logging ran on structlog's library defaults.** One textual occurrence in the package: its own `def`. Verified by reading `structlog.get_config()` at runtime rather than inferring from source, before and after:
 
   | | before | after |

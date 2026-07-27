@@ -12,7 +12,15 @@ class MonteCarloResult:
     p5_sharpe: float
     p95_sharpe: float
     median_max_dd: float
+    # NOTE ON SIGN: max_dd is `dd.min()`, so drawdowns are NEGATIVE. The 95th
+    # percentile of a negative series is therefore the MILDEST drawdown, not the
+    # worst — `p95_max_dd` is the lucky tail, despite reading like a risk
+    # number. It is kept for compatibility and left as-is.
+    #
+    # `p5_max_dd` is the severe tail, and is the one to quote as risk. This
+    # matches `p5_sharpe`, which is already the unlucky end.
     p95_max_dd: float
+    p5_max_dd: float
     prob_positive_return: float
     num_simulations: int
 
@@ -89,6 +97,7 @@ def monte_carlo_simulation(
         p95_sharpe=round(float(np.percentile(sharpes, 95)), 4),
         median_max_dd=round(float(np.median(max_dds)), 4),
         p95_max_dd=round(float(np.percentile(max_dds, 95)), 4),
+        p5_max_dd=round(float(np.percentile(max_dds, 5)), 4),
         prob_positive_return=round(positive / n_simulations, 4),
         num_simulations=n_simulations,
     )

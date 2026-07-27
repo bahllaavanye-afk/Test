@@ -70,9 +70,20 @@ There are TWO walk-forward implementations and I had found the dead one:
 - `app/ml/training/walk_forward.walk_forward_validate()` (torch) — dead.
 So the principle IS enforced for strategy backtests, and is NOT for ML model training.
 
-Genuinely dead, each referenced only by its own test: `probability_of_backtest_overfitting`,
+Was dead, each referenced only by its own test: `probability_of_backtest_overfitting`,
 `probabilistic_sharpe_ratio`, `monte_carlo_simulation`. `run_stress_tests` has no reference
 at all.
+
+**PSR + Monte Carlo now run on every walk-forward — REPORTED, NOT GATED** (`is_robust`
+untouched; changing the promotion bar is a risk decision, not a wiring fix). Two bugs found
+while wiring: (1) my first draft passed an **annualised** Sharpe to PSR, whose contract needs
+the same frequency as the moments — that inflates it ~16x and wrecks the z-score;
+(2) **`p95_max_dd` is the LUCKY tail** — `max_dd = dd.min()` so drawdowns are negative and the
+95th percentile is the *mildest* drawdown, so quoting it as risk understates it by
+construction. Added `p5_max_dd` and report that instead. Still not wired, deliberately:
+`probability_of_backtest_overfitting` needs N *configs* (walk_forward runs one config across
+windows — wrong call site), and `run_stress_tests` needs price history spanning the crisis
+windows (mostly `period_covered=False` on short backtests).
 
 **`configure_logging()` — fixed.** It had no caller, so structlog ran on library defaults.
 Verified via `structlog.get_config()` at runtime: renderer was `ConsoleRenderer` (not

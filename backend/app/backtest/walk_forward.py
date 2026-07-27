@@ -6,7 +6,8 @@ import pandas as pd
 from dataclasses import dataclass, field
 
 from app.backtest.engine import run_backtest, BacktestMetrics
-from app.backtest.cpcv import deflated_sharpe_ratio
+from app.backtest.cpcv import deflated_sharpe_ratio, probabilistic_sharpe_ratio
+from app.backtest.monte_carlo import monte_carlo_simulation
 
 # Constants
 TIMEFRAME_TRAIN = 2  # years of training data
@@ -46,6 +47,29 @@ class WalkForwardResult:
     consistency: float = 0.0       # fraction of windows with Sharpe ≥ MIN_OOS_SHARPE
     is_robust: bool = False        # passes the full protocol → safe to promote
     verdict: str = "insufficient_data"
+
+    # ── Reported, NOT gated ───────────────────────────────────────────────────
+    # probabilistic_sharpe_ratio() and monte_carlo_simulation() were implemented
+    # and unit-tested but never called from production — the verdict above was
+    # the only thing computed. They are surfaced here rather than added as
+    # blocking criteria: changing which strategies clear the promotion gate is a
+    # risk decision, not a wiring fix. Populated by walk_forward().
+    #
+    # PSR complements DSR rather than duplicating it. DSR corrects for MULTIPLE
+    # TESTING (best-of-n-trials luck) using the dispersion of window Sharpes;
+    # PSR corrects for a SHORT, NON-NORMAL track record (n_obs, skew, kurtosis)
+    # on the single combined estimate. A strategy can pass one and fail the
+    # other.
+    psr: float = 0.0               # P(true Sharpe > 0) given n_obs, skew, kurtosis
+    mc_median_sharpe: float = 0.0
+    mc_p5_sharpe: float = 0.0      # 5th percentile — the unlucky-path Sharpe
+    # Drawdowns are NEGATIVE (`dd.min()`), so the severe tail is the 5th
+    # percentile, not the 95th. `MonteCarloResult.p95_max_dd` reads like a risk
+    # number but is actually the mildest path; quoting it here would have
+    # understated risk by design.
+    mc_worst_max_dd: float = 0.0   # 5th percentile drawdown — the bad case
+    mc_prob_positive: float = 0.0  # fraction of bootstrapped paths ending up
+    mc_simulations: int = 0        # 0 ⇒ not run (too little OOS data)
 
 
 def robustness_verdict(sharpes: list[float]) -> dict:
@@ -140,6 +164,72 @@ def _aggregate_averages(result: WalkForwardResult) -> None:
     result.avg_drawdown = round(sum(drawdown_vals) / len(drawdown_vals), 4) if drawdown_vals else 0.0
 
 
+# Bootstrap needs enough OOS observations to resample from; below this the
+# percentiles are noise dressed up as risk numbers, so it is skipped and
+# mc_simulations stays 0 rather than reporting a fabricated distribution.
+MIN_OBS_FOR_MONTE_CARLO = 60
+MC_SIMULATIONS = 500          # halved from the function default: this runs
+                              # inline on an API request, and the percentiles
+                              # are stable well before 1000 paths.
+
+
+def _oos_daily_returns(result: WalkForwardResult) -> pd.Series:
+    """Daily returns of the stitched out-of-sample equity curve."""
+    equity = [
+        float(point["equity"])
+        for point in result.combined_equity
+        if isinstance(point, dict) and point.get("equity") is not None
+    ]
+    if len(equity) < 2:
+        return pd.Series(dtype=float)
+    return pd.Series(equity, dtype=float).pct_change().dropna()
+
+
+def _add_distribution_diagnostics(result: WalkForwardResult) -> None:
+    """Populate the reported-not-gated PSR and Monte-Carlo fields.
+
+    Never raises: these are diagnostics hung off a backtest that has already
+    succeeded, and an arithmetic edge case in them must not fail the run that
+    produced the verdict.
+    """
+    try:
+        returns = _oos_daily_returns(result)
+        if returns.empty:
+            return
+
+        n_obs = int(returns.shape[0])
+        std = float(returns.std(ddof=1)) if n_obs > 1 else 0.0
+        if std > 1e-12:
+            # PER-PERIOD (daily) Sharpe, NOT annualised. The function's contract
+            # is that observed_sr is on the same frequency as the moments, and
+            # skew/kurtosis here are daily; the sqrt(n_obs - 1) term inside PSR
+            # supplies the track-record scaling. Annualising here would inflate
+            # observed_sr ~16x and wreck both the denominator and the z-score.
+            observed_sr = float(returns.mean() / std)
+            result.psr = round(
+                probabilistic_sharpe_ratio(
+                    observed_sr=observed_sr,
+                    n_obs=n_obs,
+                    skew=float(returns.skew()),
+                    kurtosis=float(returns.kurtosis()) + 3.0,  # pandas gives EXCESS kurtosis
+                    benchmark_sr=0.0,
+                ),
+                4,
+            )
+
+        if n_obs >= MIN_OBS_FOR_MONTE_CARLO:
+            mc = monte_carlo_simulation(returns, n_simulations=MC_SIMULATIONS)
+            result.mc_median_sharpe = round(mc.median_sharpe, 4)
+            result.mc_p5_sharpe = round(mc.p5_sharpe, 4)
+            result.mc_worst_max_dd = round(mc.p5_max_dd, 4)
+            result.mc_prob_positive = round(mc.prob_positive_return, 4)
+            result.mc_simulations = mc.num_simulations
+    except Exception:
+        # Leave the defaults (0.0 / 0 simulations) — an absent diagnostic is
+        # honest; a fabricated one is not.
+        pass
+
+
 def walk_forward(
     signals_fn,               # callable(train_df, test_df) -> pd.Series of signals on test_df
     prices: pd.Series,
@@ -185,4 +275,6 @@ def walk_forward(
     result.consistency = verdict["consistency"]
     result.is_robust = verdict["is_robust"]
     result.verdict = verdict["verdict"]
+
+    _add_distribution_diagnostics(result)
     return result
