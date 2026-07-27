@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785181568.561181,
+    "last_updated": 1785183837.0209925,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,12 +109,12 @@
     },
     "opinion_score": 2,
     "macro_score": 2,
-    "vix": 18.94,
-    "market_scan_ts": 1785179869.6061723,
+    "vix": 18.72,
+    "market_scan_ts": 1785183836.9917653,
     "sector_leaders": [
       "Energy",
-      "Healthcare",
-      "Financials"
+      "Financials",
+      "Healthcare"
     ],
     "sector_laggards": [
       "Materials",
@@ -124,30 +124,30 @@
     "active_universe": [
       "TSLA",
       "SLB",
-      "NOW",
       "NVDA",
-      "QQQ",
-      "ORCL",
       "GOOGL",
-      "GS",
+      "NOW",
+      "ORCL",
       "PANW",
+      "QQQ",
       "XLI",
-      "JNJ",
-      "ADBE",
-      "INTU",
-      "XLK",
-      "BAC",
-      "CRWD",
       "ABT",
-      "IWM",
-      "XLV",
-      "TMO"
+      "CRWD",
+      "AMZN",
+      "XOM",
+      "INTU",
+      "ADBE",
+      "TMO",
+      "GS",
+      "C",
+      "BAC",
+      "JNJ"
     ],
     "top_momentum": [
       "ADBE",
-      "NOW",
-      "INTU",
       "AAPL",
+      "MPC",
+      "INTU",
       "SLB"
     ],
     "risk_flags": [],
@@ -155,13 +155,6 @@
     "last_brain_update": 1785159016.6762145
   },
   "episodic": [
-    {
-      "lesson": "Add monitoring and alerting for deployment failures and auto-fix errors to enable rapid response.",
-      "category": "risk",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1784331244.0259564
-    },
     {
       "lesson": "Review and improve the auto-fix patch generation logic to handle conflicts and edge cases more robustly.",
       "category": "ml",
@@ -1992,6 +1985,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785179869.6405416
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Healthcare"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785183837.026715
     }
   ],
   "github_insights": [
