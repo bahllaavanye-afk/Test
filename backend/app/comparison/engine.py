@@ -13,6 +13,10 @@ from app.backtest.engine import run_backtest, BacktestMetrics
 from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stats
 from app.utils.logging import logger
 
+import unittest
+import asyncio
+from unittest.mock import patch, AsyncMock
+
 
 @dataclass
 class ComparisonResult:
@@ -133,3 +137,112 @@ class StrategyComparisonEngine:
             is_significant=p_val < 0.05,
             winner=winner,
         )
+
+
+# ----------------------------------------------------------------------
+# Unit Tests for Edge Cases
+# ----------------------------------------------------------------------
+class TestStrategyComparisonEngine(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.engine = StrategyComparisonEngine()
+        self.valid_date_start = date(2022, 1, 1)
+        self.valid_date_end = date(2022, 1, 10)
+        self.valid_series_index = pd.date_range(start="2022-01-01", periods=5, freq="D")
+        self.valid_manual = pd.Series([1, 0, 1, 0, 1], index=self.valid_series_index)
+        self.valid_ml = pd.Series([0, 1, 0, 1, 0], index=self.valid_series_index)
+        self.valid_prices = pd.Series([100, 101, 102, 103, 104], index=self.valid_series_index)
+
+        # Simple mock BacktestMetrics object
+        class MockMetrics:
+            def __init__(self, equity_curve, sharpe):
+                self.equity_curve = equity_curve
+                self.sharpe = sharpe
+
+        self.mock_manual_metrics = MockMetrics(
+            equity_curve=[{"equity": 100_000 + i * 1000} for i in range(5)],
+            sharpe=1.0,
+        )
+        self.mock_ml_metrics = MockMetrics(
+            equity_curve=[{"equity": 100_000 + i * 1500} for i in range(5)],
+            sharpe=1.2,
+        )
+
+    async def test_empty_manual_signals_raises(self):
+        empty_series = pd.Series([], dtype=float)
+        with self.assertRaises(ValueError) as ctx:
+            await self.engine.run_comparison(
+                manual_signals=empty_series,
+                ml_signals=self.valid_ml,
+                prices=self.valid_prices,
+                strategy_name="test",
+                symbol="TEST",
+                interval="1d",
+                start_date=self.valid_date_start,
+                end_date=self.valid_date_end,
+            )
+        self.assertIn("manual_signals series cannot be empty", str(ctx.exception))
+
+    async def test_start_date_after_end_date_raises(self):
+        later_start = date(2022, 2, 1)
+        earlier_end = date(2022, 1, 1)
+        with self.assertRaises(ValueError) as ctx:
+            await self.engine.run_comparison(
+                manual_signals=self.valid_manual,
+                ml_signals=self.valid_ml,
+                prices=self.valid_prices,
+                strategy_name="test",
+                symbol="TEST",
+                interval="1d",
+                start_date=later_start,
+                end_date=earlier_end,
+            )
+        self.assertIn("start_date cannot be later than end_date", str(ctx.exception))
+
+    async def test_no_common_index_raises(self):
+        # Shift ml_signals index so there is no overlap
+        shifted_ml = self.valid_ml.copy()
+        shifted_ml.index = shifted_ml.index + pd.Timedelta(days=10)
+
+        with self.assertRaises(ValueError) as ctx:
+            await self.engine.run_comparison(
+                manual_signals=self.valid_manual,
+                ml_signals=shifted_ml,
+                prices=self.valid_prices,
+                strategy_name="test",
+                symbol="TEST",
+                interval="1d",
+                start_date=self.valid_date_start,
+                end_date=self.valid_date_end,
+            )
+        self.assertIn("must share at least one common index", str(ctx.exception))
+
+    async def test_short_overlap_returns_default_statistics(self):
+        # Use only 5 points (<=10) to trigger default t-statistic/p-value
+        with patch("app.backtest.engine.run_backtest") as mock_run_backtest, \
+             patch("app.comparison.benchmarks.fetch_benchmark_curves", new_callable=AsyncMock) as mock_fetch_curves, \
+             patch("app.comparison.benchmarks.get_benchmark_stats") as mock_get_stats:
+
+            mock_run_backtest.side_effect = [self.mock_manual_metrics, self.mock_ml_metrics]
+            mock_fetch_curves.return_value = {}
+            mock_get_stats.return_value = {}
+
+            result = await self.engine.run_comparison(
+                manual_signals=self.valid_manual,
+                ml_signals=self.valid_ml,
+                prices=self.valid_prices,
+                strategy_name="test",
+                symbol="TEST",
+                interval="1d",
+                start_date=self.valid_date_start,
+                end_date=self.valid_date_end,
+            )
+
+            self.assertEqual(result.t_statistic, 0.0)
+            self.assertEqual(result.p_value, 1.0)
+            self.assertFalse(result.is_significant)
+            # Verify winner logic respects improvement threshold
+            self.assertIn(result.winner, {"ml", "neither"})
+
+
+if __name__ == "__main__":
+    unittest.main()
