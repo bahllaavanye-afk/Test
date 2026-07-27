@@ -4,11 +4,13 @@ Runs every hour. Tracks LOC, test coverage, lint warnings.
 Does NOT modify source — just reports.
 """
 from __future__ import annotations
+
 import asyncio
 import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from json import JSONDecodeError
 
 from app.utils.logging import logger
 
@@ -30,18 +32,23 @@ def _count_loc(root: Path) -> dict:
             continue
         total_files += 1
         try:
-            for line in py_file.read_text(errors="ignore").splitlines():
-                total_lines += 1
-                stripped = line.strip()
-                if not stripped:
-                    blank_lines += 1
-                elif stripped.startswith("#"):
-                    comment_lines += 1
-                else:
-                    code_lines += 1
-        except Exception as e:
-            logger.debug("code_quality: skip unreadable file", error=str(e))
+            content = py_file.read_text(errors="ignore")
+        except OSError as e:
+            logger.debug(
+                "code_quality: skip unreadable file",
+                path=str(py_file),
+                error=str(e),
+            )
             continue
+        for line in content.splitlines():
+            total_lines += 1
+            stripped = line.strip()
+            if not stripped:
+                blank_lines += 1
+            elif stripped.startswith("#"):
+                comment_lines += 1
+            else:
+                code_lines += 1
 
     return {
         "files": total_files,
@@ -90,12 +97,32 @@ class CodeQualityLoop:
 
     def _persist(self, snapshot: dict) -> None:
         try:
-            history = json.loads(QUALITY_FILE.read_text()) if QUALITY_FILE.exists() else []
+            if QUALITY_FILE.exists():
+                try:
+                    history = json.loads(QUALITY_FILE.read_text())
+                except JSONDecodeError as e:
+                    logger.warning(
+                        "code_quality: corrupted history file, resetting",
+                        path=str(QUALITY_FILE),
+                        error=str(e),
+                    )
+                    history = []
+            else:
+                history = []
             history.append(snapshot)
             history = history[-200:]
             QUALITY_FILE.write_text(json.dumps(history, indent=2))
+        except OSError as e:
+            logger.warning(
+                "code_quality: failed to persist snapshot due to I/O error",
+                path=str(QUALITY_FILE),
+                error=str(e),
+            )
         except Exception as e:
-            logger.warning("code_quality: failed to persist snapshot", error=str(e))
+            logger.warning(
+                "code_quality: unexpected error while persisting snapshot",
+                error=str(e),
+            )
 
     async def run(self) -> None:
         self._running = True
@@ -106,13 +133,18 @@ class CodeQualityLoop:
                 self._persist(snapshot)
                 logger.debug("Code quality snapshot", **snapshot)
             except asyncio.CancelledError:
+                logger.info("CodeQualityLoop cancelled")
                 return
             except Exception as e:
-                logger.warning("Quality snapshot failed", error=str(e))
+                logger.warning(
+                    "Quality snapshot failed",
+                    error=str(e),
+                )
             await asyncio.sleep(self.interval_seconds)
 
     async def stop(self) -> None:
         self._running = False
+        logger.info("CodeQualityLoop stopped")
 
     def latest(self) -> dict | None:
         if not QUALITY_FILE.exists():
@@ -120,5 +152,23 @@ class CodeQualityLoop:
         try:
             history = json.loads(QUALITY_FILE.read_text())
             return history[-1] if history else None
-        except Exception:
+        except JSONDecodeError as e:
+            logger.warning(
+                "code_quality: failed to read latest snapshot due to JSON error",
+                path=str(QUALITY_FILE),
+                error=str(e),
+            )
+            return None
+        except OSError as e:
+            logger.warning(
+                "code_quality: I/O error reading latest snapshot",
+                path=str(QUALITY_FILE),
+                error=str(e),
+            )
+            return None
+        except Exception as e:
+            logger.warning(
+                "code_quality: unexpected error reading latest snapshot",
+                error=str(e),
+            )
             return None
