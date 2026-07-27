@@ -17,6 +17,7 @@ from app.execution.limit_first import LimitFirstExecution
 from app.execution.twap import TWAPExecution
 from app.execution.slippage_tracker import SlippageTracker
 from app.execution.almgren_chriss import AlmgrenChriss
+from app.execution.slice_result import build_slice_result
 from app.utils.logging import logger
 
 try:
@@ -75,13 +76,16 @@ class SmartOrderRouter:
             if fills:
                 total_qty = sum(f["qty"] for f in fills)
                 avg_price = sum(f["qty"] * f["price"] for f in fills) / max(total_qty, 1e-9)
-                from app.brokers.base import OrderResult
+                # `order_id`/`symbol` are not fields on OrderResult — passing them
+                # raised TypeError on every successful RL execution, after the
+                # fills had already happened at the broker.
                 result = OrderResult(
-                    order_id=f"rl_{request.symbol}",
-                    symbol=request.symbol,
+                    broker_order_id=f"rl_{request.symbol}",
                     status="filled",
                     filled_qty=total_qty,
                     avg_fill_price=avg_price,
+                    raw_payload={"algo": "rl_exec", "symbol": request.symbol,
+                                 "fills": len(fills)},
                 )
             else:
                 result = None
@@ -136,6 +140,9 @@ class SmartOrderRouter:
         total_cost = 0.0
         last_result: OrderResult | None = None
         consecutive_failures = 0
+        slices_attempted = 0
+        slices_failed = 0
+        last_error: str | None = None
 
         for i, slice_qty in enumerate(trades):
             if slice_qty < 1e-6:
@@ -145,6 +152,7 @@ class SmartOrderRouter:
             slice_req = OrderRequest(
                 **{**asdict(request), "quantity": float(slice_qty), "order_type": "market", "limit_price": None}
             )
+            slices_attempted += 1
             try:
                 result = await self.broker.place_order(slice_req)
                 total_filled += result.filled_qty
@@ -161,11 +169,13 @@ class SmartOrderRouter:
                 )
             except Exception as e:
                 consecutive_failures += 1
+                slices_failed += 1
+                last_error = str(e)
                 logger.warning(
                     "AC slice failed",
                     symbol=request.symbol,
                     slice=i + 1,
-                    error=str(e),
+                    error=last_error,
                 )
                 if consecutive_failures >= 3:
                     logger.error(
@@ -186,9 +196,12 @@ class SmartOrderRouter:
             avg_price=avg_price,
             expected_total_cost=round(cost_info["total"], 6),
         )
-        return OrderResult(
-            broker_order_id=last_result.broker_order_id if last_result else "ac_exec",
-            status="filled" if total_filled >= request.quantity * 0.95 else "partial",
-            filled_qty=total_filled,
-            avg_fill_price=avg_price,
+        return build_slice_result(
+            "Almgren-Chriss", request,
+            total_filled=total_filled,
+            total_cost=total_cost,
+            last_result=last_result,
+            slices_attempted=slices_attempted,
+            slices_failed=slices_failed,
+            last_error=last_error,
         )

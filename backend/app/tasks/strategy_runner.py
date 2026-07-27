@@ -110,6 +110,12 @@ DEFAULT_REGIMES = [0, 1, 2]
 _regime_cache: dict[str, object] = {"value": None, "ts": 0.0}
 _REGIME_CACHE_TTL = 30.0  # seconds — avoids Redis round-trip on every strategy tick
 
+# Execution outcomes that mean no position was opened. Writing an exit config for
+# one of these leaves position_monitor tracking a stop-loss on shares nobody owns.
+_DEAD_ORDER_STATUSES = frozenset(
+    {"rejected", "canceled", "cancelled", "expired", "failed"}
+)
+
 
 async def get_current_regime(redis_client) -> int | None:
     """Read current market regime (0=bear, 1=sideways, 2=bull) from Redis key 'market:regime'.
@@ -281,9 +287,22 @@ class ContinuousStrategyRunner:
                             risk_bucket=strategy.risk_bucket,
                         )
                         result = await router.execute(order_req, signal_price=signal.target_price)
-                        if result:
+                        # `if result:` alone was always true — OrderResult is a plain
+                        # dataclass, so a rejected execution that filled nothing still
+                        # passed, logged "Order submitted", and wrote an exit config to
+                        # Redis for a position that does not exist. Only None (risk
+                        # block) was ever filtered out.
+                        if result is not None and result.status in _DEAD_ORDER_STATUSES:
+                            logger.error(
+                                "Order was NOT filled — no position opened, skipping exit config",
+                                strategy=strategy_name, symbol=symbol,
+                                status=result.status, side=signal.side,
+                                qty=order_req.quantity,
+                                detail=(result.raw_payload or {}).get("last_error"),
+                            )
+                        elif result is not None:
                             logger.info("Order submitted", strategy=strategy_name, symbol=symbol,
-                                        order_id=getattr(result, "order_id", "?"),
+                                        order_id=result.broker_order_id or "?",
                                         side=signal.side, qty=order_req.quantity)
 
                             # Store exit config in Redis for position_monitor.py

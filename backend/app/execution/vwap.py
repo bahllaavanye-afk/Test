@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import asdict
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
+from app.execution.slice_result import build_slice_result
 from app.utils.logging import logger
 
 # Empirical U‑shaped intraday volume profile (30‑min buckets, 13 buckets = 6.5 h day)
@@ -138,6 +139,10 @@ class VWAPExecution:
         total_filled = 0.0
         total_cost = 0.0
         last_result: OrderResult | None = None
+        slices_attempted = 0
+        slices_failed = 0
+        consecutive_failures = 0
+        last_error: str | None = None
 
         for i in range(active_slices):
             slice_weight = profile_slice[i] / profile_total
@@ -146,26 +151,42 @@ class VWAPExecution:
             slice_req = OrderRequest(
                 **{**asdict(request), "quantity": slice_qty, "order_type": "market"}
             )
+            slices_attempted += 1
             try:
                 result = await self.broker.place_order(slice_req)
                 total_filled += result.filled_qty
                 if result.avg_fill_price:
                     total_cost += result.avg_fill_price * result.filled_qty
                 last_result = result
+                consecutive_failures = 0
                 logger.debug(
                     "VWAP slice filled", slice=i, qty=slice_qty, filled=result.filled_qty
                 )
             except Exception as e:
-                logger.warning("VWAP slice failed", slice=i, error=str(e))
+                slices_failed += 1
+                consecutive_failures += 1
+                last_error = str(e)
+                logger.warning("VWAP slice failed", slice=i, error=last_error)
+                # Matches TWAP and Almgren-Chriss: stop feeding slices to a broker
+                # that has failed three times running instead of working through
+                # the whole schedule against a dead endpoint.
+                if consecutive_failures >= 3:
+                    logger.error(
+                        "VWAP execution aborting after consecutive failures",
+                        symbol=request.symbol,
+                        consecutive_failures=consecutive_failures,
+                    )
+                    break
 
             if i < active_slices - 1:
                 await asyncio.sleep(self.sleep_seconds)
 
-        avg_price = total_cost / total_filled if total_filled > 0 else None
-        fill_rate = total_filled / request.quantity if request.quantity > 0 else 0
-        return OrderResult(
-            broker_order_id=last_result.broker_order_id if last_result else "vwap",
-            status="filled" if fill_rate >= 0.95 else "partial",
-            filled_qty=total_filled,
-            avg_fill_price=avg_price,
+        return build_slice_result(
+            "VWAP", request,
+            total_filled=total_filled,
+            total_cost=total_cost,
+            last_result=last_result,
+            slices_attempted=slices_attempted,
+            slices_failed=slices_failed,
+            last_error=last_error,
         )

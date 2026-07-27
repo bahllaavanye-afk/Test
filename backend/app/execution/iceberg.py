@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import asdict
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
+from app.execution.slice_result import build_slice_result
 from app.utils.logging import logger
 
 
@@ -21,12 +22,16 @@ class IcebergExecution:
         total_filled = 0.0
         total_cost = 0.0
         last_result: OrderResult | None = None
+        slices_attempted = 0
+        slices_failed = 0
+        last_error: str | None = None
 
         while remaining > 0.01:
             slice_qty = min(visible_qty, remaining)
             slice_req = OrderRequest(
                 **{**asdict(request), "quantity": slice_qty, "order_type": "market"}
             )
+            slices_attempted += 1
             try:
                 result = await self.broker.place_order(slice_req)
                 total_filled += result.filled_qty
@@ -36,16 +41,31 @@ class IcebergExecution:
                 last_result = result
                 logger.debug("Iceberg slice", filled=result.filled_qty, remaining=remaining)
 
+                # An accepted-but-unfilled slice returns filled_qty=0, which leaves
+                # `remaining` untouched — this loop would spin on it forever.
+                if result.filled_qty <= 0:
+                    logger.warning(
+                        "Iceberg slice accepted but filled nothing — stopping to "
+                        "avoid an unbounded refill loop",
+                        symbol=request.symbol,
+                        remaining=remaining,
+                    )
+                    break
+
                 if remaining > 0.01:
                     await asyncio.sleep(self.refill_delay_seconds)
             except Exception as e:
-                logger.warning("Iceberg slice failed", error=str(e))
+                slices_failed += 1
+                last_error = str(e)
+                logger.warning("Iceberg slice failed", error=last_error)
                 break
 
-        avg_price = total_cost / total_filled if total_filled > 0 else None
-        return OrderResult(
-            broker_order_id=last_result.broker_order_id if last_result else "iceberg",
-            status="filled" if total_filled >= request.quantity * 0.95 else "partial",
-            filled_qty=total_filled,
-            avg_fill_price=avg_price,
+        return build_slice_result(
+            "Iceberg", request,
+            total_filled=total_filled,
+            total_cost=total_cost,
+            last_result=last_result,
+            slices_attempted=slices_attempted,
+            slices_failed=slices_failed,
+            last_error=last_error,
         )
