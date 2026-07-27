@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Monitor queue sizes",
-    "* The health-check endpoints in `backend/api/health_check.py` are running reliably with low latency (12 ms), as reported by `/v1/status` in the last cycles.",
     "Verify network",
     "Verify data feeds",
     "* As a general guideline, agents should provide a one-sentence status update in the first person, concise, and specific when responding to user queries.",
@@ -199,8 +197,10 @@
     "Bind thread pools",
     "Validate schema definitions",
     "Run static type checkers",
-    "Implement lazy evaluation tests"
+    "Implement lazy evaluation tests",
+    "Log API calls",
+    "Rate limit requests"
   ],
-  "last_updated": "2026-07-27T20:02:50.752737+00:00",
+  "last_updated": "2026-07-27T21:36:43.741342+00:00",
   "total": 200
 }
