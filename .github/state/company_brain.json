@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785163977.236149,
+    "last_updated": 1785168441.929536,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -62,35 +62,35 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-07-24T15:19:38.340541+00:00",
+      "generated_at": "2026-07-27T16:06:41.865299+00:00",
       "signals": {
         "vix": {
-          "value": 18.64,
+          "value": 19.47,
           "trend": "flat"
         },
         "spy": {
-          "price": 738.25,
-          "sma50": 744.1,
-          "sma200": 695.43,
+          "price": 737.81,
+          "sma50": 744.06,
+          "sma200": 695.8,
           "trend": "above_200sma"
         },
         "yield_curve": {
-          "ratio": 1.0206,
+          "ratio": 1.0225,
           "median": 1.0517,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 2.188,
+          "hyg_lqd_momentum_20d": 2.176,
           "signal": "tightening"
         },
         "breadth": {
-          "sectors_above_sma20": 6,
+          "sectors_above_sma20": 7,
           "total_sectors": 11,
-          "breadth_pct": 54.5
+          "breadth_pct": 63.6
         },
         "btc": {
-          "price": 64060,
-          "24h_pct": -1.17
+          "price": 64544,
+          "24h_pct": -0.21
         }
       },
       "score": 2,
@@ -155,13 +155,6 @@
     "last_brain_update": 1785159016.6762145
   },
   "episodic": [
-    {
-      "lesson": "Deployment blocked by free-tier daily limit (100 deploys). Upgrade to Vercel Pro or implement deployment batching to avoid rate limiting.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784327441.31206
-    },
     {
       "lesson": "Auto-fix failed because patch exceeded 50-line limit. Break changes into smaller, incremental patches or increase CI/CD patch size threshold.",
       "category": "code",
@@ -1939,6 +1932,18 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785162614.9093742
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 2,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1785168441.933863
     }
   ],
   "github_insights": [
