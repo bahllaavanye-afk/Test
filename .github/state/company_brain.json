@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785168441.929536,
+    "last_updated": 1785168535.6511705,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 2,
     "macro_score": 2,
-    "vix": 18.74,
-    "market_scan_ts": 1785162614.8743489,
+    "vix": 19.55,
+    "market_scan_ts": 1785168535.62227,
     "sector_leaders": [
       "Energy",
       "Financials",
@@ -125,29 +125,29 @@
       "TSLA",
       "SLB",
       "GOOGL",
-      "NOW",
-      "QQQ",
       "NVDA",
+      "QQQ",
+      "NOW",
       "BAC",
+      "AAPL",
       "ORCL",
+      "XLI",
+      "XLV",
+      "JNJ",
+      "ADBE",
       "IWM",
       "XLK",
-      "XLI",
-      "AAPL",
-      "XLV",
-      "XOM",
       "INTU",
-      "XLF",
-      "ADBE",
-      "JNJ",
-      "CVX",
-      "MSFT"
+      "AMZN",
+      "GS",
+      "TMO",
+      "C"
     ],
     "top_momentum": [
       "AAPL",
-      "SLB",
       "MPC",
       "ADBE",
+      "SLB",
       "INTU"
     ],
     "risk_flags": [],
@@ -155,13 +155,6 @@
     "last_brain_update": 1785159016.6762145
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix failed because patch exceeded 50-line limit. Break changes into smaller, incremental patches or increase CI/CD patch size threshold.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784327441.3169444
-    },
     {
       "lesson": "Auto-fix skipped for Symbol Scout feature due to complexity and lack of context. Manual implementation required; improve feature specification with code references and smaller sub-tasks.",
       "category": "strategy",
@@ -1944,6 +1937,21 @@
       },
       "lesson": "[LLM unavailable \u2014 all providers failed]",
       "ts": 1785168441.933863
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Healthcare"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785168535.6566787
     }
   ],
   "github_insights": [
