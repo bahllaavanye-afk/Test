@@ -1669,12 +1669,28 @@ async def main() -> None:
                 tracker.set_output(orders_placed=0, reason="account_unavailable")
             # Group approved signals by desk so we can still post per-desk summaries
             desk_orders_map: dict[str, list[dict]] = {}
+            # Why a surviving signal never became an order. The Discord summary
+            # used to report only "N generated → M survived → 0 placed" and then
+            # "💤 no signals fired" for every desk — so 15 signals could survive
+            # the gate, all be dropped, and the message state neither that it
+            # happened nor why. Every reason below is counted and published.
+            from collections import Counter
+
+            drops: "Counter[str]" = Counter()
+            desk_signals: "Counter[str]" = Counter()
+            desk_drops: dict[str, Counter] = {}
+
+            def _drop(reason: str, desk_name: str) -> None:
+                drops[reason] += 1
+                desk_drops.setdefault(desk_name, Counter())[reason] += 1
+
             for item in approved_signals:
                 desk     = item["desk"]
                 symbol   = item["symbol"]
                 strategy = item["strategy"]
                 signal   = item["signal"]
                 conf     = item["confidence"]
+                desk_signals[desk.name] += 1
 
                 desk_open = is_open or desk.always_open
                 if not desk_open:
@@ -1683,6 +1699,7 @@ async def main() -> None:
                         f"conf={conf:.2f} — logged ({desk.name} closed)",
                         flush=True,
                     )
+                    _drop("market closed", desk.name)
                     continue
                 if not _account_ok:
                     print(
@@ -1690,6 +1707,7 @@ async def main() -> None:
                         f"conf={conf:.2f} — logged (no account)",
                         flush=True,
                     )
+                    _drop("no account", desk.name)
                     continue
                 if _cap_active and not is_risk_reducing(
                     signal.side, _cap_positions.get(symbol.replace("/", ""), _cap_positions.get(symbol, 0.0))
@@ -1698,6 +1716,7 @@ async def main() -> None:
                         f"  🛑 {strategy.name}/{symbol} {signal.side.upper()} — blocked by loss cap "
                         f"(would increase exposure)", flush=True,
                     )
+                    _drop("loss cap", desk.name)
                     continue
                 kelly_notional = _kelly_notional(equity, conf, bars=bars_cache.get(symbol))
                 # Self-scaling: winners (by live realized P&L) size up, losers down,
@@ -1706,6 +1725,7 @@ async def main() -> None:
                 if perf_w == 0.0:
                     print(f"  ✂ {strategy.name}/{symbol} pruned by attribution "
                           f"(sustained negative live P&L) — no order", flush=True)
+                    _drop("pruned by attribution", desk.name)
                     continue
                 if perf_w != 1.0:
                     print(f"    · perf weight {perf_w:.2f}x for {strategy.name}", flush=True)
@@ -1718,6 +1738,7 @@ async def main() -> None:
                 if kelly_notional <= 0:
                     print(f"  · {strategy.name}/{symbol} skipped — insufficient available cash "
                           f"(< ${MIN_ORDER_USD:.0f}; frees as pending closes fill)", flush=True)
+                    _drop("insufficient cash", desk.name)
                     continue
                 coid = f"qe-{strategy.name[:10]}-{symbol[:4].replace('/', '')}-{int(time.time())}"
                 limit_price: float | None = None
@@ -1797,7 +1818,22 @@ async def main() -> None:
                     _post_chat(desk.chat_channel, "\n".join(lines))
                     desk_summaries.append(f"✅ *{desk.name}*: {len(desk_order_list)} orders")
                 else:
-                    desk_summaries.append(f"💤 *{desk.name}*: no signals fired")
+                    # "no signals fired" was printed whenever no ORDER was placed,
+                    # which conflates "this desk had nothing to say" with "this
+                    # desk fired signals and every one was dropped". The second is
+                    # a problem; the first is a quiet market. They must not read
+                    # identically.
+                    n_sig = desk_signals.get(desk.name, 0)
+                    if n_sig:
+                        why = ", ".join(
+                            f"{n} {reason}"
+                            for reason, n in desk_drops.get(desk.name, Counter()).most_common(3)
+                        ) or "no reason recorded"
+                        desk_summaries.append(
+                            f"⚠️ *{desk.name}*: {n_sig} signal(s) fired, **0 placed** — {why}"
+                        )
+                    else:
+                        desk_summaries.append(f"💤 *{desk.name}*: no signals fired")
 
             tracker.set_output(orders_placed=len(all_orders), total_notional=round(total_notional, 2))
 
@@ -1814,6 +1850,14 @@ async def main() -> None:
             summary  = f"*QuantEdge Desk Run* ({now_str})  equity=${equity:,.2f}  regime={_regime_lbl}/{vol_regime}\n"
             summary += (f"funnel: {_gen} generated → {_survivors} survived gate+topK "
                         f"({_explored} exploration) → {len(all_orders)} placed\n")
+            # The gap between "survived" and "placed" is where every silent
+            # failure lives. It used to be unexplained: 15 survived, 0 placed,
+            # no reason anywhere in the message. Publish the breakdown.
+            _drops = locals().get("drops") or Counter()
+            if _drops:
+                _total_dropped = sum(_drops.values())
+                _why = " · ".join(f"{n} {reason}" for reason, n in _drops.most_common())
+                summary += f"⚠️ {_total_dropped} dropped before placement — {_why}\n"
             if locals().get("_cap_active"):
                 summary += "🛑 loss cap ACTIVE — new exposure blocked, risk-reducing orders only\n"
             summary += "\n".join(desk_summaries)
