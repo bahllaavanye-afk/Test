@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785146971.0823436,
+    "last_updated": 1785148761.1698678,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1784951247.986399
+    "last_brain_update": 1785148761.1685553
   },
   "episodic": [
     {
@@ -1919,11 +1919,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The deployment failed due to a resource limit error, and subsequent auto-fix attempts were also unsuccessful.",
-      "item_count": 20,
-      "ts": 1784217278.3568459
-    },
-    {
       "summary": "The deployment failed due to resource limits, advising a retry in 24 hours, and an automated fix attempt also failed to apply a patch.",
       "item_count": 20,
       "ts": 1784221883.8338459
@@ -2417,6 +2412,11 @@
       "summary": "The team lead revoked automerge for an autonomous PR that modifies a protected file named `backe`. This action was repeated across multiple identical discussions.",
       "item_count": 20,
       "ts": 1784951247.9741895
+    },
+    {
+      "summary": "A workflow run on 2026-07-27 failed because an automatic fix could not apply a patch, and the LLM response could not be parsed as valid JSON.",
+      "item_count": 20,
+      "ts": 1785148761.156284
     }
   ],
   "experiment_results": [
@@ -2503,42 +2503,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "desk-crypto",
-      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $397 conf=97%  id=`854f3a12\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $343 conf=91%  id=`3207105d\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784751660.211973
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "*International Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $343 conf=100%  id=`8d72af3e\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $343 conf=100%  id=`6cd8953b\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784751660.2206483
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (20:24 UTC)  equity=$22,904.19  regime=sideways/calm\nfunnel: 33 generated \u2192 16 survived gate+topK (0 exploration) \u2192 3 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 3 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
-      "source": "desk_run_summary",
-      "ts": 1784756146.5423753
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 1 order(s) placed of 8 signal(s) \u2265 0.6: USD_CAD BUY@1.41095, EUR_USD SELL@1.13980, GBP_USD SELL@1.33751 | 2 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1784756146.5488634
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*Crypto Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $390 conf=97%  id=`8e32bc3c\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/XRP/USD` BUY $344 conf=97%  id=`35db6998\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $344 conf=74%  id=`1292ac2f\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784756146.5534136
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "*International Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $343 conf=100%  id=`8d72af3e\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $343 conf=100%  id=`6cd8953b\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784756146.5579216
-    },
     {
       "channel": "pnl-daily",
       "summary": "*QuantEdge Desk Run* (21:42 UTC)  equity=$22,902.73  regime=sideways/calm\nfunnel: 60 generated \u2192 19 survived gate+topK (1 exploration) \u2192 2 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
@@ -3102,6 +3066,42 @@
       "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $336 conf=98%  id=`e4d035f7\u2026`\n\ud83d\udfe2 `time_series_momentum/WEAT` BUY $475 conf=82%  id=`ce5c7461\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $938 conf=81%  id=`25df14ee\u2026`",
       "source": "desk_run_summary",
       "ts": 1784951238.4148035
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (10:11 UTC)  equity=$22,266.11  regime=sideways/calm\nfunnel: 32 generated \u2192 15 survived gate+topK (0 exploration) \u2192 0 placed\n\ud83d\udca4 *Equities*: no signals fired\n\ud83d\udca4 *Crypto*: no signals fired\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n",
+      "source": "desk_run_summary",
+      "ts": 1785148752.1292152
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 9 signal(s) \u2265 0.6: EUR_USD BUY@1.13706, USD_CAD BUY@1.40942, USD_JPY SELL@163.85000 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1785148752.136777
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $334 conf=97%  id=`791eb3e9\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $334 conf=92%  id=`7ec3b971\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785148752.1421478
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "Given the 5\u2011minute supertrend\u202f+\u202fRSI\u2011divergence filter that isolates only strong trend\u2011aligned moves while allowing rapid exits, I\u2019d project a Sharpe around\u202f1.2\u202f\u00b1\u202f0.2 (slightly lower than the EMA\u2011Keltner\u2011RSI setups because the higher\u2011frequency noise adds modest volatility). Test the model out\u2011of\u2011samp",
+      "source": "desk_run_summary",
+      "ts": 1785148752.147708
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1170 conf=98%  id=`4dbeea7b\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785148752.1530683
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $336 conf=98%  id=`e4d035f7\u2026`\n\ud83d\udfe2 `time_series_momentum/WEAT` BUY $475 conf=82%  id=`ce5c7461\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $938 conf=81%  id=`25df14ee\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785148752.1583629
     }
   ]
 }
