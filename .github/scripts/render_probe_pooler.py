@@ -94,6 +94,34 @@ def ref_and_password(url: str) -> tuple[str | None, str | None]:
     return ref, password
 
 
+def password_roundtrips(url: str, password: str) -> bool:
+    """True when re-parsing a URL built from `password` recovers it exactly.
+
+    This gate exists because this script REWRITES a production credential. If
+    the stored URL carries an UNENCODED password containing '#' or '?',
+    urlparse treats them as fragment/query markers and truncates: the URL
+    ``...:a:b@c#d?e@host/postgres`` yields the password ``a:b``. Patching then
+    writes that truncated string back to Render and permanently breaks a
+    credential that was working — with the symptom "password authentication
+    failed", indistinguishable from a rotated password.
+
+    A round-trip check cannot recover the real password, but it stops the
+    script from destroying it.
+    """
+    # Compare against the RAW credential text, not against a re-encoded copy of
+    # what urlparse already returned — re-encoding always round-trips and would
+    # make this check vacuous.
+    after_scheme = url.split("://", 1)[-1]
+    creds_and_host = after_scheme.rsplit("/", 1)[0] if "/" in after_scheme else after_scheme
+    if "#" in creds_and_host or "?" in creds_and_host:
+        # Unencoded fragment/query markers in the credential region — urlparse
+        # truncates here, so whatever `password` holds is already short.
+        return False
+    raw_userinfo = creds_and_host.rpartition("@")[0]
+    raw_password = raw_userinfo.partition(":")[2]
+    return bool(raw_password) and unquote(raw_password) == password
+
+
 def candidate_hosts(region: str) -> list[str]:
     """Pooler hostnames to try, newest cluster first (aws-1 then aws-0)."""
     return [
@@ -229,6 +257,17 @@ async def probe_service(service_id: str) -> bool:
     ref, password = ref_and_password(db_url)
     if not ref or not password:
         print("  could not extract ref/password from DATABASE_URL — skipping")
+        return False
+
+    if not password_roundtrips(db_url, password):
+        print("  🛑 REFUSING TO PATCH — the password in DATABASE_URL does not survive")
+        print("     a parse/rebuild round-trip, so rewriting the URL would write back")
+        print("     a CORRUPTED credential and break a connection that may be working.")
+        print("     Cause: the stored URL has an UNENCODED password containing one of")
+        print("     '#' or '?'. urlparse treats those as fragment/query markers and")
+        print("     silently truncates — e.g. 'a:b@c#d?e' parses back as just 'a:b'.")
+        print("     FIX: percent-encode the password in DATABASE_URL, then re-run:")
+        print("       python -c \"import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=''))\" '<password>'")
         return False
 
     cur_host, cur_port = current_host_port(db_url)

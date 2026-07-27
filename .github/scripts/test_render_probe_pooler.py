@@ -169,3 +169,60 @@ def test_still_corrects_a_genuinely_wrong_cluster(monkeypatch):
     assert any("aws-1-us-west-1" in v for k, v in patched if k == "DATABASE_URL"), patched
     # host-only correction must NOT redeploy — the password is still wrong
     assert not any(k == "DEPLOY" for k, _ in patched), "must not redeploy on a host-only fix"
+
+
+def _url(password: str, encode: bool = True) -> str:
+    """Build a Supabase pooler URL with the password encoded or raw."""
+    from urllib.parse import quote
+    pw = quote(password, safe="") if encode else password
+    return (
+        f"postgresql+asyncpg://postgres.vexzwnfbmznvxoxxktax:{pw}"
+        f"@aws-1-us-west-1.pooler.supabase.com:6543/postgres"
+    )
+
+
+# ── Credential-corruption guard ───────────────────────────────────────────────
+# This script REWRITES a production credential. If the stored DATABASE_URL holds
+# an UNENCODED password containing '#' or '?', urlparse treats them as
+# fragment/query markers and truncates it — `Abc!@#$%^&*()` parses back as
+# `Abc!`. Patching then writes those 4 characters to Render and permanently
+# destroys a working credential, presenting as "password authentication failed":
+# indistinguishable from a rotated password, and self-inflicted.
+
+def test_encoded_password_roundtrips_and_may_be_patched():
+    for pw in ("simple123", "p@ssw0rd", "a:b@c#d?e", "Abc!@#$%^&*()", "pä55"):
+        url = _url(pw, encode=True)
+        ref, parsed = m.ref_and_password(url)
+        assert parsed == pw, f"encoded password must survive parsing: {pw!r}"
+        assert m.password_roundtrips(url, parsed) is True
+
+
+def test_unencoded_password_with_fragment_marker_is_refused():
+    """The corrupting case — must be refused, not silently truncated."""
+    for pw in ("a:b@c#d?e", "pa#ss", "pass?x", "Abc!@#$%^&*()"):
+        url = _url(pw, encode=False)
+        ref, parsed = m.ref_and_password(url)
+        # parsed is either None or a TRUNCATED prefix — never the real password
+        assert parsed != pw, f"expected truncation for unencoded {pw!r}"
+        if parsed:
+            assert m.password_roundtrips(url, parsed) is False, (
+                f"patching {pw!r} would write back the truncated {parsed!r}"
+            )
+
+
+def test_plain_unencoded_password_still_patches():
+    """The guard must not block the ordinary case."""
+    url = _url("simplepass123", encode=False)
+    ref, parsed = m.ref_and_password(url)
+    assert parsed == "simplepass123"
+    assert m.password_roundtrips(url, parsed) is True
+
+
+def test_truncation_is_a_real_prefix_not_a_parse_error():
+    """Pin the exact mechanism so the reason stays legible."""
+    url = _url("Abc!@#$%^&*()", encode=False)
+    _ref, parsed = m.ref_and_password(url)
+    assert parsed == "Abc!", (
+        "urlparse splits at the last '@' before the '#'-fragment, leaving a "
+        "4-character prefix of a 13-character password"
+    )
