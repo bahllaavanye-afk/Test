@@ -24,7 +24,18 @@
 **Tests:** `tests/unit/test_risk_gate_wiring.py`, 15 tests. Verified against the pre-fix tree: **9 of 11** original tests fail on old code. The 2 that pass are deliberate regression guards on behaviour I preserved.
 Two of these tests were themselves rewritten after failing this bar — one used `str.count()` to detect unreachable functions and was defeated by a comment in `main.py` naming the very function it was meant to catch (now AST reference resolution); the other claimed to protect equity updates from positions failures but passed against both versions, because equity is fetched first (now asserts distinct, triage-actionable log lines instead).
 
-- [ ] **[P1] `factor_exposure.py` and `var.py` are documented as risk gates but are not wired into `check_order()`.** `risk/CLAUDE.md` diagrams five checks; three exist in code. Beta and VaR caps are unenforced. Next item.
+**What is now live, stated precisely — "the risk engine is on" would be an overclaim:**
+
+| Control | Before | After |
+|---|---|---|
+| Circuit breakers (global + arb) | never ran | **live** — fed by `_risk_state_sync` |
+| Zero/negative-equity halt | never ran | **live** |
+| Position size cap | never ran | **live** — real NAV, real marks |
+| Correlation cluster limit | never ran | **still inert** ↓ |
+
+- [ ] **[P1] The correlation cluster limit still cannot fire — `update_returns()` has no caller.** `check_order` guards it with `if self._clusters:`, and `_clusters` is only ever populated by `update_returns()`, which — exactly like `app.state.risk_manager` — is called from **nowhere in `app/`**. Wiring the manager in does not fix this. It needs a returns source and a deliberate sampling cadence: the price feed polls every 2 seconds, and 20 samples of 2-second returns is 40 seconds of noise, not the co-movement structure `compute_correlation_clusters(threshold=0.70)` assumes. Immediate next item.
+- [ ] **[P1] `factor_exposure.py` and `var.py` are documented as risk gates but are not wired into `check_order()`.** `risk/CLAUDE.md` diagrams five checks; three exist in code, two of those now run. Beta and VaR caps are unenforced.
+  **Trap to avoid when wiring VaR:** `historical_var()` returns a *default* `var_99=0.03` when it has fewer than 10 observations. Wired naively against the documented "block if 1-day 99% VaR > 2% of NAV", a cold start would block **every order** until 10 observations accumulate — a fail-closed halt of the entire fleet, dressed as a risk control.
 - [x] **[P2] …and the mark cache needed a producer, or it was the same bug in a new place.** `update_prices()` alone would leave every market order on the "unpriced" path, i.e. still uncapped — just visibly so. Wired the price feed as the producer via an optional `on_mark(symbol, last)` sink on `run_price_feed`/`_fetch_and_publish` — a plain callable, not a `RiskManager` reference, so the feed stays decoupled from the risk layer. The sink is exception-isolated: a broken risk consumer must not cost the Redis write or the WebSocket broadcast. `unpriced_orders` remains as the measurement of any residual gap.
 
 ## 🧪 TESTS & CI — 2026-07-27
