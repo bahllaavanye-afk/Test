@@ -35,7 +35,7 @@ jobs:
     steps:
       - name: Keep backend warm for a window, then fail loud if it never woke
         run: |
-          URL="${{ vars.RENDER_API_URL || 'https://quantedge-api-agb8.onrender.com' }}/health"
+          URL="${{ vars.RENDER_API_URL || 'https://quantedge-api-9jz0.onrender.com' }}/health"
           # Ping for ~5 minutes so one run keeps the box warm across a window, not a single
           # instant. max-time MUST exceed the free-tier cold start (~75-90s) or the ping
           # times out before the box wakes and never actually keeps it warm.
