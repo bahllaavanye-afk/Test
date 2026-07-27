@@ -262,6 +262,10 @@ class iTransformer(AbstractModel, _NNModule):
             loss=total_loss / total,
             accuracy=accuracy,
             auc=auc,
+            # `sharpe` has no default on EvalMetrics — omitting it raised
+            # TypeError on every call. 0.0 is what every other model reports
+            # here; this evaluate() measures classification, not P&L.
+            sharpe=0.0,
         )
 
     def predict_proba(self, X: torch.Tensor) -> torch.Tensor:
