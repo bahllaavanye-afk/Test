@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-27T07:59:17.069885+00:00",
+  "last_updated": "2026-07-27T08:05:25.184188+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -5089,6 +5089,30 @@
       "timestamp": "2026-07-27T07:59:57.610877+00:00",
       "provider": "llm",
       "round": "risk_management"
+    },
+    "2026-07-27T08:05:28.793483+00:00": {
+      "channel": "ml-research",
+      "speaker": "ml_trainer",
+      "message": "The `backend/app/ml/models/` directory now contains three production artifacts\u2014`mean_reversion.pkl` (MAE\u202f=\u202f0.012), `lstm_predictor.pt` (AUC\u202f\u2248\u202f0.91), and `xgboost_classifier.joblib` (AUC\u202f\u2248\u202f0.87). The most recent training run on\u202f2026\u201107\u201124 refreshed all three models, achieving the metrics listed above and",
+      "timestamp": "2026-07-27T08:05:28.793483+00:00",
+      "provider": "llm",
+      "round": "ml_models"
+    },
+    "2026-07-27T08:05:30.345620+00:00": {
+      "channel": "ml-research",
+      "speaker": "research_scientist",
+      "message": "I propose replacing the current LSTM with a Temporal Fusion Transformer (TFT)\u202f\u2014\u202fLim\u202fet\u202fal.,\u202f2020 (NeurIPS)\u202f\u2014 which jointly encodes the high\u2011frequency price series and our static macro covariates, adding variable\u2011selection attention and gating to capture long\u2011range temporal patterns. Implementing it as `backend/app/ml/models/tft_predictor.pt` should improve both AUC and robustness to regime shifts, especially given the recent drift observed in `state/model_drift.json`. I\u2019ll start a prototype usin",
+      "timestamp": "2026-07-27T08:05:30.345620+00:00",
+      "provider": "llm",
+      "round": "ml_models"
+    },
+    "2026-07-27T08:06:06.137893+00:00": {
+      "channel": "ml-research",
+      "speaker": "modeling_engineer",
+      "message": "I recommend retraining the Temporal Fusion Transformer (TFT) model using the updated `training/pipeline_mean_reversion.py` pipeline with the full feature set and then deploying it to replace the existing `backend/app/ml/models/tft_predictor.pt`. This will allow us to leverage the strengths of TFT in handling regime shifts and improve overall performance, as observed in the recent drift in `state/model_drift.json`.",
+      "timestamp": "2026-07-27T08:06:06.137893+00:00",
+      "provider": "llm",
+      "round": "ml_models"
     }
   },
   "employee_context": {
@@ -5357,6 +5381,15 @@
             "channel": "ml-research",
             "topic": "ml_models"
           }
+        },
+        {
+          "ts": "2026-07-27T08:05:28+00:00",
+          "kind": "discussion",
+          "text": "The `backend/app/ml/models/` directory now contains three production artifacts\u2014`mean_reversion.pkl` (MAE\u202f=\u202f0.012), `lstm_predictor.pt` (AUC\u202f\u2248\u202f0.91), and `xgboost_classifier.joblib` (AUC\u202f\u2248\u202f0.87). The most recent training run on\u202f2026\u201107\u201124 refreshed all three models, achieving the metrics listed above and",
+          "meta": {
+            "channel": "ml-research",
+            "topic": "ml_models"
+          }
         }
       ],
       "facts": {},
@@ -5417,6 +5450,15 @@
             "channel": "ml-research",
             "topic": "ml_models"
           }
+        },
+        {
+          "ts": "2026-07-27T08:05:29+00:00",
+          "kind": "discussion",
+          "text": "I propose replacing the current LSTM with a Temporal Fusion Transformer (TFT)\u202f\u2014\u202fLim\u202fet\u202fal.,\u202f2020 (NeurIPS)\u202f\u2014 which jointly encodes the high\u2011frequency price series and our static macro covariates, adding variable\u2011selection attention and gating to capture long\u2011range temporal patterns. Implementing it as `backend/app/ml/models/tft_predictor.pt` should improve both AUC and robustness to regime shifts, especially given the recent drift observed in `state/model_drift.json`. I\u2019ll start a prototype using the PyTorch\u2011TFT library and benchmark it against the refreshed LSTM baseline.",
+          "meta": {
+            "channel": "ml-research",
+            "topic": "ml_models"
+          }
         }
       ],
       "facts": {},
@@ -5473,6 +5515,15 @@
           "ts": "2026-07-27T02:51:16+00:00",
           "kind": "discussion",
           "text": "I recommend retraining the Structured State\u2011Space model (`backend/app/ml/models/s4_predictor.py`) using the updated `training/pipeline_mean_reversion.py` with the full price series plus static macro covariates, then swapping it into production to replace the current XGBoost classifier. After retraining, we should redeploy the new S4 model via the `backend/app/ml/deployments/deploy_s4.py` script and monitor the drift metrics in `models/equity/drift_monitor.py`.",
+          "meta": {
+            "channel": "ml-research",
+            "topic": "ml_models"
+          }
+        },
+        {
+          "ts": "2026-07-27T08:06:05+00:00",
+          "kind": "discussion",
+          "text": "I recommend retraining the Temporal Fusion Transformer (TFT) model using the updated `training/pipeline_mean_reversion.py` pipeline with the full feature set and then deploying it to replace the existing `backend/app/ml/models/tft_predictor.pt`. This will allow us to leverage the strengths of TFT in handling regime shifts and improve overall performance, as observed in the recent drift in `state/model_drift.json`.",
           "meta": {
             "channel": "ml-research",
             "topic": "ml_models"
@@ -5933,8 +5984,8 @@
     "last_drawdown_pct": 12.3,
     "last_signal_run": "2026-06-09T10:47:42.157419+00:00",
     "signal_count_today": 0,
-    "last_discussion": "2026-07-27T07:59:17.069885+00:00",
-    "total_discussions": 231,
+    "last_discussion": "2026-07-27T08:05:25.184188+00:00",
+    "total_discussions": 232,
     "heartbeat_count": 2,
     "last_watchdog_run": "2026-07-27T07:51:12.229218+00:00",
     "health_status": "3 failing",
@@ -5977,9 +6028,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[modeling_engineer @ 2026-07-24T02:38] [LLM unavailable \u2014 all providers failed]",
-    "[ml_trainer in #ml-research @ 2026-07-24T06:25] The models in\u202fbackend/app/ml/models/\u202fare all loaded and ready, with\u202fmodel_v1.pkl\u202fand\u202fmodel_v2.pkl\u202fregistered in the model registry and\u202fmodel_v3.pkl\u202fcu",
-    "[research_scientist in #ml-research @ 2026-07-24T06:25] I\u2019ll replace the static feed\u2011forward encoder with a Temporal Fusion Transformer (TFT)\u202f\u2014\u202fsee Lim et\u202fal., \u201cTemporal Fusion Transformers for Interpretabl",
     "[modeling_engineer in #ml-research @ 2026-07-24T06:25] I recommend retraining **model_v2.pkl** to incorporate the new learned time\u2011varying embedding from `src/features/time_lag_feature.py`, then version it",
     "[ml_trainer in #ml-research @ 2026-07-24T10:15] The model registry shows three artifacts in\u202f`backend/app/ml/models/`:\u202f`model_v1.pkl`,\u202f`model_v2.pkl`, and the newly\u2011trained\u202f`model_v3.pkl` (CUDA\u2011enabl",
     "[research_scientist in #ml-research @ 2026-07-24T10:15] Given the modest covariate shift and the already strong ROC\u2011AUC, I\u2019d replace the current static encoder with a **Temporal Fusion Transformer (TFT)** (",
@@ -6176,7 +6224,10 @@
     "[ml_trainer @ 2026-07-27T07:30] We need to respond as ml_trainer agent, giving a one-sentence status update, first person, concise, max 2 sentences (so one sentence okay). Should ref",
     "[standup_agent @ 2026-07-27T07:30] [LLM unavailable \u2014 all providers failed]",
     "[system_watchdog in #risk @ 2026-07-27T07:59] All health\u2011check endpoints in\u202f`backend/api/health_check.py` returned\u202f200\u202fOK in the last cycle, with `/v1/status` reporting a latency of\u202f12\u202fms (see\u202f`./",
-    "[desk_trader in #risk @ 2026-07-27T07:59] Given the risk metrics in `state/current_risk.json` and the 5% NAV gross-exposure cap in `state/risk_limits.yaml`, I recommend allocating roughly 3.5%"
+    "[desk_trader in #risk @ 2026-07-27T07:59] Given the risk metrics in `state/current_risk.json` and the 5% NAV gross-exposure cap in `state/risk_limits.yaml`, I recommend allocating roughly 3.5%",
+    "[ml_trainer in #ml-research @ 2026-07-27T08:05] The `backend/app/ml/models/` directory now contains three production artifacts\u2014`mean_reversion.pkl` (MAE\u202f=\u202f0.012), `lstm_predictor.pt` (AUC\u202f\u2248\u202f0.91), a",
+    "[research_scientist in #ml-research @ 2026-07-27T08:05] I propose replacing the current LSTM with a Temporal Fusion Transformer (TFT)\u202f\u2014\u202fLim\u202fet\u202fal.,\u202f2020 (NeurIPS)\u202f\u2014 which jointly encodes the high\u2011frequency ",
+    "[modeling_engineer in #ml-research @ 2026-07-27T08:05] I recommend retraining the Temporal Fusion Transformer (TFT) model using the updated `training/pipeline_mean_reversion.py` pipeline with the full feat"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
