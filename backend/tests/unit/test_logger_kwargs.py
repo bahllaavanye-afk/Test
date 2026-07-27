@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import ast
 import pathlib
+from typing import List, Set, Tuple
 
 APP_ROOT = pathlib.Path(__file__).resolve().parents[2] / "app"
 
@@ -33,10 +34,17 @@ LOG_METHODS = {"debug", "info", "warning", "warn", "error", "critical", "excepti
 STDLIB_KWARGS = {"exc_info", "stack_info", "stacklevel", "extra"}
 
 
-def _logger_bindings(tree: ast.Module) -> tuple[set[str], set[str]]:
-    """(names bound to a stdlib logger, names bound to a structlog logger)."""
-    stdlib: set[str] = set()
-    structlog_names: set[str] = set()
+def _logger_bindings(tree: ast.Module | None) -> Tuple[Set[str], Set[str]]:
+    """Return names bound to a stdlib logger and names bound to a structlog logger.
+
+    The function is defensive: if *tree* is ``None`` or not an ``ast.Module``,
+    empty sets are returned.
+    """
+    if not isinstance(tree, ast.Module):
+        return set(), set()
+
+    stdlib: Set[str] = set()
+    structlog_names: Set[str] = set()
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
@@ -45,7 +53,7 @@ def _logger_bindings(tree: ast.Module) -> tuple[set[str], set[str]]:
             targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
             if attr == "getLogger":
                 stdlib.update(targets)
-            elif attr == "get_logger":       # structlog.get_logger()
+            elif attr == "get_logger":  # structlog.get_logger()
                 structlog_names.update(targets)
 
         # `from app.utils.logging import logger` — the project's structlog instance
@@ -58,14 +66,22 @@ def _logger_bindings(tree: ast.Module) -> tuple[set[str], set[str]]:
     return stdlib, structlog_names
 
 
-def _scan(tree: ast.Module) -> list[tuple[int, str, str, list[str]]]:
+def _scan(tree: ast.Module | None) -> List[Tuple[int, str, str, List[str]]]:
+    """Scan *tree* for stdlib logger calls that use structlog‑style keyword fields.
+
+    Handles ``None`` input gracefully and protects against missing ``lineno``
+    attributes.
+    """
+    if not isinstance(tree, ast.Module):
+        return []
+
     stdlib, structlog_names = _logger_bindings(tree)
     # A name bound both ways in one module is ambiguous — say nothing.
     stdlib -= structlog_names
     if not stdlib:
         return []
 
-    found = []
+    found: List[Tuple[int, str, str, List[str]]] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -74,14 +90,21 @@ def _scan(tree: ast.Module) -> list[tuple[int, str, str, list[str]]]:
             continue
         if not isinstance(fn.value, ast.Name) or fn.value.id not in stdlib:
             continue
-        bad = [k.arg for k in node.keywords if k.arg is not None and k.arg not in STDLIB_KWARGS]
+        # Filter out keywords that are either ``None`` (e.g., **kwargs) or
+        # accepted by the stdlib logger.
+        bad = [
+            k.arg
+            for k in getattr(node, "keywords", [])
+            if k.arg is not None and k.arg not in STDLIB_KWARGS
+        ]
         if bad:
-            found.append((node.lineno, fn.value.id, fn.attr, bad))
+            lineno = getattr(node, "lineno", -1)
+            found.append((lineno, fn.value.id, fn.attr, bad))
     return found
 
 
 def test_no_stdlib_logger_is_called_with_structlog_fields():
-    violations: list[str] = []
+    violations: List[str] = []
     stdlib_modules = 0
 
     for path in sorted(APP_ROOT.rglob("*.py")):
@@ -109,59 +132,69 @@ def test_no_stdlib_logger_is_called_with_structlog_fields():
 
 def test_scanner_flags_a_stdlib_logger_with_fields():
     """The check above only means something if it can actually fail."""
-    tree = ast.parse('''
+    tree = ast.parse(
+        '''
 import logging
 logger = logging.getLogger(__name__)
 
 def f(symbol):
     logger.info("something happened", symbol=symbol)
-''')
+'''
+    )
     assert _scan(tree) == [(6, "logger", "info", ["symbol"])]
 
 
 def test_structlog_logger_with_fields_is_fine():
     """The same call is correct against the project's structlog logger."""
-    tree = ast.parse('''
+    tree = ast.parse(
+        '''
 from app.utils.logging import logger
 
 def f(symbol):
     logger.info("something happened", symbol=symbol)
-''')
+'''
+    )
     assert _scan(tree) == []
 
 
 def test_stdlib_kwargs_are_not_flagged():
     """exc_info/stack_info/stacklevel/extra are real stdlib parameters."""
-    tree = ast.parse('''
+    tree = ast.parse(
+        '''
 import logging
 logger = logging.getLogger(__name__)
 
 def f(exc):
     logger.error("boom", exc_info=exc, stack_info=True, stacklevel=2, extra={"a": 1})
-''')
+'''
+    )
     assert _scan(tree) == []
 
 
 def test_percent_style_positional_args_are_not_flagged():
     """The correct stdlib form — positional args, not keywords."""
-    tree = ast.parse('''
+    tree = ast.parse(
+        '''
 import logging
 logger = logging.getLogger(__name__)
 
 def f(symbol, n):
     logger.warning("dropped %s after %d tries", symbol, n)
-''')
+'''
+    )
     assert _scan(tree) == []
 
 
 def test_a_module_binding_both_conventions_is_skipped():
     """Ambiguous binding — the check must stay quiet rather than guess."""
-    tree = ast.parse('''
+    tree = ast.parse(
+        '''
 import logging
 from app.utils.logging import logger
 logger = logging.getLogger(__name__)
 
 def f(symbol):
     logger.info("m", symbol=symbol)
-''')
+'''
+    )
     assert _scan(tree) == []
