@@ -105,6 +105,34 @@ def get_redis() -> aioredis.Redis | None:
     return aioredis.Redis(connection_pool=pool)
 
 
+def exchange_for(symbol: str) -> str:
+    """Redis price namespace for a symbol.
+
+    Mirrors the price feed's own split (`"crypto" if "/" in symbol else "alpaca"`).
+    Exists so callers cannot guess it differently from the writer.
+    """
+    return "crypto" if "/" in str(symbol) else "alpaca"
+
+
+def price_key(exchange: str, symbol: str) -> str:
+    """The ONE Redis key format for a cached price.
+
+    Every reader in the codebase used to build `prices:{symbol}` by hand — which
+    is the *WebSocket topic* name (see ws/prices.py), not this key. Nothing
+    writes that, so every Redis price read missed, every time, silently:
+
+      * bots/engine._fetch_current_price  → fell through to a yfinance DAILY
+        bar, so the live bot exit checker evaluated intraday take-profit and
+        stop-loss against a daily close
+      * tasks/position_monitor            → fell through to a broker quote
+      * api/v1/positions                  → no price
+
+    Two namespaces one character apart, and the miss is indistinguishable from
+    a cold cache. Build the key here or not at all.
+    """
+    return f"price:{exchange}:{symbol}"
+
+
 class PriceCache:
     """Redis price cache. No-ops gracefully when Redis is unavailable.
 
@@ -126,7 +154,7 @@ class PriceCache:
         r = self._client()
         if r is None:
             return
-        key = f"price:{exchange}:{symbol}"
+        key = price_key(exchange, symbol)
         try:
             await r.setex(key, ttl, json.dumps(data))
         except Exception as exc:
@@ -136,7 +164,7 @@ class PriceCache:
         r = self._client()
         if r is None:
             return None
-        key = f"price:{exchange}:{symbol}"
+        key = price_key(exchange, symbol)
         try:
             raw = await r.get(key)
             return json.loads(raw) if raw else None

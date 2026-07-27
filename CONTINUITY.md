@@ -40,6 +40,33 @@ Once that lands, the boot reaches Postgres → `alembic upgrade head` provisions
 **Verify:** `/health/detailed` → `database.fallback` gone, `database_primary.ok` true.
 NOTE `database_primary` is a BOOT-time value, so it only changes after a restart.
 
+## 🚨 2026-07-27 — NOTHING ENFORCED A STOP-LOSS (P0, fixed)
+Second pass of the principal review. After the risk gate I swept `app/` for the *shape* of
+that bug — public functions nothing references — since finding it twice by hand meant more.
+- **`PositionMonitor` was never started.** `start_position_monitor()` claims scheduler.py
+  calls it; scheduler.py has no such job and nothing constructs a PositionMonitor. Third
+  instance of the same lying-docstring pattern. Meanwhile `strategy_runner.py:308` writes
+  `pos_exit:<symbol>` (stop_loss, take_profit, peak_price) on every fill "for
+  position_monitor.py". **The producer ran for months; the consumer did not exist.** The whole
+  `CompositeExit` engine was reachable only from that dead module. Now a supervised 30s loop.
+- **Every Redis price read used a key nothing writes.** `set_price()` writes
+  `price:<exchange>:<symbol>`; all three readers built `prices:<symbol>` — the **WebSocket
+  topic**, not a Redis key. A miss looks exactly like a cold cache, so each silently took its
+  fallback. Worst: the **live** `bot_exit_checker` fell through to a yfinance **daily** bar,
+  so intraday stop-losses were priced off a daily close. Root cause was
+  `tasks/CLAUDE.md` listing the WS topic in its "Redis Key Schema" table — the code matched
+  the docs, not reality. Added `redis_client.price_key()`; fixed the table.
+
+**With the inert risk manager, that is the full account of the −$8,287.81 paper account:**
+nothing capped size, nothing halted on drawdown, nothing enforced a stop, and the one exit
+job that did run priced stops off yesterday's close.
+
+Pinned by `backend/tests/unit/test_exit_path_wiring.py` (8 tests; 5 fail on pre-fix code).
+**Still unwired, confirmed repo-wide:** `walk_forward_validate()` — root CLAUDE.md principle
+#5 is "Walk-forward only", enforced nowhere — plus `monte_carlo_simulation`,
+`run_stress_tests`, `probability_of_backtest_overfitting`, and the ML feature builders
+`add_sentiment_features` / `add_microstructure_features` / `add_alternative_features`.
+
 ## 🚨 2026-07-27 — THE RISK ENGINE WAS NEVER SWITCHED ON (P0, fixed)
 First pass of the principal-engineer review, following the money path (risk → execution →
 broker). **`RiskManager.check_order()` had never executed in production.** Every documented

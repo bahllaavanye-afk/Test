@@ -1,5 +1,28 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🚨 PRINCIPAL REVIEW 2026-07-27 (cont.) — nothing enforced a stop-loss
+
+> Second pass. After the risk gate, I swept `app/` for the *shape* of that bug — public
+> functions nothing references — because finding it twice by hand meant there would be more.
+> 35 undecorated unreferenced functions; the exit path was the worst of them.
+
+- [x] **[P0] `PositionMonitor` was never started — every strategy stop-loss was recorded and none was enforced.** `start_position_monitor()`'s docstring says *"Factory function called from scheduler.py"*. scheduler.py has no such job, and **nothing anywhere constructed a `PositionMonitor`**. The third instance of the identical lying-docstring pattern (after `start_strategy_runner` and `start_price_feed`).
+  What makes it worse than dead code: the **producer was running the whole time**. `strategy_runner.py:308` writes `pos_exit:<symbol>` to Redis on every fill — `stop_loss`, `take_profit`, `peak_price` — under the comment *"Store exit config in Redis for position_monitor.py"*, with a 24h TTL. Configs were written, expired, and re-written, forever, read by nobody. The whole `execution/position_exit.py` `CompositeExit` engine (trailing stops, ATR stops, time stops, regime exits — 15KB) was reachable **only** from that never-started module.
+  Now started from `lifespan` as a supervised 30s loop. Bot positions were separately covered by the `bot_exit_checker` scheduler job; this is the strategy-runner path, which had nothing.
+- [x] **[P0] Every Redis price read in the codebase used a key nothing writes.** `set_price()` writes `price:<exchange>:<symbol>`. All three readers built `prices:<symbol>` — which is the **WebSocket topic** (`ws/prices.py`), not a Redis key. Two namespaces one character apart, and **a miss is indistinguishable from a cold cache**, so each reader silently took its fallback:
+  - `bots/engine._fetch_current_price` → yfinance `period="2d", interval="1d"`. So the **live, currently-running** `bot_exit_checker` job has been evaluating intraday take-profit and stop-loss against a **daily close**. A daily bar cannot tell you whether an intraday stop was breached.
+  - `tasks/position_monitor` → a broker quote per position per tick (dead anyway).
+  - `api/v1/positions` → `pnl_pct` always `None`.
+
+  Root cause was documentation: `backend/app/tasks/CLAUDE.md` listed `prices:<SYMBOL>` in its "Redis Key Schema" table. The code matched the docs rather than reality. Fixed the table too, with the warning attached.
+  Added `redis_client.price_key()` / `exchange_for()` as the single key builder, routed the writer and all readers through it, and made the intraday bar the first yfinance fallback rather than the daily one.
+
+**Together with the inert risk manager, this is a complete account of how a paper account reached −$8,287.81:** nothing capped position size, nothing halted on drawdown, nothing enforced a stop, and the one exit job that *did* run was pricing stops off yesterday's close.
+
+**Tests:** `backend/tests/unit/test_exit_path_wiring.py`, 8 tests. Verified against the pre-fix tree with the new helpers kept in place so individual tests could be seen to fail: **5 of 8 fail**, the other 3 being properties of the new helper itself. One of these tests was rewritten after its first draft matched **its own explanatory comment** quoting the old code — the same comment-is-not-a-call-site trap as the reachability guard; it is now AST-based.
+
+- [ ] **[P1] The unreferenced-function sweep found more.** Confirmed unreferenced repo-wide, not just in `app/`: `walk_forward_validate()` (125 lines) — and root `CLAUDE.md` Key Architectural Principle #5 is *"Walk-forward only: no in-sample-only backtests are accepted as valid"*, so **the platform's stated validation standard is enforced nowhere**. Also `monte_carlo_simulation()`, `run_stress_tests()`, `probability_of_backtest_overfitting()`, `probabilistic_sharpe_ratio()` (overfitting detection), and the ML feature builders `add_sentiment_features()`, `add_microstructure_features()`, `add_alternative_features()` — models train without them. `configure_logging()` is also never called.
+
 ## 🚨 PRINCIPAL REVIEW 2026-07-27 — the risk engine was never switched on
 
 > User: *"Improve the code base. Deep review from a principal engineer of everything."*
