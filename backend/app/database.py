@@ -8,6 +8,7 @@ if _is_sqlite:
     # NullPool: each session gets a fresh connection — avoids cross-connection
     # visibility issues where pooled connections cache an empty schema.
     from sqlalchemy.pool import NullPool as _NullPool
+
     _engine_kwargs: dict = {
         "poolclass": _NullPool,
         "connect_args": {"check_same_thread": False},
@@ -123,3 +124,79 @@ async def get_db():
             raise
         finally:
             await session.close()
+
+
+# --------------------------------------------------------------------------- #
+# Unit tests for edge‑case behavior
+# --------------------------------------------------------------------------- #
+import pytest
+
+@pytest.mark.asyncio
+async def test_ensure_database_alive_primary_reachable(monkeypatch):
+    """When the primary DB is reachable, no fallback should be triggered."""
+    # Use an in‑memory SQLite which is always reachable.
+    monkeypatch.setattr(settings, "database_url", "sqlite+aiosqlite:///:memory:")
+    monkeypatch.setattr(settings, "db_fallback_to_sqlite", True)
+    # Re‑create engine to reflect the patched URL.
+    global engine, AsyncSessionLocal, db_fallback_active, db_primary_error
+    engine = create_async_engine(
+        settings.database_url,
+        echo=settings.debug,
+        poolclass=type("NullPool", (), {}),  # dummy pool, not used for SQLite
+        connect_args={"check_same_thread": False},
+    )
+    AsyncSessionLocal.configure(bind=engine)
+    db_fallback_active = False
+    db_primary_error = None
+
+    result_engine = await ensure_database_alive(probe_timeout=5.0)
+    assert result_engine is engine
+    assert not db_fallback_active
+    assert db_primary_error is None
+
+
+@pytest.mark.asyncio
+async def test_ensure_database_alive_fallback_triggered(monkeypatch):
+    """If the primary DB cannot be probed, fallback to the local SQLite engine."""
+    # Set an invalid URL to force a connection error.
+    monkeypatch.setattr(settings, "database_url", "postgresql+asyncpg://invalid:5432/db")
+    monkeypatch.setattr(settings, "db_fallback_to_sqlite", True)
+
+    global engine, AsyncSessionLocal, db_fallback_active, db_primary_error
+    # Re‑create engine with the invalid URL.
+    engine = create_async_engine(
+        settings.database_url,
+        echo=settings.debug,
+        connect_args={},
+    )
+    AsyncSessionLocal.configure(bind=engine)
+    db_fallback_active = False
+    db_primary_error = None
+
+    result_engine = await ensure_database_alive(probe_timeout=0.1)
+    # After fallback, engine URL must match the fallback constant.
+    assert str(result_engine.url) == FALLBACK_SQLITE_URL
+    assert db_fallback_active is True
+    assert db_primary_error is not None
+
+
+@pytest.mark.asyncio
+async def test_ensure_database_alive_zero_timeout(monkeypatch):
+    """A zero (or negative) timeout should be treated as immediate failure and trigger fallback."""
+    monkeypatch.setattr(settings, "database_url", "postgresql+asyncpg://invalid:5432/db")
+    monkeypatch.setattr(settings, "db_fallback_to_sqlite", True)
+
+    global engine, AsyncSessionLocal, db_fallback_active, db_primary_error
+    engine = create_async_engine(
+        settings.database_url,
+        echo=settings.debug,
+        connect_args={},
+    )
+    AsyncSessionLocal.configure(bind=engine)
+    db_fallback_active = False
+    db_primary_error = None
+
+    result_engine = await ensure_database_alive(probe_timeout=0.0)
+    assert str(result_engine.url) == FALLBACK_SQLITE_URL
+    assert db_fallback_active is True
+    assert db_primary_error is not None
