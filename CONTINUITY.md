@@ -40,6 +40,34 @@ Once that lands, the boot reaches Postgres → `alembic upgrade head` provisions
 **Verify:** `/health/detailed` → `database.fallback` gone, `database_primary.ok` true.
 NOTE `database_primary` is a BOOT-time value, so it only changes after a restart.
 
+## 🚨 2026-07-27 — THE RISK ENGINE WAS NEVER SWITCHED ON (P0, fixed)
+First pass of the principal-engineer review, following the money path (risk → execution →
+broker). **`RiskManager.check_order()` had never executed in production.** Every documented
+risk control — position cap, drawdown breaker, correlation cluster limit — was inert:
+- `orders.py` skips the gate when `app.state.risk_manager` is None. **Nothing ever assigned it.**
+- `main.py` built the strategy runner with `risk_manager=None` literally.
+- The only `RiskManager()` in the codebase sat in `strategy_runner.start_strategy_runner()`,
+  a function whose docstring claims main.py registers it. **main.py never called it** — one
+  textual occurrence in `app/`, its own `def`. Deleted (95 dead lines).
+
+`test_security_invariants.py` passed throughout: it asserts the *string* `"check_order"`
+appears in orders.py twice. **A textual invariant cannot tell live wiring from dead code.**
+
+Also fixed in the same gate: the size cap `return`ed before the correlation check (so the
+largest orders were the only ones skipping the concentration limit); market orders were sized
+against a hardcoded `$100` (1 BTC read as a $100 position, SHIB 10-million-fold too large);
+and the new equity sync would have failed OPEN on negative equity — `update_equity()` raises
+on negatives and the live Alpaca account is at **−$8,287.81**, which would have left the
+manager on its seeded $100k approving orders forever. Now clamped to 0 so the halt fires.
+
+**This answers the open question from the desk review** — "a paper account going $8k negative
+means the risk layer did not stop it." It did not stop it because it was never running.
+
+Pinned by `backend/tests/unit/test_risk_gate_wiring.py` (17 tests). Verified against the
+pre-fix tree: 9 of 11 originals fail on old code. Two of the tests were themselves rewritten
+after failing that bar. Next: `factor_exposure.py` and `var.py` are documented as gates in
+`risk/CLAUDE.md` but are not wired into `check_order()`.
+
 ## ✅ 2026-07-27 — THREE DEAD AGENT PIPELINES REVIVED (all Slack-removal regressions)
 Read the failures landing in **#ci-failures** rather than the backlog, and found three
 pipelines that had been failing on a schedule for weeks. All three were my own regressions

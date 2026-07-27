@@ -45,6 +45,46 @@ async def _validate_alpaca(broker) -> None:
         logger.warning("Alpaca broker is not connected — strategy runner will use yfinance fallback")
 
 
+async def _risk_state_sync(risk_manager, broker, interval_seconds: int = 60) -> None:
+    """Keep the risk manager fed with real equity and positions.
+
+    Without this the manager runs forever on its seeded `initial_equity`: the
+    drawdown circuit breaker only ever sees one data point, so it can never
+    trip, and the position cap is computed against a fabricated NAV. A gate
+    that is wired in but never given data is still not a gate.
+    """
+    while True:
+        try:
+            account = await broker.get_account()
+            equity = account.get("equity")
+            if equity is not None:
+                equity = float(equity)
+                if equity < 0:
+                    # update_equity() rejects negatives, and a broker CAN report
+                    # one (margin call). Letting that raise here would leave the
+                    # manager on its seeded 100k forever — failing OPEN on the
+                    # one condition that must halt trading. Clamp to 0 so
+                    # check_order()'s `equity <= 0` halt actually fires.
+                    logger.error(
+                        "Broker reports negative equity — halting via zero-equity gate",
+                        equity=equity,
+                    )
+                    equity = 0.0
+                risk_manager.update_equity(equity)
+        except Exception as exc:
+            # Never let a broker hiccup kill the loop — the next tick retries.
+            logger.warning("risk equity sync failed", error=str(exc))
+
+        # Separate try: a positions failure must not also cost us the equity
+        # update above, which is what feeds the drawdown breaker.
+        try:
+            risk_manager.update_positions(await broker.get_positions())
+        except Exception as exc:
+            logger.warning("risk positions sync failed", error=str(exc))
+
+        await asyncio.sleep(interval_seconds)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("QuantEdge starting up", mode=settings.trading_mode)
@@ -131,6 +171,26 @@ async def lifespan(app: FastAPI):
     if alpaca_broker is not None:
         asyncio.create_task(_validate_alpaca(alpaca_broker))
 
+    # ── Risk manager ──────────────────────────────────────────────────────────
+    # This was the only process that never built one. orders.py reads
+    # `app.state.risk_manager` and skips the gate when it is absent, and nothing
+    # ever assigned it — so every REST order reached the broker unchecked, and
+    # the strategy runner was handed risk_manager=None outright. The sole
+    # RiskManager() construction in the codebase lived in
+    # strategy_runner.start_strategy_runner(), whose docstring claims main.py
+    # registers it; main.py never called it. Pinned by
+    # tests/unit/test_risk_gate_wiring.py.
+    from app.risk.manager import RiskManager
+    risk_manager = RiskManager()
+    app.state.risk_manager = risk_manager
+    if alpaca_broker is not None:
+        # Registered in bg_tasks so shutdown cancels it with everything else.
+        bg_tasks.append(asyncio.create_task(
+            _supervised(lambda: _risk_state_sync(risk_manager, alpaca_broker), "risk_state_sync")
+        ))
+    else:
+        logger.warning("Risk manager running on seeded equity — no broker to sync from")
+
     # Load active strategies from DB; fall back to a sensible default set if DB
     # is not yet reachable at startup (e.g. first cold boot before migrations).
     active_strategies: list[dict] = []
@@ -157,14 +217,14 @@ async def lifespan(app: FastAPI):
     except Exception as _exc:
         logger.warning("Could not load strategies from DB at startup", error=str(_exc))
 
-    # Default watchlist used when no strategies are enabled in DB yet
+    # Default watchlist used when no strategies are enabled in DB yet.
+    # Uses the shared constant rather than a second inline copy: the duplicate
+    # that used to live here was equities-only, so a cold start ran no crypto
+    # strategy at all even though btc_eth_stat_arb is in the shared default.
     if not active_strategies:
+        from app.tasks.strategy_runner import DEFAULT_ACTIVE_STRATEGIES
         logger.info("No active DB strategies — using default paper watchlist")
-        active_strategies = [
-            {"name": "momentum",       "symbols": ["SPY", "QQQ", "AAPL", "TSLA"], "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
-            {"name": "mean_reversion", "symbols": ["SPY", "QQQ"],                  "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
-            {"name": "rsi_macd",       "symbols": ["SPY", "AAPL"],                 "params": {}, "tick_interval_seconds": 3600, "confidence_threshold": 0.6},
-        ]
+        active_strategies = [dict(s) for s in DEFAULT_ACTIVE_STRATEGIES]
 
     app.state.active_strategies = active_strategies
 
@@ -179,10 +239,14 @@ async def lifespan(app: FastAPI):
     # Always started (incl. paper mode); gracefully skips ticks when broker is absent
     from app.tasks.price_feed import run_price_feed
 
+    def _publish_mark(symbol: str, last: float) -> None:
+        """Feed the risk manager a mark so market orders can be size-capped."""
+        risk_manager.update_prices({symbol: last})
+
     async def _price_feed_wrapper():
         try:
             if alpaca_broker is not None and all_symbols:
-                await run_price_feed(alpaca_broker, all_symbols)
+                await run_price_feed(alpaca_broker, all_symbols, on_mark=_publish_mark)
             else:
                 # Park the task until restart — avoids tight no-op loop
                 logger.warning(
@@ -204,7 +268,7 @@ async def lifespan(app: FastAPI):
     from app.tasks.strategy_runner import ContinuousStrategyRunner
     strategy_runner = ContinuousStrategyRunner(
         broker=alpaca_broker,
-        risk_manager=None,
+        risk_manager=risk_manager,
     )
     app.state.strategy_runner = strategy_runner
     bg_tasks.append(asyncio.create_task(

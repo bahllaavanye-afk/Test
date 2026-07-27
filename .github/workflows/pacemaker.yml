@@ -37,10 +37,28 @@ on:
     # the first deploy: 0 pacemaker runs, because the only CI completion since
     # the merge was an `action_required` run that never executed.
     #
-    # These four DO fire on cron reliably (16-18 successful scheduled runs each
-    # in a 500-run sample, most recent within minutes), so any of them ignites
-    # the loop within ~5-15 minutes of a cold start. Cron here is degraded and
-    # uneven, not dead — the desks lag badly while these keep time.
+    # CORRECTION (measured after the first fix, from per-workflow run history —
+    # the earlier claim here that these four "keep near-schedule time" and
+    # ignite within 5-15 minutes was WRONG, drawn from a run-count sample that
+    # said nothing about spacing):
+    #
+    #   signal-runner   (cron 5m):  13:29, 10:38, 06:51, 03:38, 23:58
+    #   system-watchdog (cron 5m):  13:36, 10:58, 07:51, 04:01, 00:12
+    #   quick-backtest  (cron 15m): 13:42, 10:56
+    #
+    # Free-tier cron here is UNIFORMLY degraded to roughly 3-hour spacing, for
+    # every scheduled workflow, desks included. Nothing in this repo keeps time.
+    #
+    # This does not change the design, it changes the expected cold-start
+    # latency: with five independently-phased sources at ~3h each, ignition is
+    # expected in tens of minutes rather than hours, and worst case is ~3h.
+    # What matters is that AFTER ignition the chain is self-sustaining and no
+    # longer depends on cron at all — sleep 50m → dispatch CI on main → CI
+    # completion re-triggers this workflow. Cron only ever has to fire once.
+    #
+    # Note the ignition sources must run ON MAIN: workflow_run does not fire for
+    # upstream runs on other branches, so CI triggered by a pull_request cannot
+    # start this. All four above run on main via schedule.
     workflows:
       - "CI"
       - "System Watchdog — Every 5 Minutes (Self-Healing)"
