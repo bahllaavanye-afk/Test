@@ -6,7 +6,7 @@ Each registered model is recorded in a JSON index file with:
 
 Usage:
     registry = ModelRegistry()
-    registry.register("my_tft", model, metrics, artifact_path="models/tft_v1.pt")
+    registry.register("my_tft", "tft", "models/tft_v1.pt", val_sharpe=1.2)
     registry.get_best("tft", metric="val_sharpe")
     registry.compare_models(["tft_v1", "lgbm_v2"])
 """
@@ -47,7 +47,9 @@ class ModelRegistry:
             try:
                 self._records = json.loads(self.index_path.read_text())
             except json.JSONDecodeError as exc:
-                logger.warning(f"ModelRegistry: corrupt index at {self.index_path}: {exc}. Starting fresh.")
+                logger.warning(
+                    f"ModelRegistry: corrupt index at {self.index_path}: {exc}. Starting fresh."
+                )
                 self._records = {}
         else:
             self._records = {}
@@ -117,7 +119,9 @@ class ModelRegistry:
             KeyError: if *name* is not found in the registry.
         """
         if name not in self._records:
-            raise KeyError(f"ModelRegistry: model '{name}' not found. Available: {list(self._records)}")
+            raise KeyError(
+                f"ModelRegistry: model '{name}' not found. Available: {list(self._records)}"
+            )
         return self._records[name]
 
     def list_models(
