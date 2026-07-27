@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785162260.3984368,
+    "last_updated": 1785162614.9037647,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,59 +109,52 @@
     },
     "opinion_score": 2,
     "macro_score": 2,
-    "vix": 18.62,
-    "market_scan_ts": 1785162260.3693633,
+    "vix": 18.74,
+    "market_scan_ts": 1785162614.8743489,
     "sector_leaders": [
       "Energy",
-      "Healthcare",
-      "Financials"
+      "Financials",
+      "Healthcare"
     ],
     "sector_laggards": [
-      "Materials",
+      "Industrials",
       "Cons. Disc.",
       "Tech"
     ],
     "active_universe": [
       "TSLA",
       "SLB",
-      "ORCL",
       "GOOGL",
       "NOW",
       "QQQ",
       "NVDA",
       "BAC",
+      "ORCL",
       "IWM",
-      "XOM",
-      "CVX",
       "XLK",
-      "INTU",
       "XLI",
-      "XLF",
-      "PANW",
-      "ADBE",
+      "AAPL",
       "XLV",
-      "CRWD",
-      "META"
+      "XOM",
+      "INTU",
+      "XLF",
+      "ADBE",
+      "JNJ",
+      "CVX",
+      "MSFT"
     ],
     "top_momentum": [
-      "ADBE",
-      "INTU",
       "AAPL",
       "SLB",
-      "MPC"
+      "MPC",
+      "ADBE",
+      "INTU"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785159016.6762145
   },
   "episodic": [
-    {
-      "lesson": "Multiple auto-fix failures stem from insufficient context in issue descriptions; enforce structured issue templates with code references.",
-      "category": "execution",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784323929.1618223
-    },
     {
       "lesson": "Deployment blocked by free-tier daily limit (100 deploys). Upgrade to Vercel Pro or implement deployment batching to avoid rate limiting.",
       "category": "execution",
@@ -1931,6 +1924,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785162260.4040143
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Healthcare"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785162614.9093742
     }
   ],
   "github_insights": [
