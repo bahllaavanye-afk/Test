@@ -8,6 +8,7 @@ from dataclasses import asdict
 from typing import Any
 
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult
+from app.execution.slice_result import build_slice_result
 from app.utils.exceptions import BrokerError  # lives in utils, NOT brokers.base (#298 broke this import)
 from app.utils.logging import logger
 
@@ -37,11 +38,15 @@ class TWAPExecution:
         total_cost = 0.0
         last_result: OrderResult | None = None
         consecutive_failures = 0
+        slices_attempted = 0
+        slices_failed = 0
+        last_error: str | None = None
 
         for i in range(self.slices):
             slice_req = OrderRequest(
                 **{**asdict(request), "quantity": slice_qty, "order_type": "market"}
             )
+            slices_attempted += 1
             try:
                 result = await self.broker.place_order(slice_req)
                 total_filled += result.filled_qty
@@ -51,6 +56,8 @@ class TWAPExecution:
                 consecutive_failures = 0
             except (BrokerError, ConnectionError, TimeoutError) as e:
                 consecutive_failures += 1
+                slices_failed += 1
+                last_error = str(e)
                 logger.warning(
                     f"TWAP slice {i + 1}/{self.slices} failed for {request.symbol}: {e}",
                     extra={"symbol": request.symbol, "slice": i + 1, "error": str(e)},
@@ -72,12 +79,12 @@ class TWAPExecution:
             if i < self.slices - 1:
                 await asyncio.sleep(self.sleep_seconds)
 
-        avg_price = total_cost / total_filled if total_filled > 0 else None
-        return OrderResult(
-            broker_order_id=last_result.broker_order_id if last_result else "twap",
-            status="filled"
-            if total_filled >= request.quantity * 0.95
-            else "partial",
-            filled_qty=total_filled,
-            avg_fill_price=avg_price,
+        return build_slice_result(
+            "TWAP", request,
+            total_filled=total_filled,
+            total_cost=total_cost,
+            last_result=last_result,
+            slices_attempted=slices_attempted,
+            slices_failed=slices_failed,
+            last_error=last_error,
         )
