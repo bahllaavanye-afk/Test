@@ -99,6 +99,14 @@ def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timesta
         return series.loc[mask]
 
 
+def _validate_series(series: pd.Series, name: str) -> None:
+    """Validate that a pandas Series has a datetime-like index."""
+    if not isinstance(series, pd.Series):
+        raise ValueError(f"{name} must be a pandas Series, got {type(series).__name__}")
+    if not isinstance(series.index, (pd.DatetimeIndex, pd.PeriodIndex)):
+        raise ValueError(f"{name} must have a DatetimeIndex or PeriodIndex, got {type(series.index).__name__}")
+
+
 def run_stress_tests(
     signals: pd.Series,
     prices: pd.Series,
@@ -115,6 +123,29 @@ def run_stress_tests(
     Only scenarios where the price series has ≥ 5 data points are evaluated;
     others return period_covered=False with metrics=None.
     """
+    # ---- Input validation ----
+    _validate_series(signals, "signals")
+    _validate_series(prices, "prices")
+    if opens is not None:
+        _validate_series(opens, "opens")
+    if volume is not None:
+        _validate_series(volume, "volume")
+    if not isinstance(initial_equity, (int, float)):
+        raise ValueError(f"initial_equity must be a number, got {type(initial_equity).__name__}")
+    if initial_equity <= 0:
+        raise ValueError("initial_equity must be positive")
+    if not isinstance(commission_pct, (int, float)):
+        raise ValueError(f"commission_pct must be a number, got {type(commission_pct).__name__}")
+    if not (0 <= commission_pct <= 1):
+        raise ValueError("commission_pct must be between 0 and 1")
+    if not isinstance(slippage_pct, (int, float)):
+        raise ValueError(f"slippage_pct must be a number, got {type(slippage_pct).__name__}")
+    if not (0 <= slippage_pct <= 1):
+        raise ValueError("slippage_pct must be between 0 and 1")
+    if scenarios is not None and not all(isinstance(s, StressScenario) for s in scenarios):
+        raise ValueError("scenarios must be a list of StressScenario instances or None")
+    # -------------------------
+
     if scenarios is None:
         scenarios = STRESS_SCENARIOS
 
@@ -184,6 +215,11 @@ def stress_summary(results: list[StressResult]) -> dict:
     Returns per-scenario max_drawdown, total_return, and sharpe.
     Only includes scenarios where period_covered=True.
     """
+    if not isinstance(results, list):
+        raise ValueError(f"results must be a list, got {type(results).__name__}")
+    if not all(isinstance(r, StressResult) for r in results):
+        raise ValueError("All items in results must be instances of StressResult")
+
     out: dict = {}
     for r in results:
         if not r.period_covered or r.metrics is None:
