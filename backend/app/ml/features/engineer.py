@@ -14,6 +14,10 @@ import numpy as np
 import pandas as pd
 
 from app.ml.features.advanced_indicators import ADVANCED_FEATURE_COLS, add_advanced_features
+from app.ml.features.microstructure import (
+    MICROSTRUCTURE_FEATURE_COLS,
+    add_microstructure_features,
+)
 from app.ml.features.multi_timeframe import MTF_FEATURE_COLS, add_multi_timeframe_features
 from app.ml.features.normalization import FeatureScaler
 from app.ml.features.technical import add_technical_features
@@ -75,6 +79,7 @@ FEATURE_COLS: List[str] = (
     + ADVANCED_FEATURE_COLS
     + WAVELET_FEATURE_COLS
     + MTF_FEATURE_COLS
+    + MICROSTRUCTURE_FEATURE_COLS
     + SOCIAL_SENTIMENT_FEATURE_COLS
 )
 
@@ -126,6 +131,21 @@ def engineer_features(
         print(f"[engineer] wavelet features skipped: {_wv_err}", flush=True)
 
     df = add_multi_timeframe_features(df)
+
+    # Microstructure proxies (order-book imbalance, spread in bps). Implemented
+    # and tested but never wired into the feature set, so every model trained
+    # without them. Safe to add here because it is pure OHLCV arithmetic — no
+    # network, deterministic, and no lookahead: the label is
+    # `close.pct_change(h).shift(-h)`, i.e. bar t predicts t+h, so bar t's own
+    # OHLC is known at prediction time. That is the same convention
+    # add_technical_features already relies on.
+    #
+    # NOT wired here, deliberately: alternative.add_alternative_features() calls
+    # the Binance API. Feature engineering runs inside backtests and training,
+    # which must stay deterministic and work offline — a network call there
+    # makes results unreproducible and fails the sandboxed test runs. It stays
+    # caller-driven.
+    df = add_microstructure_features(df)
 
     # ── Social sentiment features (crypto only) ────────────────────────────────
     if market_type == "crypto":
