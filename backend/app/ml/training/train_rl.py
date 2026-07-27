@@ -25,6 +25,13 @@ _CHECKPOINT_DIR = Path(__file__).parents[3] / "checkpoints"
 
 # Feature builder (mirrors rl_trader.py feature construction)
 _SEQ_LEN = 30
+# Transaction cost applied per trade (as a fraction of price)
+_TRANSACTION_COST = 0.001
+# Maximum holding period before forced exit (in bars)
+_MAX_HOLDING_PERIOD = 5
+# RSI thresholds for entry confirmation (normalized)
+_RSI_BUY_THRESHOLD = -0.3
+_RSI_SELL_THRESHOLD = 0.3
 
 
 def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
@@ -45,21 +52,84 @@ def _build_features(df: pd.DataFrame) -> np.ndarray:
     return np.stack([returns.values, log_vol.values, rsi_norm.values], axis=1)
 
 
-def _step_reward(df: pd.DataFrame, action: int, t: int) -> float:
+def _step_reward(
+    df: pd.DataFrame,
+    action: int,
+    t: int,
+    position: int,
+    entry_idx: int | None,
+    rsi_norm: pd.Series,
+    median_volume: float,
+) -> tuple[float, int, int | None]:
     """
-    Simple reward: profit/loss of the action taken at step t.
-    Action 0=buy, 1=hold, 2=sell.
-    Returns the next-bar return scaled by direction.
+    Enhanced reward logic with entry confirmation, transaction cost,
+    and forced exit after a maximum holding period.
+
+    Returns a tuple of (reward, updated_position, updated_entry_idx).
     """
-    if t + 1 >= len(df):
-        return 0.0
-    next_ret = float(df["close"].iloc[t + 1] / df["close"].iloc[t] - 1.0)
-    if action == 0:    # buy — reward is positive return
-        return next_ret
-    elif action == 2:  # sell — reward is negative return (profit from short)
-        return -next_ret
-    else:              # hold
-        return 0.0
+    # Default reward (no position change)
+    reward = 0.0
+
+    # Helper to compute profit for closing a position
+    def _close_profit(pos: int, entry: int, cur: int) -> float:
+        ret = float(df["close"].iloc[cur] / df["close"].iloc[entry] - 1.0)
+        return ret if pos == 1 else -ret
+
+    # Entry logic with confirmation filters
+    if position == 0:
+        if action == 0:  # attempt long
+            if (
+                rsi_norm.iloc[t] < _RSI_BUY_THRESHOLD
+                and df["volume"].iloc[t] > median_volume
+            ):
+                # Open long position, incur transaction cost
+                position = 1
+                entry_idx = t
+                reward -= _TRANSACTION_COST
+            else:
+                # Invalid entry, treat as hold with small penalty
+                reward -= 0.0005
+        elif action == 2:  # attempt short
+            if (
+                rsi_norm.iloc[t] > _RSI_SELL_THRESHOLD
+                and df["volume"].iloc[t] > median_volume
+            ):
+                position = -1
+                entry_idx = t
+                reward -= _TRANSACTION_COST
+            else:
+                reward -= 0.0005
+        # action == 1 (hold) yields zero reward
+        return reward, position, entry_idx
+
+    # Position is open – evaluate exit conditions
+    hold_len = t - entry_idx if entry_idx is not None else 0
+    close_signal = False
+
+    # Forced exit after max holding period
+    if hold_len >= _MAX_HOLDING_PERIOD:
+        close_signal = True
+    else:
+        # RSI reversal as a soft exit cue
+        if position == 1 and rsi_norm.iloc[t] > 0.0:
+            close_signal = True
+        if position == -1 and rsi_norm.iloc[t] < 0.0:
+            close_signal = True
+
+    # Opposite action also triggers exit
+    if (position == 1 and action == 2) or (position == -1 and action == 0):
+        close_signal = True
+
+    if close_signal:
+        profit = _close_profit(position, entry_idx, t)
+        reward += profit - _TRANSACTION_COST  # apply cost on exit as well
+        position = 0
+        entry_idx = None
+    else:
+        # Holding without exit yields no immediate reward
+        reward = 0.0
+
+    return reward, position, entry_idx
 
 
 async def train_rl_agent(
@@ -108,6 +178,10 @@ async def train_rl_agent(
     else:
         features = features[:, :n_features]
 
+    # Pre‑compute auxiliary series used for confirmation filters
+    rsi_norm_series = (_rsi(ohlcv_df["close"]).fillna(50.0) - 50.0) / 50.0
+    median_vol = float(ohlcv_df["volume"].median())
+
     agent = A3CLSTMAgent(n_features=n_features, hidden_size=hidden_size, n_actions=3)
     optimizer = torch.optim.Adam(agent.parameters(), lr=lr)
 
@@ -120,13 +194,26 @@ async def train_rl_agent(
         actions: list[int] = []
         rewards: list[float] = []
 
+        # Position tracking for the episode
+        position = 0
+        entry_idx: int | None = None
+
         agent.eval()
         with torch.no_grad():
             for t in range(_SEQ_LEN, T - 1):
                 window = features[t - _SEQ_LEN : t]  # (seq_len, n_features)
                 x = torch.tensor(window, dtype=torch.float32).unsqueeze(0)  # (1, seq_len, n_feat)
                 action = agent.select_action(x)
-                reward = _step_reward(ohlcv_df, action, t)
+
+                reward, position, entry_idx = _step_reward(
+                    ohlcv_df,
+                    action,
+                    t,
+                    position,
+                    entry_idx,
+                    rsi_norm_series,
+                    median_vol,
+                )
 
                 states.append(x.squeeze(0))  # (seq_len, n_features)
                 actions.append(action)
