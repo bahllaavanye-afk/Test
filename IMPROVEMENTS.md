@@ -28,7 +28,17 @@
   - `app/ml/training/walk_forward.walk_forward_validate()` (125 lines, torch-specific) — **dead**. So the principle is enforced for strategy backtests and *not* for ML model training, which is the narrower and accurate claim.
 
   Genuinely dead, each referenced only by its own unit test (i.e. tested, never run in production): `probability_of_backtest_overfitting()` and `probabilistic_sharpe_ratio()` (PBO/PSR overfit detection), `monte_carlo_simulation()`. `run_stress_tests()` has no reference at all, not even a test.
-  Also dead: `configure_logging()`.
+- [x] **[P1] `configure_logging()` was never called — production logging ran on structlog's library defaults.** One textual occurrence in the package: its own `def`. Verified by reading `structlog.get_config()` at runtime rather than inferring from source, before and after:
+
+  | | before | after |
+  |---|---|---|
+  | renderer | `ConsoleRenderer` | `JSONRenderer` |
+  | wrapper_class | `BoundLoggerFilteringAtNotset` | `BoundLoggerFilteringAtInfo` |
+
+  Two consequences, both live: Render received **unstructured console text**, so nothing downstream could parse a log line; and `…AtNotset` filters **nothing**, so all **105** `logger.debug()` call sites in `app/` emitted on every production run. That is the noise floor underneath *"a bunch of errors are reported throughout day on discord"* — the signal was competing with every debug line in the codebase.
+  Called at import in `main.py` rather than inside `lifespan`: module-level code logs before startup, and `static_server.py` imports `app.main`, so that one site covers every entrypoint.
+  Tests: `backend/tests/unit/test_logging_configured.py`, 5 tests; **4 fail** on the pre-fix tree, one of them by showing the debug line actually reaching stdout.
+  **The full suite caught a real consequence of this change**, which is the point of running it: `test_a_wholly_dead_cycle_is_escalated` asserted `consecutive_dead_cycles=2` — ConsoleRenderer's `key=value` form, which it only ever saw *because* logging was misconfigured. It also passed in isolation and failed in the suite, i.e. it was silently order-dependent on whether an earlier test had imported `app.main`. Rewritten to accept either renderer rather than weakened: the behaviour under test is the count being reported, not how structlog punctuates it.
 - [x] **[P1] Three ML feature builders were implemented, unit-tested, and called from nowhere — every model trained without them.** Resolved with a judgement call rather than by wiring all three, because they are not equivalent:
   - **`add_microstructure_features` — WIRED.** Pure OHLCV arithmetic (order-book imbalance proxy, spread in bps), no network, deterministic. Verified not to look ahead: the label is `close.pct_change(h).shift(-h)`, so bar *t* predicts *t+h* and bar *t*'s own OHLC is known at prediction time — the same convention `add_technical_features` already relies on. Pinned by a test that perturbs future bars and asserts past features are unchanged.
   - **`add_alternative_features` — DELIBERATELY NOT WIRED.** It calls the Binance API. Feature engineering runs inside backtests and training, which must be deterministic and work offline; a network call there makes results unreproducible and breaks sandboxed runs. Pinned by `test_feature_engineering_makes_no_network_calls`, so a future change has to argue with a test rather than a comment.

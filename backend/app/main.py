@@ -18,8 +18,22 @@ from app.ws.prices import router as prices_router
 from app.ws.orders import router as orders_router
 from app.ws.alerts import router as alerts_router
 from app.tasks.scheduler import start_scheduler
-from app.utils.logging import logger
+from app.utils.logging import configure_logging, logger
 from app.risk.correlation_monitor import correlation_monitor
+
+# configure_logging() had NO CALLER anywhere — one textual occurrence in the
+# package, its own `def`. So structlog ran on its library defaults instead of
+# this app's configuration, with two consequences in production:
+#
+#   * renderer was ConsoleRenderer, not JSONRenderer — Render received
+#     unstructured text, so nothing downstream could parse a log line
+#   * wrapper_class was BoundLoggerFilteringAtNotset, which filters NOTHING,
+#     so all 105 logger.debug() call sites in app/ emitted on every run
+#
+# Called at import rather than inside lifespan: module-level code and anything
+# imported before startup already logs, and static_server.py imports this
+# module, so this is the one place that covers every entrypoint.
+configure_logging()
 
 
 async def _supervised(coro_factory, name: str, restart_delay: int = 30):
