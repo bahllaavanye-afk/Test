@@ -4,6 +4,8 @@ Supports spot trading, real-time order book, and triangular arb scanning.
 """
 import asyncio
 import time
+from typing import Dict, Tuple
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.utils.exceptions import BrokerError
 from app.utils.logging import logger
@@ -42,8 +44,14 @@ class BinanceBroker(AbstractBroker):
             self.exchange.set_sandbox_mode(True)
 
         # Cache for expensive calls
-        self._ticker_cache = {"data": None, "timestamp": 0.0}
+        self._ticker_cache: Dict[str, any] = {"data": None, "timestamp": 0.0}
         self._ticker_lock = asyncio.Lock()
+
+        # Per‑symbol caches with TTL
+        self._quote_cache: Dict[str, Tuple[float, dict]] = {}
+        self._quote_lock = asyncio.Lock()
+        self._historical_cache: Dict[Tuple[str, str, int], Tuple[float, list]] = {}
+        self._historical_lock = asyncio.Lock()
 
     async def close(self):
         await self.exchange.close()
@@ -83,7 +91,12 @@ class BinanceBroker(AbstractBroker):
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
@@ -107,14 +120,26 @@ class BinanceBroker(AbstractBroker):
             "portfolio_value": usdt,
         }
 
-    async def get_quote(self, symbol: str) -> QuoteResult:
-        try:
-            ticker = await asyncio.wait_for(
-                self.exchange.fetch_ticker(symbol), timeout=10.0
-            )
-        except asyncio.TimeoutError:
-            logger.warning("Binance fetch_ticker timed out", symbol=symbol)
-            raise BrokerError(f"Binance quote timed out for {symbol}")
+    async def get_quote(self, symbol: str, cache_ttl: int = 5) -> QuoteResult:
+        """
+        Retrieve the latest quote for a symbol.
+        Uses a short‑lived cache to avoid repeated network calls within a few seconds.
+        """
+        async with self._quote_lock:
+            now = time.monotonic()
+            cached = self._quote_cache.get(symbol)
+            if cached and now - cached[0] < cache_ttl:
+                ticker = cached[1]
+            else:
+                try:
+                    ticker = await asyncio.wait_for(
+                        self.exchange.fetch_ticker(symbol), timeout=10.0
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("Binance fetch_ticker timed out", symbol=symbol)
+                    raise BrokerError(f"Binance quote timed out for {symbol}")
+                self._quote_cache[symbol] = (now, ticker)
+
         return QuoteResult(
             symbol=symbol,
             bid=float(ticker["bid"]),
@@ -124,21 +149,34 @@ class BinanceBroker(AbstractBroker):
         )
 
     async def get_historical(
-        self, symbol: str, interval: str = "1d", limit: int = 500
+        self, symbol: str, interval: str = "1d", limit: int = 500, cache_ttl: int = 300
     ) -> list[dict]:
-        tf = INTERVAL_MAP.get(interval, "1d")
-        ohlcv = await self.exchange.fetch_ohlcv(symbol, tf, limit=limit)
-        return [
-            {
-                "ts": self.exchange.iso8601(bar[0]),
-                "open": bar[1],
-                "high": bar[2],
-                "low": bar[3],
-                "close": bar[4],
-                "volume": bar[5],
-            }
-            for bar in ohlcv
-        ]
+        """
+        Retrieve OHLCV historical data.
+        Results are cached per (symbol, interval, limit) tuple for a configurable TTL.
+        """
+        key = (symbol, interval, limit)
+        async with self._historical_lock:
+            now = time.monotonic()
+            cached = self._historical_cache.get(key)
+            if cached and now - cached[0] < cache_ttl:
+                return cached[1]
+
+            tf = INTERVAL_MAP.get(interval, "1d")
+            ohlcv = await self.exchange.fetch_ohlcv(symbol, tf, limit=limit)
+            result = [
+                {
+                    "ts": self.exchange.iso8601(bar[0]),
+                    "open": bar[1],
+                    "high": bar[2],
+                    "low": bar[3],
+                    "close": bar[4],
+                    "volume": bar[5],
+                }
+                for bar in ohlcv
+            ]
+            self._historical_cache[key] = (now, result)
+            return result
 
     async def get_order_book(self, symbol: str, limit: int = 20) -> dict:
         return await self.exchange.fetch_order_book(symbol, limit)
