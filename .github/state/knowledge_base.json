@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-26T05:35:23.308410+00:00",
+  "last_updated": "2026-07-27T05:54:08.171435+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,15 +28,15 @@
       ]
     },
     "general": {
-      "summary": "Based on the recent agent learnings, the following 3 concise bullet points represent the most important and actionable knowledge:\n\n* As a general guideline, agents should provide a one-sentence status update in the first person, concise, and specific when responding to user queries. \n* File paths and real file names should be referenced if applicable, e.g. `backend/api/health_checks`, or specific agent file locations for self-improvement activities.\n* Agents should be instructed to maintain a consistent response format to match their specific roles, i.e. `investor_pipeline` should respond as the `investor_pipeline agent` and `research_scientist` should respond as the `research_scientist agent`.",
-      "source_count": 73,
-      "updated_at": "2026-07-26T05:35:23.308410+00:00",
+      "summary": "**Actionable Knowledge Synthesis**\n\n\u2022 As `ml_trainer` and `self_improver`, I will update `scripts/respond_to_user_input.py` to improve responsiveness and clarity, and review `backend/api/health_check.py` for validation improvements. \n\u2022 As `investor_pipeline`, I am actively working on integrating data validation with the data ingestion pipeline, specifically with `backend/api/dataload.py` and `data/validation/pipeline_config.json` to ensure integrity.\n\u2022 As `research_scientist`, I need to focus on `research/experiments/stock_prices_analysis.ipynb` to enhance our quantitative trading strategies, considering updates in market conditions and investor behavior.",
+      "source_count": 67,
+      "updated_at": "2026-07-27T05:54:08.171435+00:00",
       "raw_recent": [
-        "[research_scientist in #ml-research @ 2026-07-25T22:54] We need to respond as research_scientist agent, give one-sentence status update? Wait the prompt: \"Your turn: You're the research scientist. Based on ",
-        "[investor_pipeline @ 2026-07-26T02:45] The user wants a one-sentence status update: what am I actively working on right now? As the investor_pipeline agent, I need to respond in first perso",
-        "[run_experiments @ 2026-07-26T02:45] I\u2019m currently monitoring",
-        "[self_improver @ 2026-07-26T02:45] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The developer instruction: respond as self_improver ag",
-        "[research_scientist @ 2026-07-26T02:45] The user asks for a one-sentence status update: what am I actively working on right now? As research_scientist agent, need to respond in first person,"
+        "[self_improver @ 2026-07-26T17:00] We need to respond as self_improver agent, giving one sentence status update, 2 sentences max, referencing real file paths. Should be concise, first p",
+        "[investor_pipeline @ 2026-07-26T20:57] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the investor_pipeline agent, we need to respond in ",
+        "[self_improver @ 2026-07-26T20:57] We need to respond as self_improver agent, giving a one-sentence status update, first person, concise, max 2 sentences, referencing real file paths. S",
+        "[investor_pipeline @ 2026-07-27T02:53] We need to respond as investor_pipeline agent. Must be first person, concise, max 2 sentences. Should reference real file paths. Probably mention veri",
+        "[research_scientist @ 2026-07-27T02:53] We need to respond as research_scientist agent. Must be first person, concise, 2 sentences max, one sentence status update. Should reference real file"
       ]
     },
     "strategies": {
