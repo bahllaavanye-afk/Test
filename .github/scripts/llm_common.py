@@ -1034,10 +1034,40 @@ def chat_post(channel: str, text: str, thread_ts: str | None = None) -> dict:
     return notify.post(channel, text)
 
 
-def chat_read_channel(channel: str, limit: int = 50) -> list[dict]:
-    """Read recent messages from a Discord channel (newest first)."""
+def chat_read_channel(channel: str, limit: int = 50,
+                      oldest: float | None = None) -> list[dict]:
+    """Read recent messages from a Discord channel (newest first).
+
+    `oldest` is a unix timestamp; messages older than it are dropped. Slack's
+    API took this server-side, Discord's does not, so it is applied here —
+    without it, callers that pass `oldest=` (company_brain does) died with
+    TypeError on every run.
+
+    Messages carry `content`, `author` and `ts` (ISO-8601). Slack's `text` /
+    `bot_id` / `subtype` fields do NOT exist here.
+    """
     try:
         import notify
     except Exception:  # pragma: no cover
         return []
-    return notify.read_channel_recent(channel, limit=limit)
+    msgs = notify.read_channel_recent(channel, limit=limit)
+    if oldest is None:
+        return msgs
+
+    from datetime import datetime, timezone
+
+    kept = []
+    for m in msgs:
+        raw = (m.get("ts") or "").strip()
+        if not raw:
+            kept.append(m)          # no timestamp to judge by — keep it
+            continue
+        try:
+            ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if ts.timestamp() >= oldest:
+                kept.append(m)
+        except ValueError:
+            kept.append(m)          # unparseable — keep rather than silently drop
+    return kept

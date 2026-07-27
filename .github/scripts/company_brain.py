@@ -85,11 +85,12 @@ def fetch_chat_knowledge(channel_ids: dict[str, str]) -> list[dict]:
             continue
         msgs = chat_read_channel(cid, limit=30, oldest=cutoff)
         for m in msgs:
-            text = m.get("text", "").strip()
+            # Discord messages carry `content`, not Slack's `text`. Reading
+            # `text` returned "" for every message, so this loop skipped the
+            # entire channel — the brain ingested nothing at all.
+            text = (m.get("content") or "").strip()
             if not text or len(text) < 20:
                 continue
-            if m.get("bot_id") or m.get("subtype"):
-                continue  # Skip bots and system messages
             items.append({
                 "channel": channel_name,
                 "text": text[:300],  # cap per-message

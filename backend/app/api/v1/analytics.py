@@ -1119,7 +1119,15 @@ async def get_tearsheet(
     # Performance metrics
     total_return = (equity - initial_equity) / initial_equity
     n_years = days / 365.0
-    annualized_return = (1.0 + total_return) ** (1.0 / max(n_years, 0.01)) - 1.0
+    # A total return at or below -100% makes the base non-positive, and Python
+    # raises a fractional power of a negative number to a COMPLEX number — which
+    # then dies in float() with "must be a real number, not 'complex'" and 500s
+    # the whole tearsheet. Losing the entire baseline is -100% annualised, full
+    # stop; there is nothing to compound.
+    if total_return <= -1.0:
+        annualized_return = -1.0
+    else:
+        annualized_return = (1.0 + total_return) ** (1.0 / max(n_years, 0.01)) - 1.0
     max_dd = min(d["drawdown_pct"] for d in drawdown_curve) if drawdown_curve else 0.0
 
     daily_returns = s / initial_equity
