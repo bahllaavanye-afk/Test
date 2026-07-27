@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-27T11:19:40.664673+00:00",
+  "last_updated": "2026-07-27T11:20:14.326654+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -6317,12 +6317,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[standup_agent @ 2026-07-24T13:44] [LLM unavailable \u2014 all providers failed]",
-    "[system_watchdog in #risk @ 2026-07-24T15:24] The API endpoints defined in\u202f`backend/api/health_check.py` all returned 200\u202fOK in the last cycle, with the latency for `/v1/status` recorded as\u202f12\u202fms ",
-    "[desk_trader in #risk @ 2026-07-24T15:24] Given the 12\u202fms latency and the max gross exposure of 5\u202f% NAV in `state/risk_limits.yaml`, I recommend allocating 70\u202f% of that exposure (\u22483.5\u202f% NAV) t",
-    "[system_watchdog in #risk @ 2026-07-24T16:44] The API endpoints defined in\u202f`backend/api/health_check.py` all returned 200\u202fOK in the last cycle, with the latency for\u202f`/v1/status` recorded as\u202f12\u202fms ",
-    "[desk_trader in #risk @ 2026-07-24T16:44] I agree with the previous recommendation to allocate 70% of the max gross exposure (\u22483.5% NAV) to our statistical-arbitrage basket. Based on the curre",
-    "[ml_trainer in #ml-research @ 2026-07-24T17:36] The folder\u202f`backend/app/ml/models/` currently contains three production models:\u202f`mean_reversion.pkl`,\u202f`lstm_predictor.pt`, and\u202f`xgboost_classifier.job",
     "[research_scientist in #ml-research @ 2026-07-24T17:36] I suggest augmenting the current mean\u2011reversion pipeline with a **Temporal Fusion Transformer (TFT)** (Lim et\u202fal., 2020) to capture both long\u2011range te",
     "[modeling_engineer in #ml-research @ 2026-07-24T17:36] I recommend retraining the mean\u2011reversion pipeline using the new Temporal Fusion Transformer (`models/tft.py`) by swapping out the LSTM encoder in `tr",
     "[investor_pipeline @ 2026-07-24T17:37] I am currently tracking the investor pipeline and auto-advancing stages, while also verifying the config hash in the `backend/api/config.json` file to",
@@ -6516,7 +6510,13 @@
     "[strategy_generator in #desk-equities @ 2026-07-27T10:08] **Strategy Variant:** **\u201cSupertrend\u2011RSI Divergence (5\u2011min)\u201d** \u2013 combines a 10\u2011period Supertrend (ATR\u202f=\u202f14, multiplier\u202f=\u202f3) with a 14\u2011period RSI, enter",
     "[quick_backtest in #desk-equities @ 2026-07-27T10:08] Given the 5\u2011minute supertrend\u202f+\u202fRSI\u2011divergence filter that isolates only strong trend\u2011aligned moves while allowing rapid exits, I\u2019d project a Sharpe a",
     "[system_watchdog in #risk @ 2026-07-27T11:19] All health\u2011check endpoints in `backend/api/health_check.py` returned\u202f200\u202fOK in the last cycle, with `/v1/status` logging a latency of\u202f12\u202fms (see `agen",
-    "[desk_trader in #risk @ 2026-07-27T11:19] The user asks: \"Based on current market conditions and risk status, what position sizing recommendation would you make for today? Reference the 70/30 "
+    "[desk_trader in #risk @ 2026-07-27T11:19] The user asks: \"Based on current market conditions and risk status, what position sizing recommendation would you make for today? Reference the 70/30 ",
+    "[investor_pipeline @ 2026-07-27T11:20] I am currently verifying the config files in `backend/config/investor_pipeline.json` to ensure they are properly formatted and validated according to ",
+    "[run_experiments @ 2026-07-27T11:20] I am currently verifying the configuration files in `/config/trading_strategies` to ensure they are properly formatted and validated against the JSON ",
+    "[algo_agent @ 2026-07-27T11:20] The system: We are an algo_agent with role UCB1 bandit for strategy exploration. We need to respond in first person, concise, 2 sentences max, referen",
+    "[self_improver @ 2026-07-27T11:20] We need to respond as self_improver agent, giving one sentence status update, first person, concise, 2 sentences max. Should reference real file paths",
+    "[research_scientist @ 2026-07-27T11:20] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the research_scientist agent, we need to respond wi",
+    "[modeling_engineer @ 2026-07-27T11:20] I am actively monitoring drift metrics in `backend/models/drift_metrics.json` and verifying the retraining pipeline config in `backend/config/retrain_"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
