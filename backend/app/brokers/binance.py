@@ -2,8 +2,11 @@
 Binance broker integration via CCXT async.
 Supports spot trading, real-time order book, and triangular arb scanning.
 """
+
 import asyncio
 import time
+from typing import Any, Dict, List
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.utils.exceptions import BrokerError
 from app.utils.logging import logger
@@ -17,7 +20,7 @@ except ImportError:
     logger.info("ccxt not installed — Binance broker disabled")
 
 
-INTERVAL_MAP = {
+INTERVAL_MAP: Dict[str, str] = {
     "1m": "1m",
     "5m": "5m",
     "15m": "15m",
@@ -28,7 +31,22 @@ INTERVAL_MAP = {
 
 
 class BinanceBroker(AbstractBroker):
-    def __init__(self, api_key: str, secret: str, testnet: bool = True):
+    """
+    Binance broker implementation using the CCXT async library.
+
+    Provides methods for order management, market data retrieval, and account
+    information. All operations are asynchronous and respect Binance rate limits.
+    """
+
+    def __init__(self, api_key: str, secret: str, testnet: bool = True) -> None:
+        """
+        Initialise the Binance exchange client.
+
+        Args:
+            api_key: API key for Binance authentication.
+            secret: Secret key for Binance authentication.
+            testnet: If True, use Binance sandbox (testnet) mode.
+        """
         self.exchange = ccxt.binance(
             {
                 "apiKey": api_key,
@@ -42,13 +60,27 @@ class BinanceBroker(AbstractBroker):
             self.exchange.set_sandbox_mode(True)
 
         # Cache for expensive calls
-        self._ticker_cache = {"data": None, "timestamp": 0.0}
+        self._ticker_cache: Dict[str, Any] = {"data": None, "timestamp": 0.0}
         self._ticker_lock = asyncio.Lock()
 
-    async def close(self):
+    async def close(self) -> None:
+        """Close the underlying CCXT exchange connection."""
         await self.exchange.close()
 
     async def place_order(self, request: OrderRequest) -> OrderResult:
+        """
+        Place an order on Binance.
+
+        Supports market and limit orders. If the order type is unrecognised,
+        a market order is used as a fallback.
+
+        Args:
+            request: OrderRequest containing symbol, side, quantity, etc.
+
+        Returns:
+            OrderResult with broker order ID, status, filled quantity, and
+            average fill price.
+        """
         try:
             if request.order_type == "market":
                 order = await self.exchange.create_market_order(
@@ -79,25 +111,62 @@ class BinanceBroker(AbstractBroker):
             raise BrokerError(f"Binance: {e}")
 
     async def cancel_order(self, broker_order_id: str, symbol: str = "") -> bool:
+        """
+        Cancel an existing order.
+
+        Args:
+            broker_order_id: The Binance order identifier.
+            symbol: Optional symbol associated with the order.
+
+        Returns:
+            True if cancellation succeeded, False otherwise.
+        """
         try:
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
-    async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
+    async def get_order(self, broker_order_id: str, symbol: str = "") -> Dict[str, Any]:
+        """
+        Retrieve details of a specific order.
+
+        Args:
+            broker_order_id: The Binance order identifier.
+            symbol: Optional symbol for the order.
+
+        Returns:
+            Dictionary with order information as returned by CCXT.
+        """
         return await self.exchange.fetch_order(broker_order_id, symbol)
 
-    async def get_positions(self) -> list[dict]:
+    async def get_positions(self) -> List[Dict[str, Any]]:
+        """
+        Get current non‑USDT positions.
+
+        Returns:
+            A list of position dictionaries containing symbol, quantity, and side.
+        """
         balance = await self.exchange.fetch_balance()
-        positions = []
+        positions: List[Dict[str, Any]] = []
         for asset, info in balance["total"].items():
             if info > 0 and asset != "USDT":
                 positions.append({"symbol": f"{asset}/USDT", "qty": info, "side": "long"})
         return positions
 
-    async def get_account(self) -> dict:
+    async def get_account(self) -> Dict[str, float]:
+        """
+        Retrieve basic account equity information.
+
+        Returns:
+            Dictionary with equity, cash, buying power, and portfolio value.
+        """
         balance = await self.exchange.fetch_balance()
         usdt = balance["total"].get("USDT", 0)
         return {
@@ -108,6 +177,15 @@ class BinanceBroker(AbstractBroker):
         }
 
     async def get_quote(self, symbol: str) -> QuoteResult:
+        """
+        Fetch the latest market quote for a symbol.
+
+        Args:
+            symbol: Trading pair symbol (e.g., "BTC/USDT").
+
+        Returns:
+            QuoteResult containing bid, ask, last price, and volume.
+        """
         try:
             ticker = await asyncio.wait_for(
                 self.exchange.fetch_ticker(symbol), timeout=10.0
@@ -125,7 +203,18 @@ class BinanceBroker(AbstractBroker):
 
     async def get_historical(
         self, symbol: str, interval: str = "1d", limit: int = 500
-    ) -> list[dict]:
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve historical OHLCV data.
+
+        Args:
+            symbol: Trading pair symbol.
+            interval: Timeframe identifier (e.g., "1h").
+            limit: Maximum number of bars to fetch.
+
+        Returns:
+            List of dictionaries with timestamp, open, high, low, close, and volume.
+        """
         tf = INTERVAL_MAP.get(interval, "1d")
         ohlcv = await self.exchange.fetch_ohlcv(symbol, tf, limit=limit)
         return [
@@ -140,11 +229,29 @@ class BinanceBroker(AbstractBroker):
             for bar in ohlcv
         ]
 
-    async def get_order_book(self, symbol: str, limit: int = 20) -> dict:
+    async def get_order_book(self, symbol: str, limit: int = 20) -> Dict[str, Any]:
+        """
+        Fetch the current order book depth for a symbol.
+
+        Args:
+            symbol: Trading pair symbol.
+            limit: Number of price levels to retrieve.
+
+        Returns:
+            Order book dictionary as provided by CCXT.
+        """
         return await self.exchange.fetch_order_book(symbol, limit)
 
-    async def get_all_tickers(self, cache_ttl: int = 30) -> dict:
-        """Fetch all tickers for triangular arb scanning with simple TTL caching."""
+    async def get_all_tickers(self, cache_ttl: int = 30) -> Dict[str, Any]:
+        """
+        Fetch all tickers for triangular arbitrage scanning with simple TTL caching.
+
+        Args:
+            cache_ttl: Time‑to‑live for cached ticker data in seconds.
+
+        Returns:
+            Dictionary of ticker data keyed by symbol.
+        """
         async with self._ticker_lock:
             now = time.monotonic()
             if (
