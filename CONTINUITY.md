@@ -40,6 +40,57 @@ Once that lands, the boot reaches Postgres → `alembic upgrade head` provisions
 **Verify:** `/health/detailed` → `database.fallback` gone, `database_primary.ok` true.
 NOTE `database_primary` is a BOOT-time value, so it only changes after a restart.
 
+## ✅ 2026-07-27 — THREE DEAD AGENT PIPELINES REVIVED (all Slack-removal regressions)
+Read the failures landing in **#ci-failures** rather than the backlog, and found three
+pipelines that had been failing on a schedule for weeks. All three were my own regressions
+from the Slack→Discord rename. Fixed in #1041 + #1044; **both confirmed green in production
+at 08:06 UTC**, first success after 3+ consecutive failures each.
+- **Research → Trade (24/7) had never executed once.** `chat_post` is annotated `-> dict`
+  but returned `notify.post`'s **bool**; `research_to_trade.chat()` runs before any research,
+  so it died on its first post with `AttributeError: 'bool' object has no attribute 'get'`.
+  Now returns `{"ok": bool, "ts": str|None}`.
+- **Company Brain Sync, dead every 15 min** — `chat_read_channel() got an unexpected keyword
+  argument 'oldest'`. And beneath it, `company_brain` read `m["text"]` where Discord sends
+  `content`, so it would have ingested **nothing while reporting success** even once the
+  signature was fixed.
+- **`employee_intros`** had both bugs in mirror form.
+Guards added: `.github/scripts/test_call_signatures.py` (nothing watched the fleet's own code
+— only `backend/app` was covered) and `backend/tests/unit/test_logger_kwargs.py`. Note the
+signature guard **cannot** catch the `chat_post` bug — the call is well-formed, the *return
+shape* lied — so that one is covered behaviourally.
+
+### ⚠️ PROCESS: a GitHub squash merge silently dropped a commit
+PR #1041 was merged at a **stale head** — the `chat_post` fix (the most important of the
+batch) was not in the squash, despite CI having run on it. Caught only by verifying `main`
+afterwards; recovered via cherry-pick and re-shipped as #1044. **Always diff `main` against
+what you intended to land.** Related: the Actions API here serves heavily cached run/job
+status — `test` shows `in_progress` for ~10 min after completing, across every endpoint.
+Never merge on a status read without corroboration.
+
+### 🔴 TWO LIVE RENDER SERVICES — the monitors watch the dead one (USER DECISION)
+`quantedge-api-9jz0` is **current**: 61/61 templates, Redis connected, 9 trades, has the
+`database_primary` health check. `quantedge-api-agb8` is a **stale build**: 29/61 templates,
+no Redis, and it reports `status: ok` only because its old health payload predates the
+`database_primary` check — **the healthy-looking one is the dead one.**
+Every hardcoded fallback points at `agb8`: `render.yaml` (OAuth callback), `docs/DEPLOYMENT.md`,
+`Landing.tsx`, `useWebSocket.ts`, `keep-alive.yml`, `smoke-test.yml`, and
+**`desk_order_placer.py`** (the order placer). All read `vars.RENDER_API_URL || agb8`, and that
+variable **is not set** — so everything falls back to the stale service. This is why smoke-test
+has ~17 failures: it has been testing a ghost.
+**Fix without touching code:** set repo variable `RENDER_API_URL` to the `9jz0` URL. Repointing
+the frontend + OAuth callback needs the Google console changed in lockstep — deliberately left
+to the user.
+
+### Still open (not root-caused)
+- `/analytics/tearsheet` **500s on the live service**. A real complex-number crash was found
+  and fixed (fractional power of a negative base → `complex` → `round()` dies), but the live
+  service has 9 trades, all winners, so it is NOT on that path. Needs the server traceback.
+- 5 workflows (`agent-health-monitor`, `channel-monitor`, `model-audit`,
+  `daily-employee-review`, `run-experiments-agent`) fail **100% of push runs with ZERO jobs
+  created** = startup_failure. All 97 workflow YAMLs parse cleanly; the error text is not
+  retrievable through the API from here. Their `schedule` trigger also never fires (0 scheduled
+  runs in the last 20), consistent with the known dropped-free-tier-cron behaviour.
+
 ## 🩸 MONEY-PATH AUDIT — 4 passes done, one theme: code that looked like it worked
 Running audit of every `except` handler and result construction in `execution/`, `risk/`,
 `brokers/`, `strategies/`. Full detail in IMPROVEMENTS.md; the shape of what keeps turning up:
