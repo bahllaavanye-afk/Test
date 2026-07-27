@@ -147,6 +147,18 @@ against a 1-day limit. Equity is downsampled (default hourly) and scaled by
 square-root-of-time, which assumes i.i.d. returns and understates tail risk under positive
 autocorrelation — a floor, not a ceiling.
 
+## 📊 2026-07-27 — coverage is measured for the first time: 51%, 37 modules at 0%
+CI now runs `--cov=app` and publishes the total plus the **0%-module list** to the PR summary.
+Baseline: **51% of 28,261 statements; 37 modules (3,594 statements) never executed by any
+test.** Reported, NOT gated — no `--cov-fail-under`, because picking a threshold is a policy
+call and a number chosen to pass today teaches nothing.
+The 0% list is the point: it is the same *"implemented but never runs"* class as the risk gate,
+the exit path, the ML feature builders and `configure_logging` — now found automatically
+instead of by hand-rolled AST sweeps. Worth triaging: `ml/registry.py`, `ml/serving/serve.py`,
+`ml/serving/ab_router.py`, `tasks/agent_bus.py`, `tasks/task_queue.py`,
+`tasks/strategy_auction.py`, `tasks/stock_scanners.py`, `comparison/engine.py`,
+`options/wheel.py`, `options/flow.py`. Cost: suite 72s → ~90s.
+
 ## ✅ 2026-07-27 — test suite is now deterministic (per-FILE DB isolation)
 `_create_tables` is session-scoped, so every file landing on the same xdist worker shared not
 just the schema but **every row**. Under `--dist loadfile` which files share a worker is a
