@@ -63,10 +63,20 @@ manager on its seeded $100k approving orders forever. Now clamped to 0 so the ha
 **This answers the open question from the desk review** — "a paper account going $8k negative
 means the risk layer did not stop it." It did not stop it because it was never running.
 
-Pinned by `backend/tests/unit/test_risk_gate_wiring.py` (17 tests). Verified against the
-pre-fix tree: 9 of 11 originals fail on old code. Two of the tests were themselves rewritten
-after failing that bar. Next: `factor_exposure.py` and `var.py` are documented as gates in
-`risk/CLAUDE.md` but are not wired into `check_order()`.
+The correlation cluster limit needed a second fix one level down: `_clusters` is only
+written by `update_returns()`, which **also had no caller**, so wiring the manager in left
+that control inert. Now derived from the mark stream — downsampled (2-second ticks are
+microstructure noise, not co-movement) and throttled (clustering is O(symbols²) behind a
+live feed). All four controls are now live.
+
+Pinned by `backend/tests/unit/test_risk_gate_wiring.py` (23 tests). Verified against the
+pre-fix tree: 9 of 11 originals fail on old code, and disabling the cluster refresh fails
+the two correlation tests. Two of the tests were themselves rewritten after failing that bar.
+
+Next: `factor_exposure.py` and `var.py` are diagrammed as gates in `risk/CLAUDE.md` but are
+not wired into `check_order()`. **Trap:** `historical_var()` returns a *default* `var_99=0.03`
+on fewer than 10 observations, so wiring it naively against the documented 2%-of-NAV limit
+would block every order at cold start — a fail-closed halt of the fleet dressed as a control.
 
 ## ✅ 2026-07-27 — THREE DEAD AGENT PIPELINES REVIVED (all Slack-removal regressions)
 Read the failures landing in **#ci-failures** rather than the backlog, and found three

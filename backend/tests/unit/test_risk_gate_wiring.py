@@ -246,6 +246,120 @@ def test_update_prices_survives_garbage_input():
     assert rm._prices == {}
 
 
+# ── the correlation limit needs a returns series to exist at all ─────────────
+# `check_order` guards the cluster check with `if self._clusters:`, and
+# `_clusters` is only written by `update_returns()` — which had no caller
+# anywhere in app/. Wiring the manager into the app did not switch this control
+# on; it stayed inert for exactly the same reason the whole gate was inert.
+
+def _feed(rm: RiskManager, series: dict[str, list[float]]) -> None:
+    """Push aligned mark ticks one timestep at a time, as the feed would."""
+    length = min(len(v) for v in series.values())
+    for i in range(length):
+        rm.update_prices({sym: vals[i] for sym, vals in series.items()})
+
+
+def test_marks_alone_now_build_correlation_clusters():
+    rm = RiskManager(initial_equity=100_000,
+                     sample_interval_seconds=0.0, cluster_refresh_seconds=0.0)
+    assert rm._clusters == {}, "no clusters before any data — this was the permanent state"
+
+    # AAPL and MSFT move together; TLT moves inversely.
+    base = [100.0 + i * 0.5 + (i % 3) for i in range(25)]
+    _feed(rm, {
+        "AAPL": base,
+        "MSFT": [p * 1.5 for p in base],
+        "TLT": [300.0 - (p - 100.0) for p in base],
+    })
+
+    assert rm._clusters, "the cluster limit cannot fire while _clusters is empty"
+    members = [set(v) for v in rm._clusters.values()]
+    assert any({"AAPL", "MSFT"} <= m for m in members), (
+        f"co-moving symbols must land in one cluster, got {rm._clusters}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_correlation_limit_actually_blocks_an_order_end_to_end():
+    """The whole point: marks in, concentration limit out. No hand-set _clusters."""
+    rm = RiskManager(max_position_pct=0.50, max_cluster_pct=0.30,
+                     initial_equity=100_000,
+                     sample_interval_seconds=0.0, cluster_refresh_seconds=0.0)
+    rm.update_equity(100_000)
+
+    base = [100.0 + i * 0.5 + (i % 3) for i in range(25)]
+    _feed(rm, {"AAPL": base, "MSFT": [p * 1.5 for p in base]})
+    rm.update_positions([{"symbol": "MSFT", "market_value": 28_000}])
+
+    # Cluster already at $28k; +$5k breaches 30% of a $100k NAV.
+    decision = await rm.check_order(_order(qty=50, price=100, symbol="AAPL"))
+    assert not decision.allowed
+    assert "would push" in decision.reason
+
+
+def test_marks_are_downsampled_not_correlated_tick_by_tick():
+    """2-second ticks correlate microstructure noise, not co-movement."""
+    rm = RiskManager(initial_equity=100_000, sample_interval_seconds=3600.0)
+    for price in range(100, 140):
+        rm.update_prices({"AAPL": float(price)})
+    assert len(rm._price_samples["AAPL"]) == 1, (
+        "with a 1h sample interval, 40 ticks in the same instant is one observation"
+    )
+    assert rm._prices["AAPL"] == 139.0, "the latest mark is still current for sizing"
+
+
+def test_cluster_recomputation_is_throttled():
+    """Clustering is O(symbols²) and sits behind the live price feed."""
+    rm = RiskManager(initial_equity=100_000,
+                     sample_interval_seconds=0.0, cluster_refresh_seconds=0.0)
+    base = [100.0 + i * 0.5 + (i % 3) for i in range(25)]
+    _feed(rm, {"AAPL": base, "MSFT": [p * 1.5 for p in base]})
+    assert rm._clusters
+
+    # Now throttle hard and confirm no further recompute happens.
+    rm.cluster_refresh_seconds = 86_400.0
+    calls = []
+    import app.risk.manager as mgr
+
+    original = mgr.compute_correlation_clusters
+    mgr.compute_correlation_clusters = lambda *a, **kw: (calls.append(1), original(*a, **kw))[1]
+    try:
+        _feed(rm, {"AAPL": base, "MSFT": [p * 1.5 for p in base]})
+    finally:
+        mgr.compute_correlation_clusters = original
+    assert not calls, "clustering must not run on every incoming tick"
+
+
+def test_sample_history_is_bounded():
+    """This runs for the process lifetime — it must not grow without limit."""
+    rm = RiskManager(initial_equity=100_000,
+                     sample_interval_seconds=0.0, cluster_refresh_seconds=86_400.0)
+    for i in range(5_000):
+        rm.update_prices({"AAPL": 100.0 + i})
+    assert len(rm._price_samples["AAPL"]) <= rm.min_samples_for_clusters * 4
+
+
+def test_a_clustering_failure_does_not_stop_marks_reaching_the_cap():
+    """Marks feed the position cap; a correlation error must not cost that."""
+    import app.risk.manager as mgr
+
+    rm = RiskManager(initial_equity=100_000,
+                     sample_interval_seconds=0.0, cluster_refresh_seconds=0.0)
+    original = mgr.compute_correlation_clusters
+
+    def _boom(*a, **kw):
+        raise RuntimeError("corr exploded")
+
+    mgr.compute_correlation_clusters = _boom
+    try:
+        base = [100.0 + i * 0.5 + (i % 3) for i in range(25)]
+        _feed(rm, {"AAPL": base, "MSFT": [p * 1.5 for p in base]})
+    finally:
+        mgr.compute_correlation_clusters = original
+
+    assert rm._prices["AAPL"] == pytest.approx(base[-1]), "marks must still land"
+
+
 # ── the sync loop that feeds the gate ────────────────────────────────────────
 # Runtime tests with a fake broker: a manager that is wired but never fed real
 # equity still cannot trip a drawdown breaker (one data point is not a series)

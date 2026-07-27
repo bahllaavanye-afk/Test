@@ -5,6 +5,8 @@ All order requests pass through here before reaching the broker.
 from __future__ import annotations
 
 import asyncio
+import time
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -57,6 +59,8 @@ class RiskManager:
         arb_drawdown_pct: float = 0.05,
         max_cluster_pct: float = 0.30,
         initial_equity: float = 100_000.0,
+        sample_interval_seconds: float = 300.0,
+        cluster_refresh_seconds: float = 900.0,
     ):
         self.max_position_pct = max_position_pct
         self.max_drawdown_pct = max_drawdown_pct
@@ -76,6 +80,26 @@ class RiskManager:
         # Orders that passed without a notional check because no price was known.
         # Surfaced by /risk so "the cap never fires" is visible instead of silent.
         self.unpriced_orders: int = 0
+
+        # ── Correlation inputs ────────────────────────────────────────────────
+        # _clusters was permanently empty because update_returns() had no caller
+        # anywhere in app/, and check_order() guards the cluster limit with
+        # `if self._clusters:`. Wiring the manager into the app did not fix that
+        # on its own — the limit needs a returns series to exist at all.
+        #
+        # Marks arrive from the price feed every ~2s. Correlating 2-second ticks
+        # would measure microstructure noise, not the co-movement that
+        # compute_correlation_clusters(threshold=0.70) is about, so marks are
+        # DOWNSAMPLED to one observation per sample_interval_seconds and the
+        # clustering (which is O(symbols²)) is throttled separately.
+        self.sample_interval_seconds = float(sample_interval_seconds)
+        self.cluster_refresh_seconds = float(cluster_refresh_seconds)
+        self._price_samples: dict[str, deque[float]] = {}
+        self._last_sample_at: dict[str, float] = {}
+        self._last_cluster_refresh: float = 0.0
+        # Enough points for a correlation to mean anything; also the minimum
+        # compute_correlation_clusters needs before it stops returning {}.
+        self.min_samples_for_clusters: int = 21
 
         self.global_breaker = CircuitBreaker(
             name="global", max_drawdown_pct=max_drawdown_pct
@@ -132,13 +156,67 @@ class RiskManager:
         """
         if not isinstance(prices, dict):
             return
+        now = time.monotonic()
         for symbol, price in prices.items():
             try:
                 value = float(price)
             except (TypeError, ValueError):
                 continue
             if value > 0 and value == value and value != float("inf"):
-                self._prices[str(symbol)] = value
+                key = str(symbol)
+                self._prices[key] = value
+                self._sample(key, value, now)
+        self._maybe_refresh_clusters(now)
+
+    def _sample(self, symbol: str, price: float, now: float) -> None:
+        """Downsample the mark stream into a per-symbol price history."""
+        last = self._last_sample_at.get(symbol)
+        if last is not None and (now - last) < self.sample_interval_seconds:
+            return
+        self._last_sample_at[symbol] = now
+        series = self._price_samples.get(symbol)
+        if series is None:
+            # Bounded: this runs for the life of the process. 4x the minimum
+            # keeps roughly the last few hours at the default cadence, matching
+            # the tail(60) that compute_correlation_clusters actually uses.
+            series = deque(maxlen=self.min_samples_for_clusters * 4)
+            self._price_samples[symbol] = series
+        series.append(price)
+
+    def _maybe_refresh_clusters(self, now: float) -> None:
+        """Rebuild correlation clusters from sampled marks, throttled.
+
+        Non-raising by construction: this is reached from the price feed, and a
+        clustering failure must not stop marks reaching the position cap.
+        """
+        if (now - self._last_cluster_refresh) < self.cluster_refresh_seconds:
+            return
+        ready = {
+            sym: list(series)
+            for sym, series in self._price_samples.items()
+            if len(series) >= self.min_samples_for_clusters
+        }
+        if len(ready) < 2:
+            return
+        self._last_cluster_refresh = now
+        try:
+            # Align by position: every series is sampled on the same cadence, so
+            # the last N points cover the same window. Symbols that joined late
+            # simply contribute fewer rows, hence the common truncation.
+            depth = min(len(v) for v in ready.values())
+            frame = pd.DataFrame({sym: vals[-depth:] for sym, vals in ready.items()})
+            returns = frame.pct_change().dropna()
+            if len(returns) < 3:
+                return
+            self.update_returns(returns)
+            logger.info(
+                "risk.manager: correlation clusters refreshed",
+                symbols=len(ready),
+                observations=len(returns),
+                clusters=len(self._clusters),
+            )
+        except Exception as exc:
+            logger.warning("risk.manager: cluster refresh failed", error=str(exc))
 
     def _reference_price(self, request: OrderRequest) -> float | None:
         """Price used to turn quantity into notional, or None if genuinely unknown.
