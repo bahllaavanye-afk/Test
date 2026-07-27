@@ -12,11 +12,16 @@ def ohlcv():
     rng = np.random.default_rng(7)
     close = 100 + 5 * np.sin(np.linspace(0, 8 * np.pi, n)) + rng.normal(0, 1, n)
     idx = pd.date_range("2024-01-01", periods=n, freq="1h")
-    return pd.DataFrame({
-        "open": close, "high": close + 0.5,
-        "low": close - 0.5, "close": close,
-        "volume": rng.integers(100_000, 500_000, n).astype(float)
-    }, index=idx)
+    return pd.DataFrame(
+        {
+            "open": close,
+            "high": close + 0.5,
+            "low": close - 0.5,
+            "close": close,
+            "volume": rng.integers(100_000, 500_000, n).astype(float),
+        },
+        index=idx,
+    )
 
 
 @pytest.fixture
@@ -46,27 +51,42 @@ def test_backtest_signals_same_length(strategy, ohlcv):
 
 def test_no_lookahead_in_backtest(strategy):
     import inspect
+
     src = inspect.getsource(strategy.backtest_signals)
     assert "shift(0)" not in src, "lookahead bias detected: shift(0) in backtest_signals"
 
 
 @pytest.mark.asyncio
 async def test_analyze_none_on_short_data(strategy):
-    tiny = pd.DataFrame({"close": [1.0, 2.0], "high": [1.1, 2.1],
-                          "low": [0.9, 1.9], "open": [1.0, 2.0], "volume": [1000.0, 1000.0]})
+    tiny = pd.DataFrame(
+        {
+            "close": [1.0, 2.0],
+            "high": [1.1, 2.1],
+            "low": [0.9, 1.9],
+            "open": [1.0, 2.0],
+            "volume": [1000.0, 1000.0],
+        }
+    )
     result = await strategy.analyze(tiny, "SPY")
     assert result is None
 
 
 @pytest.mark.asyncio
 async def test_analyze_buy_signal_near_lower_band(strategy):
-    # Build a series that dips sharply at the end to touch lower BB
     n = 60
     close = np.full(n, 100.0)
-    close[-5:] = 88.0  # sharp drop below 2-std lower band
+    close[-5:] = 88.0
     idx = pd.date_range("2024-01-01", periods=n, freq="1h")
-    df = pd.DataFrame({"close": close, "high": close + 0.2, "low": close - 0.2,
-                        "open": close, "volume": np.ones(n) * 100_000}, index=idx)
+    df = pd.DataFrame(
+        {
+            "close": close,
+            "high": close + 0.2,
+            "low": close - 0.2,
+            "open": close,
+            "volume": np.ones(n) * 100_000,
+        },
+        index=idx,
+    )
     signal = await strategy.analyze(df, "TEST")
     if signal is not None:
         assert signal.side == "buy"
