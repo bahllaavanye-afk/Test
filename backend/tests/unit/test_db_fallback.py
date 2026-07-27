@@ -12,12 +12,19 @@ the fallback does NOT engage when disabled or already on SQLite.
 """
 from __future__ import annotations
 
+import logging
+from typing import Any
+
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 import app.database as db_mod
 from app.config import settings
+
+# Structured logger for this test module
+logger = logging.getLogger(__name__)
 
 UNREACHABLE_PG = "postgresql+asyncpg://nouser:nopass@127.0.0.1:9/nodb"
 
@@ -44,11 +51,35 @@ def _restore_db_module(tmp_path):
         db_mod.FALLBACK_SQLITE_URL,
         settings.db_fallback_to_sqlite,
     ) = saved
-    db_mod.AsyncSessionLocal.configure(bind=saved[0])
+    try:
+        db_mod.AsyncSessionLocal.configure(bind=saved[0])
+    except Exception as exc:  # pragma: no cover
+        logger.error(
+            "Failed to restore AsyncSessionLocal binding",
+            exc_info=exc,
+            engine=str(saved[0]),
+        )
+        raise
 
 
 async def test_fallback_engages_when_primary_unreachable(_restore_db_module):
-    db_mod.engine = create_async_engine(UNREACHABLE_PG)
+    try:
+        db_mod.engine = create_async_engine(UNREACHABLE_PG)
+    except OperationalError as exc:
+        logger.error(
+            "OperationalError while creating primary engine",
+            url=UNREACHABLE_PG,
+            exc_info=exc,
+        )
+        raise
+    except Exception as exc:  # pragma: no cover
+        logger.error(
+            "Unexpected error while creating primary engine",
+            url=UNREACHABLE_PG,
+            exc_info=exc,
+        )
+        raise
+
     db_mod._is_sqlite = False
     settings.db_fallback_to_sqlite = True
     db_mod.db_fallback_active = False
@@ -65,11 +96,31 @@ async def test_fallback_engages_when_primary_unreachable(_restore_db_module):
         n = (await s.execute(text("SELECT COUNT(*) FROM users"))).scalar()
         assert n == 0  # table exists, empty
 
-    await live.dispose()
+    try:
+        await live.dispose()
+    except Exception as exc:  # pragma: no cover
+        logger.error("Error disposing live engine", engine=str(live.url), exc_info=exc)
+        raise
 
 
 async def test_fallback_disabled_keeps_dead_engine(_restore_db_module):
-    dead = create_async_engine(UNREACHABLE_PG)
+    try:
+        dead = create_async_engine(UNREACHABLE_PG)
+    except OperationalError as exc:
+        logger.error(
+            "OperationalError while creating dead engine",
+            url=UNREACHABLE_PG,
+            exc_info=exc,
+        )
+        raise
+    except Exception as exc:  # pragma: no cover
+        logger.error(
+            "Unexpected error while creating dead engine",
+            url=UNREACHABLE_PG,
+            exc_info=exc,
+        )
+        raise
+
     db_mod.engine = dead
     db_mod._is_sqlite = False
     settings.db_fallback_to_sqlite = False
@@ -80,7 +131,13 @@ async def test_fallback_disabled_keeps_dead_engine(_restore_db_module):
     assert live is dead                       # unchanged: operator opted out
     assert db_mod.db_fallback_active is False
     assert db_mod.db_primary_error            # but the failure is still recorded
-    await dead.dispose()
+    try:
+        await dead.dispose()
+    except Exception as exc:  # pragma: no cover
+        logger.error(
+            "Error disposing dead engine", engine=str(dead.url), exc_info=exc
+        )
+        raise
 
 
 async def test_healthy_primary_is_untouched(_restore_db_module):
