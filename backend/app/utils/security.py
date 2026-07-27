@@ -1,6 +1,9 @@
 import base64
 import hashlib
 import uuid
+import time
+import logging
+import collections
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -9,6 +12,33 @@ from cryptography.fernet import Fernet
 from jose import jwt
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Track call counts for monitoring purposes
+_call_counts = collections.defaultdict(int)
+
+
+def _log_metrics(metric_name: str):
+    """Decorator to log execution time and call count for a function."""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            _call_counts[func.__name__] += 1
+            start = time.time()
+            result = func(*args, **kwargs)
+            duration_ms = int((time.time() - start) * 1000)
+            logger.info(
+                f"{metric_name} executed",
+                extra={
+                    "function": func.__name__,
+                    "duration_ms": duration_ms,
+                    "call_count": _call_counts[func.__name__],
+                },
+            )
+            return result
+        return wrapper
+    return decorator
+
 
 # Use the bcrypt library directly rather than passlib's bcrypt backend: passlib 1.7.4
 # cannot read the version of bcrypt >= 4.1 (`module 'bcrypt' has no attribute '__about__'`)
@@ -26,10 +56,12 @@ def _bcrypt_bytes(password: str) -> bytes:
     return password.encode("utf-8")[:72]
 
 
+@_log_metrics("hash_password")
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(_bcrypt_bytes(password), bcrypt.gensalt()).decode("utf-8")
 
 
+@_log_metrics("verify_password")
 def verify_password(plain: str, hashed: str) -> bool:
     try:
         return bcrypt.checkpw(_bcrypt_bytes(plain), hashed.encode("utf-8"))
@@ -37,13 +69,19 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
+@_log_metrics("create_access_token")
 def create_access_token(subject: str | Any, expires_delta: timedelta | None = None) -> str:
     expire = datetime.now(UTC) + (
         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
     )
-    return jwt.encode({"sub": str(subject), "exp": expire, "type": "access"}, settings.secret_key, algorithm=settings.algorithm)
+    return jwt.encode(
+        {"sub": str(subject), "exp": expire, "type": "access"},
+        settings.secret_key,
+        algorithm=settings.algorithm,
+    )
 
 
+@_log_metrics("create_refresh_token")
 def create_refresh_token(subject: str | Any) -> str:
     expire = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
     payload = {
@@ -55,6 +93,7 @@ def create_refresh_token(subject: str | Any) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
+@_log_metrics("decode_token")
 def decode_token(token: str) -> dict:
     return jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
 
@@ -65,12 +104,14 @@ def _fernet_key() -> bytes:
     return base64.urlsafe_b64encode(digest)
 
 
+@_log_metrics("encrypt_secret")
 def encrypt_secret(value: str) -> str:
     """AES-256 encrypt a broker API secret for storage."""
     f = Fernet(_fernet_key())
     return f.encrypt(value.encode()).decode()
 
 
+@_log_metrics("decrypt_secret")
 def decrypt_secret(encrypted: str) -> str:
     """Decrypt a stored broker API secret."""
     f = Fernet(_fernet_key())
