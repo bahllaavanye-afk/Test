@@ -186,3 +186,86 @@ def walk_forward(
     result.is_robust = verdict["is_robust"]
     result.verdict = verdict["verdict"]
     return result
+
+
+# -------------------------------------------------------------------------
+# Unit tests for edge cases in robustness_verdict and _run_window.
+# -------------------------------------------------------------------------
+
+import pytest
+from datetime import datetime, timedelta
+
+# Helper to create a simple price series with a datetime index.
+def _make_price_series(length: int) -> pd.Series:
+    start = datetime(2020, 1, 1)
+    dates = [start + timedelta(days=i) for i in range(length)]
+    return pd.Series(range(length), index=pd.DatetimeIndex(dates))
+
+
+def test_robustness_verdict_empty_list():
+    """Empty Sharpe list should return insufficient_data verdict."""
+    result = robustness_verdict([])
+    assert result["n_windows"] == 0
+    assert result["deflated_sharpe"] == 0.0
+    assert result["consistency"] == 0.0
+    assert result["is_robust"] is False
+    assert result["verdict"] == "insufficient_data"
+
+
+def test_robustness_verdict_boundary_conditions(monkeypatch):
+    """
+    Test the boundary where:
+    - Number of windows equals MIN_WINDOWS
+    - Average Sharpe equals MIN_OOS_SHARPE
+    - Consistency equals MIN_CONSISTENCY
+    - DSR equals MIN_DSR
+    The result should be robust.
+    """
+    # Create sharpes: exactly half meet the threshold, rest are below,
+    # but average is set to the threshold by balancing values.
+    high = MIN_OOS_SHARPE
+    low = MIN_OOS_SHARPE - 0.2
+    sharpes = [high] * (MIN_WINDOWS // 2) + [low] * (MIN_WINDOWS - MIN_WINDOWS // 2)
+
+    # Adjust one low value to bring average up to the threshold.
+    # Compute current average and required adjustment.
+    current_avg = sum(sharpes) / MIN_WINDOWS
+    adjustment = MIN_OOS_SHARPE - current_avg
+    sharpes[-1] += adjustment
+
+    # Monkeypatch deflated_sharpe_ratio to return exactly MIN_DSR.
+    monkeypatch.setattr(
+        "app.backtest.cpcv.deflated_sharpe_ratio",
+        lambda sharps, n_trials: MIN_DSR,
+    )
+
+    result = robustness_verdict(sharpes)
+    assert result["n_windows"] == MIN_WINDOWS
+    assert result["deflated_sharpe"] == round(MIN_DSR, 4)
+    assert result["consistency"] == round(MIN_CONSISTENCY, 4)
+    assert result["is_robust"] is True
+    assert result["verdict"] == "robust"
+
+
+def test_run_window_error_handling():
+    """When signals_fn raises, _run_window should return an error dict."""
+    train = _make_price_series(10)
+    test = _make_price_series(5)
+
+    def failing_signals_fn(_train, _test):
+        raise ValueError("signal generation failed")
+
+    error_info, equity_curve, equity_carry = _run_window(
+        train,
+        test,
+        failing_signals_fn,
+        equity_carry=50000,
+    )
+    # Verify error structure
+    assert KEY_ERROR in error_info
+    assert error_info[KEY_ERROR] == "signal generation failed"
+    assert KEY_START in error_info and KEY_END in error_info
+    # No equity curve should be returned on error
+    assert equity_curve == []
+    # Equity carry should remain unchanged
+    assert equity_carry == 50000
