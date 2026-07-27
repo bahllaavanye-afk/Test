@@ -575,6 +575,25 @@ DAILY_LOSS_CAP_PCT = float(os.environ.get("DAILY_LOSS_CAP_PCT", "0.02"))
 MIN_ORDER_USD = 25.0
 
 
+def _price_precision(price: float, is_crypto: bool) -> int:
+    """Decimal places that keep `price` non-zero and meaningful.
+
+    Equities quote in cents, so 2 is right. Crypto spans nine orders of
+    magnitude — BTC at 60,000 and SHIB at 0.00001 cannot share a precision.
+    A flat 2dp rounded SHIB to 0.0 and the caller then divided by it.
+    """
+    if not is_crypto:
+        return 2
+    p = abs(float(price))
+    if p >= 1:
+        return 2
+    if p >= 0.01:
+        return 4
+    if p >= 0.0001:
+        return 6
+    return 8
+
+
 def cash_capped_notional(notional: float, symbol: str, account: dict) -> float:
     """Cap an order's notional at what the account can actually pay (95% of
     the relevant buying power; crypto needs non-marginable cash). Sizing used
@@ -678,7 +697,19 @@ async def _place_order(
 
         if limit_price and limit_price > 0:
             # Limit-first: post limit slightly through the market to maximise fill probability
-            lp  = round(limit_price * (1.001 if side == "buy" else 0.999), 2)
+            raw_lp = limit_price * (1.001 if side == "buy" else 0.999)
+            # Rounding to 2dp destroys sub-cent crypto: SHIB at ~$0.00001 became
+            # 0.0, and the next line divided by it — "float division by zero",
+            # which the caller swallowed as a generic place_order failure. Scale
+            # the precision to the price instead.
+            lp = round(raw_lp, _price_precision(raw_lp, is_crypto))
+            if lp <= 0:
+                print(
+                    f"    ⚠ {symbol}: limit price rounds to zero "
+                    f"(raw={raw_lp!r}) — skipping rather than dividing by it",
+                    flush=True,
+                )
+                return None
             qty = round(notional_usd / lp, 6 if is_crypto else 2)
             body["type"]        = "limit"
             body["limit_price"] = str(lp)
@@ -1241,6 +1272,8 @@ async def run_desk(desk: DeskConfig, account: dict) -> list[dict]:
         return []
 
     orders_placed: list[dict] = []
+    unfunded = 0          # signals dropped because buying power was exhausted
+    rejected = 0          # signals the broker refused
 
     trimmed = _trimmed_strategies()
     strategies = []
@@ -1292,13 +1325,32 @@ async def run_desk(desk: DeskConfig, account: dict) -> list[dict]:
                 )
                 continue
 
+            # Size to what the account can actually pay. cash_capped_notional
+            # has existed for exactly this since the last 403 round, but this
+            # path passed desk.notional_usd RAW — so every crypto desk run
+            # asked Alpaca for $135 against $6.71 of buying power and got
+            # "403 insufficient balance" on essentially every order. Nine desks
+            # generated signals and placed nothing.
+            sized = cash_capped_notional(desk.notional_usd, symbol, account)
+            if sized <= 0:
+                print(
+                    f"  ⏭ {strategy.name}/{symbol} {signal.side.upper()} — SKIPPED, "
+                    f"account cannot fund even ${MIN_ORDER_USD:.0f} "
+                    f"(buying power exhausted)",
+                    flush=True,
+                )
+                unfunded += 1
+                continue
+
             print(
                 f"  ► {strategy.name}/{symbol} signal={signal.side.upper()} "
-                f"conf={conf:.2f} — placing ${desk.notional_usd:.0f} order",
+                f"conf={conf:.2f} — placing ${sized:.0f} order"
+                + (f" (capped from ${desk.notional_usd:.0f})"
+                   if sized < desk.notional_usd else ""),
                 flush=True,
             )
 
-            order = await _place_order(symbol, signal.side, desk.notional_usd)
+            order = await _place_order(symbol, signal.side, sized)
             if order and order.get("id"):
                 print(f"    ✓ order {order['id']} submitted ({order.get('status', '?')})", flush=True)
                 orders_placed.append({
@@ -1306,14 +1358,28 @@ async def run_desk(desk: DeskConfig, account: dict) -> list[dict]:
                     "strategy": strategy.name,
                     "symbol":   symbol,
                     "side":     signal.side,
-                    "notional": desk.notional_usd,
+                    "notional": sized,
                     "confidence": conf,
                     "order_id": order["id"],
                     "status":   order.get("status", "?"),
                     "ts":       datetime.now(timezone.utc).isoformat(),
                 })
             else:
+                rejected += 1
                 print(f"    ✗ order placement returned no ID", flush=True)
+
+    # A desk that produced signals and placed nothing is NOT a healthy desk.
+    # It used to end with a tidy "✓ Place orders" and no further comment, which
+    # is how nine desks ran for weeks while the account sat at -$8,287 with
+    # $6.71 available and every single order 403'd.
+    if not orders_placed and (unfunded or rejected):
+        print(
+            f"  🚨 DESK {desk.name} PLACED NOTHING — {unfunded} signal(s) unfunded, "
+            f"{rejected} rejected by the broker. Buying power: "
+            f"${float(account.get('buying_power', 0) or 0):.2f}, "
+            f"non-marginable: ${float(account.get('non_marginable_buying_power', 0) or 0):.2f}",
+            flush=True,
+        )
 
     return orders_placed
 

@@ -1,5 +1,30 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔴 DEEP REVIEW 2026-07-27 — "why are there no trades" answered end to end
+> User: *"Trade desks are very weak, there should be hundreds of trades. Fix Supabase yourself, it was working before."*
+> Both answered with hard evidence. Every finding below came from live logs and the live API, not from reading code.
+
+### The desks were never broken — they were bankrupt, and nothing said so
+Live crypto-desk log, 08:40 UTC: nine desks generated signals, and:
+```
+403: insufficient balance for USD (requested: 134.58, available: 6.71, balance: -8287.81)
+422: asset MKR/USD is not active
+place_order failed SHIB/USD buy: float division by zero
+Done. 1 orders placed across 9 desks.
+```
+- [x] **[P0] `cash_capped_notional()` was never applied on the desk path.** The function exists precisely to prevent "403 insufficient balance" (its docstring records the *previous* round of this bug), but `run_desk` passed `desk.notional_usd` **raw**. Every order asked for $135 against **$6.71** of buying power. Two order paths existed and only the Kelly one was capped. Now capped, and an unaffordable signal is skipped honestly instead of being sent to be rejected.
+- [x] **[P0] Sub-cent crypto divided by zero.** `round(limit_price * 1.001, 2)` flattens SHIB (~$0.00001) to `0.0`, and the next line is `notional / lp`. The `ZeroDivisionError` surfaced as a generic "place_order failed", so it looked like a broker problem. Added `_price_precision()` — 2dp for equities, scaling to 8dp for sub-cent crypto — plus an explicit guard that refuses rather than divides. BTC and SHIB cannot share a rounding precision; nine orders of magnitude apart.
+- [x] **[P1] A desk that funded nothing still reported success.** It ended with a tidy `✓ Place orders` and no further comment — which is how nine desks ran for weeks against a **negative account balance**. Now counts unfunded vs broker-rejected signals and emits a `🚨 DESK … PLACED NOTHING` line with the actual buying power.
+- [ ] **[USER] The Alpaca paper account is at `-$8,287.81` with `$6.71` available.** No sizing fix can trade out of that — it needs a paper-account reset in Alpaca. **Also worth asking how it got there:** a paper account going $8k negative means the risk layer did not stop it, which is its own investigation.
+- [ ] **[P2] Inactive assets are still requested** (`MKR/USD is not active`, 422). The universe should be filtered against Alpaca's active-asset list before signals are generated, not discovered at order time.
+
+### Supabase — "it was working before" has a mechanism, and it was my own script
+- [x] **[P0] `render_probe_pooler` could destroy the password it rewrites.** It reads the password with `urlparse`. If the stored `DATABASE_URL` holds an **unencoded** password containing `#` or `?` — exactly what a human pasting into the Render dashboard produces — urlparse treats them as fragment/query markers and truncates:
+  ```
+  Abc!@#$%^&*()  ->  Abc!          a:b@c#d?e  ->  a:b
+  ```
+  The script then percent-encodes that stub and **PATCHes it into Render**, replacing a working credential with a 4-character prefix. The symptom is `password authentication failed` — indistinguishable from a rotated password, and self-inflicted. Added `password_roundtrips()`, which compares against the **raw** credential text rather than a re-encoded copy of what urlparse already returned (re-encoding always round-trips, which would make the check vacuous). The patch path now refuses and prints the encode command. **This cannot recover a password already destroyed** — that still needs one reset in the Supabase dashboard — but it ends the loop where every probe run corrupts it again.
+
 ## 🔴 DEEP REVIEW 2026-07-25 — Slack removal uncovered a class of SILENT MESSAGE LOSS
 > User directive: "Remove slack completely. Make discord better. Improve tests."
 > Ripping Slack out turned up something worse than dead code: **large parts of the
