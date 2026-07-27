@@ -140,8 +140,20 @@ async def test_a_wholly_dead_cycle_is_escalated(capsys, monkeypatch):
 
     out = capsys.readouterr().out
     assert "published NOTHING this cycle" in out
-    assert "consecutive_dead_cycles=2" in out, (
-        "consecutive dead cycles must be counted, so a persistent outage escalates"
+    # Renderer-agnostic. This asserted `consecutive_dead_cycles=2`, which is
+    # ConsoleRenderer's `key=value` form — and it only ever saw that because
+    # configure_logging() was never called, so structlog sat on its library
+    # defaults. With the configuration actually installed, production renders
+    # JSON (`"consecutive_dead_cycles": 2`). The behaviour under test is the
+    # COUNT being reported, not how structlog happens to punctuate it, and the
+    # old form made this test pass or fail on whether some earlier test in the
+    # session had imported app.main.
+    assert any(form in out for form in (
+        "consecutive_dead_cycles=2",        # ConsoleRenderer (debug mode)
+        '"consecutive_dead_cycles": 2',     # JSONRenderer (production)
+    )), (
+        "consecutive dead cycles must be counted, so a persistent outage "
+        f"escalates — got: {out!r}"
     )
 
 

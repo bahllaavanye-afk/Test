@@ -72,7 +72,16 @@ So the principle IS enforced for strategy backtests, and is NOT for ML model tra
 
 Genuinely dead, each referenced only by its own test: `probability_of_backtest_overfitting`,
 `probabilistic_sharpe_ratio`, `monte_carlo_simulation`. `run_stress_tests` has no reference
-at all. Plus `configure_logging`.
+at all.
+
+**`configure_logging()` — fixed.** It had no caller, so structlog ran on library defaults.
+Verified via `structlog.get_config()` at runtime: renderer was `ConsoleRenderer` (not
+`JSONRenderer`, so Render got unparseable text) and wrapper_class was
+`BoundLoggerFilteringAtNotset`, which filters **nothing** — all **105** `logger.debug()` sites
+in `app/` emitted every run. That is the noise floor under "a bunch of errors are reported
+throughout day on discord". Now called at import in `main.py` (not in `lifespan`: module-level
+code logs before startup, and `static_server.py` imports `app.main`, so that covers every
+entrypoint).
 
 **ML feature builders — resolved, not by wiring all three.** They were not equivalent:
 `add_microstructure_features` is pure OHLCV arithmetic and is now **wired** (verified
