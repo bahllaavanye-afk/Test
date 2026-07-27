@@ -61,13 +61,42 @@ def _bars(n: int = 300) -> pd.DataFrame:
 
 @pytest.fixture()
 def no_network(monkeypatch):
-    """Kill all outbound network instantly — DNS and connects fail — while
-    leaving socketpair() intact (asyncio's event loop needs it internally)."""
+    """Kill all outbound network INSTANTLY — including yfinance's.
+
+    Patching `socket` alone did not work, and the cost was severe. yfinance
+    fetches through **curl_cffi**, which talks to libcurl directly and never
+    touches Python's socket module — a fact `app/strategies/_failsoft.py`
+    already documents ("via curl_cffi, which bypasses Python's socket module,
+    so socket-level network kills don't even reach it"). So every fetching
+    strategy in this file was doing REAL network I/O and real retry-backoff,
+    despite the fixture's name.
+
+    Measured before this fix: **7m15s wall, 5.75s CPU** for this file alone —
+    i.e. ~99% of it was waiting on Yahoo, and in CI (`--dist loadfile`) all 115
+    parametrised cases land on ONE worker, serialised, while three sit idle.
+    It also meant a Yahoo outage could turn any PR red for reasons unrelated to
+    the diff.
+
+    Blocking libcurl too makes the test hermetic AND fast, and it does not
+    weaken the contract — the contract is "fail soft when the data source is
+    unavailable", which is precisely the condition being simulated. It is now
+    actually simulated instead of merely intended.
+    """
     def _blocked(*a, **k):
         raise OSError("network disabled by strategy contract test")
+
     monkeypatch.setattr(socket, "getaddrinfo", _blocked)
     monkeypatch.setattr(socket, "create_connection", _blocked)
     monkeypatch.setattr(socket.socket, "connect", _blocked, raising=True)
+
+    # The seam that actually matters for yfinance.
+    try:
+        import curl_cffi.requests as _curl_requests
+    except Exception:            # pragma: no cover — dep absent, socket patch stands
+        return
+    monkeypatch.setattr(_curl_requests.Session, "request", _blocked, raising=False)
+    for _fn in ("get", "post", "request"):
+        monkeypatch.setattr(_curl_requests, _fn, _blocked, raising=False)
 
 
 _LOADED = sorted(n for n, c in STRATEGY_REGISTRY.items() if c is not None)
@@ -113,3 +142,27 @@ def test_quarantine_names_are_real():
     """Every quarantined name must exist in the registry (stale entries out)."""
     unknown = QUARANTINED - set(STRATEGY_REGISTRY)
     assert not unknown, f"QUARANTINED has unknown strategies: {sorted(unknown)}"
+
+
+def test_the_network_kill_actually_reaches_yfinance(no_network):
+    """The socket patch alone did NOT stop yfinance, and nothing said so.
+
+    yfinance fetches through curl_cffi → libcurl, never touching Python's
+    socket module. So this file ran 115 strategies against the REAL Yahoo API
+    while its fixture was named `no_network`: 7m15s wall for 5.75s of CPU, all
+    of it retry-backoff, and any Yahoo outage could redden an unrelated PR.
+
+    A silent regression here is invisible — the suite would still pass, just
+    slowly and non-deterministically — so it is asserted directly.
+    """
+    curl_requests = pytest.importorskip("curl_cffi.requests")
+
+    with pytest.raises(OSError):
+        curl_requests.Session().request("GET", "https://query1.finance.yahoo.com/")
+
+    with pytest.raises(OSError):
+        curl_requests.get("https://query1.finance.yahoo.com/")
+
+    # And the plain-socket path is still blocked for non-curl fetchers.
+    with pytest.raises(OSError):
+        socket.getaddrinfo("query1.finance.yahoo.com", 443)

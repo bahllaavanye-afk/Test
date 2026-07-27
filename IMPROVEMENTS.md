@@ -112,7 +112,19 @@ Two of these tests were themselves rewritten after failing this bar — one used
   Added `tests/unit/test_ml_model_contract.py`, which checks the contract the same way it was found: parse each model module, verify every `AbstractModel` subclass declares the `@abstractmethod` set, verify every module parses, and verify no `evaluate()` returns a bare dict instead of `EvalMetrics`. No torch, no GPU, no fixtures — which is exactly why it runs on every PR. Verified against a planted regression: removing `evaluate` from iTransformer produces `itransformer.py::iTransformer missing evaluate`.
   It also cross-checks itself: `REQUIRED_METHODS` is asserted against the `@abstractmethod`s actually declared on `AbstractModel`, so the list cannot silently drift from the base class.
   **Scope, stated honestly:** this proves a method EXISTS. It cannot prove the body is right — `test_dataclass_kwargs.py` covers the return-value construction that broke in both real cases. Together they cover the failure mode; alone, neither does.
-- [ ] **[P1] `test_strategy_contract.py` is network-bound and is the slowest, least deterministic part of the suite.** All ~115 registry strategies are exercised with sockets blocked, and the ones that fetch fall back to yfinance retry-sleeps; the file alone exceeds 300s in a sandbox without outbound network and produces 10 consistent failures that are pure environment. In CI it passes only because the runner has network — one Yahoo outage turns every PR red. Should be marked (`@pytest.mark.network`) and the fetch stubbed, so the contract itself is tested without the internet being a dependency.
+- [x] **[P1] `test_strategy_contract.py` was doing REAL network I/O while its fixture was named `no_network`.** Fixed — and the diagnosis in the earlier draft of this entry was wrong, so it is corrected here rather than left standing.
+  I had written that it "should be marked `@pytest.mark.network` and the fetch stubbed". That would have *removed* the thing being tested — the contract is precisely "fail soft when the data source is unavailable". The real defect was that the unavailability was never actually simulated: the fixture patches Python's `socket`, but **yfinance fetches through `curl_cffi` → libcurl, which never touches Python's socket module**. `app/strategies/_failsoft.py` already documented this exact fact; the fixture just didn't act on it.
+  So every fetching strategy hit the live Yahoo API, with real retry-backoff, on every run.
+
+  | | before | after |
+  |---|---|---|
+  | wall | **7m15s** | **4.5s** |
+  | CPU | 5.75s | 5.07s |
+  | result | env-dependent | **119 passed**, hermetic |
+
+  The near-identical CPU time is the proof: ~99% of the wall clock was waiting on Yahoo, not computing. In CI this is worse than it looks — `--dist loadfile` puts all 115 parametrised cases on **one** worker, serialised, while three sit idle, and a Yahoo outage could redden a PR for reasons unrelated to its diff.
+  Fix: block `curl_cffi.requests` alongside `socket`. The contract is unweakened — strictly better tested, because the failure mode it asserts is now genuinely simulated.
+  Guarded by `test_the_network_kill_actually_reaches_yfinance`, verified to fail (`DID NOT RAISE OSError`) against the socket-only fixture. A silent regression here would be invisible — the suite would still pass, just slowly and non-deterministically — which is exactly how this survived.
 - [ ] **[P2] No coverage measurement anywhere.** Nothing reports which lines CI actually exercises, so a hole like the ML package above is invisible until something breaks in production.
 
 ## 🔴 DEEP REVIEW 2026-07-27 — "why are there no trades" answered end to end
