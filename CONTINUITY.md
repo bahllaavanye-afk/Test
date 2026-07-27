@@ -147,6 +147,20 @@ against a 1-day limit. Equity is downsampled (default hourly) and scaled by
 square-root-of-time, which assumes i.i.d. returns and understates tail risk under positive
 autocorrelation — a floor, not a ceiling.
 
+## ⚡ 2026-07-27 — the contract test was hitting the LIVE Yahoo API (7m15s → 4.5s)
+`test_strategy_contract.py`'s fixture is named `no_network` and patches Python's `socket` —
+but **yfinance fetches via `curl_cffi` → libcurl, which never touches Python's socket module**
+(`app/strategies/_failsoft.py` already documented this; the fixture didn't act on it). So all
+115 strategies hit the real Yahoo API with real retry-backoff on every run.
+**7m15s wall for 5.75s of CPU** — ~99% pure network wait. Now blocks `curl_cffi.requests` too:
+**4.5s, 119 passed, zero network chatter.** In CI `--dist loadfile` puts all 115 cases on ONE
+worker serialised while three idle, and a Yahoo outage could redden an unrelated PR.
+Note the earlier plan in IMPROVEMENTS.md ("mark `@pytest.mark.network` and stub the fetch")
+was **wrong** — it would have deleted the very behaviour under test. The contract is
+"fail soft when the data source is unavailable"; that condition is now genuinely simulated
+instead of merely intended. Guarded by `test_the_network_kill_actually_reaches_yfinance`,
+verified to fail against the socket-only fixture.
+
 **Still unwired: `factor_exposure.py`**, the last diagrammed gate. It needs an aligned SPY
 benchmark series at the same cadence as the portfolio series; nothing produces one, and a
 misaligned series yields a confident wrong beta — worse than no beta. Kept visible by
