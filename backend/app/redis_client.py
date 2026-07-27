@@ -6,6 +6,7 @@ This lets the app run on Render/local without a Redis instance — strategies
 and the API still work; only real-time price caching and pub/sub are skipped.
 """
 import json
+import asyncio
 from typing import Any
 
 import redis.asyncio as aioredis
@@ -220,3 +221,96 @@ if _redis_enabled():
     price_cache: PriceCache | _NoopPriceCache = PriceCache()
 else:
     price_cache = _NoopPriceCache()
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for edge‑case behavior
+# ---------------------------------------------------------------------------
+
+import pytest
+
+class _MockRedis:
+    """Simple async mock that records calls and can be configured to raise."""
+    def __init__(self):
+        self.storage = {}
+        self.calls = []
+        self._raise_on_setex = False
+
+    async def setex(self, key, ttl, value):
+        self.calls.append(("setex", key, ttl, value))
+        if self._raise_on_setex:
+            raise RedisConnectionError("forced connection error")
+        self.storage[key] = value
+
+    async def get(self, key):
+        self.calls.append(("get", key))
+        return self.storage.get(key)
+
+    async def publish(self, channel, message):
+        self.calls.append(("publish", channel, message))
+
+
+def _reload_module(monkeypatch):
+    """Reload the redis_client module after monkeypatching get_redis."""
+    import importlib
+    import backend.app.redis_client as rc
+    importlib.reload(rc)
+    return rc
+
+
+def test_set_price_zero_ttl(monkeypatch):
+    """TTL of zero should still be passed to Redis without error."""
+    mock = _MockRedis()
+    monkeypatch.setattr("backend.app.redis_client.get_redis", lambda: mock)
+    rc = _reload_module(monkeypatch)
+
+    pc = rc.PriceCache()
+    data = {"price": 123.45}
+    asyncio.run(pc.set_price("ex", "sym", data, ttl=0))
+
+    expected_key = "price:ex:sym"
+    assert ("setex", expected_key, 0, json.dumps(data)) in mock.calls
+
+
+def test_get_price_invalid_json(monkeypatch):
+    """Malformed JSON stored in Redis should be caught and return None."""
+    mock = _MockRedis()
+    # Store invalid JSON bytes
+    mock.storage["price:ex:sym"] = b"{invalid json"
+    monkeypatch.setattr("backend.app.redis_client.get_redis", lambda: mock)
+    rc = _reload_module(monkeypatch)
+
+    warnings = []
+
+    def fake_warning(*args, **kwargs):
+        warnings.append((args, kwargs))
+
+    monkeypatch.setattr(rc.logger, "warning", fake_warning)
+
+    pc = rc.PriceCache()
+    result = asyncio.run(pc.get_price("ex", "sym"))
+    assert result is None
+    # Ensure a warning about get_price failure was logged
+    assert any("redis.get_price failed" in str(msg[0]) for msg in warnings)
+
+
+def test_breaker_trips_on_connection_error(monkeypatch):
+    """A connection error should trip the circuit breaker, silencing future ops."""
+    mock = _MockRedis()
+    # Configure the mock to raise on the first setex call
+    mock._raise_on_setex = True
+    monkeypatch.setattr("backend.app.redis_client.get_redis", lambda: mock)
+    rc = _reload_module(monkeypatch)
+
+    pc = rc.PriceCache()
+    # First call triggers a connection error and trips the breaker
+    asyncio.run(pc.set_price("ex", "sym", {"price": 1}))
+    # Breaker should now be tripped
+    assert rc._redis_tripped is True
+
+    # Reset the mock to not raise any more errors
+    mock._raise_on_setex = False
+    # Subsequent calls should be no‑ops (client returns None)
+    asyncio.run(pc.get_price("ex", "sym"))
+    # No additional get call should have been recorded because the client is None
+    assert all(call[0] != "get" for call in mock.calls)
