@@ -72,8 +72,18 @@ So the principle IS enforced for strategy backtests, and is NOT for ML model tra
 
 Genuinely dead, each referenced only by its own test: `probability_of_backtest_overfitting`,
 `probabilistic_sharpe_ratio`, `monte_carlo_simulation`. `run_stress_tests` has no reference
-at all. Plus the ML feature builders `add_sentiment_features` /
-`add_microstructure_features` / `add_alternative_features`, and `configure_logging`.
+at all. Plus `configure_logging`.
+
+**ML feature builders — resolved, not by wiring all three.** They were not equivalent:
+`add_microstructure_features` is pure OHLCV arithmetic and is now **wired** (verified
+no-lookahead: label is `close.pct_change(h).shift(-h)`, so bar t predicts t+h and bar t's own
+OHLC is known); `add_alternative_features` calls the **Binance API** and is deliberately NOT
+wired — backtests/training must be deterministic and offline, pinned by
+`test_feature_engineering_makes_no_network_calls`; `add_sentiment_features` needs a
+caller-supplied history and emits constants without one, so it needs a data-source decision.
+Widening `FEATURE_COLS` was safe *only because* there are zero trained models (no artifacts on
+disk, live `ml_models.count: 0`) — after the first model exists it would silently break
+inference.
 
 ## 🚨 2026-07-27 — THE RISK ENGINE WAS NEVER SWITCHED ON (P0, fixed)
 First pass of the principal-engineer review, following the money path (risk → execution →

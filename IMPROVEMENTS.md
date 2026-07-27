@@ -28,7 +28,14 @@
   - `app/ml/training/walk_forward.walk_forward_validate()` (125 lines, torch-specific) — **dead**. So the principle is enforced for strategy backtests and *not* for ML model training, which is the narrower and accurate claim.
 
   Genuinely dead, each referenced only by its own unit test (i.e. tested, never run in production): `probability_of_backtest_overfitting()` and `probabilistic_sharpe_ratio()` (PBO/PSR overfit detection), `monte_carlo_simulation()`. `run_stress_tests()` has no reference at all, not even a test.
-  Also dead: the ML feature builders `add_sentiment_features()`, `add_microstructure_features()`, `add_alternative_features()` — models train without them — and `configure_logging()`.
+  Also dead: `configure_logging()`.
+- [x] **[P1] Three ML feature builders were implemented, unit-tested, and called from nowhere — every model trained without them.** Resolved with a judgement call rather than by wiring all three, because they are not equivalent:
+  - **`add_microstructure_features` — WIRED.** Pure OHLCV arithmetic (order-book imbalance proxy, spread in bps), no network, deterministic. Verified not to look ahead: the label is `close.pct_change(h).shift(-h)`, so bar *t* predicts *t+h* and bar *t*'s own OHLC is known at prediction time — the same convention `add_technical_features` already relies on. Pinned by a test that perturbs future bars and asserts past features are unchanged.
+  - **`add_alternative_features` — DELIBERATELY NOT WIRED.** It calls the Binance API. Feature engineering runs inside backtests and training, which must be deterministic and work offline; a network call there makes results unreproducible and breaks sandboxed runs. Pinned by `test_feature_engineering_makes_no_network_calls`, so a future change has to argue with a test rather than a comment.
+  - **`add_sentiment_features` — not wired.** Takes a caller-supplied `fear_greed_history` (correctly lagged 1 bar). With no caller it emits constants, which widens the matrix for no signal. Needs a data source decision first.
+
+  **Timing mattered here.** Widening `FEATURE_COLS` changes the model input width, which would silently break inference for any already-trained model. Checked first: **zero** `.pt`/`.pth`/`.pkl`/`.onnx` artifacts anywhere in the repo, and live `/health/detailed` reports `ml_models: {count: 0}`. Nothing to break — and doing it *before* the first model is trained is the only cheap moment.
+  Tests: `backend/tests/unit/test_feature_set_wiring.py`, 8 tests; **6 fail** on the pre-wiring tree.
 
 ## 🚨 PRINCIPAL REVIEW 2026-07-27 — the risk engine was never switched on
 
