@@ -19,6 +19,7 @@ FIX_LOG_PATH = Path(__file__).parents[4] / "qa_fix_log.jsonl"
 DEFAULT_HEALTH_STATUS = "unknown"
 DEFAULT_HEALTH_MESSAGE = "QA monitor not yet run"
 DEFAULT_FIX_LOG_LIMIT = 50
+MAX_FIX_LOG_LIMIT = 1000  # Upper bound for client‑requested log size
 HEALTH_REPORT_CORRUPTED_DETAIL = "Health report corrupted"
 FIX_LOG_READ_ERROR_DETAIL = "Could not read fix log: {}"
 QA_CYCLE_STARTED_MESSAGE = "QA cycle started — poll /monitoring/health for results"
@@ -78,6 +79,14 @@ async def get_fix_log(
 
     Returns the last *limit* entries from the fix log (newest last).
     """
+    # Input validation
+    if not isinstance(limit, int):
+        raise ValueError("limit must be an integer")
+    if limit <= 0:
+        raise ValueError("limit must be a positive integer")
+    if limit > MAX_FIX_LOG_LIMIT:
+        raise ValueError(f"limit exceeds maximum allowed of {MAX_FIX_LOG_LIMIT}")
+
     return _read_fix_log(limit)
 
 
