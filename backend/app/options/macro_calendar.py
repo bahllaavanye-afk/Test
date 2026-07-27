@@ -1,24 +1,53 @@
 """
-FOMC and macro event calendar.
-Key dates sourced from Federal Reserve schedule (hardcoded 2025-2026).
-Economic data via FRED API (free, no key required for basic calls).
+Macro event calendar utilities.
+
+Provides a static list of upcoming Federal Open Market Committee (FOMC) meetings
+and approximated dates for key macroeconomic releases such as CPI, NFP, and PPI.
+The data is hard‑coded for 2025‑2026 and does not rely on external paid APIs.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Literal
+from typing import Literal, List, Dict, Optional
 
 
 @dataclass
 class MacroEvent:
+    """
+    Representation of a single macroeconomic event.
+
+    Attributes
+    ----------
+    date: date
+        The calendar date of the event.
+    title: str
+        Human‑readable title of the event.
+    category: Literal["fomc", "cpi", "ppi", "nfp", "gdp", "earnings", "other"]
+        Classification used for filtering and display.
+    importance: Literal["high", "medium", "low"]
+        Relative importance of the event for market participants.
+    description: str
+        Brief description providing context for the event.
+    """
+
     date: date
     title: str
     category: Literal["fomc", "cpi", "ppi", "nfp", "gdp", "earnings", "other"]
     importance: Literal["high", "medium", "low"]
     description: str
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, object]:
+        """
+        Convert the ``MacroEvent`` instance to a JSON‑serialisable dictionary.
+
+        Returns
+        -------
+        dict
+            Mapping containing the event fields plus a ``days_away`` key that
+            indicates the number of days from today to the event date.
+        """
         return {
             "date": self.date.isoformat(),
             "title": self.title,
@@ -60,10 +89,30 @@ MONTHLY_EVENTS_2025 = [
 ]
 
 
-def get_upcoming_events(days_ahead: int = 90) -> list[dict]:
+def get_upcoming_events(days_ahead: int = 90) -> List[Dict[str, object]]:
+    """
+    Retrieve a list of upcoming macro events for the next ``days_ahead`` days.
+
+    The function combines hard‑coded FOMC dates with approximated monthly
+    economic releases (CPI, NFP, PPI) for the next four calendar months.
+    Events are filtered to those occurring between today and one year from
+    today, sorted chronologically, and truncated to the requested horizon.
+
+    Parameters
+    ----------
+    days_ahead: int, default 90
+        Maximum number of days from today to include events. The function
+        returns at most ``days_ahead`` events, not days.
+
+    Returns
+    -------
+    List[dict]
+        A list of dictionaries, each representing an event in the format
+        produced by :meth:`MacroEvent.to_dict`.
+    """
     today = date.today()
     cutoff = date(today.year + 1, today.month, today.day)
-    events: list[MacroEvent] = []
+    events: List[MacroEvent] = []
 
     for fomc_date in FOMC_2025 + FOMC_2026:
         if today <= fomc_date <= cutoff:
@@ -128,7 +177,19 @@ def get_upcoming_events(days_ahead: int = 90) -> list[dict]:
     return [e.to_dict() for e in upcoming]
 
 
-def get_next_fomc() -> dict | None:
+def get_next_fomc() -> Optional[Dict[str, object]]:
+    """
+    Return the next scheduled FOMC meeting relative to today.
+
+    Scans the combined 2025‑2026 FOMC schedule and provides the date,
+    number of days away, and a static title.
+
+    Returns
+    -------
+    dict | None
+        Dictionary with keys ``date``, ``days_away``, and ``title`` if a
+        future meeting exists; otherwise ``None``.
+    """
     today = date.today()
     for d in sorted(FOMC_2025 + FOMC_2026):
         if d >= today:
