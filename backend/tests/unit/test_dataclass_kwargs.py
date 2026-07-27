@@ -38,17 +38,42 @@ def _is_dataclass(node: ast.ClassDef) -> bool:
     return False
 
 
-def _declared_fields(node: ast.ClassDef) -> set[str]:
-    """Annotated class-level assignments — how a dataclass declares its fields."""
+def _declared_fields(node: ast.ClassDef) -> tuple[set[str], list[str]]:
+    """(all fields, required fields) from the annotated class-level assignments.
+
+    Required means annotated with no default — `x: int` rather than `x: int = 0`
+    or `x: list = field(default_factory=list)`. ClassVar/InitVar are not
+    constructor fields at all.
+    """
+    allf: set[str] = set()
+    required: list[str] = []
+    for stmt in node.body:
+        if not isinstance(stmt, ast.AnnAssign) or not isinstance(stmt.target, ast.Name):
+            continue
+        annotation = ast.unparse(stmt.annotation)
+        if "ClassVar" in annotation or "InitVar" in annotation:
+            continue
+        allf.add(stmt.target.id)
+        if stmt.value is None:
+            required.append(stmt.target.id)
+    return allf, required
+
+
+def _define(node: ast.ClassDef) -> dict:
+    allf, required = _declared_fields(node)
     return {
-        stmt.target.id
-        for stmt in node.body
-        if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)
+        "fields": allf,
+        "required": required,
+        "bases": [b.id for b in node.bases if isinstance(b, ast.Name)],
+        "custom_init": any(
+            isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)) and s.name == "__init__"
+            for s in node.body
+        ),
     }
 
 
-def _collect() -> tuple[dict[str, list[tuple]], dict[pathlib.Path, ast.Module]]:
-    definitions: dict[str, list[tuple[set[str], list[str], bool]]] = {}
+def _collect() -> tuple[dict[str, list[dict]], dict[pathlib.Path, ast.Module]]:
+    definitions: dict[str, list[dict]] = {}
     trees: dict[pathlib.Path, ast.Module] = {}
 
     for path in sorted(APP_ROOT.rglob("*.py")):
@@ -59,15 +84,7 @@ def _collect() -> tuple[dict[str, list[tuple]], dict[pathlib.Path, ast.Module]]:
         trees[path] = tree
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and _is_dataclass(node):
-                custom_init = any(
-                    isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef))
-                    and s.name == "__init__"
-                    for s in node.body
-                )
-                bases = [b.id for b in node.bases if isinstance(b, ast.Name)]
-                definitions.setdefault(node.name, []).append(
-                    (_declared_fields(node), bases, custom_init)
-                )
+                definitions.setdefault(node.name, []).append(_define(node))
     return definitions, trees
 
 
@@ -83,16 +100,40 @@ def _resolve(name: str, definitions: dict, seen: tuple = ()) -> set[str] | None:
         return None
 
     total: set[str] = set()
-    for fields, bases, custom_init in entries:
-        if custom_init:
+    for entry in entries:
+        if entry["custom_init"]:
             return None
-        total |= fields
-        for base in bases:
+        total |= entry["fields"]
+        for base in entry["bases"]:
             inherited = _resolve(base, definitions, seen + (name,))
             if inherited is None:
                 return None
             total |= inherited
     return total
+
+
+def _resolve_required(name: str, definitions: dict, seen: tuple = ()) -> list[str] | None:
+    """Fields with no default, base classes first (dataclass __init__ order).
+
+    Stricter than _resolve: a name defined more than once is ambiguous here,
+    because unioning "required" across two different classes would invent
+    requirements neither of them has.
+    """
+    entries = definitions.get(name)
+    if not entries or name in seen or len(entries) > 1:
+        return None
+
+    entry = entries[0]
+    if entry["custom_init"]:
+        return None
+
+    inherited: list[str] = []
+    for base in entry["bases"]:
+        got = _resolve_required(base, definitions, seen + (name,))
+        if got is None:
+            return None
+        inherited += got
+    return inherited + entry["required"]
 
 
 def test_no_dataclass_is_constructed_with_a_nonexistent_field():
@@ -131,36 +172,81 @@ def test_no_dataclass_is_constructed_with_a_nonexistent_field():
     )
 
 
-def test_scanner_detects_a_planted_violation(tmp_path):
-    """The check above only means something if it can actually fail."""
-    source = '''
+def test_no_dataclass_construction_omits_a_required_field():
+    """The mirror image: every field with no default must be supplied.
+
+    Found `EvalMetrics(loss=, accuracy=, auc=)` in ml/models/itransformer.py —
+    `sharpe` has no default, so `iTransformerPredictor.evaluate()` raised
+    TypeError on every call and that model could never be evaluated. Every
+    other model in the package passes `sharpe=0.0`.
+    """
+    definitions, trees = _collect()
+    cache: dict[str, list[str] | None] = {}
+    violations: list[str] = []
+
+    for path, tree in trees.items():
+        rel = path.relative_to(APP_ROOT.parent)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+                continue
+            cls = node.func.id
+            if cls not in definitions:
+                continue
+            # Positional args fill fields in declaration order. Resolving that
+            # correctly means honouring kw_only, inherited ordering and
+            # field(kw_only=...), so skip those calls rather than guess.
+            if node.args or any(k.arg is None for k in node.keywords):
+                continue
+            if cls not in cache:
+                cache[cls] = _resolve_required(cls, definitions)
+            required = cache[cls]
+            if required is None:
+                continue
+            provided = {k.arg for k in node.keywords}
+            missing = [f for f in required if f not in provided]
+            if missing:
+                violations.append(
+                    f"{rel}:{node.lineno} — {cls}(...) omits required "
+                    f"{', '.join(missing)}. Passed: {', '.join(sorted(provided)) or '(nothing)'}"
+                )
+
+    assert not violations, (
+        "dataclass constructed without a field that has no default — this "
+        "raises TypeError at call time:\n  " + "\n  ".join(violations)
+    )
+
+
+def test_scanner_detects_a_planted_violation():
+    """The checks above only mean something if they can actually fail."""
+    tree = ast.parse('''
 from dataclasses import dataclass
 
 @dataclass
 class Thing:
     good: int
+    needed: float
     other: str = ""
 
 t = Thing(good=1, bogus=2)
-'''
-    tree = ast.parse(source)
-    definitions: dict[str, list[tuple]] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and _is_dataclass(node):
-            definitions[node.name] = [(_declared_fields(node), [], False)]
-
-    fields = _resolve("Thing", definitions)
-    assert fields == {"good", "other"}
-
-    bad = [
-        kw.arg
+''')
+    definitions = {
+        node.name: [_define(node)]
         for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-        and node.func.id == "Thing"
-        for kw in node.keywords
-        if kw.arg is not None and kw.arg not in fields
-    ]
-    assert bad == ["bogus"]
+        if isinstance(node, ast.ClassDef) and _is_dataclass(node)
+    }
+
+    assert _resolve("Thing", definitions) == {"good", "needed", "other"}
+    assert _resolve_required("Thing", definitions) == ["good", "needed"], (
+        "a field with a default must not be reported as required"
+    )
+
+    call = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "Thing"
+    )
+    provided = {k.arg for k in call.keywords}
+    assert [k for k in provided if k not in _resolve("Thing", definitions)] == ["bogus"]
+    assert [f for f in _resolve_required("Thing", definitions) if f not in provided] == ["needed"]
 
 
 def test_classes_with_a_custom_init_are_skipped():
@@ -175,11 +261,12 @@ class Flexible:
         pass
 ''')
     definitions = {
-        node.name: [(_declared_fields(node), [], True)]
+        node.name: [_define(node)]
         for node in ast.walk(tree)
         if isinstance(node, ast.ClassDef) and _is_dataclass(node)
     }
     assert _resolve("Flexible", definitions) is None
+    assert _resolve_required("Flexible", definitions) is None
 
 
 def test_inherited_fields_are_counted():
@@ -194,12 +281,35 @@ class Base:
 class Child(Base):
     b: int
 ''')
-    definitions = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and _is_dataclass(node):
-            bases = [b.id for b in node.bases if isinstance(b, ast.Name)]
-            definitions[node.name] = [(_declared_fields(node), bases, False)]
+    definitions = {
+        node.name: [_define(node)]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and _is_dataclass(node)
+    }
 
     assert _resolve("Child", definitions) == {"a", "b"}, (
         "a field inherited from a dataclass base must not be reported as unknown"
     )
+    assert _resolve_required("Child", definitions) == ["a", "b"], (
+        "base-class fields come first in the generated __init__ signature"
+    )
+
+
+def test_classvar_is_not_a_constructor_field():
+    """ClassVar is class-level state, not a dataclass field — never required."""
+    tree = ast.parse('''
+from dataclasses import dataclass
+from typing import ClassVar
+
+@dataclass
+class WithClassVar:
+    registry: ClassVar[dict] = {}
+    real: int
+''')
+    definitions = {
+        node.name: [_define(node)]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and _is_dataclass(node)
+    }
+    assert _resolve("WithClassVar", definitions) == {"real"}
+    assert _resolve_required("WithClassVar", definitions) == ["real"]
