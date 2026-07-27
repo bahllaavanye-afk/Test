@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Implement circuit breakers",
-    "Enhance input validation",
     "Parse API usage logs",
     "Monitor model drift",
     "**Recent Trading Signals**: The agent fired equity signals in the last cycle, with notable positions including SPY (bullish, confidence 0.85) and QQQ (bearish, confidence 0.78).",
@@ -199,8 +197,10 @@
     "Log API errors",
     "Test edge cases",
     "Tighten type safety",
-    "Parse research papers"
+    "Parse research papers",
+    "Monitor thread counts",
+    "Track memory usage"
   ],
-  "last_updated": "2026-07-27T16:14:28.574650+00:00",
+  "last_updated": "2026-07-27T18:00:55.948528+00:00",
   "total": 200
 }
