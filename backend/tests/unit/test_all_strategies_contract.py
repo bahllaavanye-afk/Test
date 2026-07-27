@@ -9,16 +9,17 @@ For each registered single-symbol strategy that consumes plain OHLCV, this asser
     strategy peeked ahead.
 
 Strategies needing special data (multi-symbol, macro panels, etc.) are skipped
-gracefully. The handful with *known* lookahead debt are xfail-tracked below so the
+gracefully. The handful with *known* lookahead debt are xfail‑tracked below so the
 guard stays green while documenting them — but any NEW strategy that leaks the
-future fails hard. Survey that seeded this: 104/108 produce signals, 0 bar-0
-entries, 0 NaN, 4 lookahead, 1 non-binary.
+future fails hard. Survey that seeded this: 104/108 produce signals, 0 bar‑0
+entries, 0 NaN, 4 lookahead, 1 non‑binary.
 """
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 import pytest
+from typing import Tuple
 
 from app.strategies import STRATEGY_REGISTRY
 from app.strategies.base import BacktestSignals
@@ -37,6 +38,7 @@ _NAMES = sorted(STRATEGY_REGISTRY)
 
 
 def _ohlcv(n: int = 260, seed: int = 5) -> pd.DataFrame:
+    """Generate a synthetic OHLCV DataFrame for testing."""
     rng = np.random.default_rng(seed)
     r = rng.normal(0.0005, 0.015, n)
     c = 100 * np.cumprod(1 + r)
@@ -52,7 +54,7 @@ def _ohlcv(n: int = 260, seed: int = 5) -> pd.DataFrame:
     )
 
 
-def _signals_or_skip(name: str):
+def _signals_or_skip(name: str) -> Tuple[object, BacktestSignals]:
     """Return (instance, BacktestSignals) or skip strategies that need special data."""
     cls = STRATEGY_REGISTRY[name]
     if cls is None:
@@ -60,41 +62,41 @@ def _signals_or_skip(name: str):
     try:
         inst = cls()
     except Exception as e:  # needs constructor args (e.g. pairs) — out of scope here
-        pytest.skip(f"{name}: not default-constructible ({e})")
+        pytest.skip(f"{name}: not default‑constructible ({e})")
     try:
         sig = inst.backtest_signals(_ohlcv())
-    except Exception as e:  # needs multi-symbol / special panels
+    except Exception as e:  # needs multi‑symbol / special panels
         pytest.skip(f"{name}: backtest_signals needs special data ({e})")
     if not isinstance(sig, BacktestSignals):
-        pytest.skip(f"{name}: not a plain-OHLCV BacktestSignals strategy")
+        pytest.skip(f"{name}: not a plain‑OHLCV BacktestSignals strategy")
     return inst, sig
 
 
 @pytest.mark.parametrize("name", _NAMES)
-def test_signals_no_nan(name):
+def test_signals_no_nan(name: str) -> None:
     _, sig = _signals_or_skip(name)
     assert not sig.entries.isna().any(), f"{name}: NaN in entries mask"
     assert not sig.exits.isna().any(), f"{name}: NaN in exits mask"
 
 
 @pytest.mark.parametrize("name", _NAMES)
-def test_signals_binary(name):
+def test_signals_binary(name: str) -> None:
     _, sig = _signals_or_skip(name)
     vals = set(pd.unique(sig.entries.dropna())) | set(pd.unique(sig.exits.dropna()))
     binary = {True, False, 0, 1, 0.0, 1.0}
     if name in KNOWN_NONBINARY and not vals <= binary:
-        pytest.xfail(f"{name}: known non-binary signal output (tracked)")
-    assert vals <= binary, f"{name}: non-binary signal values {vals - binary}"
+        pytest.xfail(f"{name}: known non‑binary signal output (tracked)")
+    assert vals <= binary, f"{name}: non‑binary signal values {vals - binary}"
 
 
 @pytest.mark.parametrize("name", _NAMES)
-def test_no_entry_on_bar0(name):
+def test_no_entry_on_bar0(name: str) -> None:
     _, sig = _signals_or_skip(name)
     assert not bool(sig.entries.iloc[0]), f"{name}: entry on bar 0 is lookahead bias"
 
 
 @pytest.mark.parametrize("name", _NAMES)
-def test_signals_are_causal(name):
+def test_signals_are_causal(name: str) -> None:
     inst, sig = _signals_or_skip(name)
     df = _ohlcv()
     full = sig.entries.reset_index(drop=True)
@@ -102,7 +104,7 @@ def test_signals_are_causal(name):
     trunc = inst.backtest_signals(df.iloc[:k]).entries.reset_index(drop=True)
     mismatches = int((full.iloc[:k].values != trunc.values).sum())
     if name in KNOWN_LOOKAHEAD and mismatches:
-        pytest.xfail(f"{name}: known lookahead debt (agent-fix-needed) — {mismatches} bars")
+        pytest.xfail(f"{name}: known lookahead debt (agent‑fix‑needed) — {mismatches} bars")
     assert mismatches == 0, (
         f"{name}: {mismatches} entries in [0:{k}] changed when future data was "
         f"removed → lookahead bias"
