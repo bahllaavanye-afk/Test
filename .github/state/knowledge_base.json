@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-27T09:09:07.932767+00:00",
+  "last_updated": "2026-07-27T10:08:54.368278+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,9 +28,9 @@
       ]
     },
     "general": {
-      "summary": "Based on the recent agent learnings, the following are 2-3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **Investor Pipeline Agent Status Update**: As the investor_pipeline agent, we need to respond with a one-sentence status update, referencing real file paths, such as \"Currently analyzing market trends in `market_trends.csv` and updating the portfolio in `portfolio.xlsx`.\"\n\u2022 **Research Scientist Agent**: We need to provide a concise status update as the research_scientist agent, referencing real file paths, such as \"Analyzing research papers in `research_papers.pdf` and updating our findings in `research_notes.txt`.\"\n\u2022 **UCB1 Bandit Initialization**: UCB1 bandit is being initialized, but further information is required to understand the context and how it relates to the trading AI platform.",
-      "source_count": 66,
-      "updated_at": "2026-07-27T09:09:07.932767+00:00",
+      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* **Agent Status Updates**: All agents should respond in the first person, keeping updates concise (max 2 sentences) and referencing real file paths where possible. For example, the `self_improver` agent could say \"I'm currently reviewing the results in `results.csv` to identify areas for improvement.\"\n* **Agent Responsibilities**: Various agents have specific roles: `investor_pipeline` manages pipelines, `research_scientist` conducts research, `ml_trainer` focuses on machine learning, and `free_agent_engineer` and `desk_trader` might represent engineering and trading tasks, respectively.\n* **LLM Unavailability**: The `standup_agent` was unable to function due to an unavailable LLM (Language Model), with all providers failing to respond.",
+      "source_count": 62,
+      "updated_at": "2026-07-27T10:08:54.368278+00:00",
       "raw_recent": [
         "[research_scientist @ 2026-07-27T02:53] We need to respond as research_scientist agent. Must be first person, concise, 2 sentences max, one sentence status update. Should reference real file",
         "[free_agent_engineer @ 2026-07-27T07:30] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The developer instruction says: \"You are the free_agen",
