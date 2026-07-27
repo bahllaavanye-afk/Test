@@ -186,3 +186,58 @@ def walk_forward(
     result.is_robust = verdict["is_robust"]
     result.verdict = verdict["verdict"]
     return result
+
+
+# ========================= Unit Tests =========================
+
+import unittest
+from unittest.mock import patch
+
+
+class TestWalkForward(unittest.TestCase):
+    def test_robustness_verdict_empty(self):
+        """Edge case: empty Sharpe list should return insufficient_data."""
+        result = robustness_verdict([])
+        self.assertEqual(result["n_windows"], 0)
+        self.assertFalse(result["is_robust"])
+        self.assertEqual(result["verdict"], "insufficient_data")
+        self.assertEqual(result["deflated_sharpe"], 0.0)
+        self.assertEqual(result["consistency"], 0.0)
+
+    @patch("app.backtest.cpcv.deflated_sharpe_ratio")
+    def test_robustness_verdict_boundary(self, mock_dsr):
+        """Boundary case where metrics meet all thresholds exactly."""
+        # Make DSR return the exact MIN_DSR threshold
+        mock_dsr.return_value = MIN_DSR
+
+        # Create a list of sharpes where avg = MIN_OOS_SHARPE and consistency = 1.0
+        sharpes = [MIN_OOS_SHARPE] * MIN_WINDOWS
+        result = robustness_verdict(sharpes)
+
+        self.assertEqual(result["n_windows"], MIN_WINDOWS)
+        self.assertTrue(result["is_robust"])
+        self.assertEqual(result["verdict"], "robust")
+        self.assertAlmostEqual(result["deflated_sharpe"], round(MIN_DSR, 4))
+        self.assertAlmostEqual(result["consistency"], 1.0)
+
+    def test_walk_forward_insufficient_data(self):
+        """Edge case: not enough data to form a single window."""
+        # Create a price series shorter than the default train + test bars
+        short_len = (TIMEFRAME_TRAIN * DAYS_PER_YEAR) + (TIMEFRAME_TEST * DAYS_PER_MONTH) - 1
+        dates = pd.date_range(start="2020-01-01", periods=short_len, freq="B")
+        prices = pd.Series(range(short_len), index=dates)
+
+        # Dummy signals function (won't be called)
+        def dummy_signals(train, test):
+            return pd.Series(0, index=test.index)
+
+        result = walk_forward(dummy_signals, prices)
+
+        self.assertEqual(len(result.windows), 0)
+        self.assertEqual(result.avg_sharpe, 0.0)
+        self.assertEqual(result.verdict, "insufficient_data")
+        self.assertEqual(result.n_windows, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
