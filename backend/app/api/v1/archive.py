@@ -1,8 +1,12 @@
 """Trade archive replay endpoints."""
+import logging
 from fastapi import APIRouter, Depends, Query, HTTPException
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.archive.trade_archiver import replay, list_archives
+
+# Set up structured logger
+logger = logging.getLogger(__name__)
 
 # Constants
 ARCHIVE_PREFIX: str = "/archive"
@@ -17,6 +21,7 @@ LIMIT_DESCRIPTION: str = "Maximum number of records to return (1-5000)"
 
 ERR_LIMIT_POSITIVE: str = "Limit must be a positive integer."
 ERR_RETRIEVE_ARCHIVE: str = "Failed to retrieve archive: {exc}"
+ERR_LIST_ARCHIVES: str = "Failed to list archives: {exc}"
 
 router = APIRouter(prefix=ARCHIVE_PREFIX, tags=[ARCHIVE_TAG])
 
@@ -27,7 +32,19 @@ async def get_index(current_user: User = Depends(get_current_user)):
     Return a list of available archives.
     Handles the case where the underlying function returns None.
     """
-    archives = list_archives()
+    try:
+        archives = list_archives()
+    except Exception as exc:
+        logger.error(
+            "Error retrieving archive list",
+            exc_info=True,
+            error=str(exc)
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=ERR_LIST_ARCHIVES.format(exc=exc),
+        ) from exc
+
     # Ensure a list is always returned
     return archives if archives else []
 
@@ -59,6 +76,11 @@ async def get_archive(
 
     # Defensive check for limit (should already be enforced by Query)
     if limit < MIN_LIMIT:
+        logger.warning(
+            "Invalid limit supplied",
+            limit=limit,
+            min_limit=MIN_LIMIT
+        )
         raise HTTPException(
             status_code=400,
             detail=ERR_LIMIT_POSITIVE,
@@ -66,8 +88,42 @@ async def get_archive(
 
     try:
         result = replay(category, date, limit)
+    except FileNotFoundError as exc:
+        logger.error(
+            "Archive not found",
+            category=category,
+            date=date,
+            limit=limit,
+            error=str(exc),
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        logger.error(
+            "Invalid arguments for replay",
+            category=category,
+            date=date,
+            limit=limit,
+            error=str(exc),
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
         # Convert unexpected errors to a client‑friendly response
+        logger.error(
+            "Unexpected error during archive replay",
+            category=category,
+            date=date,
+            limit=limit,
+            error=str(exc),
+            exc_info=True
+        )
         raise HTTPException(
             status_code=500,
             detail=ERR_RETRIEVE_ARCHIVE.format(exc=exc),
