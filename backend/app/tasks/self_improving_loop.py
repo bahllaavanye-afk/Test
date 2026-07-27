@@ -28,11 +28,32 @@ logger = logging.getLogger(__name__)
 
 class SelfImprovingLoop:
     def __init__(self, db_session_factory: Any, redis_client: Any):
+        """
+        Initialize the self‑improving loop.
+
+        Parameters
+        ----------
+        db_session_factory: Any
+            A callable that returns an ``AsyncSession`` (or async context manager) for DB access.
+        redis_client: Any
+            An object exposing an ``async publish`` method for Redis pub/sub.
+
+        Raises
+        ------
+        ValueError
+            If ``db_session_factory`` is not callable or ``redis_client`` does not provide a callable
+            ``publish`` attribute.
+        """
+        if not callable(db_session_factory):
+            raise ValueError("db_session_factory must be a callable returning an AsyncSession")
+        if not hasattr(redis_client, "publish") or not callable(getattr(redis_client, "publish")):
+            raise ValueError("redis_client must have a callable 'publish' method")
         self._factory = db_session_factory
         self._memory = AgentMemory(redis_client)
         self._redis = redis_client
 
     async def run_cycle(self) -> None:
+        """Execute one hourly self‑improving cycle."""
         logger.info("SelfImprovingLoop: starting hourly cycle")
         try:
             metrics = await self._collect_strategy_metrics()
@@ -46,7 +67,7 @@ class SelfImprovingLoop:
     # ── Metric collection ─────────────────────────────────────────────────────
 
     async def _collect_strategy_metrics(self) -> List[dict]:
-        """Pull per-strategy Sharpe + win-rate from trade history (last 30d)."""
+        """Pull per‑strategy Sharpe + win‑rate from trade history (last 30d)."""
         cutoff = datetime.now(timezone.utc) - timedelta(days=30)
         async with self._factory() as session:
             result = await session.execute(
