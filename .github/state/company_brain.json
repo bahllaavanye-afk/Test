@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785171305.1028519,
+    "last_updated": 1785174507.351561,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 2,
     "macro_score": 2,
-    "vix": 19.06,
-    "market_scan_ts": 1785171305.019514,
+    "vix": 19.44,
+    "market_scan_ts": 1785174507.3230898,
     "sector_leaders": [
       "Energy",
       "Healthcare",
@@ -129,19 +129,19 @@
       "QQQ",
       "ORCL",
       "GOOGL",
-      "XLI",
-      "XLK",
       "GS",
+      "PANW",
+      "XLK",
+      "XLI",
+      "ADBE",
+      "INTU",
       "BAC",
       "IWM",
-      "PANW",
-      "INTU",
-      "JNJ",
-      "ADBE",
       "XLV",
+      "JNJ",
       "ABT",
       "META",
-      "AMZN"
+      "CRWD"
     ],
     "top_momentum": [
       "ADBE",
@@ -155,13 +155,6 @@
     "last_brain_update": 1785159016.6762145
   },
   "episodic": [
-    {
-      "lesson": "Validation failure in auto-fix (size limit) indicates need for stricter CI/CD checks on patch size before applying auto-fixes.",
-      "category": "execution",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1784327441.3244014
-    },
     {
       "lesson": "Upgrade Vercel plan to Pro to remove the 100 deployments per day limit and prevent blocking of deployments.",
       "category": "execution",
@@ -1960,6 +1953,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785171305.108096
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Healthcare",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785174507.356978
     }
   ],
   "github_insights": [
