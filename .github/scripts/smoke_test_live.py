@@ -20,7 +20,9 @@ import sys
 import urllib.error
 import urllib.request
 
-BASE = os.environ.get("SMOKE_BASE_URL", "https://quantedge-api-agb8.onrender.com").rstrip("/")
+# `or` not a get() default: an env var set to "" returns "" from get(), which
+# yielded a bare "/api/v1/health" and a ValueError instead of falling back.
+BASE = (os.environ.get("SMOKE_BASE_URL") or "https://quantedge-api-9jz0.onrender.com").rstrip("/")
 API = f"{BASE}/api/v1"
 UA = "QuantEdge-SmokeTest/1.0 (+https://quantedge)"
 TIMEOUT = 30

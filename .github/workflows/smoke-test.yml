@@ -37,7 +37,7 @@ jobs:
       - name: Run live smoke test
         id: smoke
         env:
-          SMOKE_BASE_URL: ${{ vars.RENDER_API_URL || 'https://quantedge-api-agb8.onrender.com' }}
+          SMOKE_BASE_URL: ${{ vars.RENDER_API_URL || 'https://quantedge-api-9jz0.onrender.com' }}
         run: python .github/scripts/smoke_test_live.py
 
       # Runs EVERY smoke: proves whether Discord delivery works and prints

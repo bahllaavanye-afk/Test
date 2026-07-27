@@ -1123,7 +1123,9 @@ _PRUNE_SHARPE_BELOW = -0.5
 # a sub-45% win rate on roughly symmetric trades is a coin toss minus costs.
 _PRUNE_HITRATE_MIN_TRADES = 100
 _PRUNE_HITRATE_BELOW = 0.45
-_API_BASE = os.environ.get("QUANTEDGE_API_URL", "https://quantedge-api-agb8.onrender.com").rstrip("/")
+# `or` not a get() default — an env var set to "" would otherwise produce a
+# relative URL and fail every leaderboard fetch silently.
+_API_BASE = (os.environ.get("QUANTEDGE_API_URL") or "https://quantedge-api-9jz0.onrender.com").rstrip("/")
 
 
 def _fetch_performance_weights() -> dict[str, float]:

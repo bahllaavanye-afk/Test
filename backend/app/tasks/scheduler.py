@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -433,7 +433,17 @@ def start_scheduler(db_session_factory, broker=None) -> AsyncIOScheduler:
         SchedulerJobConfig(
             job_id="bot_runner_topup",
             trigger="interval",
-            trigger_args={"minutes": 10},
+            # next_run_time is the whole point. An APScheduler interval job
+            # waits a FULL interval before its first run, and this process
+            # restarts on every deploy — main is pushed several times an hour,
+            # so a plain 10-minute interval would reset its clock and never
+            # fire. bot_runner._first_run_time() documents this exact trap
+            # being chased once already. 45s after boot is long enough for the
+            # bots table to be seeded and short enough to always be reached.
+            trigger_args={
+                "minutes": 10,
+                "next_run_time": datetime.now(timezone.utc) + timedelta(seconds=45),
+            },
             func=_top_up_bot_runner,
             description="Schedule enabled bots that ignition missed (empty DB at boot).",
         ),
