@@ -1,5 +1,6 @@
 """Real-time price WebSocket endpoint."""
 import logging
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.ws.manager import manager
 
@@ -30,6 +31,7 @@ async def prices_ws_all(websocket: WebSocket):
 
 @router.websocket("/ws/prices/{symbol}")
 async def prices_ws(websocket: WebSocket, symbol: str):
+    """Subscribe to price updates for a specific symbol."""
     topic = f"prices:{symbol}"
     await manager.connect(websocket, topic)
     try:
