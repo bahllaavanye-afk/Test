@@ -115,7 +115,7 @@ jobs:
             'aiohttp>=3.11.0' 'anyio>=4.7.0' 'apscheduler>=3.10.4' \
             'pyyaml>=6.0' 'google-generativeai>=0.8.0' \
             'pytest>=8.3.0' 'pytest-asyncio>=0.24.0' 'pytest-xdist>=3.6.0' \
-            'pytest-timeout>=2.3.0'
+            'pytest-timeout>=2.3.0' 'pytest-cov>=5.0.0'
 
       - name: Debug — env + collect → write to PR summary (visible without auth)
         if: always()
@@ -177,8 +177,37 @@ jobs:
             --ignore=tests/unit/test_ml_models.py \
             --ignore=tests/unit/test_a3c_lstm.py \
             -p no:cacheprovider \
+            --cov=app --cov-report=term --cov-report=xml:/tmp/coverage.xml \
             2>&1 | tee /tmp/pytest.log
           echo ${PIPESTATUS[0]} > /tmp/pytest.exitcode
+
+      # Coverage is REPORTED, not gated. Nothing measured which lines CI
+      # actually exercises, so a hole was invisible until it broke in
+      # production — the ML model package shipped two structurally broken
+      # methods that way. Baseline at introduction: 51% of 28,261 statements,
+      # with 37 modules at 0%.
+      #
+      # No --cov-fail-under: picking a threshold is a policy decision, and a
+      # number chosen to pass today teaches nothing. The 0%-module list is the
+      # actionable part — it is the same "implemented but never runs" class
+      # that the risk gate, the exit path and the ML features all turned out to
+      # be, found automatically instead of by hand.
+      - name: Coverage summary → PR summary
+        if: always()
+        run: |
+          {
+            echo "### Coverage"
+            echo '```'
+            grep -E '^TOTAL' /tmp/pytest.log || echo "no TOTAL line in output"
+            echo '```'
+            echo "<details><summary>Modules at 0% (never executed by any test)</summary>"
+            echo
+            echo '```'
+            awk '$NF=="0%" {printf "%-60s %s stmts\n", $1, $2}' /tmp/pytest.log | head -60 \
+              || echo "none"
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Post debug output as PR comment (QuantEdge AI reads via MCP)
         if: always() && github.event_name == 'pull_request' && github.event.pull_request.number != ''
