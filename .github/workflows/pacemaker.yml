@@ -31,10 +31,25 @@ name: Pacemaker — keep the fleet alive without a human
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    # CI is what this drives, but CI cannot be what STARTS it: CI runs only on
+    # pull_request/workflow_dispatch, so a pacemaker keyed solely to CI needs a
+    # PR to ignite — the exact dependency it exists to remove. Verified after
+    # the first deploy: 0 pacemaker runs, because the only CI completion since
+    # the merge was an `action_required` run that never executed.
+    #
+    # These four DO fire on cron reliably (16-18 successful scheduled runs each
+    # in a 500-run sample, most recent within minutes), so any of them ignites
+    # the loop within ~5-15 minutes of a cold start. Cron here is degraded and
+    # uneven, not dead — the desks lag badly while these keep time.
+    workflows:
+      - "CI"
+      - "System Watchdog — Every 5 Minutes (Self-Healing)"
+      - "Signal Runner — Every 5 Minutes (All Desks)"
+      - "Quick Backtest Runner — Every 15 Minutes"
+      - "Reward Gate — verifiable-reward auto-merge for agent PRs"
     types: [completed]
   schedule:
-    - cron: "13 * * * *"      # bootstrap only — assumed unreliable
+    - cron: "13 * * * *"      # last-resort bootstrap
   workflow_dispatch: {}
 
 permissions:
