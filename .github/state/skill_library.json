@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable risk-related knowledge:",
-    "Optimize API error handling",
-    "Verify system status",
-    "Refactor code quality",
-    "Track timeout errors",
     "* The health-check endpoints in `backend/api/health_check.py` are running reliably with low latency (12 ms), as reported by `/v1/status` in the last cycles.",
     "Monitor CPU usage",
     "Monitor system health",
@@ -199,8 +194,13 @@
     "Check timestamp sync",
     "Verify config files",
     "Limit order retries",
-    "Limit API retries"
+    "Limit API retries",
+    "Check DB connections",
+    "Monitor queue sizes",
+    "Use circuit breakers",
+    "Monitor drift metrics",
+    "Verify retraining pipeline"
   ],
-  "last_updated": "2026-07-27T10:08:54.368278+00:00",
+  "last_updated": "2026-07-27T13:36:44.655239+00:00",
   "total": 200
 }
