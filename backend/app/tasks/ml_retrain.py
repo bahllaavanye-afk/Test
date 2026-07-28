@@ -105,28 +105,54 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
     return hist
 
 
-async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_INTERVAL) -> dict:
-    """Download 2 years of data and retrain a model. Returns result dict."""
-    try:
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=DEFAULT_TRAIN_DAYS)
+def _get_time_range() -> Tuple[datetime, datetime]:
+    """
+    Compute the start and end timestamps for the default training window.
+    """
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=DEFAULT_TRAIN_DAYS)
+    return start, end
 
+
+async def _run_training(
+    hist: pd.DataFrame,
+    model_name: str,
+    symbol: str,
+) -> dict:
+    """
+    Execute the LSTM training routine and augment the result with metadata.
+    """
+    from app.ml.training.train_lstm import train
+
+    experiment_name = f"{model_name}_{symbol.lower()}_{datetime.now(timezone.utc).strftime(DATE_FORMAT)}"
+    result = await train(hist, experiment_name=experiment_name, max_epochs=MAX_EPOCHS)
+
+    result["symbol"] = symbol
+    result["model"] = model_name
+    result["retrained_at"] = datetime.now(timezone.utc).isoformat()
+    return result
+
+
+def _log_training_result(result: dict) -> None:
+    """
+    Log the training outcome, omitting heavy fields.
+    """
+    logger.info(
+        "Model retrained",
+        **{k: v for k, v in result.items() if k != "best_model_path"},
+    )
+
+
+async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_INTERVAL) -> dict:
+    """Download data and retrain a model. Returns a result dictionary."""
+    try:
+        start, end = _get_time_range()
         hist = await _download_hist(symbol, interval, start, end)
         if hist is None:
             return {"status": "skipped", "reason": "insufficient data"}
 
-        from app.ml.training.train_lstm import train
-
-        experiment_name = f"{model_name}_{symbol.lower()}_{datetime.now(timezone.utc).strftime(DATE_FORMAT)}"
-        result = await train(hist, experiment_name=experiment_name, max_epochs=MAX_EPOCHS)
-
-        result["symbol"] = symbol
-        result["model"] = model_name
-        result["retrained_at"] = datetime.now(timezone.utc).isoformat()
-        logger.info(
-            "Model retrained",
-            **{k: v for k, v in result.items() if k != "best_model_path"},
-        )
+        result = await _run_training(hist, model_name, symbol)
+        _log_training_result(result)
         return result
 
     except Exception as e:
