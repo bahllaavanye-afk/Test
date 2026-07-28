@@ -440,7 +440,28 @@ async def recover_negative_cash(account: dict) -> bool:
         return False
     cash = float(account.get("cash", 0) or 0)
     nmbp = float(account.get("non_marginable_buying_power", 0) or 0)
+    bp = float(account.get("buying_power", 0) or 0)
     if cash >= 0 or nmbp > 0:
+        return False
+    # A MARGIN DEBIT IS NOT DISTRESS. Buying marginable equities drives cash
+    # negative and non-marginable buying power to zero *by construction*, so
+    # `cash < 0 and nmbp <= 0` alone is just "this account used margin" — it
+    # matches every healthy long book the equity desks open.
+    #
+    # Measured 2026-07-27: the equity desks placed 13 orders at 17:49 (cash
+    # -$10,829.50, bp $25,001.91 — healthy). At 18:42 the crypto 24x7 run hit
+    # this function with cash -$14,972.80 and bp $17,247.12 and flattened the
+    # entire 25-position book. The realised losses took equity down 2.28% vs
+    # prior close, which tripped the daily loss cap, which — with the book now
+    # empty and only risk-REDUCING orders allowed — blocked everything until
+    # the next session rollover. Buy on margin, get liquidated, get frozen.
+    #
+    # The pathology this function is actually for is "$0 available": orphaned
+    # notional buys that leave the account unable to place ANY order. That
+    # state has no buying power left. Healthy margin use does.
+    if bp > 0:
+        print(f"  · negative cash ${cash:,.2f} is a MARGIN DEBIT, not orphaned "
+              f"notional (buying power ${bp:,.2f} > 0) — not flattening", flush=True)
         return False
     if "paper" not in ALPACA_PAPER_BASE or os.environ.get("TRADING_MODE", "paper") == "live":
         print("  🛑 negative cash but NOT a paper endpoint — refusing to auto-flatten", flush=True)
