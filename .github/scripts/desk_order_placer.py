@@ -1657,11 +1657,44 @@ async def main() -> None:
         for _it in raw_signals:
             _side = str(getattr(_it["signal"], "side", "")).lower()
             _groups[(_it["desk"].name, _it["symbol"], _side)].append(_it)
+
+        def _opposite(side: str) -> str:
+            return "sell" if side == "buy" else "buy"
+
+        # Report each conflicted (desk, symbol) ONCE, naming who is on each
+        # side. Previously the line was printed from inside the per-side loop,
+        # so a single disagreement logged twice — once from the buy group and
+        # once from the sell group — and the mirrored `buy/sell` + `sell/buy`
+        # pair read as two separate events. Measured 2026-07-28: 34 lines for
+        # 17 symbols, on both the starved and the full-universe runs.
+        #
+        # It also named neither strategy, which is the thing actually worth
+        # knowing: whether one pair disagrees on nearly everything (a
+        # systematic mismatch worth fixing) or the disagreements are spread
+        # around (genuinely no edge, and standing aside is correct). The
+        # stand-aside behaviour is unchanged here — this is instrumentation to
+        # answer that question, not a change to what trades.
+        _conflicted = {
+            (_dn, _sym)
+            for (_dn, _sym, _side) in _groups
+            if (_dn, _sym, _opposite(_side)) in _groups
+        }
+        for _dn, _sym in sorted(_conflicted):
+            _sides = []
+            for _s in ("buy", "sell", "neutral", "none", ""):
+                _grp = _groups.get((_dn, _sym, _s))
+                if _grp:
+                    _who = ", ".join(
+                        f"{getattr(_x['strategy'], 'name', '?')}({_x['confidence']:.2f})"
+                        for _x in _grp
+                    )
+                    _sides.append(f"{_s or 'unset'}: {_who}")
+            print(f"  · ensemble[{_dn}]: {_sym} CONFLICT — stand aside | "
+                  + " | ".join(_sides), flush=True)
+
         _ensembled: list[dict] = []
         for (_dn, _sym, _side), _items in _groups.items():
-            _opp = "sell" if _side == "buy" else "buy"
-            if (_dn, _sym, _opp) in _groups:
-                print(f"  · ensemble[{_dn}]: {_sym} {_side}/{_opp} conflict — stand aside", flush=True)
+            if (_dn, _sym, _opposite(_side)) in _groups:
                 continue
             if len(_items) == 1:
                 _ensembled.append(_items[0]); continue

@@ -228,6 +228,27 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## 🔍 2026-07-28 11:40 — THE CONFLICT COUNT WAS DOUBLE, AND NAMED NOBODY
+Chasing the open question from 10:40 (34 stand-asides regardless of data coverage). Signals group
+by `(desk, symbol, side)`, so a symbol with both a buy and a sell forms **two** groups — and the
+conflict line was printed from inside the per-side loop, producing a mirrored pair:
+```
+· ensemble[Crypto]: AVAX/USD buy/sell conflict — stand aside
+· ensemble[Crypto]: AVAX/USD sell/buy conflict — stand aside
+```
+So **34 lines was 17 symbols**, not 34 events. The rate is still structural — identical on the
+starved and full-universe runs — but half the headline number was double-counting, mine included.
+
+The line also **named neither strategy**, which is the thing actually worth knowing: one pair
+disagreeing on nearly everything (a systematic mismatch worth fixing) is indistinguishable from
+disagreements spread across many strategies (genuinely no edge, stand-aside correct). Now one
+line per conflicted (desk, symbol), naming every side with strategy names and confidences.
+
+**Stand-aside behaviour deliberately UNCHANGED** — instrumentation to answer the question, not a
+change to what trades. Changing the ensembling rule without knowing which case this is would be
+guessing with real orders. 11 tests, incl. pinning that the surviving-group set is byte-identical
+so the logging rewrite cannot have altered trading silently. Next desk run answers it.
+
 ## 🚨 2026-07-28 10:50 — THE BARS FIX WOKE A LATENT 500 IN THE CRYPTO SCANNER (fixed)
 **My own guards caught it**, on a docs-only PR: `test_each_scanner_desk_answers_without_erroring
 [crypto]` and `test_no_parameterised_get_endpoint_returns_5xx` both went red on main.
