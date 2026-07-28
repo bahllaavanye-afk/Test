@@ -251,6 +251,24 @@ half the loop — and I had checked only `desk-trading.yml`, so I recorded "reco
 in good faith and was wrong. **Always check `desk-trading-crypto-24x7.yml` too; it runs the
 same script.**
 
+**Follow-up 07:20 — the two desk workflows were starving each other.** Both rode
+`workflow_run: ["CI"] completed`, neither has a job-level market gate, and they use *different*
+concurrency groups (`desk-trading` vs `desk-crypto`) so nothing serialises them. Every CI
+completion launched both in parallel against the same free-tier Alpaca data API:
+```
+2026-07-28 06:46, one CI completion, two runs:
+  desk-trading.yml          bars_fetched=70   ALL 20 crypto symbols
+  desk-trading-crypto-24x7  bars_fetched=5    ← lost the race, HTTP 429
+```
+`desk-trading.yml` already runs **every** desk, crypto included, 24/7 — so the crypto-only run
+was doing duplicate work, doing it worse, and degrading the twin doing it properly. Thin data is
+not cosmetic: it feeds the ensembles, and this is very likely a large part of the standing
+`sell/buy conflict — stand aside` on nearly every crypto symbol. The crypto job now skips
+`workflow_run` (`if: github.event_name != 'workflow_run'`); its own cron + dispatch remain, which
+is its real value for stretches when CI is not completing. 5 tests, verified failing pre-fix,
+incl. one asserting the cron survives so "stop the duplicate" can't be confused with "delete
+24/7 crypto coverage".
+
 **Test-methodology note, the important part.** My first draft asserted `recover_negative_cash(...)
 is False` and **passed against the unfixed code** — because without credentials the flatten
 *attempt* raises, the broad `except` swallows it, and the function returns False either way.
