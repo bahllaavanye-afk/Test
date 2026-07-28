@@ -629,6 +629,25 @@ _TARGET_ANNUAL_VOL = 0.20
 # orders. Stateless — no local ledger to drift or lose.
 DAILY_LOSS_CAP_PCT = float(os.environ.get("DAILY_LOSS_CAP_PCT", "0.02"))
 
+# Cross-strategy conflict resolution. The old rule stood aside on ANY opposing
+# signal regardless of strength, so a lone low-confidence dissent vetoed a
+# multi-strategy consensus. Measured 2026-07-28 over 76 conflicts:
+#
+#   Crypto  crypto_adaptive_trend was the ONLY sell voice on all 16 conflicts,
+#           at 0.16-0.52, blocking buy consensus of 0.61-0.97. SHIB/USD was
+#           avellaneda_stoikov_mm(0.90) vetoed by a single 0.16.
+#
+# Sides are now combined with the same 1-prod(1-ci) used for agreement, and the
+# dominant side trades at the NET confidence (dissent subtracted, not ignored)
+# only when that net clears this bar — after which the desk's own
+# confidence_min and any per-strategy tuned threshold still apply. Default
+# matches the desks' confidence_min so nothing trades on weaker evidence than
+# an unopposed signal would need.
+#
+# Set ENSEMBLE_NET_MIN > 1.0 to restore the previous always-stand-aside rule
+# without a code change.
+_ENSEMBLE_NET_MIN = float(os.environ.get("ENSEMBLE_NET_MIN", "0.60"))
+
 
 MIN_ORDER_USD = 25.0
 
@@ -1674,11 +1693,20 @@ async def main() -> None:
         # around (genuinely no edge, and standing aside is correct). The
         # stand-aside behaviour is unchanged here — this is instrumentation to
         # answer that question, not a change to what trades.
+        def _combined(items: list) -> float:
+            """1 - prod(1-ci) — the same rule already used for agreement."""
+            _p = 1.0
+            for _x in items:
+                _p *= (1.0 - min(max(float(_x["confidence"]), 0.0), 1.0))
+            return 1.0 - _p
+
         _conflicted = {
             (_dn, _sym)
             for (_dn, _sym, _side) in _groups
             if (_dn, _sym, _opposite(_side)) in _groups
         }
+        # (desk, symbol) -> (winning_side, net_confidence)
+        _overrides: dict = {}
         for _dn, _sym in sorted(_conflicted):
             _sides = []
             for _s in ("buy", "sell", "neutral", "none", ""):
@@ -1689,12 +1717,45 @@ async def main() -> None:
                         for _x in _grp
                     )
                     _sides.append(f"{_s or 'unset'}: {_who}")
-            print(f"  · ensemble[{_dn}]: {_sym} CONFLICT — stand aside | "
-                  + " | ".join(_sides), flush=True)
+
+            _b = _groups.get((_dn, _sym, "buy")) or []
+            _s_ = _groups.get((_dn, _sym, "sell")) or []
+            if not (_b and _s_):
+                # Not a true buy-vs-sell disagreement (e.g. a neutral against a
+                # buy). Prior behaviour, unchanged.
+                print(f"  · ensemble[{_dn}]: {_sym} CONFLICT — stand aside | "
+                      + " | ".join(_sides), flush=True)
+                continue
+
+            _bc, _sc = _combined(_b), _combined(_s_)
+            _net = abs(_bc - _sc)
+            _win = "buy" if _bc > _sc else "sell"
+            _verdict = (f"net {_win} {_net:.2f} ≥ {_ENSEMBLE_NET_MIN:.2f} — trading dominant side"
+                        if _net >= _ENSEMBLE_NET_MIN else
+                        f"net {_net:.2f} < {_ENSEMBLE_NET_MIN:.2f} — stand aside")
+            print(f"  · ensemble[{_dn}]: {_sym} CONFLICT — {_verdict} "
+                  f"(buy {_bc:.2f} vs sell {_sc:.2f}) | " + " | ".join(_sides), flush=True)
+            if _net >= _ENSEMBLE_NET_MIN:
+                _overrides[(_dn, _sym)] = (_win, _net)
 
         _ensembled: list[dict] = []
         for (_dn, _sym, _side), _items in _groups.items():
             if (_dn, _sym, _opposite(_side)) in _groups:
+                _ov = _overrides.get((_dn, _sym))
+                if not (_ov and _ov[0] == _side):
+                    continue
+                # Dominant side survives, carrying the NET confidence — the
+                # dissent is subtracted, not ignored. It still has to clear the
+                # desk's own confidence_min and any per-strategy tuned
+                # threshold downstream, so this widens the funnel, it does not
+                # bypass the gate.
+                _keep = dict(max(_items, key=lambda x: x["confidence"]))
+                _keep["confidence"] = round(_ov[1], 4)
+                try:
+                    _keep["signal"].confidence = _keep["confidence"]
+                except Exception:  # noqa: BLE001 — frozen dataclass etc.
+                    pass
+                _ensembled.append(_keep)
                 continue
             if len(_items) == 1:
                 _ensembled.append(_items[0]); continue
