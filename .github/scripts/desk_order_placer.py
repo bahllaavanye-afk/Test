@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import sys
 import time
@@ -832,6 +833,63 @@ def _kelly_notional(equity: float, confidence: float, max_pct: float = 0.03,
     return max(equity * capped * scalar, 50.0)
 
 
+async def _equity_short_safe_qty(
+    symbol: str, side: str, qty: float, is_crypto: bool
+) -> float | None:
+    """Whole-share the quantity when an equity SELL would open a short.
+
+    Alpaca permits fractional shares for LONGS but rejects them on the short
+    side. Every run wasted signals on it — measured 2026-07-28, 3 of 14
+    attempted orders:
+
+        422 {"code":42210000,"message":"fractional orders cannot be sold short"}
+        place_order failed EIDO sell / ORCL sell / UNG sell
+
+    Those signals cleared data, ensembling, the confidence gate, Kelly sizing
+    and the risk manager, then died at the broker — the most expensive possible
+    place to discover it.
+
+    A sell is NOT always a short, though: under the daily loss cap only
+    risk-REDUCING orders pass, and those are closes. Flooring those would strand
+    a sub-1-share long forever. So the held position decides:
+
+        held >= qty   closing a long  -> fractional is legal, leave it alone
+        otherwise     opens a short   -> floor to whole shares, skip if < 1
+
+    Returns None to mean "do not place this order".
+    """
+    if is_crypto or side != "sell":
+        return qty
+    held = (await _cached_position_map()).get(symbol, 0.0)
+    if held >= qty:
+        return qty  # a close, not a short
+    whole = math.floor(qty)
+    if whole < 1:
+        print(f"    · {symbol} sell {qty} would be a fractional SHORT "
+              f"(held {held}) — Alpaca rejects those, and flooring gives 0. "
+              f"Skipping instead of failing at the broker.", flush=True)
+        return None
+    if whole != qty:
+        print(f"    · {symbol} sell {qty} -> {whole} whole shares "
+              f"(fractional shorts are rejected)", flush=True)
+    return float(whole)
+
+
+_position_map_cache: "dict[str, float] | None" = None
+
+
+async def _cached_position_map() -> dict[str, float]:
+    """`_alpaca_position_map()` memoised for the process.
+
+    Called per sell order, so an uncached fetch would be one broker round trip
+    per signal.
+    """
+    global _position_map_cache
+    if _position_map_cache is None:
+        _position_map_cache = await _alpaca_position_map()
+    return _position_map_cache
+
+
 async def _place_order(
     symbol: str,
     side: str,
@@ -865,6 +923,9 @@ async def _place_order(
                 )
                 return None
             qty = round(notional_usd / lp, 6 if is_crypto else 2)
+            qty = await _equity_short_safe_qty(symbol, side, qty, is_crypto)
+            if qty is None:
+                return None
             body["type"]        = "limit"
             body["limit_price"] = str(lp)
             body["qty"]         = str(qty)

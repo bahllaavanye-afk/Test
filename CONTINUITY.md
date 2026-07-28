@@ -228,6 +228,27 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## 💸 2026-07-28 17:30 — ~21% OF EQUITY ORDERS DIED AT THE BROKER, EVERY RUN
+Alpaca allows fractional shares on the LONG side but **rejects them short**. Measured on a live
+run — **3 of 14 attempted orders**:
+```
+422 {"code":42210000,"message":"fractional orders cannot be sold short"}
+place_order failed EIDO sell / ORCL sell / UNG sell
+```
+`qty = round(notional/limit, 2)` produces fractions, so every equity SELL that opened a short was
+rejected. Those signals had already cleared data, ensembling, the confidence gate, Kelly sizing
+and the risk manager — the most expensive place to discover an unplaceable order. Same shape hit
+COST the day before, so it recurs.
+
+**A sell is NOT always a short**, which is why this is not a blind floor: under the loss cap only
+risk-REDUCING orders pass and those are closes, so flooring would strand a sub-1-share long
+forever (`floor(0.4) == 0`). The held quantity decides — `held >= qty` keeps the fraction (a
+close), otherwise floor and skip if < 1. Crypto exempt in both directions. Position map memoised,
+since it is now consulted per sell order. 17 tests, 5 fail against the pre-fix path.
+
+**Already fixed, confirmed:** the `MKR/USD is not active` 422s from IMPROVEMENTS.md are **gone**
+(0 occurrences) — `_filter_tradable_crypto` handles it.
+
 ## 🚨 2026-07-28 16:30 — THE STOP-LOSS ENGINE HAS NO CONFIG FOR ANY LIVE POSITION
 The crypto pricing fix worked — and immediately exposed the larger gap behind it.
 
