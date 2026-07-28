@@ -329,7 +329,38 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
-### ✅ 22:00 — B1 CONFIRMED. Alpaca's metadata contradicts its own order engine
+### ❌ 23:45 — THE "B1 CONFIRMED" BELOW IS WRONG. The filter was never running.
+**Read this before the 22:00 entry.** I concluded from a missing `ⓘ skipping` line that Alpaca
+must be listing MKR/USD as active while its order engine refused it. The reasoning was
+*"`_filter_tradable_crypto` runs unconditionally for every desk and prints whatever it drops,
+so silence means it found nothing to drop."* **The premise was false — the filter does not run
+at all.**
+
+`_filter_tradable_crypto` was only ever called from `run_desk()`, and **`run_desk()` has zero
+call sites.** It was a complete SECOND implementation of the desk loop, superseded by the staged
+pipeline in `main()` and then left in the file reading exactly like live code. So:
+
+- the tradable filter has **never executed in production**;
+- the denylist I shipped in #1188 was wired into it and was therefore **inert**;
+- and worst, **`_trimmed_strategies()` was in there too** — so the performance-pruning loop has
+  been decorative, and every strategy the trimmer retired for losing money kept trading.
+
+All three are now wired into the real pipeline (universe trimmed before the bars batch, so a
+dead symbol costs no request/analyze/top-K slot; trimmer applied before strategies load).
+`run_desk()` and the now-orphaned `_get_bars()` are deleted rather than left as decoys, and
+`test_no_dead_desk_path.py` fails if any guard loses its production call site — plus a sweep
+that flags ANY unreachable top-level helper, which is how the next one gets caught early.
+
+**Whether Alpaca's metadata contradicts its order engine is REOPENED and unknown.** The filter
+now runs, so the next live run can actually answer it.
+
+**The real lesson, and it is not the one I wrote three times:** I kept adding instrumentation to
+a function without ever checking it was reached. *Confirm the code path executes before
+interpreting its silence.* Absence of a log line is evidence only once you know the line could
+have been printed — otherwise a dead code path and a satisfied condition look identical, and a
+fix shipped into dead code passes every test while changing nothing.
+
+### ⚠️ 22:00 — "B1 CONFIRMED" (SUPERSEDED — see 23:45 above, the premise was false)
 Run `30402044105` (21:46, carrying the full instrumentation) is decisive. It logged the reject
 and the memory line, and **none** of the three bail-out lines:
 ```

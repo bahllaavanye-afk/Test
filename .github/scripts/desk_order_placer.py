@@ -559,24 +559,10 @@ def _bars_start() -> str:
     return (datetime.now(timezone.utc) - timedelta(days=420)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-async def _get_bars(symbol: str, timeframe: str = "1Day", limit: int = 300) -> "pd.DataFrame | None":
-    try:
-        is_crypto = "/" in symbol
-        if is_crypto:
-            path   = "/v1beta3/crypto/us/bars"
-            params = {"symbols": symbol, "timeframe": timeframe, "limit": limit, "start": _bars_start()}
-        else:
-            path   = f"/v2/stocks/{symbol}/bars"
-            params = {"timeframe": timeframe, "limit": limit, "adjustment": "split", "start": _bars_start()}
-
-        data = await _alpaca_get(path, params, data_api=True)
-        bars_list = data.get("bars", {}).get(symbol, []) if is_crypto else data.get("bars", [])
-        return _bars_list_to_df(bars_list)
-
-    except Exception as exc:
-        print(f"    ⚠ bars fetch failed for {symbol}: {exc}", flush=True)
-        return None
-
+# NOTE: _get_bars() (single-symbol fetch) lived here. Its only caller was the
+# dead run_desk(); the live pipeline batches via _get_bars_batch(), which is
+# what the 429-truncation fix hardened. Removed with run_desk so the batched
+# path stays the only one.
 
 # Pagination retry budget. 1+2+4+8 = 15s of backoff per page, well inside the
 # workflow's 15-minute timeout, and only spent when Alpaca actually says 429.
@@ -1679,140 +1665,17 @@ def _trimmed_strategies() -> set:
 
 # ── Desk runner ───────────────────────────────────────────────────────────────
 
-async def run_desk(desk: DeskConfig, account: dict) -> list[dict]:
-    """Run all strategies for a desk, place orders, return order records."""
-    print(f"\n{'─'*60}", flush=True)
-    print(f"  DESK: {desk.name}", flush=True)
-
-    equity = float(account.get("equity", 0))
-    if equity < 100:
-        print(f"  ✗ account equity too low (${equity:.2f})", flush=True)
-        return []
-
-    orders_placed: list[dict] = []
-    unfunded = 0          # signals dropped because buying power was exhausted
-    rejected = 0          # signals the broker refused
-
-    trimmed = _trimmed_strategies()
-    strategies = []
-    for sname in desk.strategy_names:
-        if sname in trimmed:
-            print(f"  ✂ strategy '{sname}' retired by trimmer — skipping", flush=True)
-            continue
-        s = _load_strategy(sname)
-        if s is None:
-            print(f"  ⚠ strategy '{sname}' not in registry — skipping", flush=True)
-        else:
-            strategies.append(s)
-
-    if not strategies:
-        print(f"  ✗ no valid strategies for {desk.name}", flush=True)
-        return []
-
-    # Drop crypto pairs Alpaca no longer lists as tradable (fail-soft: keeps all
-    # on any lookup issue). Non-crypto desks pass through untouched.
-    run_symbols, dropped = _filter_tradable_crypto(desk.symbols, await _tradable_crypto_symbols())
-    if dropped:
-        print(f"  ⓘ skipping {len(dropped)} non-tradable pair(s): {', '.join(dropped)}", flush=True)
-
-    # Assets the ORDER ENGINE refuses even though /v2/assets calls them active.
-    # Dropped here, before signal generation, so they stop consuming top-K slots.
-    denied = _denylisted_assets()
-    if denied:
-        _inactive_assets.update(denied)          # order path agrees, belt and braces
-    run_symbols, blocked = _apply_denylist(run_symbols, denied)
-    if blocked:
-        print(f"  ⓘ skipping {len(blocked)} denylisted asset(s) the broker refuses "
-              f"despite listing them active: {', '.join(blocked)}", flush=True)
-
-    for symbol in run_symbols:
-        df = await _get_bars(symbol)
-        if df is None or len(df) < 50:
-            print(f"  ⚠ {symbol}: insufficient data", flush=True)
-            continue
-
-        for strategy in strategies:
-            try:
-                signal = await asyncio.wait_for(strategy.analyze(df, symbol), timeout=10.0)
-            except asyncio.TimeoutError:
-                print(f"  ⚠ {strategy.name}/{symbol} analyze() timed out (>10s) — skipped", flush=True)
-                continue
-            except Exception as exc:
-                print(f"  ⚠ {strategy.name}/{symbol} analyze() error: {exc}", flush=True)
-                continue
-
-            if signal is None:
-                continue
-
-            conf = _sane_confidence(getattr(signal, "confidence", None))
-            if conf < desk.confidence_min:
-                print(
-                    f"  · {strategy.name}/{symbol} signal={signal.side} conf={conf:.2f} "
-                    f"< threshold={desk.confidence_min:.2f} — skipped",
-                    flush=True,
-                )
-                continue
-
-            # Size to what the account can actually pay. cash_capped_notional
-            # has existed for exactly this since the last 403 round, but this
-            # path passed desk.notional_usd RAW — so every crypto desk run
-            # asked Alpaca for $135 against $6.71 of buying power and got
-            # "403 insufficient balance" on essentially every order. Nine desks
-            # generated signals and placed nothing.
-            sized = cash_capped_notional(desk.notional_usd, symbol, account)
-            if sized <= 0:
-                print(
-                    f"  ⏭ {strategy.name}/{symbol} {signal.side.upper()} — SKIPPED, "
-                    f"account cannot fund even ${MIN_ORDER_USD:.0f} "
-                    f"(buying power exhausted)",
-                    flush=True,
-                )
-                unfunded += 1
-                continue
-
-            print(
-                f"  ► {strategy.name}/{symbol} signal={signal.side.upper()} "
-                f"conf={conf:.2f} — placing ${sized:.0f} order"
-                + (f" (capped from ${desk.notional_usd:.0f})"
-                   if sized < desk.notional_usd else ""),
-                flush=True,
-            )
-
-            order = await _place_order(symbol, signal.side, sized)
-            if order and order.get("id"):
-                print(f"    ✓ order {order['id']} submitted ({order.get('status', '?')})", flush=True)
-                orders_placed.append({
-                    "desk":     desk.name,
-                    "strategy": strategy.name,
-                    "symbol":   symbol,
-                    "side":     signal.side,
-                    "notional": sized,
-                    "confidence": conf,
-                    "order_id": order["id"],
-                    "status":   order.get("status", "?"),
-                    "ts":       datetime.now(timezone.utc).isoformat(),
-                })
-            else:
-                rejected += 1
-                print(f"    ✗ order placement returned no ID", flush=True)
-
-    # A desk that produced signals and placed nothing is NOT a healthy desk.
-    # It used to end with a tidy "✓ Place orders" and no further comment, which
-    # is how nine desks ran for weeks while the account sat at -$8,287 with
-    # $6.71 available and every single order 403'd.
-    if not orders_placed and (unfunded or rejected):
-        print(
-            f"  🚨 DESK {desk.name} PLACED NOTHING — {unfunded} signal(s) unfunded, "
-            f"{rejected} rejected by the broker. Buying power: "
-            f"${float(account.get('buying_power', 0) or 0):.2f}, "
-            f"non-marginable: ${float(account.get('non_marginable_buying_power', 0) or 0):.2f}",
-            flush=True,
-        )
-
-    return orders_placed
-
-
-# ── Discord helper ──────────────────────────────────────────────────────────────
+# NOTE: run_desk() lived here — a complete SECOND implementation of the desk
+# loop (fetch bars -> analyze -> size -> place) that NOTHING EVER CALLED. The
+# staged pipeline in main() superseded it, but three live-looking guards were
+# left behind inside it and therefore never ran in production:
+#   · _filter_tradable_crypto()  — the delisted-pair filter
+#   · _apply_denylist()          — the broker-refuses-it denylist
+#   · _trimmed_strategies()      — retired strategies must not trade
+# All three are now wired into the real pipeline. Deleted rather than left as
+# a decoy: reading it cost a full session, because a fix applied here looks
+# correct, passes its tests, and changes nothing. test_no_dead_desk_path.py
+# fails if any of them loses its production call site again.
 
 def _post_chat(channel: str, message: str) -> None:
     """Post to Discord via the shared notifier (Slack removed 2026-07-25)."""
@@ -1876,6 +1739,28 @@ async def main() -> None:
             if DESK_FILTER and not active_desks:
                 raise RuntimeError(f"no desk matches filter '{DESK_FILTER}'")
 
+            # Trim each desk's universe ONCE, here, before anything spends a
+            # bar request, an analyze() call or a top-K slot on a symbol that
+            # cannot trade. This filtering used to live in run_desk(), which
+            # NOTHING CALLS — so neither the tradable filter nor the denylist
+            # had ever executed in production. See CONTINUITY 2026-07-28 23:45.
+            _tradable = await _tradable_crypto_symbols()
+            _denied   = _denylisted_assets()
+            if _denied:
+                _inactive_assets.update(_denied)   # order path agrees too
+            for _i, _d in enumerate(active_desks):
+                _kept, _dropped = _filter_tradable_crypto(list(_d.symbols), _tradable)
+                _kept, _blocked = _apply_denylist(_kept, _denied)
+                if _dropped:
+                    print(f"  ⓘ {_d.name}: skipping {len(_dropped)} non-tradable "
+                          f"pair(s): {', '.join(_dropped)}", flush=True)
+                if _blocked:
+                    print(f"  ⓘ {_d.name}: skipping {len(_blocked)} denylisted asset(s) "
+                          f"the broker refuses despite listing them active: "
+                          f"{', '.join(_blocked)}", flush=True)
+                if _kept != list(_d.symbols):
+                    active_desks[_i] = _d._replace(symbols=_kept)
+
             # Pre-fetch bars for all unique symbols in ONE request per asset
             # class (crypto + stocks). Firing every symbol concurrently used to
             # 429 nearly all of them on the free data tier.
@@ -1933,9 +1818,19 @@ async def main() -> None:
         # ── Stage 3: Signal Generation ────────────────────────────────────────
         raw_signals: list[dict] = []
         with tracker.stage(SIGNAL_GENERATION, "Generate trading signals"):
+            # Strategies the trimmer retired must NOT trade. This check also
+            # only existed inside the uncalled run_desk(), so every retired
+            # strategy has kept trading and the whole performance-pruning loop
+            # has been decorative. Loaded once — it reads a file per call.
+            _trimmed = _trimmed_strategies()
+            if _trimmed:
+                print(f"  ✂ {len(_trimmed)} strategy(ies) retired by the trimmer "
+                      f"will not trade: {', '.join(sorted(_trimmed))}", flush=True)
             for desk in active_desks:
                 strategies = []
                 for sname in desk.strategy_names:
+                    if sname in _trimmed:
+                        continue
                     s = _load_strategy(sname)
                     if s is not None:
                         strategies.append(s)
