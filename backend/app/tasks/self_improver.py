@@ -7,12 +7,16 @@ Self-improvement autoloop. Runs forever, looking for ways to improve the platfor
   5. Sleep, then repeat
 """
 from __future__ import annotations
+
 import asyncio
 import json
 import random
 import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field, root_validator, validator
 
 from app.utils.logging import logger
 
@@ -45,12 +49,76 @@ PARAM_SPACES = {
 }
 
 
+class PromotionEntry(BaseModel):
+    """Schema representing a promoted parameter set for a strategy."""
+
+    id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        description="Unique identifier for the promotion record.",
+        example="123e4567-e89b-12d3-a456-426614174000",
+    )
+    strategy: str = Field(
+        ..., description="Name of the strategy being improved.", example="momentum"
+    )
+    symbol: str = Field(
+        ..., description="Ticker symbol the strategy was evaluated on.", example="SPY"
+    )
+    params: Dict[str, Any] = Field(
+        ...,
+        description="Dictionary of parameter values that yielded the new Sharpe.",
+        example={"lookback_months": 6, "min_score": 0.2},
+    )
+    new_sharpe: float = Field(
+        ...,
+        ge=0,
+        description="Sharpe ratio achieved with the new parameters.",
+        example=1.23,
+    )
+    previous_sharpe: float = Field(
+        ...,
+        ge=0,
+        description="Sharpe ratio of the previously best configuration.",
+        example=1.10,
+    )
+    improvement_pct: float = Field(
+        ...,
+        ge=0,
+        le=1,
+        description="Relative improvement expressed as a fraction (e.g., 0.15 for 15%).",
+        example=0.12,
+    )
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="UTC timestamp when the promotion was recorded.",
+        example="2024-01-01T12:00:00Z",
+    )
+
+    @validator("params")
+    def params_must_not_be_empty(cls, v: Dict[str, Any]) -> Dict[str, Any]:
+        if not v:
+            raise ValueError("params cannot be an empty dictionary")
+        return v
+
+    @root_validator
+    def check_improvement_consistency(cls, values):
+        new = values.get("new_sharpe")
+        prev = values.get("previous_sharpe")
+        pct = values.get("improvement_pct")
+        if prev is not None and new is not None:
+            expected_pct = (new - prev) / max(abs(prev), 0.1)
+            if abs(pct - expected_pct) > 1e-4:
+                raise ValueError(
+                    "improvement_pct does not match new_sharpe and previous_sharpe"
+                )
+        return values
+
+
 class SelfImprover:
     def __init__(self, algo_agent=None, interval_seconds: int = 900):
         self.algo_agent = algo_agent
         self.interval_seconds = interval_seconds
-        self._best_params: dict[str, dict] = {}    # strategy → best params dict
-        self._best_sharpe: dict[str, float] = {}   # strategy → best Sharpe
+        self._best_params: dict[str, dict] = {}  # strategy → best params dict
+        self._best_sharpe: dict[str, float] = {}  # strategy → best Sharpe
         self._running = False
         self._iteration = 0
 
@@ -72,8 +140,14 @@ class SelfImprover:
             loop = asyncio.get_running_loop()
             hist = await loop.run_in_executor(
                 None,
-                lambda: yf.download(symbol, start=str(start.date()), end=str(end.date()),
-                                    interval="1d", auto_adjust=True, progress=False)
+                lambda: yf.download(
+                    symbol,
+                    start=str(start.date()),
+                    end=str(end.date()),
+                    interval="1d",
+                    auto_adjust=True,
+                    progress=False,
+                ),
             )
             if hist is None or len(hist) < 60:
                 return 0.0
@@ -93,14 +167,18 @@ class SelfImprover:
             if signals is None or (hasattr(signals, "__len__") and len(signals) < 30):
                 return 0.0
 
-            sig_series = signals if hasattr(signals, "values") else pd.Series(signals, index=hist.index)
+            sig_series = (
+                signals
+                if hasattr(signals, "values")
+                else pd.Series(signals, index=hist.index)
+            )
             metrics = run_backtest(sig_series, close)
             return float(metrics.sharpe)
         except Exception as e:
             logger.debug("Self-improver eval failed", strategy=strategy, error=str(e))
             return 0.0
 
-    async def _improve_strategy(self, strategy: str, symbol: str) -> dict | None:
+    async def _improve_strategy(self, strategy: str, symbol: str) -> Optional[PromotionEntry]:
         """Sweep params for one strategy. Returns promoted result or None."""
         space = PARAM_SPACES.get(strategy)
         if not space:
@@ -123,38 +201,38 @@ class SelfImprover:
             key = f"{strategy}:{symbol}"
             self._best_params[key] = best_iter_params
             self._best_sharpe[key] = best_iter_sharpe
-            promotion = {
-                "id": str(uuid.uuid4()),
-                "strategy": strategy,
-                "symbol": symbol,
-                "params": best_iter_params,
-                "new_sharpe": round(best_iter_sharpe, 4),
-                "previous_sharpe": round(current_best, 4),
-                "improvement_pct": round((best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
+            improvement = (best_iter_sharpe - current_best) / max(abs(current_best), 0.1)
+            promotion = PromotionEntry(
+                strategy=strategy,
+                symbol=symbol,
+                params=best_iter_params,
+                new_sharpe=round(best_iter_sharpe, 4),
+                previous_sharpe=round(current_best, 4),
+                improvement_pct=round(improvement, 4),
+            )
             self._persist(promotion)
-            logger.info("Self-improver PROMOTED params", **promotion)
+            logger.info("Self-improver PROMOTED params", **promotion.dict())
             return promotion
         return None
 
-    def _persist(self, entry: dict) -> None:
+    def _persist(self, entry: PromotionEntry) -> None:
         try:
             history = json.loads(RESULTS_FILE.read_text()) if RESULTS_FILE.exists() else []
-            history.append(entry)
+            history.append(entry.dict())
             history = history[-300:]
             RESULTS_FILE.write_text(json.dumps(history, indent=2))
         except Exception as exc:
             logger.debug("self_improver persist failed", error=str(exc))
 
-    def get_best_params(self, strategy: str, symbol: str) -> dict | None:
+    def get_best_params(self, strategy: str, symbol: str) -> Optional[dict]:
         return self._best_params.get(f"{strategy}:{symbol}")
 
-    def get_history(self) -> list[dict]:
+    def get_history(self) -> List[PromotionEntry]:
         if not RESULTS_FILE.exists():
             return []
         try:
-            return json.loads(RESULTS_FILE.read_text())
+            raw = json.loads(RESULTS_FILE.read_text())
+            return [PromotionEntry(**item) for item in raw]
         except Exception:
             return []
 
@@ -163,8 +241,14 @@ class SelfImprover:
         logger.info("SelfImprover started", interval=self.interval_seconds)
 
         # Symbol coverage
-        TARGETS = [("momentum", "SPY"), ("momentum", "QQQ"), ("mean_reversion", "AAPL"),
-                   ("rsi_macd", "MSFT"), ("breakout", "NVDA"), ("supertrend", "SPY")]
+        TARGETS = [
+            ("momentum", "SPY"),
+            ("momentum", "QQQ"),
+            ("mean_reversion", "AAPL"),
+            ("rsi_macd", "MSFT"),
+            ("breakout", "NVDA"),
+            ("supertrend", "SPY"),
+        ]
 
         while self._running:
             self._iteration += 1
@@ -175,7 +259,12 @@ class SelfImprover:
                 except asyncio.CancelledError:
                     return
                 except Exception as e:
-                    logger.warning("Self-improver target failed", strategy=strategy, symbol=symbol, error=str(e))
+                    logger.warning(
+                        "Self-improver target failed",
+                        strategy=strategy,
+                        symbol=symbol,
+                        error=str(e),
+                    )
             await asyncio.sleep(self.interval_seconds)
 
     async def stop(self) -> None:
