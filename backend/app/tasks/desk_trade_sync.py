@@ -89,6 +89,63 @@ def parse_strategy_from_coid(
     return strat
 
 
+def _close_untagged(lots: dict, trades: list, f: dict) -> None:
+    """Apply an untagged fill against open lots for its symbol, oldest first.
+
+    Attribution stays with whichever strategy OPENED each lot — the close was
+    not originated by a strategy, so it cannot introduce one. Excess quantity
+    beyond open inventory is dropped rather than opening an unattributed lot.
+    """
+    remaining = f["qty"] if f["side"] == "buy" else -f["qty"]
+    want = -_sign(remaining)  # the lot direction this fill can close
+
+    # Oldest open lot first, across every strategy holding this symbol.
+    def _candidates():
+        out = []
+        for key, q in lots.items():
+            if key[1] != f["symbol"]:
+                continue
+            if q and _sign(q[0]["signed"]) == want:
+                out.append((q[0]["opened_at"], key, q))
+        out.sort(key=lambda t: t[0])
+        return out
+
+    while abs(remaining) > 1e-12:
+        cands = _candidates()
+        if not cands:
+            return  # nothing left to close; excess is deliberately discarded
+        _, key, q = cands[0]
+        lot = q[0]
+        match = min(abs(lot["signed"]), abs(remaining))
+        entry, exit_price = lot["price"], f["price"]
+        if lot["signed"] > 0:
+            pnl = (exit_price - entry) * match
+            lot_side = "buy"
+        else:
+            pnl = (entry - exit_price) * match
+            lot_side = "sell"
+        trades.append({
+            "strategy_name": key[0],
+            "symbol": f["symbol"],
+            "side": lot_side,
+            "entry_price": entry,
+            "exit_price": exit_price,
+            "quantity": match,
+            "realized_pnl": pnl,
+            "opened_at": lot["opened_at"],
+            "closed_at": f["ts"],
+            "hold_seconds": int((f["ts"] - lot["opened_at"]).total_seconds()),
+            "close_order_id": f["order_id"],
+            "open_order_id": lot["order_id"],
+        })
+        lot_remaining = abs(lot["signed"]) - match
+        if lot_remaining <= 1e-12:
+            q.popleft()
+        else:
+            lot["signed"] = _sign(lot["signed"]) * lot_remaining
+        remaining = _sign(remaining) * (abs(remaining) - match)
+
+
 def reconstruct_closed_trades(
     orders: list[dict], registry_names: Iterable[str] | None = None
 ) -> list[dict]:
@@ -109,9 +166,9 @@ def reconstruct_closed_trades(
     for o in orders:
         if str(o.get("status", "")).lower() != "filled":
             continue
+        # `None` means "not a desk-tagged order". Those are NOT skipped any
+        # more — see the untagged-close handling in the FIFO loop below.
         strat = parse_strategy_from_coid(o.get("client_order_id"), registry_names)
-        if strat is None:
-            continue
         try:
             qty = float(o.get("filled_qty") or 0)
             price = float(o.get("filled_avg_price") or 0)
@@ -142,6 +199,28 @@ def reconstruct_closed_trades(
     trades: list[dict] = []
 
     for f in fills:
+        if f["strategy"] is None:
+            # UNTAGGED FILL — a close this system did not originate.
+            #
+            # `recover_negative_cash` flattens via DELETE /v2/positions, so
+            # Alpaca generates those closing orders itself and they carry no
+            # `qe-` client_order_id. The backend's PositionMonitor exits are
+            # the same shape. Previously such fills were dropped outright,
+            # which meant the opening `qe-` buy created a lot that could NEVER
+            # close: no Trade row, ever.
+            #
+            # Measured 2026-07-27: 25 positions were flattened at 18:43 and
+            # /api/v1/trades/ still returned []. Every one of those round trips
+            # was invisible to the P&L loop and the leaderboard.
+            #
+            # An untagged fill closes open lots for its SYMBOL, oldest first
+            # across whichever strategies hold them — that is what actually
+            # happened at the broker. Any excess beyond open inventory is
+            # discarded rather than opening a lot, because there is no strategy
+            # to attribute it to and inventing one would corrupt attribution.
+            _close_untagged(lots, trades, f)
+            continue
+
         key = (f["strategy"], f["symbol"])
         q = lots[key]
         remaining = f["qty"] if f["side"] == "buy" else -f["qty"]

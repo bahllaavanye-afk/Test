@@ -228,6 +228,37 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## 🧾 2026-07-28 14:40 — "STILL EMPTY TRADES" WAS A REAL BUG, AND MY EXPLANATION WAS WRONG
+Reported twice. I answered the first time with *"nothing has round-tripped yet — expected"*.
+**That was wrong.** `recover_negative_cash` flattened **25 positions** on 2026-07-27 18:43 and
+`/api/v1/trades/` still returned `[]` hours later. Those are 25 completed round trips.
+
+**Cause.** `reconstruct_closed_trades` opened with:
+```python
+strat = parse_strategy_from_coid(o.get("client_order_id"), registry_names)
+if strat is None:
+    continue                      # <- dropped the fill entirely
+```
+`parse_strategy_from_coid` returns None for anything not `qe-` prefixed. But the flatten goes via
+`DELETE /v2/positions`, so **Alpaca generates those closing orders itself** — no `qe-` tag. The
+backend's `PositionMonitor` exits are the same shape. So every close this system did not
+originate was discarded, and the opening `qe-` buy left a lot that could **never** close. No
+Trade row, ever — which also starved the P&L feedback loop and the leaderboard.
+
+**Fix.** An untagged fill now closes open lots for its **symbol**, oldest first, across whichever
+strategies hold them — what actually happened at the broker. Attribution stays with the strategy
+that **opened** the lot (the close introduced no strategy). Excess beyond open inventory is
+**discarded**, not opened as a lot: inventing a strategy for it would corrupt the very
+attribution the leaderboard reads. 12 tests, 8 fail pre-fix.
+
+**⚠️ This will not fully show until Postgres is back.** Trades are written to the DB, and the
+sqlite fallback is wiped on **every Render redeploy** — and each PR merge triggers one. The sync
+re-derives from a 30-day Alpaca lookback so it self-heals, but expect the table to keep resetting
+until the password is fixed.
+
+**Lesson: "that's expected" is a claim that needs the same evidence as a bug report.** I asserted
+it from reading the code path instead of checking whether closes had actually occurred.
+
 ## 💣 2026-07-28 14:00 — A NaN CONFIDENCE SIZED THE *LARGEST* POSITION, NOT NONE (fixed, desk path)
 Chasing the constant-confidence note from 12:20. AST-swept all **106** files under
 `app/strategies`: **88 compute confidence from data**, 13 have a hardcoded literal (7 mixed).
