@@ -11,6 +11,65 @@ from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/scanners", tags=["scanners"])
 
+# The scanners and this schema disagreed about BOTH fields, so every non-empty
+# scan result raised a Pydantic ValidationError and the route answered 500.
+# It was invisible: an anonymous probe gets 401, and the module had 0% test
+# coverage, so nothing ever executed the serialisation path with real rows.
+#
+#   score  producers emit `min(score, 100)` — a 0-100 scale — against a schema
+#          declaring `ge=0.0, le=1.0`
+#   side   producers emit long / short / long_yes / long_no; the validator
+#          allows only {buy, sell, neutral, none}
+#
+# Normalising here rather than changing the scanners: their 0-100 score and
+# long/short vocabulary are also written to the Redis cache and consumed
+# elsewhere, so the boundary is the right place to translate. It also keeps the
+# documented external contract ("score normalized between 0 and 1") true, which
+# it has never actually been.
+_SIDE_ALIASES = {
+    "long": "buy",
+    "long_yes": "buy",
+    "buy": "buy",
+    "short": "sell",
+    "long_no": "sell",
+    "sell": "sell",
+    "neutral": "neutral",
+    "none": "none",
+    "": "none",
+}
+
+_SCORE_SCALE = 100.0
+
+
+def _normalise_scan_item(item: Any) -> dict:
+    """Convert a ScanResult (or its cached dict form) into schema-valid fields."""
+    get = item.get if isinstance(item, dict) else lambda k, d=None: getattr(item, k, d)
+
+    try:
+        raw_score = float(get("score", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        raw_score = 0.0
+    # NaN must fail SAFE. `min(1.0, nan)` returns 1.0 in Python (every
+    # comparison with NaN is False), so a malformed score would otherwise
+    # surface as MAXIMUM confidence on a ranking signal — the worst possible
+    # direction to round in.
+    if raw_score != raw_score or raw_score in (float("inf"), float("-inf")):
+        raw_score = 0.0
+    # Cached rows written after this fix are already 0-1; rescale only when the
+    # value is clearly on the 0-100 scale, so both forms round-trip safely.
+    score = raw_score / _SCORE_SCALE if raw_score > 1.0 else raw_score
+
+    raw_side = str(get("side", "none") or "none").lower()
+
+    return {
+        "symbol": str(get("symbol", "") or ""),
+        "desk": str(get("desk", "") or ""),
+        "score": max(0.0, min(1.0, score)),
+        "signals": list(get("signals", []) or []),
+        "side": _SIDE_ALIASES.get(raw_side, "none"),
+        "data": dict(get("data", {}) or {}),
+    }
+
 
 class ScanResultOut(BaseModel):
     symbol: str = Field(..., description="Ticker symbol of the instrument.", json_schema_extra={"example": "AAPL"})
@@ -126,7 +185,7 @@ async def get_scan_results(
             try:
                 raw = await redis.get(f"scanner:{desk}:top10")
                 if raw:
-                    items = json.loads(raw)
+                    items = [_normalise_scan_item(i) for i in json.loads(raw)]
                     return ScanResponse(desk=desk, results=items, cached=True)
             except Exception:
                 pass
@@ -142,17 +201,7 @@ async def get_scan_results(
         else:
             results = await PolymarketScanner().scan()
 
-        out = [
-            ScanResultOut(
-                symbol=r.symbol,
-                desk=r.desk,
-                score=r.score,
-                signals=r.signals,
-                side=r.side,
-                data=r.data,
-            )
-            for r in results[:20]
-        ]
+        out = [ScanResultOut(**_normalise_scan_item(r)) for r in results[:20]]
         return ScanResponse(desk=desk, results=out, cached=False)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -169,7 +218,7 @@ async def get_all_scan_results(user=Depends(get_current_user)):
             try:
                 raw = await redis.get(f"scanner:{desk}:top10")
                 if raw:
-                    cached_results = json.loads(raw)
+                    cached_results = [_normalise_scan_item(i) for i in json.loads(raw)]
             except Exception:
                 pass
         responses.append(ScanResponse(desk=desk, results=cached_results, cached=True))

@@ -147,6 +147,21 @@ against a 1-day limit. Equity is downsampled (default hourly) and scaled by
 square-root-of-time, which assumes i.i.d. returns and understates tail risk under positive
 autocorrelation — a floor, not a ceiling.
 
+## 🔴 2026-07-28 — /api/v1/scanners 500'd on EVERY non-empty result (fixed)
+Found by writing the first test for a live endpoint with 0% coverage. Producer and schema
+disagreed on BOTH fields since they were written: scanners emit `min(score,100)` (0-100) against
+a schema requiring `ge=0,le=1`, and emit `long`/`short`/`long_yes`/`long_no` against a validator
+allowing only `{buy,sell,neutral,none}`. **All three desks** — equity/crypto only looked fine
+because they returned empty in the test env, so serialisation never ran with rows. Invisible
+outside: anonymous probes get 401 (verified against production).
+Fixed at the boundary via `_normalise_scan_item()` at all 3 construction sites. **NaN fails
+SAFE**: `min(1.0, nan)` returns 1.0 in Python, so naive clamping would make a malformed score
+read as MAXIMUM confidence on a ranking signal; forced to 0.0.
+Tests: 25 unit + 14 integration, verified failing on the unfixed tree.
+**Mistake recorded:** first draft registered a user per test (~11 vs a 10/min limiter) and
+starved neighbouring files — `test_auth_register_then_login` went red while passing alone. Now
+one cached token per file. Second time this session a "fix" damaged a shared fixture.
+
 ## 🔴 2026-07-28 — the BACKEND's agent subsystem is unreachable (9 modules) — USER DECISION
 Follow-on from the coverage baseline. 0% coverage ≠ dead, so the 37 zero-coverage modules were
 cross-referenced against **transitive** reachability from the real entrypoints

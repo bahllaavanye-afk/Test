@@ -1,5 +1,26 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔴 2026-07-28 — /api/v1/scanners returned 500 for EVERY non-empty result
+
+Found by writing the first-ever test for a live endpoint that had 0% coverage. The reachability triage split the 37 zero-coverage modules into dead ones (guarded) and **live but wholly untested** ones — `api/v1/scanners` → `tasks/stock_scanners` (275 statements), `api/v1/releases` → `ml/serving/serve` + `ab_router`. That second group is worse than dead code: dead code cannot break a user.
+
+**Producer and schema disagreed on both fields, and had since they were written:**
+
+| field | scanners emit | `ScanResultOut` requires |
+|---|---|---|
+| `score` | `min(score, 100)` — a 0–100 scale | `ge=0.0, le=1.0` |
+| `side` | `long` / `short` / `long_yes` / `long_no` | `{buy, sell, neutral, none}` |
+
+Every non-empty scan result raised `ValidationError` → 500. **All three desks**, not just polymarket — equity and crypto merely returned empty in the test environment, so the serialisation path never ran with rows. Invisible from outside because an anonymous probe gets 401 (verified against production).
+
+- [x] **Fixed at the boundary** with `_normalise_scan_item()`, applied at all three construction sites (live scan, single-desk cache, all-desk cache). Normalising in the API rather than changing the scanners: their 0–100 score and long/short vocabulary are also written to Redis and consumed elsewhere. It also makes the documented contract ("score normalized between 0 and 1") true for the first time.
+- [x] **NaN fails SAFE.** `min(1.0, nan)` returns `1.0` in Python — every NaN comparison is False — so naive clamping would have turned a malformed score into **maximum confidence** on a ranking signal. Explicitly forced to 0.0.
+- [x] Tests: `tests/unit/test_scanner_normalisation.py` (25) + `tests/integration/test_untested_live_endpoints.py` (14). Verified to fail on the unfixed tree with the exact production error.
+
+**A mistake worth recording:** the first draft called `auth_headers()` in every test — ~11 registrations against a **10/min** limiter — which starved other files on the same worker and turned `test_api_health::test_auth_register_then_login` red while it passed in isolation. Now one cached token per file. *A test that breaks its neighbours by consuming a shared budget is the same class of problem as one that writes to a shared database* — the second time this session that a "fix" damaged the shared fixture.
+
+Full suite, two consecutive CI-invocation runs: **1935 passed**, 33 skipped, 5 xfailed.
+
 ## 🔴 2026-07-28 — the BACKEND's agent subsystem is unreachable (9 modules)
 
 Direct follow-on from the coverage baseline. 0% coverage does not mean dead — a module can be exercised only in production — so the 37 zero-coverage modules were cross-referenced against **transitive** import reachability from the real entrypoints (`static_server`, `main`, `api/v1/router`, `tasks/scheduler`).
