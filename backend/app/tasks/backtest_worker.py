@@ -5,20 +5,33 @@ Runs as a background asyncio task started from main.py lifespan.
 Uses yfinance for free OHLCV data — no broker keys required.
 """
 from __future__ import annotations
+
 import asyncio
 import uuid
-import pandas as pd
 from datetime import datetime, timezone
+
+import pandas as pd
 
 from sqlalchemy import select
 from app.utils.logging import logger
 
 
 async def run_backtest_job(run_id: str | None) -> None:
-    """Fetch one queued BacktestRun, execute it, write results back to DB."""
-    if not run_id:
-        logger.warning("run_backtest_job called with None or empty run_id")
-        return
+    """Fetch one queued BacktestRun, execute it, write results back to DB.
+
+    Parameters
+    ----------
+    run_id: str
+        Identifier of the BacktestRun to process. Must be a non‑empty string.
+
+    Raises
+    ------
+    ValueError
+        If ``run_id`` is missing or the associated BacktestRun is invalid.
+    """
+    # Input validation
+    if not isinstance(run_id, str) or not run_id.strip():
+        raise ValueError("run_id must be a non‑empty string")
 
     from app.database import AsyncSessionLocal
     from app.models.backtest import BacktestRun, BacktestResult
@@ -28,21 +41,31 @@ async def run_backtest_job(run_id: str | None) -> None:
 
     async with AsyncSessionLocal() as db:
         run = await db.get(BacktestRun, run_id)
-        if not run or run.status != "queued":
-            return
+        if run is None:
+            raise ValueError(f"BacktestRun with id {run_id} not found")
+        if run.status != "queued":
+            raise ValueError(
+                f"BacktestRun {run_id} is not queued (current status: {run.status})"
+            )
         # Validate essential fields
-        if not all([run.symbol, run.start_date, run.end_date, run.interval, run.strategy_name]):
-            logger.error(f"BacktestRun {run_id} missing required fields")
-            run.status = "failed"
-            run.error_message = "Missing required backtest parameters"
-            run.completed_at = datetime.now(timezone.utc)
-            await db.commit()
-            return
+        required_fields = {
+            "symbol": run.symbol,
+            "start_date": run.start_date,
+            "end_date": run.end_date,
+            "interval": run.interval,
+            "strategy_name": run.strategy_name,
+        }
+        missing = [name for name, value in required_fields.items() if not value]
+        if missing:
+            raise ValueError(
+                f"BacktestRun {run_id} missing required fields: {', '.join(missing)}"
+            )
 
         run.status = "running"
         run.started_at = datetime.now(timezone.utc)
         await db.commit()
-        # capture fields before session closes
+
+        # Capture fields before the session is closed
         symbol = run.symbol
         start_date = run.start_date
         end_date = run.end_date
@@ -51,7 +74,9 @@ async def run_backtest_job(run_id: str | None) -> None:
         initial_equity = (run.params or {}).get("initial_equity", 100_000.0)
 
     try:
-        df = await fetch_ohlcv(symbol=symbol, start=start_date, end=end_date, interval=interval)
+        df = await fetch_ohlcv(
+            symbol=symbol, start=start_date, end=end_date, interval=interval
+        )
         if df.empty:
             raise ValueError(f"No OHLCV data for {symbol} ({start_date}–{end_date})")
 
@@ -71,7 +96,6 @@ async def run_backtest_job(run_id: str | None) -> None:
         if isinstance(raw_signals, _BSig):
             import numpy as np
 
-            # Ensure entries/exits are not None and have matching index
             entries = raw_signals.entries
             exits = raw_signals.exits
             if entries is None or exits is None:
@@ -84,14 +108,11 @@ async def run_backtest_job(run_id: str | None) -> None:
                 sig[raw_signals.short_entries.astype(bool)] = -1
             signals_series = sig
         else:
-            # Expect a pandas Series; guard against empty or mismatched index
             if not isinstance(raw_signals, pd.Series):
                 raise TypeError("Strategy signals must be a pandas Series")
             if raw_signals.empty:
-                # An empty signal series is treated as no trades
                 signals_series = pd.Series(0, index=df.index, dtype=int)
             else:
-                # Align index if needed
                 signals_series = raw_signals.reindex(df.index, fill_value=0).astype(int)
 
         metrics = run_backtest(
