@@ -228,6 +228,38 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## 🔓 2026-07-28 21:15 — THE SECURITY GATE HAS NEVER INSPECTED A SINGLE PR (fixed)
+Found while checking a PR was green before merging. Two independent defects, **either one
+enough on its own** to make the gate decorative:
+
+**1. It could not run.** `security-scan.yml` triggered only on `pull_request`. Agent branches
+get their PR opened by `auto-pr.yml`, so the run's actor is `github-actions[bot]` — and a
+bot-actored PR run lands in `action_required`, waiting on a human approval that never arrives.
+Of the last 30 PR runs, **21 were `action_required` and every one of them was bot-actored**:
+```
+20:51 action_required  actor: github-actions[bot]  claude/stoic-johnson-7z4wtz
+20:43 action_required  actor: github-actions[bot]  improver/run-30397450082
+15:57 success          actor: bahllaavanye-afk     claude/stoic-johnson-7z4wtz
+```
+The correlation is exact. **Every `improver/*` PR has been in this state since 2026-07-27** —
+that is the mechanism behind "the improver PRs bypass CI", now measured rather than assumed.
+
+**2. When it did run, it scanned the wrong tree.** The checkout was pinned `ref: main`
+*unconditionally*, so a PR run analysed main instead of the code being proposed. The five
+`success` runs on my branch therefore proved nothing about my branch — bandit and the
+red-team probe never saw the diff.
+
+Fixed: a `push` trigger (actored by the pusher, no approval needed, fires before the PR
+exists; main excluded — 27 of its 129 commits in the last 24h touch the scanned paths and the
+weekly cron already covers merged code), and the checkout now resolves to the triggering
+commit while scheduled runs still pin main. 10 tests, 7 fail pre-fix.
+
+**Reusable lesson, and this is the third time this exact shape has bitten:** a gate that is
+permanently *not-red* is indistinguishable from a gate that passed. `ModuleNotFoundError:
+sqlalchemy` made it red-and-ignored; `action_required` made it grey-and-ignored; `ref: main`
+made it green-and-meaningless. **Before trusting any check, confirm it EXECUTED and confirm
+what it executed AGAINST.** A green tick is not evidence until both are known.
+
 ## 🔁 2026-07-28 21:00 — `MKR/USD is not active` CAME BACK, and the code could not say why
 I recorded this class as closed at 17:30 ("0 occurrences, `_filter_tradable_crypto` handles
 it"). It reappeared in run `30394875861` — **five times in one process**:
