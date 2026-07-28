@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Tighten health checks",
-    "Track memory leaks",
-    "* Implement JSON schema checks",
-    "Monitor CPU usage",
     "Check timestamp sync",
     "Check disk space",
     "Test market data feeds",
@@ -199,8 +195,12 @@
     "Refine trading signals",
     "Track memory usage",
     "Validate trade sizes",
-    "Limit order retries"
+    "Limit order retries",
+    "Test network latency",
+    "Implement Temporal Fusion",
+    "Monitor model drift",
+    "Optimize Sharpe ratio"
   ],
-  "last_updated": "2026-07-28T05:18:09.276653+00:00",
+  "last_updated": "2026-07-28T06:23:19.607466+00:00",
   "total": 200
 }
