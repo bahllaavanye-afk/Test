@@ -117,6 +117,35 @@ def price_spread(
     return value
 
 
+def _default_entry_mask(df: pd.DataFrame, vol_window: int) -> pd.Series:
+    """Create a weekly entry mask when none is supplied."""
+    mask = pd.Series(False, index=df.index)
+    mask.iloc[vol_window::5] = True
+    return mask
+
+
+def _extract_sigma(vol: pd.Series, idx: int) -> float:
+    """Return a non‑negative sigma for the given index, falling back to 0."""
+    val = vol.iloc[idx]
+    return float(val) if np.isfinite(val) else 0.0
+
+
+def _compute_strikes(legs: list[SpreadLeg], spot: float) -> list[float]:
+    """Calculate strikes from legs' moneyness and the reference spot."""
+    return [leg.moneyness * spot for leg in legs]
+
+
+def _price_at(
+    spot: float,
+    legs: list[SpreadLeg],
+    strikes: list[float],
+    t_years: float,
+    sigma: float,
+) -> float:
+    """Convenient wrapper around ``price_spread``."""
+    return price_spread(spot, legs, strikes, t_years, sigma)
+
+
 def backtest_spread(
     df: pd.DataFrame,
     legs: list[SpreadLeg],
@@ -151,8 +180,7 @@ def backtest_spread(
     vol = realized_vol(close, vol_window)
 
     if entry_mask is None:
-        entry_mask = pd.Series(False, index=df.index)
-        entry_mask.iloc[vol_window::5] = True
+        entry_mask = _default_entry_mask(df, vol_window)
 
     pnls: list[float] = []
     n = len(df)
@@ -161,22 +189,25 @@ def backtest_spread(
         j = i + hold_days
         if j >= n:
             break
-        sigma_in = float(vol.iloc[i]) if np.isfinite(vol.iloc[i]) else 0.0
+
+        sigma_in = _extract_sigma(vol, i)
         if sigma_in <= 0:
             continue
 
-        spot_in, spot_out = float(close.iloc[i]), float(close.iloc[j])
-        sigma_out = float(vol.iloc[j]) if np.isfinite(vol.iloc[j]) else sigma_in
+        spot_in = float(close.iloc[i])
+        spot_out = float(close.iloc[j])
+        sigma_out = _extract_sigma(vol, j) or sigma_in
 
-        strikes = [leg.moneyness * spot_in for leg in legs]
-        entry_v = price_spread(
+        strikes = _compute_strikes(legs, spot_in)
+
+        entry_v = _price_at(
             spot_in,
             legs,
             strikes,
             dte / TRADING_DAYS,
             sigma_in,
         )
-        exit_v = price_spread(
+        exit_v = _price_at(
             spot_out,
             legs,
             strikes,
