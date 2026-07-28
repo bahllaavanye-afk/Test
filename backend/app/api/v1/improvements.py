@@ -6,8 +6,21 @@ from app.models.user import User
 router = APIRouter(prefix="/improvements", tags=["improvements"])
 
 
+def _validate_user(user: User) -> None:
+    """Validate that the provided user is a proper User instance.
+
+    Raises:
+        ValueError: If the user is None or not an instance of User.
+    """
+    if user is None:
+        raise ValueError("Current user must be provided.")
+    if not isinstance(user, User):
+        raise ValueError(f"Invalid user type: expected User, got {type(user).__name__}.")
+
+
 @router.get("/history")
 async def get_history(current_user: User = Depends(get_current_user)):
+    _validate_user(current_user)
     from app.main import app
     improver = getattr(app.state, "self_improver", None)
     if improver:
@@ -17,6 +30,7 @@ async def get_history(current_user: User = Depends(get_current_user)):
 
 @router.get("/quality")
 async def get_quality(current_user: User = Depends(get_current_user)):
+    _validate_user(current_user)
     from app.main import app
     loop_ref = getattr(app.state, "code_quality_loop", None)
     if loop_ref is None:
@@ -26,6 +40,7 @@ async def get_quality(current_user: User = Depends(get_current_user)):
 
 @router.get("/best_params")
 async def get_best_params(current_user: User = Depends(get_current_user)):
+    _validate_user(current_user)
     from app.main import app
     improver = getattr(app.state, "self_improver", None)
     if improver is None:
