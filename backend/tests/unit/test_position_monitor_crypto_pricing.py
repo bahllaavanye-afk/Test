@@ -114,3 +114,92 @@ def test_the_redis_exchange_routing_now_agrees():
     assert price_key(exchange_for(cand), cand) == "price:crypto:UNI/USD"
     # and the old behaviour, for contrast
     assert exchange_for("UNIUSD") == "alpaca"
+
+
+# ── the gap the pricing fix EXPOSED ──────────────────────────────────────────
+# Fixing the price lookup was necessary but not sufficient. `pos_exit:` configs
+# are written ONLY by strategy_runner, on its own fills. The live paper orders
+# are placed by the GitHub Actions desks (.github/scripts/desk_order_placer.py),
+# whose workflow even sets REDIS_URL="" — so they write nothing.
+#
+# Every desk-placed position therefore reaches `if not exit_config: return` and
+# is skipped, with NO stop-loss or take-profit enforcement. Measured live
+# 2026-07-28: all 16 open positions, every sweep.
+#
+# That skip was a logger.debug — invisible in production, so an unmonitored
+# position looked exactly like a monitored one. It is now a per-sweep warning
+# carrying the count. Deliberately NOT applying a default stop: no global
+# default exists here (bots carry per-template stop_loss_pct, strategy_runner
+# uses signal.stop_loss), so inventing a threshold would start closing real
+# positions on a number nobody chose.
+
+
+class _StubBroker:
+    def __init__(self, positions):
+        self._positions = positions
+        self.quoted: list[str] = []
+
+    async def get_positions(self):
+        return self._positions
+
+    async def get_quote(self, symbol):
+        self.quoted.append(symbol)
+        if "/" in symbol or symbol.isalpha():
+            class _Q:
+                last = 1.0
+                ask = 1.0
+            return _Q()
+        raise RuntimeError(f"Alpaca quote failed for {symbol}: '{symbol}'")
+
+
+def _run_sweep(monkeypatch, positions):
+    import asyncio
+
+    import app.tasks.position_monitor as pm
+
+    seen: list[tuple[str, dict]] = []
+
+    class _Logger:
+        def warning(self, msg, **kw):
+            seen.append((msg, kw))
+
+        def debug(self, *a, **kw):
+            pass
+
+        def error(self, *a, **kw):
+            pass
+
+        def info(self, *a, **kw):
+            pass
+
+    monkeypatch.setattr(pm, "logger", _Logger())
+    broker = _StubBroker(positions)
+    monitor = pm.PositionMonitor(broker, None, None)
+    asyncio.run(monitor._check_all_positions())
+    return seen, broker
+
+
+def test_unmonitored_positions_are_reported_with_a_count(monkeypatch):
+    seen, _ = _run_sweep(monkeypatch, [{"symbol": "UNIUSD"}, {"symbol": "SPY"}])
+    warns = [(m, k) for m, k in seen if "NO exit config" in m]
+    assert warns, f"no unmonitored warning emitted: {seen}"
+    _, kw = warns[0]
+    assert kw["unmonitored"] == 2 and kw["of_total"] == 2
+    assert "UNIUSD" in kw["symbols"]
+
+
+def test_the_crypto_symbols_no_longer_fail_to_price(monkeypatch):
+    """The pricing fix, exercised through the real sweep.
+
+    Before the fix these raised and produced a 'broker quote failed' warning,
+    returning before the exit-config stage was ever reached.
+    """
+    seen, broker = _run_sweep(monkeypatch, [{"symbol": "UNIUSD"}, {"symbol": "SHIBUSD"}])
+    assert not [m for m, _ in seen if "broker quote failed" in m], seen
+    assert "UNI/USD" in broker.quoted and "SHIB/USD" in broker.quoted
+
+
+def test_a_clean_sweep_emits_no_warning(monkeypatch):
+    """No positions -> nothing to say."""
+    seen, _ = _run_sweep(monkeypatch, [])
+    assert not [m for m, _ in seen if "NO exit config" in m]

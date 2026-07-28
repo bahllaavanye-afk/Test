@@ -126,6 +126,7 @@ class PositionMonitor:
         if not positions:
             return
 
+        self._unmonitored: list[str] = []
         for position in positions:
             try:
                 await self._check_position_exits(position)
@@ -136,6 +137,20 @@ class PositionMonitor:
                     symbol=symbol,
                     error=str(exc),
                 )
+
+        # Say plainly how much of the book is NOT protected. Each skip was a
+        # logger.debug, invisible in production, so an unmonitored position
+        # looked exactly like a monitored one. Measured 2026-07-28: all 16 open
+        # positions were skipped, because `pos_exit:` keys are written only by
+        # strategy_runner and every live order is placed by the Actions desks.
+        if self._unmonitored:
+            logger.warning(
+                "PositionMonitor: positions have NO exit config — not enforcing "
+                "stop-loss or take-profit for them",
+                unmonitored=len(self._unmonitored),
+                of_total=len(positions),
+                symbols=self._unmonitored[:20],
+            )
 
     async def _check_position_exits(self, position: dict) -> None:
         """Run exit checks for a single position. Fire close order if triggered."""
@@ -207,7 +222,19 @@ class PositionMonitor:
                 )
 
         if not exit_config:
-            # No exit config stored — skip monitoring for this position
+            # No exit config stored — skip monitoring for this position.
+            #
+            # This is NOT a rare edge case: `pos_exit:` keys are written only by
+            # strategy_runner, on ITS own fills. The GitHub Actions desks
+            # (.github/scripts/desk_order_placer.py) place the live paper orders
+            # and write nothing — their workflow even sets REDIS_URL="". So
+            # every desk-placed position lands here and is skipped, meaning it
+            # has NO stop-loss or take-profit enforcement.
+            #
+            # Recording the symbol so the caller can report a count. This was
+            # logger.debug, which is invisible in production — an unmonitored
+            # position looked exactly like a monitored one.
+            self._unmonitored.append(symbol)
             logger.debug(
                 "PositionMonitor: no exit config found, skipping",
                 position_id=position_id,
