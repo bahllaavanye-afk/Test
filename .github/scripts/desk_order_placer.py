@@ -1662,8 +1662,32 @@ async def main() -> None:
             if not is_open:
                 print("  ⚠ Equity market closed — only always-open desks may trade", flush=True)
             if _cap_active:
+                # The equity numbers go here too, not only in the Discord
+                # summary. The DAILY LOSS CAP line that carries them is printed
+                # hundreds of lines earlier (during the account fetch, before
+                # the per-symbol ensemble output), so reading it back through
+                # the Actions API means paging through the whole run. Repeating
+                # them at the point of blocking makes the diagnosis reachable
+                # in a short tail — which is how anyone actually reads this.
+                #
+                # Shipped after hitting exactly that: the numbers were added to
+                # Discord last run, and the next investigation still could not
+                # see them from the log.
+                _eq = locals().get("equity") or 0.0
+                _last_eq = locals().get("last_equity") or 0.0
+                _dd = (1.0 - _eq / _last_eq) if _last_eq else 0.0
                 print(f"  🛑 Loss cap ACTIVE — only risk-reducing orders allowed "
                       f"({len(_cap_positions)} open positions eligible to reduce)", flush=True)
+                print(f"     equity ${_eq:,.2f} vs prior close ${_last_eq:,.2f} "
+                      f"({_dd:+.2%}, cap {DAILY_LOSS_CAP_PCT:.0%})"
+                      + ("  ⚠️ 0 reducible → NOTHING can pass" if not _cap_positions else ""),
+                      flush=True)
+                if _last_eq and abs(_eq - _last_eq) < 1e-9:
+                    # equity == last_equity cannot trip a drawdown cap. If this
+                    # ever prints, the cap is firing on stale/mismatched inputs
+                    # rather than a real loss.
+                    print("     ⚠️ equity EQUALS prior close — cap should not be "
+                          "active; suspect a stale last_equity", flush=True)
             if not _account_ok:
                 print("  ⚠ Skipping order placement (no buying power / account unavailable)", flush=True)
                 tracker.set_output(orders_placed=0, reason="account_unavailable")
