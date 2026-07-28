@@ -7,6 +7,7 @@ Covers:
   3. backtest_signals() returns BacktestSignals with correct dtype
   4. No-lookahead: first row is always False
   5. Insufficient data returns None / empty signals
+  6. Entry/exit logic sanity checks
 """
 from __future__ import annotations
 
@@ -26,7 +27,7 @@ from app.strategies.manual.avellaneda_stoikov_mm import AvellanedaStoikovMM
 
 @pytest.fixture
 def price_df():
-    """200 bars of synthetic 1-minute OHLCV."""
+    """200 bars of synthetic 1‑minute OHLCV."""
     rng = np.random.default_rng(42)
     n = 200
     prices = 100 * np.cumprod(1 + rng.normal(0.0005, 0.015, n))
@@ -172,3 +173,36 @@ class TestAvellanedaStoikovMMBacktest:
         result = AvellanedaStoikovMM().backtest_signals(price_df)
         assert not result.entries.isna().any()
         assert not result.exits.isna().any()
+
+    # -----------------------------------------------------------------------
+    # Additional sanity checks for tighter entry/exit logic
+    # -----------------------------------------------------------------------
+
+    def test_no_simultaneous_entry_and_exit(self, price_df):
+        """An entry and exit should never be true on the same bar."""
+        result = AvellanedaStoikovMM().backtest_signals(price_df)
+        simultaneous = result.entries & result.exits
+        assert not simultaneous.any(), "Found simultaneous entry and exit signals"
+
+    def test_entry_exit_alternation(self, price_df):
+        """
+        After an entry signal, the next entry must be preceded by an exit.
+        This enforces a simple position lifecycle: entry → hold → exit.
+        """
+        result = AvellanedaStoikovMM().backtest_signals(price_df)
+        entries = result.entries.astype(int).values
+        exits = result.exits.astype(int).values
+
+        # Track whether we are currently in a position
+        in_position = 0
+        for i in range(len(entries)):
+            if entries[i] and not in_position:
+                in_position = 1
+            elif entries[i] and in_position:
+                pytest.fail(f"Entry at index {i} without prior exit")
+            if exits[i] and in_position:
+                in_position = 0
+            elif exits[i] and not in_position:
+                pytest.fail(f"Exit at index {i} without an open position")
+        # Ensure we do not finish in an open position without an exit
+        assert in_position == 0, "Strategy ended with an open position"
