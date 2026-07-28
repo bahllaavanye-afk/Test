@@ -46,7 +46,11 @@ try:
 except Exception:
     _EMP_PERSONAS: dict = {}
 
-REPO_ROOT = Path(__file__).parent.parent
+# .github/scripts/x.py -> parents[2] is the repo root; `.parent.parent`
+# stopped at .github/, so every path below silently resolved under
+# .github/ (no such dirs exist) — see improve_tv_indicators aborting with
+# '.github/backend/app/strategies/manual/tv_indicators.py not found'.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 ALLOW_PAID = os.environ.get("ALLOW_PAID_APIS", "False")
 
 if ALLOW_PAID.lower() == "true":

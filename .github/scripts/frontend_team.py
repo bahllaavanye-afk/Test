@@ -14,7 +14,11 @@ from pathlib import Path
 import anthropic
 import httpx
 
-REPO_ROOT    = Path(__file__).parent.parent
+# .github/scripts/x.py -> parents[2] is the repo root; `.parent.parent`
+# stopped at .github/, so every path below silently resolved under
+# .github/ (no such dirs exist) — see improve_tv_indicators aborting with
+# '.github/backend/app/strategies/manual/tv_indicators.py not found'.
+REPO_ROOT    = Path(__file__).resolve().parents[2]
 FRONTEND_SRC = REPO_ROOT / "frontend" / "src"
 CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
                     or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())

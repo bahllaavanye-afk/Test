@@ -13,7 +13,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from llm_common import llm, chat_post, memory_write
 
-REPO_ROOT = Path(__file__).parent.parent
+# .github/scripts/x.py -> parents[2] is the repo root; `.parent.parent`
+# stopped at .github/, so every path below silently resolved under
+# .github/ (no such dirs exist) — see improve_tv_indicators aborting with
+# '.github/backend/app/strategies/manual/tv_indicators.py not found'.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 TV_FILE   = REPO_ROOT / "backend/app/strategies/manual/tv_indicators.py"
 CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
                     or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())

@@ -37,6 +37,42 @@ from datetime import datetime, timezone
 
 from app.utils.logging import logger
 
+# Alpaca reports crypto POSITIONS slashless — "UNIUSD", "SHIBUSD", "AAVEUSD" —
+# while every price path in this system keys on the slashed pair, "UNI/USD".
+# Both lookups therefore missed on every crypto position, every tick:
+#
+#   Redis   exchange_for("UNIUSD") sees no "/" -> "alpaca" -> reads
+#           price:alpaca:UNIUSD, but price_feed writes price:crypto:UNI/USD
+#   broker  _is_crypto("UNIUSD") is False (no "/", and it does not end with
+#           BTC/ETH/SOL/DOGE), so it went to the STOCK quote endpoint and
+#           KeyError'd. Observed live 2026-07-28:
+#             502: Alpaca quote failed for UNIUSD: 'UNIUSD'
+#             502: Alpaca quote failed for SHIBUSD: 'SHIBUSD'
+#
+# With no price the exit check returns early, so crypto positions had NO
+# stop-loss or take-profit enforcement at all — silently, because a missing
+# price is indistinguishable from a cold cache.
+#
+# Deriving candidates instead of hardcoding a crypto universe: this needs no
+# maintenance as the desks add pairs, and it fails safe — the original symbol
+# is always tried, so an equity that happens to end in "USD" still resolves.
+# The fix lives here rather than in brokers/alpaca.py because
+# app/tasks/CLAUDE.md marks brokers/*.py do-not-modify.
+_QUOTE_CURRENCIES = ("USDT", "USDC", "USD")
+
+
+def _price_symbol_candidates(symbol: str) -> list[str]:
+    """Symbol forms to try when pricing a position, most-likely first."""
+    s = (symbol or "").strip().upper()
+    if not s:
+        return []
+    if "/" in s:
+        return [s]
+    for quote in _QUOTE_CURRENCIES:
+        if s.endswith(quote) and len(s) > len(quote):
+            return [f"{s[:-len(quote)]}/{quote}", s]
+    return [s]
+
 
 class PositionMonitor:
     def __init__(self, broker, redis_client, db_session_factory):
@@ -109,36 +145,49 @@ class PositionMonitor:
         if not symbol:
             return
 
+        candidates = _price_symbol_candidates(symbol)
+
         # 1. Fetch current price from Redis
         current_price: float | None = None
         if self.redis is not None:
-            try:
-                # `prices:{symbol}` is the WebSocket topic, not the Redis key —
-                # nothing writes it, so this always missed and fell through to a
-                # broker quote on every position, every tick.
-                from app.redis_client import exchange_for, price_key
-                raw_price = await self.redis.get(price_key(exchange_for(symbol), symbol))
-                if raw_price:
-                    price_data = json.loads(raw_price)
-                    current_price = float(price_data.get("last") or price_data.get("ask") or 0)
-            except Exception as exc:
-                logger.warning(
-                    "PositionMonitor: failed to read price from Redis",
-                    symbol=symbol,
-                    error=str(exc),
-                )
+            from app.redis_client import exchange_for, price_key
+
+            for cand in candidates:
+                try:
+                    # `prices:{symbol}` is the WebSocket topic, not the Redis key —
+                    # nothing writes it, so this always missed and fell through to a
+                    # broker quote on every position, every tick.
+                    raw_price = await self.redis.get(price_key(exchange_for(cand), cand))
+                    if raw_price:
+                        price_data = json.loads(raw_price)
+                        current_price = float(price_data.get("last") or price_data.get("ask") or 0)
+                        if current_price:
+                            break
+                except Exception as exc:
+                    logger.warning(
+                        "PositionMonitor: failed to read price from Redis",
+                        symbol=cand,
+                        error=str(exc),
+                    )
 
         if not current_price:
             # Try broker quote as fallback
             if self.broker is not None:
-                try:
-                    quote = await self.broker.get_quote(symbol)
-                    current_price = float(quote.last or quote.ask)
-                except Exception as exc:
+                last_exc: Exception | None = None
+                for cand in candidates:
+                    try:
+                        quote = await self.broker.get_quote(cand)
+                        current_price = float(quote.last or quote.ask)
+                        if current_price:
+                            break
+                    except Exception as exc:  # noqa: BLE001 — try the next form
+                        last_exc = exc
+                if not current_price and last_exc is not None:
                     logger.warning(
                         "PositionMonitor: broker quote failed, skipping",
                         symbol=symbol,
-                        error=str(exc),
+                        tried=candidates,
+                        error=str(last_exc),
                     )
             if not current_price:
                 return

@@ -241,14 +241,25 @@ by strategy: time_series_momentum 11 · stat_arb_etf 11 · avellaneda_stoikov_mm
 the leaderboard were previously reading an empty set, so the self-scaling weighting had nothing
 to learn from.
 
-**⚠️ STILL BLOCKED: the dashboard.** The CDN trailing-slash fix is merged but Vercel returned
-`Deployment rate limited — retry in 24 hours` (`upgradeToPro=build-rate-limit`). Bundle hash
-unchanged 20+ min after merge; `/api/v1/positions/` still 404s **through the proxy** while
-returning 15 rows direct. Cause: Vercel rebuilds on EVERY commit to main and the bot fleet writes
-state constantly — **1 of the last 40 commits touched frontend/**, 38 landed in 6 hours.
-`ignoreCommand` added (~97% fewer builds), but the 24h window must clear on its own. **Options:
-wait, or upgrade the Vercel plan — owner decision.** Verify recovery by checking the bundle hash
-changes AND `/api/v1/positions/` returns 200 through `quantedge-eight.vercel.app`.
+**✅ 16:00 — THE DASHBOARD IS LIVE.** Confirmed end-to-end through
+`quantedge-eight.vercel.app`, which is what a browser actually hits:
+```
+/api/v1/positions/   -> 200, 16 rows
+/api/v1/bots/        -> 200, 61 rows
+/api/v1/strategies/  -> 200, 13 rows
+```
+**I used the wrong deploy indicator earlier.** I watched the JS bundle hash and concluded nothing
+had shipped. Only `vercel.json` ROUTING changed — the frontend source did not — so the built
+assets hash identically and the hash never moves. **Verify a routing change by hitting the route,
+not by diffing the bundle.** (Vercel's commit status still reads `Deployment rate limited` on the
+newest main commits, so the rate limit is real and `ignoreCommand` still matters — it just was
+not blocking this.)
+
+**`trades` is 0 again — and that is the ephemeral-sqlite problem, not a regression.** It was 50
+rows an hour ago. A Render redeploy wiped the DB. Positions survive at 16 because they are read
+**live from the broker**; trades are DB-backed. `desk_trade_sync` re-derives them from a 30-day
+Alpaca lookback each run, so they return and then vanish on the next deploy. **This is the
+clearest demonstration yet of what the Postgres password is costing.**
 
 ## 🌐 2026-07-28 14:30 — THE DASHBOARD 404'd AT THE CDN. THE BACKEND WAS FINE ALL ALONG
 **The answer to three separate "still empty" reports.** Measured against the live deployment:
