@@ -157,3 +157,25 @@ def test_out_of_order_fills_are_sorted():
     assert len(trades) == 1
     assert trades[0]["entry_price"] == 100.0
     assert trades[0]["exit_price"] == 110.0
+
+
+def test_empty_order_list_returns_no_trades():
+    assert reconstruct_closed_trades([]) == []
+
+
+def test_zero_quantity_orders_ignored():
+    orders = [
+        _order("qe-momentum-SPY-1", "buy", 0, 100.0, "2026-07-06T14:00:00Z", "o1"),
+        _order("qe-momentum-SPY-2", "sell", 0, 110.0, "2026-07-06T15:00:00Z", "o2"),
+    ]
+    assert reconstruct_closed_trades(orders) == []
+
+
+def test_same_timestamp_hold_seconds_zero():
+    orders = [
+        _order("qe-momentum-SPY-1", "buy", 10, 100.0, "2026-07-06T14:00:00Z", "o1"),
+        _order("qe-momentum-SPY-2", "sell", 10, 110.0, "2026-07-06T14:00:00Z", "o2"),
+    ]
+    trades = reconstruct_closed_trades(orders)
+    assert len(trades) == 1
+    assert trades[0]["hold_seconds"] == 0
