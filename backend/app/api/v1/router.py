@@ -1,4 +1,11 @@
-"""API v1 router — mounts all sub-routers."""
+"""API v1 router — mounts all sub‑routers.
+
+This module creates a top‑level :class:`fastapi.APIRouter` instance that
+includes the routers for every sub‑module of the version‑1 API. The
+router is later incorporated into the main FastAPI application, giving
+a single entry point for all version‑1 endpoints.
+"""
+
 from fastapi import APIRouter
 
 from app.api.v1 import (
@@ -34,7 +41,8 @@ from app.api.v1.bots import router as bots_router
 from app.api.v1.discord_interactions import router as discord_router
 from app.api.v1.webhooks import router as webhooks_router
 
-api_router = APIRouter()
+api_router: APIRouter = APIRouter()
+"""Central router aggregating all version‑1 endpoints."""
 
 api_router.include_router(auth.router)
 api_router.include_router(accounts.router)
@@ -50,7 +58,7 @@ api_router.include_router(experiments.router)
 api_router.include_router(ml.router)
 api_router.include_router(risk.router)
 api_router.include_router(market_data.router)
-# Underscore-prefix alias so /market_data/* and /market-data/* both resolve
+# Underscore‑prefix alias so /market_data/* and /market-data/* both resolve
 api_router.include_router(market_data.router_underscore)
 api_router.include_router(analytics.router)
 api_router.include_router(agents.router)
