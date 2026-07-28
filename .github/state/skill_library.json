@@ -1,11 +1,5 @@
 {
   "skills": [
-    "Scan for malware threats",
-    "Monitor CPU utilization",
-    "Handle SSL errors",
-    "* The current net-used exposure is approximately 2.8% NAV, which is below the 5% NAV gross-exposure cap defined in `./state/risk_limits.yaml`.",
-    "Optimize signal batches",
-    "Validate schema definitions",
     "\"My current task involves analyzing the `continuous_improvement_report.csv` file to identify areas for improvement in the AI platform.\"",
     "Check connection retries",
     "Retry failed trades",
@@ -199,8 +193,14 @@
     "Bind trade timeouts",
     "Check market hours",
     "Test API credentials",
-    "Apply type safety checks"
+    "Apply type safety checks",
+    "Handle null responses",
+    "Cache API results",
+    "Restart on crashes",
+    "Refactor ambiguous functions",
+    "Implement drift detection",
+    "Configure bandit modules"
   ],
-  "last_updated": "2026-07-28T19:17:11.163795+00:00",
+  "last_updated": "2026-07-28T20:41:25.580219+00:00",
   "total": 200
 }
