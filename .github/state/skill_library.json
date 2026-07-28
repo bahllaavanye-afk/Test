@@ -1,9 +1,5 @@
 {
   "skills": [
-    "**Supertrend-RSI Divergence Filter:** The 5-minute Supertrend + RSI-divergence filter is projected to result in a high Sharpe ratio (1.2 \u00b1 0.2, #5 and #6).",
-    "* Given the current market conditions and risk status, we recommend using position sizing guidelines based on the 70/30 arbitrage/directional allocation ratio, as discussed in the #risk channel.",
-    "Flush log buffers",
-    "Validate payloads",
     "Log sequence errors",
     "* **Signal Generation:** Trading signals are being fired for multiple symbols, including SPY and NVDA, and are being used to inform backtesting and strategy evaluation.",
     "Test edge cases",
@@ -199,8 +195,12 @@
     "Handle empty order books",
     "Monitor drift signals",
     "Refactor ambiguous code",
-    "Debug type leaks"
+    "Debug type leaks",
+    "Log trade rejections",
+    "Check API timeouts",
+    "Verify data schemas",
+    "Sync system clocks"
   ],
-  "last_updated": "2026-07-28T13:57:19.240462+00:00",
+  "last_updated": "2026-07-28T16:05:36.103931+00:00",
   "total": 200
 }
