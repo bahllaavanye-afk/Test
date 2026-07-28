@@ -89,4 +89,9 @@ jobs:
           DATABASE_URL:      ""
           REDIS_URL:         ""
           PYTHONPATH:        ${{ github.workspace }}/backend
+          # The equity twin (desk-trading.yml) passes these and posts its desk
+          # summaries and PnL snapshot to Discord; this one did not, so every
+          # crypto run reported to nobody. Same script, same notify path.
+          DISCORD_BOT_TOKEN:   ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python .github/scripts/desk_order_placer.py

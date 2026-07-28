@@ -55,6 +55,13 @@ jobs:
           LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
           LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
           ALLOW_PAID_APIS: "False"
+          # Without these the monitor cannot READ the channels it exists to
+          # monitor: channel_monitor derives CHAT_ENABLED from the bot token
+          # (line 43), so with no token every run printed
+          #   "No token — printing report to stdout only (no Discord posts)"
+          # and exited 0. It reported success for 39 channels it never opened.
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           python .github/scripts/channel_monitor.py
 
