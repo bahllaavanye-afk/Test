@@ -538,6 +538,38 @@ _BARS_MAX_RETRIES = 4
 _BARS_BACKOFF_S = 1.0
 
 
+def _sane_confidence(raw: object) -> float:
+    """A strategy's confidence, forced into [0, 1] with anything malformed at 0.
+
+    Three consumers trust this range — Kelly sizing, the desk confidence gate,
+    and cross-strategy conflict resolution — and none of them were protected.
+    The previous expression, `getattr(signal, "confidence", 1.0) or 1.0`, failed
+    OPEN in three separate ways:
+
+        NaN     every comparison against NaN is False, so `conf < threshold`
+                did not skip it and the signal was approved and Kelly-sized.
+                Worse, the `min(0.90, nan)` idiom several strategies clamp with
+                returns 0.90 — a bad bar became MAXIMUM conviction.
+        0.0     `or 1.0` treats a legitimate zero-conviction signal as falsy
+                and promotes it to 1.0, the largest possible size.
+        >1 / junk  passed straight through to sizing.
+
+    A malformed number means "no conviction", never "total conviction" — the
+    same direction the scanner normaliser was fixed in on 2026-07-28.
+
+    NOTE: the right home for this is `Signal.__post_init__`, which would cover
+    the backend bot path too, but backend/app/strategies/CLAUDE.md says base.py
+    must never be modified. This covers the desk path only.
+    """
+    try:
+        c = float(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+    if c != c or c in (float("inf"), float("-inf")):
+        return 0.0
+    return max(0.0, min(1.0, c))
+
+
 def _is_rate_limited(exc: object) -> bool:
     """True for Alpaca's free-tier throttle, which is worth waiting out.
 
@@ -1440,7 +1472,7 @@ async def run_desk(desk: DeskConfig, account: dict) -> list[dict]:
             if signal is None:
                 continue
 
-            conf = getattr(signal, "confidence", 1.0) or 1.0
+            conf = _sane_confidence(getattr(signal, "confidence", None))
             if conf < desk.confidence_min:
                 print(
                     f"  · {strategy.name}/{symbol} signal={signal.side} conf={conf:.2f} "
@@ -1654,7 +1686,7 @@ async def main() -> None:
                             print(f"  ⚠ {strategy.name}/{symbol} analyze() error: {exc}", flush=True)
                             continue
                         if signal is not None:
-                            conf = getattr(signal, "confidence", 1.0) or 1.0
+                            conf = _sane_confidence(getattr(signal, "confidence", None))
                             raw_signals.append({
                                 "desk":       desk,
                                 "strategy":   strategy,

@@ -228,6 +228,34 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## 💣 2026-07-28 14:00 — A NaN CONFIDENCE SIZED THE *LARGEST* POSITION, NOT NONE (fixed, desk path)
+Chasing the constant-confidence note from 12:20. AST-swept all **106** files under
+`app/strategies`: **88 compute confidence from data**, 13 have a hardcoded literal (7 mixed).
+Hardcoded is mostly defensible — `supertrend` fires only on a discrete trend *flip*, so fixed
+conviction is a design choice, not a defect. **The real bug was next to it.**
+
+`Signal.confidence` is annotated "0.0 to 1.0" and **nothing enforces it**, while three consumers
+trust that range: Kelly sizing, the desk confidence gate, and the conflict resolution shipped at
+12:20. The desk read was `getattr(signal, "confidence", 1.0) or 1.0`, which failed OPEN three ways:
+```
+NaN   nan < 0.60  -> False  => the gate does NOT skip; approved and Kelly-sized.
+      AND min(0.90, nan) -> 0.90, the clamp idiom yield_curve_momentum uses,
+      so ONE BAD BAR becomes MAXIMUM conviction rather than none.
+0.0   `or 1.0` treats zero conviction as falsy and promotes it to 1.0 — the
+      largest size available.
+>1 / junk  passed straight into sizing.
+```
+Fixed via `_sane_confidence()` at both desk read sites — malformed means "no conviction", never
+"total conviction". Same direction as the scanner normaliser fix earlier today. 23 tests, 14 of
+which fail against the pre-fix code.
+
+**⚠️ SCOPE LIMIT — needs a decision.** The correct home is `Signal.__post_init__`, which would
+cover the **backend bot path** too. I implemented it there first and the full suite passed
+(1971), then reverted it: `backend/app/strategies/CLAUDE.md` says **"NEVER modify base.py"**.
+So **the desk path is protected and the backend bot path is NOT.** Relaxing that rule is the
+user's call — the guard's stated rationale is "interface change breaks everything", and adding
+`__post_init__` validation changes no interface.
+
 ## 👁️ 2026-07-28 13:10 — "STILL NO TRADES": THE DASHBOARD COULD NOT SEE THE BOOK (fixed)
 User reported no trades. **They were right about the product surface and wrong about the system** —
 and the surface is what counts. Measured live:
