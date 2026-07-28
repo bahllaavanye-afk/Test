@@ -251,23 +251,36 @@ half the loop — and I had checked only `desk-trading.yml`, so I recorded "reco
 in good faith and was wrong. **Always check `desk-trading-crypto-24x7.yml` too; it runs the
 same script.**
 
-**Follow-up 07:20 — the two desk workflows were starving each other.** Both rode
-`workflow_run: ["CI"] completed`, neither has a job-level market gate, and they use *different*
-concurrency groups (`desk-trading` vs `desk-crypto`) so nothing serialises them. Every CI
-completion launched both in parallel against the same free-tier Alpaca data API:
+**Follow-up 07:20 — the two desk workflows were starving each other.** They share BOTH the
+`workflow_run: ["CI"] completed` trigger AND a `push` path filter (both list
+`.github/scripts/desk_order_placer.py`). Neither has a job-level market gate, and they use
+*different* concurrency groups (`desk-trading` vs `desk-crypto`) so nothing serialises them —
+both launch in parallel against the same free-tier Alpaca data API:
 ```
-2026-07-28 06:46, one CI completion, two runs:
+over 60 runs of each, 22 fired at the identical timestamp:
+  (workflow_run, workflow_run) -> 15
+  (push,         push)         ->  7
+one push pair, 06:46:05, both on sha 49e46ded:
   desk-trading.yml          bars_fetched=70   ALL 20 crypto symbols
   desk-trading-crypto-24x7  bars_fetched=5    ← lost the race, HTTP 429
 ```
+**⚠️ #1127 was HALF a fix and its stated cause was wrong.** It guarded
+`github.event_name != 'workflow_run'` and the PR claimed the 06:46 pair was "ignited by one CI
+completion" — it was not, it was a **push** collision, so the headline evidence was not even an
+instance of what the guard blocked. It did cover 15 of the 22. The `push` path stayed live until
+the follow-up below. **Lesson: I read `workflow_run` off the YAML and never checked the runs'
+actual `event` field.** One `curl .../runs | Counter(r['event'])` would have shown it.
 `desk-trading.yml` already runs **every** desk, crypto included, 24/7 — so the crypto-only run
 was doing duplicate work, doing it worse, and degrading the twin doing it properly. Thin data is
 not cosmetic: it feeds the ensembles, and this is very likely a large part of the standing
-`sell/buy conflict — stand aside` on nearly every crypto symbol. The crypto job now skips
-`workflow_run` (`if: github.event_name != 'workflow_run'`); its own cron + dispatch remain, which
-is its real value for stretches when CI is not completing. 5 tests, verified failing pre-fix,
-incl. one asserting the cron survives so "stop the duplicate" can't be confused with "delete
-24/7 crypto coverage".
+`sell/buy conflict — stand aside` on nearly every crypto symbol. The crypto job now runs on a
+**whitelist** — `if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'`
+— rather than blacklisting one trigger at a time. That is the real lesson: this workflow exists
+for its own cron, so anything it *shares* with the equity workflow it should cede, and a
+whitelist stays correct when a new shared trigger is added later. 8 tests, verified failing
+against the shipped half-fix, incl. one parameterised over both shared triggers so a partial fix
+fails instead of looking complete, and one asserting the cron survives so "stop the duplicate"
+can't be confused with "delete 24/7 crypto coverage".
 
 **Test-methodology note, the important part.** My first draft asserted `recover_negative_cash(...)
 is False` and **passed against the unfixed code** — because without credentials the flatten
