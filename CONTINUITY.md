@@ -228,6 +228,46 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## 🌐 2026-07-28 14:30 — THE DASHBOARD 404'd AT THE CDN. THE BACKEND WAS FINE ALL ALONG
+**The answer to three separate "still empty" reports.** Measured against the live deployment:
+```
+direct to backend   /api/v1/positions/           -> 200
+through Vercel      /api/v1/positions/           -> 404 NOT_FOUND (iad1::…)
+through Vercel      /api/v1/scanners/polymarket  -> 200
+```
+The rewrite source was `/api/:path*`. Vercel's named-segment matcher splits on `/`, so a
+**trailing slash** leaves an empty final segment, the rule does not match, and the request falls
+through to the SPA fallback. FastAPI declares every collection endpoint with a trailing slash and
+axios calls `.get("/positions/")` — so **positions, trades, bots, strategies, orders and
+analytics ALL 404'd in the browser** while the same paths returned data directly from Render.
+Only `scanners/{desk}` worked, because it has no trailing slash. Fixed to `/api/(.*)` → `$1`.
+19 tests, 7 fail on the old source.
+
+**⚠️ I HAD BEEN CHECKING THE WRONG SITE ALL SESSION.** `quant-edge-nine.vercel.app` — which I
+repeatedly reported as "frontend 200 ✓" — is an unrelated app titled *"My Google AI Studio App"*.
+**The real dashboard is `quantedge-eight.vercel.app`** (title matches the repo build). Also live:
+`quantedge.vercel.app` = "Create Next App". Verify by TITLE, not status code.
+
+**Also found:** `Landing.tsx` defaults to `quantedge-api-agb8.onrender.com` — a *second, older*
+backend that is alive but whose DB is fully broken. Only reached if `VITE_API_URL` is unset.
+
+**Discord was reporting to nobody.** `channel-monitor.yml` passed **no Discord env at all**, so
+every run printed `No token — printing report to stdout only` and exited 0 — success for 39
+channels it never opened. `desk-trading-crypto-24x7.yml` had the same gap while its equity twin
+posts fine, which is why the desk channels only ever showed equity. Both wired. Sweep: **27 of 43**
+Discord-capable workflows have no token; the rest were left alone (many only import the helper).
+The existing guard cannot catch this — it fails a workflow passing the webhook *without* the bot
+token, so passing **neither** satisfies it vacuously.
+
+**Security Scan has been red on every run — and it was my regression.** The "Secret-leak guard
+(hard gate)" installs a light pytest set and runs `test_script_safety.py`, which is pure AST/regex
+inspection using zero fixtures. But `_isolate_each_file` (the autouse per-file DB isolation added
+at 12:00 today) depends on `_create_tables` → imports `app.models` + `app.database` → sqlalchemy.
+So **every** backend test file now drags in the DB stack and the gate errored at setup rather than
+gating. Fixed with `--noconftest`. **NOTE the scan checks out `ref: main`, so it only goes green
+after landing — never on its own PR.** I had been watching only the `CI` workflow via Monitor and
+merged all session without noticing a second red check.
+
 ## 🧾 2026-07-28 14:40 — "STILL EMPTY TRADES" WAS A REAL BUG, AND MY EXPLANATION WAS WRONG
 Reported twice. I answered the first time with *"nothing has round-tripped yet — expected"*.
 **That was wrong.** `recover_negative_cash` flattened **25 positions** on 2026-07-27 18:43 and
