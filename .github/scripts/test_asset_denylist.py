@@ -9,25 +9,23 @@ carrying the full instrumentation from #1184/#1186. The crypto desk logged:
           "message":"asset MKR/USD is not active"}
       ⓘ MKR/USD marked INACTIVE for the rest of this run
 
-and — decisively — NONE of these:
+and none of the filter's diagnostic lines.
 
-    ⓘ tradable-crypto lookup FAILED (...)          <- lookup was healthy
-    ⓘ tradable-crypto set has N entries but ...    <- format guard did not trip
-    ⓘ skipping N non-tradable pair(s)              <- nothing was dropped
+⚠️ I READ THAT WRONG. I concluded from the missing `skipping` line that Alpaca
+must be listing MKR/USD as active while its order engine refused it — reasoning
+that "_filter_tradable_crypto runs unconditionally for every desk, so silence
+means it found nothing to drop". **It does not run at all.** The filter was only
+ever called from `run_desk()`, which has zero call sites (see
+test_no_dead_desk_path.py). The silence meant the filter was never reached, and
+said nothing whatever about Alpaca's metadata. That question is still open, and
+the filter now runs in the real pipeline, so a future run can answer it.
 
-`_filter_tradable_crypto` is called unconditionally for every desk and prints
-whenever it drops anything, so the only reading left is: Alpaca's
-`/v2/assets?asset_class=crypto&status=active` returns MKR/USD as tradable while
-`POST /v2/orders` refuses it as not active. **The metadata contradicts the order
-engine**, which disproves the IMPROVEMENTS.md premise that filtering the
-universe against the active-asset list would fix this class. It cannot.
-
-What remains is memory. The in-process `_inactive_assets` set catches every
-repeat within a run but never the FIRST attempt, and that attempt is expensive:
-MKR/USD took 1 of only 3 passing signals in BOTH runs — roughly a third of the
-crypto desk's capacity spent on a guaranteed reject. Seeding from a checked-in
-denylist removes it before signals are generated, so the slot goes to a pair
-that can actually trade.
+What is NOT in doubt is the reject itself and its cost. The in-process
+`_inactive_assets` set catches every repeat within a run but never the FIRST
+attempt, and that attempt is expensive: MKR/USD took 1 of only 3 passing signals
+in BOTH runs — roughly a third of the crypto desk's capacity spent on a
+guaranteed reject. Seeding from a checked-in denylist removes it before signals
+are generated, so the slot goes to a pair that can actually trade.
 
 Entries EXPIRE (DENYLIST_TTL_DAYS). A delisting can be reversed, and a denylist
 nobody re-confirms is exactly how a permanently-stale exclusion happens. Letting
