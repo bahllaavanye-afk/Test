@@ -71,6 +71,33 @@ def _normalise_scan_item(item: Any) -> dict:
     }
 
 
+def _normalise_scan_items(raw_items: Any) -> list[dict]:
+    """Normalise a batch and DROP rows a scanner produced nothing for.
+
+    `ScanResultOut.validate_signals` rejects an empty `signals` list, and both
+    the equity and crypto scanners return a ScanResult unconditionally — so a
+    symbol where no condition fired arrives with `signals=[]`, `score=0`,
+    `side="neutral"`. One of those makes the whole response a 500.
+
+    That is what took `/api/v1/scanners/crypto` down: not a bad row, but an
+    EMPTY one. It stayed hidden while the crypto scanner was starved of bars
+    and returned nothing at all; the moment the bars fix restored its universe,
+    it started emitting signal-less rows and the endpoint began failing.
+
+    Dropping is right rather than inventing a placeholder signal name: a row
+    with no signals, zero score and a neutral side is the scanner saying
+    "nothing here", so it carries no information and would only dilute a
+    ranked list. Applied on the READ path as well as the producer, because
+    Redis rows written before this fix outlive the deploy.
+    """
+    out: list[dict] = []
+    for item in raw_items or []:
+        norm = _normalise_scan_item(item)
+        if norm["signals"]:
+            out.append(norm)
+    return out
+
+
 class ScanResultOut(BaseModel):
     symbol: str = Field(..., description="Ticker symbol of the instrument.", json_schema_extra={"example": "AAPL"})
     desk: str = Field(..., description="Desk name that generated the signal.", json_schema_extra={"example": "equity"})
@@ -185,7 +212,7 @@ async def get_scan_results(
             try:
                 raw = await redis.get(f"scanner:{desk}:top10")
                 if raw:
-                    items = [_normalise_scan_item(i) for i in json.loads(raw)]
+                    items = _normalise_scan_items(json.loads(raw))
                     return ScanResponse(desk=desk, results=items, cached=True)
             except Exception:
                 pass
@@ -201,7 +228,7 @@ async def get_scan_results(
         else:
             results = await PolymarketScanner().scan()
 
-        out = [ScanResultOut(**_normalise_scan_item(r)) for r in results[:20]]
+        out = [ScanResultOut(**r) for r in _normalise_scan_items(results[:20])]
         return ScanResponse(desk=desk, results=out, cached=False)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -218,7 +245,7 @@ async def get_all_scan_results(user=Depends(get_current_user)):
             try:
                 raw = await redis.get(f"scanner:{desk}:top10")
                 if raw:
-                    cached_results = [_normalise_scan_item(i) for i in json.loads(raw)]
+                    cached_results = _normalise_scan_items(json.loads(raw))
             except Exception:
                 pass
         responses.append(ScanResponse(desk=desk, results=cached_results, cached=True))
