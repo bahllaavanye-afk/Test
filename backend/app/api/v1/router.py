@@ -20,6 +20,9 @@ from app.api.v1 import (
     archive,
     improvements,
     monitoring,
+    options,
+    regime,
+    audit_log,
     integrations,
     pipeline,
     leaderboard,
@@ -69,3 +72,40 @@ api_router.include_router(bots_router)
 api_router.include_router(scanners_router)
 api_router.include_router(discord_router)
 api_router.include_router(webhooks_router)
+
+# ---------------------------------------------------------------------------
+# Unit tests for router edge cases
+# ---------------------------------------------------------------------------
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+def _create_app() -> FastAPI:
+    """Create a FastAPI app with the version‑1 router mounted."""
+    app = FastAPI()
+    app.include_router(api_router)
+    return app
+
+def test_market_data_alias_routes():
+    """Ensure both underscore and hyphen prefixes are registered."""
+    app = _create_app()
+    paths = {route.path for route in app.routes}
+    assert any(p.startswith("/market_data") for p in paths), "Missing /market_data prefix"
+    assert any(p.startswith("/market-data") for p in paths), "Missing /market-data prefix"
+
+def test_duplicate_router_inclusion_raises():
+    """Including the same sub‑router twice should raise a ValueError."""
+    dummy = APIRouter()
+
+    @dummy.get("/dup")
+    def dup():
+        return {"ok": True}
+
+    app = FastAPI()
+    app.include_router(dummy)
+    with pytest.raises(ValueError):
+        app.include_router(dummy)
+
+def test_api_router_has_routes():
+    """The main API router must expose at least one route."""
+    assert len(api_router.routes) > 0, "api_router has no routes registered"
