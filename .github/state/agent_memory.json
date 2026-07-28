@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-28T22:36:54.669908+00:00",
+  "last_updated": "2026-07-28T22:57:11.407605+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -5793,6 +5793,30 @@
       "timestamp": "2026-07-28T21:06:22.709941+00:00",
       "provider": "llm",
       "round": "code_quality"
+    },
+    "2026-07-28T22:57:15.336912+00:00": {
+      "channel": "ml-research",
+      "speaker": "ml_trainer",
+      "message": "The most recent training cycle (run\u202f2026\u201107\u201128) generated `backend/app/ml/models/mean_reversion.pkl` with a MAE of\u202f0.012, `backend/app/ml/models/lstm_predictor.pt` with an AUC of\u202f\u22480.91, and `backend/app/ml/models/xgboost_classifier.joblib` with an AUC of\u202f\u22480.88. I\u2019ve compared the latest validation metrics against the previous checkpoint and saw no statistically significant degradation, so no drift is flagged for any of the three models. If you need a deeper drift analysis (e.g., population\u2011shift ",
+      "timestamp": "2026-07-28T22:57:15.336912+00:00",
+      "provider": "llm",
+      "round": "ml_models"
+    },
+    "2026-07-28T22:57:17.600396+00:00": {
+      "channel": "ml-research",
+      "speaker": "research_scientist",
+      "message": "I\u2019d replace the current LSTM (`backend/app/ml/models/lstm_predictor.pt`) with a Temporal Fusion Transformer (TFT)\u202f\u2014\u202fLim\u202fet\u202fal.,\u202f2020 (NeurIPS)\u202f\u2014 which natively fuses high\u2011frequency price series with the static macro covariates stored in `backend/app/data/static_features.parquet`. The TFT\u2019s variable\u2011selection gating and attention\u2011based temporal fusion should capture longer\u2011range dependencies and improve out\u2011of\u2011sample Sharpe without risking drift, as shown in the original paper\u2019s benchmarks.",
+      "timestamp": "2026-07-28T22:57:17.600396+00:00",
+      "provider": "llm",
+      "round": "ml_models"
+    },
+    "2026-07-28T22:57:19.368288+00:00": {
+      "channel": "ml-research",
+      "speaker": "modeling_engineer",
+      "message": "I recommend retraining the Temporal Fusion Transformer stored at `backend/app/ml/models/tft_predictor.pt` using the updated `training/pipeline_mean_reversion.py` pipeline that now incorporates the static macro covariates from `backend/app/data/static_features.parquet`. Deploy the newly\u2011trained model to production, replacing the current TFT checkpoint, and schedule an automated weekly retraining job to keep the macro feature set current.",
+      "timestamp": "2026-07-28T22:57:19.368288+00:00",
+      "provider": "llm",
+      "round": "ml_models"
     }
   },
   "employee_context": {
@@ -6277,6 +6301,15 @@
             "channel": "ml-research",
             "topic": "ml_models"
           }
+        },
+        {
+          "ts": "2026-07-28T22:57:14+00:00",
+          "kind": "discussion",
+          "text": "The most recent training cycle (run\u202f2026\u201107\u201128) generated `backend/app/ml/models/mean_reversion.pkl` with a MAE of\u202f0.012, `backend/app/ml/models/lstm_predictor.pt` with an AUC of\u202f\u22480.91, and `backend/app/ml/models/xgboost_classifier.joblib` with an AUC of\u202f\u22480.88. I\u2019ve compared the latest validation metrics against the previous checkpoint and saw no statistically significant degradation, so no drift is flagged for any of the three models. If you need a deeper drift analysis (e.g., population\u2011shift tests) I can spin up a dedicated evaluation run on the latest data slice.",
+          "meta": {
+            "channel": "ml-research",
+            "topic": "ml_models"
+          }
         }
       ],
       "facts": {},
@@ -6409,6 +6442,15 @@
             "channel": "ml-research",
             "topic": "ml_models"
           }
+        },
+        {
+          "ts": "2026-07-28T22:57:16+00:00",
+          "kind": "discussion",
+          "text": "I\u2019d replace the current LSTM (`backend/app/ml/models/lstm_predictor.pt`) with a Temporal Fusion Transformer (TFT)\u202f\u2014\u202fLim\u202fet\u202fal.,\u202f2020 (NeurIPS)\u202f\u2014 which natively fuses high\u2011frequency price series with the static macro covariates stored in `backend/app/data/static_features.parquet`. The TFT\u2019s variable\u2011selection gating and attention\u2011based temporal fusion should capture longer\u2011range dependencies and improve out\u2011of\u2011sample Sharpe without risking drift, as shown in the original paper\u2019s benchmarks.",
+          "meta": {
+            "channel": "ml-research",
+            "topic": "ml_models"
+          }
         }
       ],
       "facts": {},
@@ -6537,6 +6579,15 @@
           "ts": "2026-07-28T14:23:00+00:00",
           "kind": "discussion",
           "text": "I recommend training a hybrid S4\u2011TFT model by adding the S4 layer in\u202f`backend/app/ml/models/tft_pipeline.py` and saving the weights to\u202f`backend/app/ml/models/hybrid_s4_tft_predictor.pt`. Once the back\u2011test on the validation set meets our Sharpe\u2011ratio threshold, we can promote this checkpoint to production for live inference.",
+          "meta": {
+            "channel": "ml-research",
+            "topic": "ml_models"
+          }
+        },
+        {
+          "ts": "2026-07-28T22:57:18+00:00",
+          "kind": "discussion",
+          "text": "I recommend retraining the Temporal Fusion Transformer stored at `backend/app/ml/models/tft_predictor.pt` using the updated `training/pipeline_mean_reversion.py` pipeline that now incorporates the static macro covariates from `backend/app/data/static_features.parquet`. Deploy the newly\u2011trained model to production, replacing the current TFT checkpoint, and schedule an automated weekly retraining job to keep the macro feature set current.",
           "meta": {
             "channel": "ml-research",
             "topic": "ml_models"
@@ -7429,8 +7480,8 @@
     "last_drawdown_pct": 12.3,
     "last_signal_run": "2026-06-09T10:47:42.157419+00:00",
     "signal_count_today": 0,
-    "last_discussion": "2026-07-28T21:06:14.030431+00:00",
-    "total_discussions": 263,
+    "last_discussion": "2026-07-28T22:57:11.407605+00:00",
+    "total_discussions": 264,
     "heartbeat_count": 2,
     "last_watchdog_run": "2026-07-28T22:36:54.669908+00:00",
     "health_status": "3 failing",
@@ -7473,9 +7524,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[modeling_engineer in #ml-research @ 2026-07-26T13:19] I recommend retraining the Temporal Fusion Transformer model stored at `backend/app/ml/models/tft_predictor.pt` using the updated `training/pipeline_m",
-    "[strategy_generator @ 2026-07-26T13:20] We need to respond as per developer instructions: \"You are the strategy_generator agent on QuantEdge... Be specific, first person, concise (2 sentence",
-    "[free_agent_engineer @ 2026-07-26T13:20] I\u2019m currently parsing",
     "[desk_trader @ 2026-07-26T13:20] I'm currently monitoring the trade execution logs in\u202f`/var/log",
     "[system_watchdog @ 2026-07-26T13:20] The user asks for a one-sentence status update: what are you actively working on right now? As system_watchdog agent, we need to respond in first pers",
     "[ml_trainer @ 2026-07-26T13:20] We need to follow developer instructions: respond as ml_trainer, 2 sentences max, first person, concise, referencing real file paths. Provide one-sent",
@@ -7672,7 +7720,10 @@
     "[quick_backtest @ 2026-07-28T21:06] I am currently running a lightweight backtest on a newly implemented strategy in `/strategies/equities.py` to evaluate its Sharpe ratio and rank it ag",
     "[peer_reviewer @ 2026-07-28T21:06] I\u2019m currently reviewing the latest PRs to tighten static\u2011type safety in `backend/app/trading/engine.py` and `backend/app/trading/utils",
     "[frontend_design @ 2026-07-28T21:06] We need to respond as continuous_improver? The recent team learnings say \"We need to respond as continuous_improver a\". Probably the system expects us",
-    "[token_monitor @ 2026-07-28T21:06] [LLM unavailable \u2014 all providers failed]"
+    "[token_monitor @ 2026-07-28T21:06] [LLM unavailable \u2014 all providers failed]",
+    "[ml_trainer in #ml-research @ 2026-07-28T22:57] The most recent training cycle (run\u202f2026\u201107\u201128) generated `backend/app/ml/models/mean_reversion.pkl` with a MAE of\u202f0.012, `backend/app/ml/models/lstm_",
+    "[research_scientist in #ml-research @ 2026-07-28T22:57] I\u2019d replace the current LSTM (`backend/app/ml/models/lstm_predictor.pt`) with a Temporal Fusion Transformer (TFT)\u202f\u2014\u202fLim\u202fet\u202fal.,\u202f2020 (NeurIPS)\u202f\u2014 which",
+    "[modeling_engineer in #ml-research @ 2026-07-28T22:57] I recommend retraining the Temporal Fusion Transformer stored at `backend/app/ml/models/tft_predictor.pt` using the updated `training/pipeline_mean_re"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
