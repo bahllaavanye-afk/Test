@@ -228,6 +228,31 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## 🚨 2026-07-28 16:30 — THE STOP-LOSS ENGINE HAS NO CONFIG FOR ANY LIVE POSITION
+The crypto pricing fix worked — and immediately exposed the larger gap behind it.
+
+`PositionMonitor` skips any position with no `pos_exit:` config. Those keys are written **only by
+`strategy_runner`, on its own fills**. Every live paper order is placed by the GitHub Actions
+desks (`desk_order_placer.py`), whose workflow even sets `REDIS_URL=""` — so they write nothing.
+
+**Result: all 16 open positions are skipped every sweep. No stop-loss, no take-profit.** Verified
+live: `/api/v1/positions/UNIUSD/exit-config` → 404 "No active exit config found", and the same
+for SHIBUSD. The skip was a `logger.debug`, invisible in production, so an unmonitored position
+looked exactly like a monitored one.
+
+Now a per-sweep **warning** with the count and symbols. **Deliberately did NOT apply a default
+stop:** no global default exists in this codebase (bots carry per-template `stop_loss_pct` 2-3%,
+`strategy_runner` uses `signal.stop_loss`), so picking one would start closing 16 real positions
+on a number nobody chose. **That threshold is an owner decision.** Three routes:
+  1. desks write `pos_exit:` on fill — needs `REDIS_URL` in the desk workflow
+  2. PositionMonitor applies a documented default to configless positions
+  3. leave as-is and rely on the desk-side daily loss cap alone
+
+Also note `exit-config` cannot be queried for slashed symbols at all — `/positions/UNI%2FUSD/…`
+404s on routing, because the slash breaks the path parameter.
+
+**Deploy on main RECOVERED** (was failing): success on `6880391a`, the crypto-pricing commit.
+
 ## ✅ 2026-07-28 15:30 — VERIFIED LIVE: trades reconstructed, positions serving, Vercel BLOCKED
 Confirmed against production, not asserted:
 ```
