@@ -298,6 +298,37 @@ absence of evidence in a log that cannot report the relevant state is not eviden
 **Next tick:** grep a fresh desk run for `MKR/USD is not active`, for `ⓘ tradable-crypto lookup
 FAILED`, and for `marked INACTIVE`. That triple settles A-vs-B and confirms the de-duplication.
 
+### ✅ 21:36 — VERIFIED LIVE (run `30401244361`), and the answer is "not A"
+```
+► vol_of_vol_timing/MKR/USD signal=BUY conf=0.88 — placing $197 limit-first order
+  ⚠ alpaca POST /v2/orders → 422: {"code":40010001,"message":"asset MKR/USD is not active"}
+  ⓘ MKR/USD marked INACTIVE for the rest of this run — later desks will skip it instead of re-submitting
+```
+The memory fired on its first live encounter. And the run carried **no** `ⓘ tradable-crypto
+lookup FAILED` line, so **branch A is eliminated — the lookup succeeded.**
+
+**⚠️ But I could not yet claim branch B, and nearly did.** `_filter_tradable_crypto` has a
+*second* silent bail-out: if the returned set lacks BTC/USD and ETH/USD it assumes a format
+mismatch and declines to filter — returning with no log line at all. So "lookup succeeded +
+nothing dropped" still had two readings:
+- **B1** MKR/USD genuinely is in Alpaca's active-asset list and its order engine contradicts
+  its own metadata — in which case *no* pre-filter can ever catch this and the run-scoped
+  memory is the only defence;
+- **B2** the set came back in another format (`MKRUSD`), the guard tripped, and the filter
+  no-opped invisibly.
+
+Both remaining bail-outs (format mismatch, and the never-return-an-empty-universe guard) now
+print themselves, with the set size and a sample. **Next run settles B1 vs B2** — and the fix
+differs completely between them, so it is worth the extra tick rather than guessing.
+
+**The lesson keeps repeating in the same shape:** I closed this once on one clean run, then
+closed "branch A vs B" on one instrumented run. Each time the silent path was one level deeper.
+Instrument *every* early return in a fail-soft function at once, not the one you happen to
+suspect.
+
+**Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
+signals that passed, so a third of the desk's capacity went to a guaranteed reject.
+
 ## ✅ 2026-07-28 19:30 — fractional shorts CONFIRMED zero; two more order-time rejects fixed
 **Verified on the next live run, as promised.** Fractional-short 422s across three runs:
 `3 → 1 → 0`. Two market replacements occurred in the last run and neither failed, so the

@@ -371,12 +371,27 @@ def _filter_tradable_crypto(symbols: list[str], tradable: "set[str] | None") -> 
     """(kept, dropped). Non-crypto symbols (no '/') always pass through. Crypto
     pairs are dropped only when `tradable` is present AND clearly in the desk's
     'SYM/USD' format (the majors are in it) — otherwise keep everything, so a
-    format mismatch or empty/failed lookup can never nuke the universe."""
-    if not tradable or not ({"BTC/USD", "ETH/USD"} & tradable):
+    format mismatch or empty/failed lookup can never nuke the universe.
+
+    Every bail-out announces itself. All three used to return silently, which is
+    why `MKR/USD is not active` could recur with no `ⓘ skipping` line and no way
+    to tell whether the filter had run at all. A no-op that looks identical to
+    "nothing to drop" is the whole bug class."""
+    if not tradable:
+        return list(symbols), []          # already narrated by the lookup itself
+    if not ({"BTC/USD", "ETH/USD"} & tradable):
+        print(f"    ⓘ tradable-crypto set has {len(tradable)} entries but neither "
+              f"BTC/USD nor ETH/USD — format mismatch (sample: "
+              f"{sorted(tradable)[:5]}), not filtering the universe this run",
+              flush=True)
         return list(symbols), []
     kept = [s for s in symbols if "/" not in s or s in tradable]
     dropped = [s for s in symbols if "/" in s and s not in tradable]
-    return (kept or list(symbols)), dropped
+    if not kept:
+        print(f"    ⓘ tradable filter would have dropped ALL {len(symbols)} symbols "
+              f"— refusing to empty the universe, keeping everything", flush=True)
+        return list(symbols), []
+    return kept, dropped
 
 
 # Assets Alpaca has refused as "not active" during THIS process. The tradable
