@@ -242,10 +242,39 @@ Verified across three runs — the survivors are an exact alphabetical PREFIX of
 06:46  bars_fetched=5   AAVE AVAX BAT BCH BTC
 04:45  bars_fetched=11  AAVE AVAX BAT BCH BTC CRV DOGE DOT ETH GRT LINK
 ```
-**SHIB, SOL, SUSHI, UNI, XRP, XTZ, YFI, MKR, LTC received NO bars, ever.** No ensemble has ever
-voted on them. The desks were not sampling the universe, they were reading the first page of it.
 Now retries the SAME page on 429 (4 attempts, 1/2/4/8s) and, when it does give up, names the
 symbols it is dropping instead of printing a generic failure. 13 tests.
+
+### ✅ 10:40 — VERIFIED LIVE, and one of my claims was WRONG
+Post-fix `desk-trading` run on `bbd2efac`, measured against the pre-fix run of the same workflow:
+```
+                       total  stocks  crypto   bars-path failures
+pre-fix  06:46           70      50      20            1
+post-fix 09:46           98      78      20            0
+signals_generated       355 -> 506   (+43%)
+passed the conf gate     17 ->  20
+```
+**The fix is real: +28 stock symbols per run, zero truncations.** The crypto-only workflow went
+from 5/20 to full coverage, and UNI/USD and MKR/USD now resolve ensembles (conf 0.97 / 0.89).
+
+**⚠️ I overstated the impact.** I wrote "SHIB, SOL, SUSHI, UNI, XRP, XTZ, YFI, MKR, LTC received
+NO bars, ever — no ensemble has ever voted on them." **False.** `desk-trading.yml` always had
+**20/20 crypto**; its crypto desks *did* vote on 7 of those 9 pre-fix. Only
+`desk-trading-crypto-24x7.yml` was truncated to 5. I measured the starvation on the crypto-only
+workflow and generalised it to the system without checking the other workflow's own symbol list —
+which I already had in hand. **The truncation's real victim was the STOCKS batch** (50 of 78),
+because stocks are the longer list and paginate further.
+
+**⚠️ And my follow-on hypothesis is REFUTED.** I said the starvation likely explained the standing
+`sell/buy conflict — stand aside`. It does not. Crypto ensemble resolution is essentially
+unchanged with full data:
+```
+pre-fix   35 crypto ensemble lines -> 1 resolved, 34 stand-aside
+post-fix  36 crypto ensemble lines -> 2 resolved, 34 stand-aside
+```
+**34 stand-asides either way.** The conflict rate is structural in the ensemble logic, not a data
+artefact — two strategies systematically taking opposite sides on the same symbol. That is now an
+open question with a clean measurement behind it, and it is the next thing worth investigating.
 
 **⚠️ This corrects #1127/#1130.** I attributed the crypto starvation to the two desk workflows
 colliding on shared triggers. **Wrong cause.** Decontending them was independently right (22 of
