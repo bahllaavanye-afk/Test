@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785274218.804311,
+    "last_updated": 1785278185.5173926,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1785274218.8029313
+    "last_brain_update": 1785278185.516046
   },
   "episodic": [
     {
@@ -2099,11 +2099,6 @@
     {
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
-      "ts": 1784285174.4427116
-    },
-    {
-      "summary": "[LLM unavailable \u2014 all providers failed]",
-      "item_count": 20,
       "ts": 1784289990.8216877
     },
     {
@@ -2595,6 +2590,11 @@
       "summary": "The discussions indicate that automated fixes were skipped for multiple issues due to complexity, with one specifically involving the implementation of SmartPric.",
       "item_count": 20,
       "ts": 1785274218.7895539
+    },
+    {
+      "summary": "The automated weekly security scan identified high-severity issues via Bandit, and deployment failed due to a resource limit error (\"try again in 24 hours\").",
+      "item_count": 20,
+      "ts": 1785278185.5033133
     }
   ],
   "experiment_results": [
@@ -2681,48 +2681,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "desk-crypto",
-      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $386 conf=97%  id=`17f3541d\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $339 conf=92%  id=`c26e07f3\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784892255.034805
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "**\u26a1 Backtest Engine**: I\u2019d expect a Sharpe ratio in the 1.3\u20111.5 range because the 14\u2011period RSI combined with a momentum filter typically yields a modestly positive expectancy on 15\u2011minute equity bars while keeping drawdowns low, especially after excluding the higher\u2011noise stocks (QQQ, MSFT, NVDA). ",
-      "source": "desk_run_summary",
-      "ts": 1784892255.0400152
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (14:28 UTC)  equity=$22,321.42  regime=sideways/calm\nfunnel: 51 generated \u2192 17 survived gate+topK (0 exploration) \u2192 12 placed\n\u2705 *Equities*: 1 orders\n\u2705 *Crypto*: 3 orders\n\u2705 *Options*: 2 orders\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\u2705 *StatArb*: 3 orders\n\u2705",
-      "source": "desk_run_summary",
-      "ts": 1784904717.4001756
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1784904717.405421
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*Crypto Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $386 conf=97%  id=`d1d7dabf\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $335 conf=92%  id=`718d0170\u2026`\n\ud83d\udfe2 `vol_of_vol_timing/YFI/USD` BUY $335 conf=88%  id=`9c5dd1ac\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784904717.4109719
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "*International Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $335 conf=100%  id=`bbf0f216\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784904717.416247
-    },
-    {
-      "channel": "desk-options",
-      "summary": "*Options Desk* \u2014 2 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/QQQ` SELL $566 conf=100%  id=`9c3cc904\u2026`\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1175 conf=99%  id=`3f033111\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784904717.4215386
-    },
     {
       "channel": "desk-commodities",
       "summary": "*Commodities Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $335 conf=98%  id=`b5052769\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $922 conf=80%  id=`a520f27b\u2026`",
@@ -3280,6 +3238,48 @@
       "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
       "source": "desk_run_summary",
       "ts": 1785274208.0294652
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (21:52 UTC)  equity=$21,831.36  regime=sideways/calm\nfunnel: 64 generated \u2192 20 survived gate+topK (0 exploration) \u2192 2 placed\n\u26a0\ufe0f 17 dropped before placement \u2014 17 market closed\n\u26a0\ufe0f *Equities*: 2 signal(s) fired, **0 placed** \u2014 2 market closed\n\u2705 *Crypto*: 2 orders\n\u26a0\ufe0f *Options*: 3 si",
+      "source": "desk_run_summary",
+      "ts": 1785278174.7524762
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 9 signal(s) \u2265 0.6: EUR_USD BUY@1.13864, USD_CAD BUY@1.41082, EUR_USD SELL@1.13864 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1785278174.7602136
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $327 conf=98%  id=`2047dbcd\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $327 conf=97%  id=`98737039\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785278174.7659423
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Tuesday July 28, 2026*\n\n- \ud83d\ude80 **Agent Activity:** Our autonomous agents logged 0 tasks today (0% success), but the top performers\u2014cleanup, docstrings, and optimization\u2014each churned out 10 tasks, showing where our manual effort still shines.  \n- \ud83d\udcda **Skill Library:** We\u2019ve amassed",
+      "source": "desk_run_summary",
+      "ts": 1785278174.7716646
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 2 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/IWM` SELL $1172 conf=98%  id=`56edafe3\u2026`\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1310 conf=96%  id=`3b2a9a5b\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785278174.7773383
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $328 conf=100%  id=`7a639133\u2026`\n\ud83d\udfe2 `time_series_momentum/PDBC` BUY $558 conf=99%  id=`2575a540\u2026`\n\ud83d\udd34 `time_series_momentum/UNG` SELL $361 conf=92%  id=`3787ebfc\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785278174.7830338
+    },
+    {
+      "channel": "desk-polymarket",
+      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785278174.7886326
     }
   ]
 }
