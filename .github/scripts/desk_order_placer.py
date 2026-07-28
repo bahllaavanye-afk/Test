@@ -858,11 +858,36 @@ async def _equity_short_safe_qty(
 
     Returns None to mean "do not place this order".
     """
-    if is_crypto or side != "sell":
+    if is_crypto:
+        return qty
+    if side == "buy":
+        # Alpaca will not let ONE order flip a short into a long:
+        #   403 {"code":40310000,"message":"insufficient qty available for
+        #        order (requested: 1.77, available: 1)","symbol":"SPY"}
+        # Twice in one run. Cap the buy at the short size so it CLOSES the
+        # short — the risk-reducing half of the intent, and what Alpaca
+        # requires be done first. The long can be opened on the next run.
+        held = (await _cached_position_map()).get(symbol, 0.0)
+        if held < 0 and qty > abs(held):
+            capped = abs(held)
+            print(f"    · {symbol} buy {qty} would flip a short of {abs(held)} "
+                  f"— capped to {capped} to close it (Alpaca rejects the flip)",
+                  flush=True)
+            return capped
+        return qty
+    if side != "sell":
         return qty
     held = (await _cached_position_map()).get(symbol, 0.0)
     if held >= qty:
         return qty  # a close, not a short
+    if not await _is_shortable(symbol):
+        # Some assets simply cannot be shorted. Whole-sharing does not help:
+        #   422 {"code":42210000,"message":"asset \\"EIDO\\" cannot be sold short"}
+        # Seen on EIDO in two consecutive runs, AFTER the quantity was correctly
+        # rounded to 44 whole shares. Check the asset, not just the number.
+        print(f"    · {symbol} is not shortable — skipping the SELL "
+              f"(held {held}) instead of failing at the broker.", flush=True)
+        return None
     whole = math.floor(qty)
     if whole < 1:
         print(f"    · {symbol} sell {qty} would be a fractional SHORT "
@@ -891,6 +916,27 @@ async def _equity_last_price(symbol: str) -> float | None:
         return px or None
     except Exception:  # noqa: BLE001 — pricing is best-effort here
         return None
+
+
+_shortable_cache: "dict[str, bool]" = {}
+
+
+async def _is_shortable(symbol: str) -> bool:
+    """Whether Alpaca will accept a short sale of this equity.
+
+    Cached per symbol for the process. Fail-soft TRUE: a lookup blip must not
+    silently stop the desks selling — the broker still rejects a genuine
+    non-shortable, which is exactly the pre-existing behaviour.
+    """
+    if symbol in _shortable_cache:
+        return _shortable_cache[symbol]
+    try:
+        asset = await _alpaca_get(f"/v2/assets/{symbol}")
+        ok = bool(asset.get("shortable", True)) and bool(asset.get("tradable", True))
+    except Exception:  # noqa: BLE001 — unknown means "let the broker decide"
+        return True
+    _shortable_cache[symbol] = ok
+    return ok
 
 
 _position_map_cache: "dict[str, float] | None" = None

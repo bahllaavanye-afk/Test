@@ -215,3 +215,104 @@ def test_an_unavailable_price_falls_back_to_notional(monkeypatch):
     asyncio.run(dop._place_order("UNG", "sell", 372.7))
     dop._position_map_cache = None
     assert posted.get("notional") == "372.7", posted
+
+
+# ── non-shortable assets ─────────────────────────────────────────────────────
+# Whole-sharing the quantity does not help when the ASSET cannot be shorted at
+# all. Seen on EIDO in two consecutive runs, AFTER the qty was correctly
+# rounded to 44 whole shares:
+#
+#   · EIDO sell 44.23 -> 44 whole shares (fractional shorts are rejected)
+#   ⚠ 422 {"code":42210000,"message":"asset \"EIDO\" cannot be sold short"}
+#
+# Check the asset, not just the number.
+
+
+def _call_short(monkeypatch, symbol, qty, *, shortable=True, held=None):
+    monkeypatch.setattr(dop, "_shortable_cache", {symbol: shortable}, raising=False)
+    monkeypatch.setattr(dop, "_position_map_cache",
+                        {} if held is None else {symbol: held}, raising=False)
+    out = asyncio.run(dop._equity_short_safe_qty(symbol, "sell", qty, False))
+    dop._position_map_cache = None
+    dop._shortable_cache = {}
+    return out
+
+
+def test_a_non_shortable_asset_is_skipped(monkeypatch):
+    """THE BUG: EIDO, rejected twice after the qty was already correct."""
+    assert _call_short(monkeypatch, "EIDO", 44.23, shortable=False) is None
+
+
+def test_a_shortable_asset_is_still_whole_shared(monkeypatch):
+    assert _call_short(monkeypatch, "UNG", 37.27, shortable=True) == 37.0
+
+
+def test_a_non_shortable_asset_can_still_be_SOLD_to_close(monkeypatch):
+    """Closing a long is not a short sale — shortability is irrelevant.
+
+    Blocking this would strand every long in a non-shortable asset.
+    """
+    assert _call_short(monkeypatch, "EIDO", 10.0, shortable=False, held=50.0) == 10.0
+
+
+def test_an_unknown_asset_fails_soft_to_shortable(monkeypatch):
+    """A lookup blip must not silently stop the desks selling."""
+    async def _boom(_path, *a, **k):
+        raise RuntimeError("assets endpoint down")
+
+    monkeypatch.setattr(dop, "_alpaca_get", _boom)
+    monkeypatch.setattr(dop, "_shortable_cache", {}, raising=False)
+    assert asyncio.run(dop._is_shortable("ANY")) is True
+
+
+def test_the_shortable_lookup_is_cached(monkeypatch):
+    calls = {"n": 0}
+
+    async def _fake(_path, *a, **k):
+        calls["n"] += 1
+        return {"shortable": True, "tradable": True}
+
+    monkeypatch.setattr(dop, "_alpaca_get", _fake)
+    monkeypatch.setattr(dop, "_shortable_cache", {}, raising=False)
+
+    async def _drive():
+        return [await dop._is_shortable("UNG") for _ in range(4)]
+
+    assert all(asyncio.run(_drive()))
+    assert calls["n"] == 1, f"fetched {calls['n']} times"
+    dop._shortable_cache = {}
+
+
+# ── buying that would flip a short ───────────────────────────────────────────
+# Alpaca will not let ONE order flip a short into a long:
+#   403 {"code":40310000,"message":"insufficient qty available for order
+#        (requested: 1.77, available: 1)","symbol":"SPY"}
+# Twice in a single run. Cap the buy at the short size so it CLOSES the short —
+# the risk-reducing half of the intent, and what Alpaca requires be done first.
+
+
+def _call_buy(monkeypatch, symbol, qty, held):
+    monkeypatch.setattr(dop, "_position_map_cache", {symbol: held}, raising=False)
+    out = asyncio.run(dop._equity_short_safe_qty(symbol, "buy", qty, False))
+    dop._position_map_cache = None
+    return out
+
+
+def test_a_buy_that_would_flip_a_short_is_capped(monkeypatch):
+    """THE BUG: SPY, short 1, buy 1.77 -> 403."""
+    assert _call_buy(monkeypatch, "SPY", 1.77, held=-1.0) == 1.0
+
+
+def test_a_buy_that_exactly_closes_a_short_is_untouched(monkeypatch):
+    assert _call_buy(monkeypatch, "SPY", 1.0, held=-1.0) == 1.0
+
+
+def test_a_partial_short_close_is_untouched(monkeypatch):
+    """Buying less than the short just reduces it — legal."""
+    assert _call_buy(monkeypatch, "SPY", 0.5, held=-1.0) == 0.5
+
+
+def test_a_buy_with_no_short_is_untouched(monkeypatch):
+    """The ordinary case: fractional longs are legal."""
+    assert _call_buy(monkeypatch, "SPY", 1.77, held=0.0) == 1.77
+    assert _call_buy(monkeypatch, "SPY", 1.77, held=10.0) == 1.77
