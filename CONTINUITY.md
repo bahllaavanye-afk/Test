@@ -228,6 +228,28 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## ✅ 2026-07-28 15:30 — VERIFIED LIVE: trades reconstructed, positions serving, Vercel BLOCKED
+Confirmed against production, not asserted:
+```
+/api/v1/positions/  -> 15 rows      (was [] — env-credential fallback working)
+/api/v1/trades/     -> 50 rows      (was [] — untagged-close fix working)
+total realized P&L  -> -$103.76
+by strategy: time_series_momentum 11 · stat_arb_etf 11 · avellaneda_stoikov_mm 9
+             vol_of_vol_timing 7 · analyst_revision_momentum 2 · low_volatility 2
+```
+**The P&L feedback loop has data for the first time** — `compute_live_strategy_performance` and
+the leaderboard were previously reading an empty set, so the self-scaling weighting had nothing
+to learn from.
+
+**⚠️ STILL BLOCKED: the dashboard.** The CDN trailing-slash fix is merged but Vercel returned
+`Deployment rate limited — retry in 24 hours` (`upgradeToPro=build-rate-limit`). Bundle hash
+unchanged 20+ min after merge; `/api/v1/positions/` still 404s **through the proxy** while
+returning 15 rows direct. Cause: Vercel rebuilds on EVERY commit to main and the bot fleet writes
+state constantly — **1 of the last 40 commits touched frontend/**, 38 landed in 6 hours.
+`ignoreCommand` added (~97% fewer builds), but the 24h window must clear on its own. **Options:
+wait, or upgrade the Vercel plan — owner decision.** Verify recovery by checking the bundle hash
+changes AND `/api/v1/positions/` returns 200 through `quantedge-eight.vercel.app`.
+
 ## 🌐 2026-07-28 14:30 — THE DASHBOARD 404'd AT THE CDN. THE BACKEND WAS FINE ALL ALONG
 **The answer to three separate "still empty" reports.** Measured against the live deployment:
 ```
