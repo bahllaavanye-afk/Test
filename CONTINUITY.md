@@ -228,6 +228,38 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## ⚖️ 2026-07-28 12:20 — A LONE 0.16 DISSENT WAS VETOING A 0.97 CONSENSUS (behaviour CHANGED)
+The instrumentation answered in one run. 76 conflicts across 7 desks, now attributed:
+```
+Crypto   crypto_adaptive_trend was the ONLY sell voice on all 16 conflicts,
+         at 0.16-0.52, against buy consensus of 0.61-0.97
+SHIB/USD avellaneda_stoikov_mm(0.90)               vetoed by a single 0.16
+LINK/USD vol_of_vol(0.70)+avellaneda(0.90) = 0.97  vetoed by 0.26
+```
+Across the other six desks disagreement IS genuinely distributed — most strategies appear on
+both sides across symbols — so the fix must not become "majority wins". Also visible: several
+strategies emit a **single constant confidence** every time (`yield_curve_momentum` 0.89,
+`supertrend` 0.72, `central_bank_window` 0.78, `breakeven_inflation` 0.82, `macro_risk_barometer`
+0.75). Not addressed here; worth its own look.
+
+**The defect is that the rule ignored confidence entirely** — any opposing signal stood the
+symbol aside regardless of strength or count. Now each side is combined with the same
+`1-prod(1-ci)` used for agreement, and the dominant side trades at the **NET** confidence
+(dissent subtracted, not ignored) only if that net clears `ENSEMBLE_NET_MIN` (default **0.60**,
+the desks' own `confidence_min`) — after which the desk threshold and per-strategy tuned
+threshold still apply. Widens the funnel, does not bypass the gate.
+
+**⚠️ THIS CHANGES WHAT TRADES** — the first such change this session; everything prior was
+instrumentation. Measured delta by replaying all 76 conflicts: **5 unblock, 71 unchanged.**
+```
+Crypto  5 / 11    (AVAX, DOT, LINK, SHIB, SUSHI — all buys, nets 0.60-0.74)
+Commodities 0/7 · Equities 0/26 · Macro/FX 0/14 · Options 0/5 · Intl 0/5 · TV 0/3
+```
+Every non-crypto conflict still stands aside because those dissents are credible (supertrend
+0.72, yield_curve_momentum 0.89). **Revert lever, no code change: `ENSEMBLE_NET_MIN=1.01`.**
+22 tests. My own first draft asserted DOGE(0.44) and BAT(0.46) would trade — they do NOT, and
+that is now pinned: the dissent must be genuinely weak, not merely outvoted.
+
 ## 🔍 2026-07-28 11:40 — THE CONFLICT COUNT WAS DOUBLE, AND NAMED NOBODY
 Chasing the open question from 10:40 (34 stand-asides regardless of data coverage). Signals group
 by `(desk, symbol, side)`, so a symbol with both a buy and a sell forms **two** groups — and the
