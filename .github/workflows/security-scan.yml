@@ -55,9 +55,20 @@ jobs:
           head -c 4000 /tmp/audit.md | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Secret-leak guard (hard gate)
+        # --noconftest: this suite is pure AST/regex source inspection and uses
+        # ZERO fixtures, but backend/tests/conftest.py has a module-scoped
+        # autouse fixture (`_isolate_each_file`, added 2026-07-28 for per-file
+        # DB isolation) that pulls in app.models + app.database — and therefore
+        # sqlalchemy, which this deliberately light step does not install.
+        #
+        # The result was `ModuleNotFoundError: No module named 'sqlalchemy'` at
+        # fixture setup, so the HARD GATE errored on every run and the whole
+        # security scan sat permanently red — gating nothing. Skipping conftest
+        # keeps this step dependency-light by design instead of dragging the
+        # full backend stack into a static-analysis job.
         run: |
-          pip install --quiet pytest pytest-asyncio httpx
-          cd backend && python -m pytest tests/unit/test_script_safety.py -q
+          pip install --quiet pytest
+          cd backend && python -m pytest tests/unit/test_script_safety.py -q --noconftest
 
       - name: Agent prompt-injection red-team
         run: |
