@@ -37,6 +37,28 @@ import urllib.error
 
 CHAT_ENABLED = bool(os.environ.get("DISCORD_BOT_TOKEN", "").strip()
                     or os.environ.get("DISCORD_WEBHOOK_URL", "").strip())
+
+# The Discord bot token, as a module global.
+#
+# 65 references to a bare `token` exist across 11 entry points — main(),
+# quick_main(), page_reports_main(), run_experiments_main(),
+# review_employees_main(), summons_only_main() and others — every one of them
+# passing it to post_to_chat()/chat_call()/_lookup_agent_user_ids(), which all
+# want the Discord bot token. None of those functions took it as a parameter or
+# assigned it, so each was a latent NameError.
+#
+# It surfaced as the Page Reporter workflow failing outright:
+#     NameError: name 'token' is not defined. Did you mean: 'open'?
+#     File ".../agent_team.py", line 10561, in page_reports_main
+#
+# main() survived only by luck: its bare `token` at line ~8466 sits in the
+# branch taken when `auth.test` SUCCEEDS, and auth.test has been failing, so
+# the crashing line was never reached. Fixing auth would have broken main().
+#
+# Defining it here rather than threading a parameter through 65 call sites:
+# every site already assumes exactly this value, so this makes the existing
+# assumption true instead of rewriting a 10k-line module.
+token = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone

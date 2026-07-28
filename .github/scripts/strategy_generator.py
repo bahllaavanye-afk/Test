@@ -28,7 +28,11 @@ def _resolve_key(*names: str) -> str:
     return ""
 
 
-REPO_ROOT = Path(__file__).parent.parent
+# .github/scripts/x.py -> parents[2] is the repo root; `.parent.parent`
+# stopped at .github/, so every path below silently resolved under
+# .github/ (no such dirs exist) — see improve_tv_indicators aborting with
+# '.github/backend/app/strategies/manual/tv_indicators.py not found'.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 STRATEGIES_DIR = REPO_ROOT / "backend" / "app" / "strategies" / "manual"
 INIT_FILE = REPO_ROOT / "backend" / "app" / "strategies" / "__init__.py"
 CONFIGS_DIR = REPO_ROOT / "experiments" / "configs"
