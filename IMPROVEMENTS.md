@@ -1,5 +1,24 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔴 2026-07-28 — the BACKEND's agent subsystem is unreachable (9 modules)
+
+Direct follow-on from the coverage baseline. 0% coverage does not mean dead — a module can be exercised only in production — so the 37 zero-coverage modules were cross-referenced against **transitive** import reachability from the real entrypoints (`static_server`, `main`, `api/v1/router`, `tasks/scheduler`).
+
+One-hop analysis is misleading here and nearly fooled me: `free_llm_router` *looks* imported — by `ai_strategy_generator`, `research_pipeline` and `self_improving_loop` — but **all three of those are themselves unreachable.** The whole cluster imports each other and nothing else reaches it:
+
+```
+agent_bus            agent_memory         ai_strategy_generator
+free_llm_router      knowledge_loop       research_pipeline
+self_improving_loop  strategy_auction     task_queue
+```
+
+**Six of the nine have ZERO references anywhere outside their own file.** The only dynamic-import machinery in `app/` is the strategy registry and a torch feature-probe; neither touches these. Totals: 318 modules, 206 reachable, **112 unreachable**.
+
+**This bears on two standing questions.** *"All employees working autonomously?"* and *"Free llm being used?"* — for the **backend**, no: this subsystem never starts. **Important qualifier: the GitHub Actions agent fleet under `.github/scripts/` is a separate system and does run**, with its own `llm_common` cascade. So the agents you see posting to Discord are real; the backend's parallel implementation of the same idea is not.
+
+- [ ] **[USER DECISION] Wire it up, or delete it.** **Deliberately not switched on.** Unlike the risk gate, the exit path and the ML features — all of which were *supposed* to be running — starting these means the backend begins **generating strategies and modifying itself autonomously**. That is a policy decision with real blast radius, not a wiring bug. Options: (a) wire selected modules into `lifespan` behind a flag, (b) delete as superseded by the Actions fleet, (c) leave dormant. Needs your call.
+- [x] **Guarded meanwhile.** `backend/tests/unit/test_module_reachability.py` (5 tests) walks the import graph and fails if a **new** orphan appears in `tasks/`, if a known orphan silently becomes live without being removed from the list, or if total unreachable modules exceed a ceiling. Verified to fire: removing one entry from the baseline produces `new unreachable task modules: ['tasks/task_queue']`. It also asserts a sanity floor (`risk/manager`, `price_feed`, `brokers/alpaca`, `bots/engine` must be reachable) so a broken graph walk fails loudly instead of silently reporting everything as fine.
+
 ## 🚨 PRINCIPAL REVIEW 2026-07-27 (cont.) — nothing enforced a stop-loss
 
 > Second pass. After the risk gate, I swept `app/` for the *shape* of that bug — public
