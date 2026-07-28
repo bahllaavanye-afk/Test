@@ -132,3 +132,33 @@ def test_security_headers_are_not_lost():
         for h in entry.get("headers", [])
     }
     assert {"X-Content-Type-Options", "X-Frame-Options"} <= keys
+
+
+# ── build-rate-limit guard ───────────────────────────────────────────────────
+# Vercel rebuilt on EVERY commit to main. The bot fleet writes state files
+# constantly — over the last 40 commits only ONE touched frontend/ — so the
+# free-tier Hobby quota was exhausted and Vercel returned:
+#
+#     Deployment rate limited — retry in 24 hours.
+#
+# which blocked the CDN rewrite fix above from reaching production at all. A
+# correct fix that cannot deploy is not a fix.
+#
+# `ignoreCommand` exits 0 to SKIP the build. `git diff --quiet` exits 0 when
+# there is NO change in the project directory, so unrelated commits skip and
+# frontend commits build. It also fails SAFE: any other error (shallow clone,
+# missing HEAD^) is non-zero, which builds.
+
+
+def test_an_ignore_command_is_configured():
+    """Without it the deploy quota is spent on commits that change no UI."""
+    assert _config().get("ignoreCommand"), (
+        "frontend/vercel.json needs an ignoreCommand or every bot state commit "
+        "burns a Vercel deployment (measured: 39 of the last 40 commits)"
+    )
+
+
+def test_the_ignore_command_skips_only_on_an_unchanged_project_dir():
+    cmd = _config()["ignoreCommand"]
+    assert "git diff" in cmd and "--quiet" in cmd, cmd
+    assert "HEAD^" in cmd and "HEAD" in cmd, cmd

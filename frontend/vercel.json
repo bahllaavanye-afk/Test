@@ -1,4 +1,5 @@
 {
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- .",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "https://quantedge-api-9jz0.onrender.com/api/$1" },
     { "source": "/((?!api).*)", "destination": "/index.html" }
