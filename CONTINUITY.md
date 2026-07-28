@@ -147,6 +147,28 @@ against a 1-day limit. Equity is downsampled (default hourly) and scaled by
 square-root-of-time, which assumes i.i.d. returns and understates tail risk under positive
 autocorrelation — a floor, not a ceiling.
 
+## 🔴 2026-07-28 — the BACKEND's agent subsystem is unreachable (9 modules) — USER DECISION
+Follow-on from the coverage baseline. 0% coverage ≠ dead, so the 37 zero-coverage modules were
+cross-referenced against **transitive** reachability from the real entrypoints
+(`static_server`, `main`, `api/v1/router`, `tasks/scheduler`). 318 modules, 206 reachable,
+**112 unreachable**.
+One-hop analysis nearly fooled me: `free_llm_router` *looks* imported — by
+`ai_strategy_generator`, `research_pipeline`, `self_improving_loop` — but all three are
+themselves unreachable. The cluster imports each other and nothing else reaches it:
+`agent_bus`, `agent_memory`, `ai_strategy_generator`, `free_llm_router`, `knowledge_loop`,
+`research_pipeline`, `self_improving_loop`, `strategy_auction`, `task_queue`. Six of the nine
+have ZERO references outside their own file.
+**Bears on "All employees working autonomously?" and "Free llm being used?"** — for the
+BACKEND, no. **Qualifier: the GitHub Actions fleet in `.github/scripts/` is separate and DOES
+run** with its own `llm_common` cascade, so the agents posting to Discord are real; the
+backend's parallel implementation is not.
+**NOT switched on — needs the user's call.** Unlike the risk gate/exit path/ML features (which
+were *supposed* to run), starting these means the backend begins generating strategies and
+modifying itself autonomously: a policy decision, not a wiring bug.
+Guarded by `backend/tests/unit/test_module_reachability.py` (5 tests) — fails on a NEW orphan,
+on a known orphan silently going live, or if unreachable count exceeds a ceiling. Verified to
+fire. Includes a sanity floor so a broken graph walk fails loudly.
+
 ## 📊 2026-07-27 — coverage is measured for the first time: 51%, 37 modules at 0%
 CI now runs `--cov=app` and publishes the total plus the **0%-module list** to the PR summary.
 Baseline: **51% of 28,261 statements; 37 modules (3,594 statements) never executed by any
