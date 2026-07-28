@@ -1,5 +1,7 @@
 """Trade history endpoints."""
 from datetime import datetime
+import re
+import uuid
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -98,6 +100,16 @@ async def list_trades(
     current_user: User = Depends(get_current_user),
 ):
     """Return a list of recent trades for the current user with optional filters."""
+    # Input validation
+    if symbol is not None:
+        if not re.fullmatch(r"[A-Za-z0-9\.]+", symbol):
+            raise ValueError("symbol must contain only alphanumeric characters, periods, or underscores")
+    if account_id is not None:
+        try:
+            uuid.UUID(account_id)
+        except ValueError as exc:
+            raise ValueError("account_id must be a valid UUID") from exc
+
     # Build a lightweight query that selects only needed columns and computes avg_fill_price in SQL.
     fill_price_expr = case(
         (Trade.side == "buy", Trade.entry_price),
