@@ -532,6 +532,22 @@ async def _get_bars(symbol: str, timeframe: str = "1Day", limit: int = 300) -> "
         return None
 
 
+# Pagination retry budget. 1+2+4+8 = 15s of backoff per page, well inside the
+# workflow's 15-minute timeout, and only spent when Alpaca actually says 429.
+_BARS_MAX_RETRIES = 4
+_BARS_BACKOFF_S = 1.0
+
+
+def _is_rate_limited(exc: object) -> bool:
+    """True for Alpaca's free-tier throttle, which is worth waiting out.
+
+    Deliberately narrow: a 404/422 is a real answer and retrying it just burns
+    the job's time budget. Only the throttle earns a retry.
+    """
+    text = str(exc)
+    return "429" in text or "Too Many Requests" in text
+
+
 async def _get_bars_batch(symbols: list[str], timeframe: str = "1Day",
                           limit: int = 300) -> "dict[str, pd.DataFrame]":
     """Fetch bars for many symbols in as few requests as possible.
@@ -552,6 +568,7 @@ async def _get_bars_batch(symbols: list[str], timeframe: str = "1Day",
         for i in range(0, len(syms), CHUNK):
             chunk = syms[i:i + CHUNK]
             page_token: str | None = None
+            attempt = 0
             while True:
                 params = {"symbols": ",".join(chunk), "timeframe": timeframe,
                           "limit": limit, "start": _bars_start(), **extra}
@@ -560,8 +577,28 @@ async def _get_bars_batch(symbols: list[str], timeframe: str = "1Day",
                 try:
                     data = await _alpaca_get(path, params, data_api=True)
                 except Exception as exc:
-                    print(f"    ⚠ batch bars fetch failed for {chunk}: {exc}", flush=True)
+                    # A 429 mid-pagination used to `break`, silently discarding
+                    # every symbol Alpaca had not yet returned. Alpaca paginates
+                    # in SYMBOL ORDER, so that truncation is alphabetical and
+                    # deterministic — not random loss.
+                    #
+                    # Measured 2026-07-28 across three runs, the symbols kept
+                    # were EXACTLY the alphabetically-first 4, 5 and 11 of the
+                    # 20-symbol crypto universe. The back half — SHIB, SOL,
+                    # SUSHI, UNI, XRP, XTZ, YFI, MKR, LTC — never received bars
+                    # at all, so no ensemble ever voted on them.
+                    #
+                    # Retry the SAME page with backoff instead of abandoning it.
+                    attempt += 1
+                    if _is_rate_limited(exc) and attempt <= _BARS_MAX_RETRIES:
+                        await asyncio.sleep(_BARS_BACKOFF_S * (2 ** (attempt - 1)))
+                        continue
+                    missing = [s for s in chunk if s not in out]
+                    print(f"    ⚠ batch bars TRUNCATED on {path}: {exc} — "
+                          f"{len(missing)} of {len(chunk)} symbols have NO bars "
+                          f"this run: {missing}", flush=True)
                     break
+                attempt = 0
                 for sym, blist in (data.get("bars") or {}).items():
                     df = _bars_list_to_df(blist)
                     if df is None:

@@ -228,6 +228,37 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## 🚨 2026-07-28 09:40 — THE DESKS ONLY EVER SAW THE FIRST PAGE OF THE ALPHABET (P0, fixed)
+**Two state changes first:** the **loss cap has LIFTED** (Alpaca rolled `last_equity` at the
+session open, as predicted) and the desks are **trading again — 2 orders at 09:27**, with
+`cash $21,262.65 < equity $21,744.56`, i.e. positions are being **held**, not flattened.
+
+Then the real find. `_get_bars_batch` paginates on `next_page_token`, and on ANY exception it
+`break`s — keeping the pages that landed and abandoning the rest silently. Alpaca paginates in
+**SYMBOL ORDER**, so a 429 mid-pagination truncates *alphabetically and deterministically*.
+Verified across three runs — the survivors are an exact alphabetical PREFIX of the universe:
+```
+09:27  bars_fetched=4   AAVE AVAX BAT BCH
+06:46  bars_fetched=5   AAVE AVAX BAT BCH BTC
+04:45  bars_fetched=11  AAVE AVAX BAT BCH BTC CRV DOGE DOT ETH GRT LINK
+```
+**SHIB, SOL, SUSHI, UNI, XRP, XTZ, YFI, MKR, LTC received NO bars, ever.** No ensemble has ever
+voted on them. The desks were not sampling the universe, they were reading the first page of it.
+Now retries the SAME page on 429 (4 attempts, 1/2/4/8s) and, when it does give up, names the
+symbols it is dropping instead of printing a generic failure. 13 tests.
+
+**⚠️ This corrects #1127/#1130.** I attributed the crypto starvation to the two desk workflows
+colliding on shared triggers. **Wrong cause.** Decontending them was independently right (22 of
+60 runs were duplicates), but the 09:27 run had NO competing run and *still* kept 4 of 20. The
+collision was a real bug that was not this bug — and I let a plausible correlation stand in for a
+mechanism. What settled it was the alphabetical-prefix check, which is falsifiable; "they compete
+for a rate limit" was not.
+
+**Method note:** stashing the source to test the pre-fix tree gave an ImportError (the new
+constants were missing), which *looks* like a failing test but proves nothing about behaviour.
+Re-verified by disabling ONLY the retry branch while keeping the constants — 4 tests then fail
+for the right reason.
+
 ## 🚨 2026-07-28 — BUY ON MARGIN → GET LIQUIDATED → GET FROZEN (P0, fixed)
 The origin instrument answered in ONE run. All 8 closes were `EXTERNAL`, and all filled
 **within ~1.5 seconds of each other** — a mass flatten, not per-position stops. Traced it:
