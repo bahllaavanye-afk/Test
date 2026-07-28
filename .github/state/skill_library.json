@@ -1,11 +1,5 @@
 {
   "skills": [
-    "Integrate macro features",
-    "Integrate S4 layers",
-    "**User requests**: Users are asking for one-sentence status updates, specifically requesting details on current tasks and activities (e.g. from token_monitor and algo_agent).",
-    "Log trade retries",
-    "Validate market hours",
-    "Monitor error logs daily",
     "**Supertrend-RSI Divergence Filter:** The 5-minute Supertrend + RSI-divergence filter is projected to result in a high Sharpe ratio (1.2 \u00b1 0.2, #5 and #6).",
     "* Given the current market conditions and risk status, we recommend using position sizing guidelines based on the 70/30 arbitrage/directional allocation ratio, as discussed in the #risk channel.",
     "Flush log buffers",
@@ -199,8 +193,14 @@
     "Optimize Sharpe ratio",
     "Detect market halted",
     "Cache recent quotes",
-    "Streamline color tokens"
+    "Streamline color tokens",
+    "Check quote timestamps",
+    "Verify trade confirmations",
+    "Handle empty order books",
+    "Monitor drift signals",
+    "Refactor ambiguous code",
+    "Debug type leaks"
   ],
-  "last_updated": "2026-07-28T09:15:58.430847+00:00",
+  "last_updated": "2026-07-28T13:57:19.240462+00:00",
   "total": 200
 }
