@@ -6,7 +6,7 @@
 > lost. Keep it current: when you finish or start something material, update this file in
 > the same commit.
 
-_Last updated: 2026-07-27._
+_Last updated: 2026-07-28._
 
 ## 🟢 DURABLE POSTGRES — CLUSTER FIX CONFIRMED LIVE 2026-07-25 07:36 UTC (password is the ONLY blocker)
 **CONFIRMED IN PRODUCTION 07:36 UTC:** `/health/detailed` now reports
@@ -228,6 +228,44 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## 🔁 2026-07-28 21:00 — `MKR/USD is not active` CAME BACK, and the code could not say why
+I recorded this class as closed at 17:30 ("0 occurrences, `_filter_tradable_crypto` handles
+it"). It reappeared in run `30394875861` — **five times in one process**:
+```
+⚠ alpaca POST /v2/orders → 422: {"code":40010001,"message":"asset MKR/USD is not active"}
+```
+The run printed **no `ⓘ skipping` line**, so the filter dropped nothing, and there was no way
+to distinguish two very different situations:
+
+- **A.** the `/v2/assets` lookup failed, `_tradable_crypto_symbols()` returned `None`, and the
+  filter fail-softly kept the whole universe — correct behaviour, completely invisible; or
+- **B.** Alpaca's asset metadata says MKR/USD is active while its own order engine refuses it,
+  in which case no amount of pre-filtering will ever help.
+
+Same **silent-miss family** as `prices:{symbol}`: a fail-soft path that returns `None` quietly
+is indistinguishable from a path that had nothing to do. `_tradable_crypto_symbols()` now
+narrates its own failure (`ⓘ tradable-crypto lookup FAILED (<reason>)`, and a separate line for
+a non-list response shape), so **the next live run names the branch**. The fail-soft contract
+itself is unchanged — a blip still must never shrink the universe.
+
+Independently of which branch it is: the first 422 is a definitive answer. Re-submitting the
+same asset for four more desks is a guaranteed-wasted round trip, and it makes one problem look
+like four in the log. Rejections carrying "not active"/"not tradable" are now remembered for the
+rest of the process and skipped with a named line. Deliberately **not** persisted across runs —
+a delisting can be reversed, and process-lifetime memory self-heals on the next scheduled run
+with nobody clearing state. The blacklist is narrow on purpose: fractional-short, buying-power
+and rate-limit 422s are retryable or side-specific and must never strand a healthy symbol
+(tested). 24 tests, 13 fail on the pre-fix tree — the headline one **behaviourally**: pre-fix
+`_place_order` returns a live order for an asset already refused this run.
+
+**⚠️ My 17:30 "confirmed fixed" was premature.** I read one clean run as proof. One run without
+a symptom is not the same as the symptom being gone — the standing rule ("verify on the NEXT
+LIVE RUN") needs the corollary that a *recurring* fault needs *several* clean runs, and that
+absence of evidence in a log that cannot report the relevant state is not evidence at all.
+
+**Next tick:** grep a fresh desk run for `MKR/USD is not active`, for `ⓘ tradable-crypto lookup
+FAILED`, and for `marked INACTIVE`. That triple settles A-vs-B and confirms the de-duplication.
+
 ## ✅ 2026-07-28 19:30 — fractional shorts CONFIRMED zero; two more order-time rejects fixed
 **Verified on the next live run, as promised.** Fractional-short 422s across three runs:
 `3 → 1 → 0`. Two market replacements occurred in the last run and neither failed, so the
@@ -292,8 +330,9 @@ forever (`floor(0.4) == 0`). The held quantity decides — `held >= qty` keeps t
 close), otherwise floor and skip if < 1. Crypto exempt in both directions. Position map memoised,
 since it is now consulted per sell order. 17 tests, 5 fail against the pre-fix path.
 
-**Already fixed, confirmed:** the `MKR/USD is not active` 422s from IMPROVEMENTS.md are **gone**
-(0 occurrences) — `_filter_tradable_crypto` handles it.
+**~~Already fixed, confirmed:~~ WRONG — see the 21:00 entry.** I wrote that the `MKR/USD is not
+active` 422s were gone (0 occurrences) on the strength of a single clean run. They came back
+five times in one process a few hours later. `_filter_tradable_crypto` did not drop it.
 
 ## 🚨 2026-07-28 16:30 — THE STOP-LOSS ENGINE HAS NO CONFIG FOR ANY LIVE POSITION
 The crypto pricing fix worked — and immediately exposed the larger gap behind it.

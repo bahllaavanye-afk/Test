@@ -350,9 +350,16 @@ async def _tradable_crypto_symbols() -> "set[str] | None":
         return _tradable_crypto_cache
     try:
         assets = await _alpaca_get("/v2/assets", {"asset_class": "crypto", "status": "active"})
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        # Silent None meant "no filtering", indistinguishable from "everything
+        # is tradable". `MKR/USD is not active` came back after being fixed and
+        # there was no way to tell which case it was.
+        print(f"    ⓘ tradable-crypto lookup FAILED ({str(exc)[:70]}) — "
+              f"not filtering the universe this run", flush=True)
         return None
     if not isinstance(assets, list):
+        print(f"    ⓘ tradable-crypto lookup returned {type(assets).__name__}, "
+              f"not a list — not filtering the universe this run", flush=True)
         return None
     out = {a["symbol"] for a in assets
            if isinstance(a, dict) and a.get("symbol") and a.get("tradable", True)}
@@ -370,6 +377,27 @@ def _filter_tradable_crypto(symbols: list[str], tradable: "set[str] | None") -> 
     kept = [s for s in symbols if "/" not in s or s in tradable]
     dropped = [s for s in symbols if "/" in s and s not in tradable]
     return (kept or list(symbols)), dropped
+
+
+# Assets Alpaca has refused as "not active" during THIS process. The tradable
+# lookup is fail-soft (a blip returns None and filters nothing), and Alpaca's
+# asset metadata can disagree with its own order engine — MKR/USD came back
+# `422 asset MKR/USD is not active` while /v2/assets still listed it active.
+# Either way the first 422 is a definitive answer, so every later desk in the
+# same run re-submitting it is a wasted round-trip and a duplicated error line.
+_inactive_assets: "set[str]" = set()
+
+
+def _note_inactive_asset(body: dict, detail: str) -> None:
+    """Record an asset the order engine rejected as inactive/not tradable."""
+    low = (detail or "").lower()
+    if "not active" not in low and "not tradable" not in low:
+        return
+    sym = str((body or {}).get("symbol") or "").strip().upper()
+    if sym and sym not in _inactive_assets:
+        _inactive_assets.add(sym)
+        print(f"    ⓘ {sym} marked INACTIVE for the rest of this run — "
+              f"later desks will skip it instead of re-submitting", flush=True)
 
 
 def _alpaca_post_sync(path: str, body: dict) -> dict:
@@ -397,6 +425,8 @@ def _alpaca_post_sync(path: str, body: dict) -> dict:
         except Exception:  # noqa: BLE001
             pass
         print(f"    ⚠ alpaca POST {path} → {exc.code}: {detail}", flush=True)
+        if path == "/v2/orders":
+            _note_inactive_asset(body, detail)
         raise
 
 
@@ -962,6 +992,10 @@ async def _place_order(
     client_order_id: str | None = None,
 ) -> dict | None:
     try:
+        if symbol.strip().upper() in _inactive_assets:
+            print(f"    · {symbol}: skipped — Alpaca already rejected it as "
+                  f"not active earlier this run", flush=True)
+            return None
         is_crypto = "/" in symbol
         body: dict = {
             "symbol":        symbol,
