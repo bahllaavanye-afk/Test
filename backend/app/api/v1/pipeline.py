@@ -5,13 +5,17 @@ No database needed: the JSON file is the source of truth.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import time
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
+
+_logger = logging.getLogger(__name__)
 
 
 def _resolve_state_file() -> Path:
@@ -116,6 +120,17 @@ def _enrich_run(run: dict) -> dict:
     return run
 
 
+def _log_metrics(event: str, **metrics) -> None:
+    """Log structured metrics at INFO level."""
+    try:
+        # Ensure JSON‑serializable values
+        safe_metrics = {k: (v if isinstance(v, (int, float, str, bool, type(None))) else str(v)) for k, v in metrics.items()}
+        _logger.info(f"{event} - {json.dumps(safe_metrics)}")
+    except Exception:
+        # Fallback to a simple message if logging fails
+        _logger.info(f"{event} - {metrics}")
+
+
 @router.get("/status")
 def pipeline_status(
     pipeline: Optional[str] = Query(None),
@@ -123,38 +138,87 @@ def pipeline_status(
     limit: int = Query(20, le=50),
 ):
     """Return recent pipeline runs, optionally filtered by pipeline name or desk."""
+    start_ts = time.time()
     runs = _load_runs(limit * 2)
     if pipeline:
         runs = [r for r in runs if r.get("pipeline") == pipeline]
     if desk:
         runs = [r for r in runs if r.get("desk") == desk]
-    return [_enrich_run(r) for r in runs[:limit]]
+    result = [_enrich_run(r) for r in runs[:limit]]
+
+    # Metrics: number of runs, optional signal count and total P&L if present
+    signal_count = sum(r.get("signal_count", 0) for r in result)
+    total_pnl = sum(r.get("pnl", 0) for r in result)
+    duration_ms = int((time.time() - start_ts) * 1000)
+
+    _log_metrics(
+        "pipeline_status",
+        pipeline=pipeline or "*",
+        desk=desk or "*",
+        runs_returned=len(result),
+        signal_count=signal_count,
+        total_pnl=total_pnl,
+        duration_ms=duration_ms,
+    )
+    return result
 
 
 @router.get("/status/latest")
 def pipeline_status_latest():
     """Return the most recent run for each pipeline type."""
-    runs    = _load_runs(100)
-    seen:   set[str] = set()
+    start_ts = time.time()
+    runs = _load_runs(100)
+    seen: set[str] = set()
     latest: list[dict] = []
     for run in runs:
         key = f"{run.get('pipeline')}:{run.get('desk', '')}"
         if key not in seen:
             seen.add(key)
             latest.append(_enrich_run(run))
+
+    duration_ms = int((time.time() - start_ts) * 1000)
+    _log_metrics(
+        "pipeline_status_latest",
+        pipelines=len(latest),
+        duration_ms=duration_ms,
+    )
     return latest
 
 
 @router.get("/status/{run_id}")
 def pipeline_run_detail(run_id: str):
     """Return full detail for a specific pipeline run."""
+    start_ts = time.time()
     for run in _load_runs(100):
         if run.get("run_id") == run_id:
-            return _enrich_run(run)
+            result = _enrich_run(run)
+            duration_ms = int((time.time() - start_ts) * 1000)
+            _log_metrics(
+                "pipeline_run_detail",
+                run_id=run_id,
+                found=True,
+                duration_ms=duration_ms,
+            )
+            return result
+    duration_ms = int((time.time() - start_ts) * 1000)
+    _log_metrics(
+        "pipeline_run_detail",
+        run_id=run_id,
+        found=False,
+        duration_ms=duration_ms,
+    )
     raise HTTPException(status_code=404, detail=f"Run {run_id!r} not found")
 
 
 @router.get("/definitions")
 def pipeline_definitions():
     """Return static pipeline stage definitions for the frontend."""
-    return PIPELINE_DEFS
+    start_ts = time.time()
+    defs = PIPELINE_DEFS
+    duration_ms = int((time.time() - start_ts) * 1000)
+    _log_metrics(
+        "pipeline_definitions",
+        definitions_count=len(defs),
+        duration_ms=duration_ms,
+    )
+    return defs
