@@ -147,6 +147,26 @@ against a 1-day limit. Equity is downsampled (default hourly) and scaled by
 square-root-of-time, which assumes i.i.d. returns and understates tail risk under positive
 autocorrelation — a floor, not a ceiling.
 
+## 🔴 2026-07-28 — ZERO trades for 18 days: the loss cap is the terminal gate
+Verified the fixes landed: **scanner fix confirmed LIVE** (`/api/v1/scanners/polymarket` → 200,
+`score: 0.75`, `side: "buy"`; was 500). Then checked trade flow — **9 trades total, most recent
+2026-07-10**. Those 9 are real (desk_trade_sync backfills Alpaca's 30-day history), not seed.
+Cause, from the 01:05 UTC crypto desk run — NOT insufficient balance:
+```
+🛑 Loss cap ACTIVE — only risk-reducing orders allowed (0 open positions eligible to reduce)
+🛑 .../UNI/USD BUY — blocked by loss cap (would increase exposure)   [x3]
+Done. 0 orders placed across 9 desks.
+```
+Desks are HEALTHY — data, ensembles, `passed=3 filtered=0`. Under the cap only risk-REDUCING
+orders pass, and with 0 open positions nothing can be reducing, so nothing passes. Correct as a
+daily cooling-off rule; pathological at 18 days. I could not tell which and did not guess —
+instead the Discord summary now carries `equity $X vs prior close $Y (-Z%, cap 2%) · N
+position(s) eligible to reduce` + `⚠️ nothing can pass while this is 0`, so the next run answers
+it in-channel. 8 tests.
+**The Alpaca paper-account reset is now the CONFIRMED blocker on trading**, not a nag.
+Also noted: nearly every crypto symbol logs `sell/buy conflict — stand aside` — only 3 signals
+survived 9 desks. Separate ceiling on trade count, worth its own investigation.
+
 ## 🛡️ 2026-07-28 — the 5xx guard never covered parameterised routes
 After fixing the scanner 500 the obvious question was: there IS a
 `test_no_get_endpoint_returns_5xx` — why didn't it catch it? Because it walks **parameterless**
