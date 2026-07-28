@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785190930.211392,
+    "last_updated": 1785200036.5511239,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,37 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1785159016.6762145
+    "last_brain_update": 1785200036.549769
   },
   "episodic": [
-    {
-      "lesson": "Deployment blocked by Vercel free tier daily limit (100/day). Upgrade to Pro or throttle deployment frequency to avoid delays.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784336718.1669254
-    },
-    {
-      "lesson": "Repeated auto-fix failures suggest underlying code or CI/CD misconfiguration. Investigate patch generation and apply manual fixes to unblock pipeline.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784336718.172246
-    },
-    {
-      "lesson": "Free tier rate limit introduces unpredictable deployment risk for rapid iteration cycles. Evaluate cost-benefit of Pro upgrade to maintain velocity.",
-      "category": "strategy",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784336718.17616
-    },
-    {
-      "lesson": "Multiple auto-fix failures without resolution indicate need for improved automated testing or human-in-the-loop verification before deployment.",
-      "category": "risk",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784336718.1799824
-    },
     {
       "lesson": "Repeated auto-fix failures indicate a systemic issue with automated patching; investigate root causes such as patch conflicts, missing dependencies, or codebase drift.",
       "category": "code",
@@ -2008,14 +1980,37 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785186304.6341355
+    },
+    {
+      "lesson": "Loss cap is active\u2014new exposure blocked, only risk-reducing orders permitted. Immediate risk review required.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1785200024.7419019
+    },
+    {
+      "lesson": "Options desk placed three high-confidence SELL orders (QQQ, SPY, IWM) despite loss cap. Confirm these are risk-reducing and monitor for unintended directional bias.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1785200024.7486906
+    },
+    {
+      "lesson": "Vercel deployment failed due to free-tier daily limit (100 deploys). Upgrade plan or throttle deployment frequency to avoid blocking CI/CD.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1785200024.7541869
+    },
+    {
+      "lesson": "Auto-fix on GitHub failed to apply patch\u2014manual intervention needed to resolve deployment issues and prevent backlog.",
+      "category": "code",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1785200024.759674
     }
   ],
   "github_insights": [
-    {
-      "summary": "A deployment failed due to resource limits, and automated fixes were either skipped as too complex or failed to apply a patch to the file.",
-      "item_count": 20,
-      "ts": 1784225979.019506
-    },
     {
       "summary": "The team lead revoked automerge on an autonomous PR that modifies protected files, and auto-fix attempts failed due to inability to apply patches.",
       "item_count": 20,
@@ -2510,6 +2505,11 @@
       "summary": "The deployment failed due to resource limitations, with an error message advising to retry after 24 hours, as shown in the referenced workflow run.",
       "item_count": 20,
       "ts": 1785159016.6639748
+    },
+    {
+      "summary": "A deployment failed due to resource limitations, with an error message advising to try again in 24 hours.",
+      "item_count": 20,
+      "ts": 1785200036.5375504
     }
   ],
   "experiment_results": [
@@ -2596,42 +2596,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "desk-crypto",
-      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $400 conf=97%  id=`a4dd18b7\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $343 conf=92%  id=`3ace4a13\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784769147.6675186
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "*International Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $343 conf=100%  id=`8d72af3e\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $343 conf=100%  id=`6cd8953b\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784769147.6723638
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (23:46 UTC)  equity=$22,858.46  regime=sideways/calm\nfunnel: 56 generated \u2192 18 survived gate+topK (0 exploration) \u2192 2 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
-      "source": "desk_run_summary",
-      "ts": 1784791081.7847466
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1784791081.7915862
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $400 conf=97%  id=`a4dd18b7\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $343 conf=92%  id=`3ace4a13\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784791081.7963712
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "*International Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/EWT` BUY $343 conf=100%  id=`8d72af3e\u2026`\n\ud83d\udfe2 `time_series_momentum/EWY` BUY $343 conf=100%  id=`6cd8953b\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784791081.8010552
-    },
     {
       "channel": "pnl-daily",
       "summary": "*QuantEdge Desk Run* (23:46 UTC)  equity=$22,858.46  regime=sideways/calm\nfunnel: 56 generated \u2192 18 survived gate+topK (0 exploration) \u2192 2 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 2 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
@@ -3195,6 +3159,42 @@
       "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $336 conf=98%  id=`e4d035f7\u2026`\n\ud83d\udfe2 `time_series_momentum/WEAT` BUY $475 conf=82%  id=`ce5c7461\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $938 conf=81%  id=`25df14ee\u2026`",
       "source": "desk_run_summary",
       "ts": 1785158993.9802713
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (23:48 UTC)  equity=$21,745.65  regime=sideways/calm\nfunnel: 37 generated \u2192 16 survived gate+topK (1 exploration) \u2192 0 placed\n\u26a0\ufe0f 16 dropped before placement \u2014 13 market closed \u00b7 3 loss cap\n\ud83d\uded1 loss cap ACTIVE \u2014 new exposure blocked, risk-reducing orders only\n\ud83d\udca4 *Equities*: no signal",
+      "source": "desk_run_summary",
+      "ts": 1785200024.7652838
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 9 signal(s) \u2265 0.6: EUR_USD BUY@1.13683, USD_CAD BUY@1.41241, EUR_USD SELL@1.13683 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1785200024.7707713
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Monday July 27, 2026*\n\n* We've got a clean slate today with 0 tasks completed by autonomous agents, let's push that number up!\n* Shoutout to our top agents: `cleanup`, `docstrings`, and `optimization` for completing 10 tasks each!\n* Our `Voyager` memory is packed with 200 lear",
+      "source": "desk_run_summary",
+      "ts": 1785200024.7763062
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "I\u2019d estimate a Sharpe around\u202f1.15\u202f\u00b1\u202f0.15 for the \u201cQQQ Momentum\u2011Volume Weighted MACD Breakout (10\u2011min)\u201d because the VWAP\u2011price filter and RSI\u2011volume weighting should cut most false\u2011breakouts, but the 10\u2011minute MACD cross still adds some timing noise. I\u2019ll run the out\u2011of\u2011sample test on the most recent",
+      "source": "desk_run_summary",
+      "ts": 1785200024.7820551
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 3 order(s) placed\n\ud83d\udd34 `gamma_exposure/QQQ` SELL $559 conf=100%  id=`6ad253eb\u2026`\n\ud83d\udd34 `put_call_ratio_contrarian/SPY` SELL $1162 conf=97%  id=`94cfe1f6\u2026`\n\ud83d\udd34 `options_pcr_reversal/IWM` SELL $1181 conf=96%  id=`9bfa8d37\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785200024.7875102
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `time_series_momentum/WEAT` BUY $454 conf=81%  id=`d6a886d0\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785200024.7929897
     }
   ]
 }
