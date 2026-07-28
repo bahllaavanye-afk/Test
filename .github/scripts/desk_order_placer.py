@@ -1601,6 +1601,69 @@ def _load_strategy(strategy_name: str):
     return cls()
 
 
+DENYLIST_TTL_DAYS = 7
+
+
+def _denylisted_assets() -> set:
+    """Symbols the broker's ORDER ENGINE refuses despite listing them as active.
+
+    Confirmed live 2026-07-28: `/v2/assets?asset_class=crypto&status=active`
+    returns MKR/USD as tradable, the filter correctly declines to drop it, and
+    `POST /v2/orders` then answers `422 asset MKR/USD is not active`. Alpaca's
+    metadata contradicts its own order engine, so NO amount of pre-filtering
+    against /v2/assets can prevent it — the only thing that can is remembering
+    the refusal.
+
+    The in-process memory (`_inactive_assets`) catches every repeat within a
+    run, but not the FIRST attempt of each run — and that attempt costs a
+    top-K slot, which is scarce: MKR/USD took 1 of only 3 passing signals in
+    both runs it appeared in. Seeding from this file removes the symbol before
+    signals are generated, so the slot goes to a tradable pair instead.
+
+    Entries EXPIRE after DENYLIST_TTL_DAYS. A delisting can be reversed, and a
+    denylist nobody re-confirms is how a permanently-stale exclusion happens;
+    letting it decay means the evidence has to be fresh. If the reject recurs
+    the desk log names it again and the entry can be refreshed.
+    """
+    import json
+    from datetime import datetime, timedelta, timezone
+    from pathlib import Path
+    f = Path(__file__).resolve().parent.parent / "state" / "inactive_assets.json"
+    if not f.exists():
+        return set()
+    try:
+        raw = json.loads(f.read_text())
+    except Exception:  # noqa: BLE001
+        return set()
+    cutoff = datetime.now(timezone.utc) - timedelta(days=DENYLIST_TTL_DAYS)
+    out = set()
+    for sym, meta in (raw or {}).items():
+        if sym.startswith("_") or not isinstance(meta, dict):
+            continue          # _README and any other annotation keys
+        try:
+            since = datetime.fromisoformat(str(meta.get("since", "")).replace("Z", "+00:00"))
+        except Exception:  # noqa: BLE001
+            continue          # undated entry is not evidence — ignore it
+        if since >= cutoff:
+            out.add(sym.strip().upper())
+    return out
+
+
+def _apply_denylist(symbols: list[str], denied: set) -> "tuple[list[str], list[str]]":
+    """(kept, blocked). Same fail-soft contract as the tradable filter: this may
+    never empty a desk's universe, so a denylist that would block everything is
+    ignored outright rather than idling the desk."""
+    if not denied:
+        return list(symbols), []
+    blocked = [s for s in symbols if s.strip().upper() in denied]
+    kept = [s for s in symbols if s.strip().upper() not in denied]
+    if not kept:
+        print(f"    ⓘ denylist would drop ALL {len(symbols)} symbols — ignoring it "
+              f"rather than idling the desk", flush=True)
+        return list(symbols), []
+    return kept, blocked
+
+
 def _trimmed_strategies() -> set:
     """Names retired by strategy_trimmer.py — they must NOT trade until recovered."""
     import json
@@ -1651,6 +1714,16 @@ async def run_desk(desk: DeskConfig, account: dict) -> list[dict]:
     run_symbols, dropped = _filter_tradable_crypto(desk.symbols, await _tradable_crypto_symbols())
     if dropped:
         print(f"  ⓘ skipping {len(dropped)} non-tradable pair(s): {', '.join(dropped)}", flush=True)
+
+    # Assets the ORDER ENGINE refuses even though /v2/assets calls them active.
+    # Dropped here, before signal generation, so they stop consuming top-K slots.
+    denied = _denylisted_assets()
+    if denied:
+        _inactive_assets.update(denied)          # order path agrees, belt and braces
+    run_symbols, blocked = _apply_denylist(run_symbols, denied)
+    if blocked:
+        print(f"  ⓘ skipping {len(blocked)} denylisted asset(s) the broker refuses "
+              f"despite listing them active: {', '.join(blocked)}", flush=True)
 
     for symbol in run_symbols:
         df = await _get_bars(symbol)
