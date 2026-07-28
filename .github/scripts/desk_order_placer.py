@@ -1859,7 +1859,31 @@ async def main() -> None:
                 _why = " · ".join(f"{n} {reason}" for reason, n in _drops.most_common())
                 summary += f"⚠️ {_total_dropped} dropped before placement — {_why}\n"
             if locals().get("_cap_active"):
-                summary += "🛑 loss cap ACTIVE — new exposure blocked, risk-reducing orders only\n"
+                # WITH THE NUMBERS. This used to say only "loss cap ACTIVE", and
+                # the drawdown figure went to the CI log — which nobody reads —
+                # so from Discord you could not tell a one-off 3% day from a
+                # structural halt. Measured 2026-07-28: the desks had placed
+                # ZERO orders for 18 days (last trade 2026-07-10) with every
+                # signal blocked here, and answering "why" needed a dig through
+                # Actions logs.
+                #
+                # `0 positions eligible to reduce` is the state worth seeing at
+                # a glance: under the cap only risk-REDUCING orders pass, so
+                # with no open positions nothing can pass at all. That is
+                # correct as a daily cooling-off rule and pathological if it
+                # persists, and these two numbers are what distinguish them.
+                _eq = locals().get("equity") or 0.0
+                _last_eq = locals().get("last_equity") or 0.0
+                _dd = (1.0 - _eq / _last_eq) if _last_eq else 0.0
+                _n_reducible = len(locals().get("_cap_positions") or {})
+                summary += (
+                    f"🛑 loss cap ACTIVE — new exposure blocked, risk-reducing only. "
+                    f"equity ${_eq:,.2f} vs prior close ${_last_eq:,.2f} "
+                    f"({_dd:+.2%}, cap {DAILY_LOSS_CAP_PCT:.0%}) · "
+                    f"{_n_reducible} position(s) eligible to reduce"
+                    + ("  ⚠️ nothing can pass while this is 0" if _n_reducible == 0 else "")
+                    + "\n"
+                )
             summary += "\n".join(desk_summaries)
             summary += f"\n\nTotal orders placed: *{len(all_orders)}*"
             _post_chat("#pnl-daily", summary)

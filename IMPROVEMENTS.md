@@ -1,5 +1,32 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔴 2026-07-28 — ZERO trades for 18 days: every order blocked by the loss cap
+
+Verified the money-path fixes actually landed, rather than assuming. **The scanner fix is live in production** — `/api/v1/scanners/polymarket` now returns `200` with `score: 0.75` (normalised from 75.0) and `side: "buy"` (mapped from `long_yes`), where it previously 500'd.
+
+Then checked whether trades are actually flowing. They are not:
+
+- `/api/v1/trades/` → **9 trades total**, most recent **2026-07-10** — eighteen days ago.
+- Those 9 are genuine, not seed data: `desk_trade_sync` backfills from Alpaca's real 30-day order history on a schedule. (I initially assumed seed data and checked — the sqlite fallback resets on deploy, so anything surviving had to be re-derived. It is re-derived from Alpaca.)
+
+**The cause, from the 01:05 UTC crypto desk run — and it is not "insufficient balance":**
+
+```
+🛑 Loss cap ACTIVE — only risk-reducing orders allowed (0 open positions eligible to reduce)
+🛑 avellaneda_stoikov_mm/UNI/USD  BUY — blocked by loss cap (would increase exposure)
+🛑 vol_of_vol_timing/MKR/USD      BUY — blocked by loss cap (would increase exposure)
+🛑 avellaneda_stoikov_mm/AAVE/USD BUY — blocked by loss cap (would increase exposure)
+Done. 0 orders placed across 9 desks.
+```
+
+**The desks are healthy.** They fetch data, run ensembles, and produce signals that clear the confidence gate (`passed=3 filtered=0`). Every one is then blocked. Under the cap only risk-**reducing** orders pass — and with **0 open positions, nothing can be risk-reducing**, so nothing can pass at all.
+
+That shape is correct as a *daily* cooling-off rule and pathological if it persists for 18 days. I could not tell which from the available evidence, and did not guess.
+
+- [x] **Made the summary say which.** The drawdown figure was printed only to the CI log; the Discord line said just `🛑 loss cap ACTIVE — new exposure blocked`. It now carries `equity $X vs prior close $Y (-Z%, cap 2%) · N position(s) eligible to reduce`, plus an explicit `⚠️ nothing can pass while this is 0`. The next desk run answers the question in the channel instead of requiring an Actions-log dig. 8 tests (`test_loss_cap_visibility.py`), including the divide-by-zero when the broker fetch fails.
+- [ ] **[USER] The Alpaca paper-account reset is now the confirmed blocker on trading**, not a background nag. Everything upstream of order placement works; the cap is the terminal gate and it cannot clear itself while the book is empty.
+- [ ] **[P2] Ensemble signals cancel out at scale.** Same run: nearly every crypto symbol logged `sell/buy conflict — stand aside` (SOL, AVAX, LTC, DOGE, LINK, BCH, DOT, XRP, SHIB, SUSHI, YFI, GRT, CRV, XTZ, BAT). Only 3 signals survived from 9 desks. Worth investigating separately from the cap — it caps the ceiling on trade count even once the account is healthy.
+
 ## 🛡️ 2026-07-28 — the 5xx guard never covered parameterised routes (the hole the scanner bug fell through)
 
 After fixing the `/api/v1/scanners/{desk}` 500, the obvious question: there is already a `test_no_get_endpoint_returns_5xx` — why didn't it catch it?
