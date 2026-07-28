@@ -16,7 +16,8 @@ from app.strategies import STRATEGY_REGISTRY
 from app.strategies.base import BacktestSignals
 
 
-def _ohlcv(n=320, seed=11):
+def _ohlcv(n: int = 320, seed: int = 11) -> pd.DataFrame:
+    """Generate synthetic OHLCV data for testing."""
     rng = np.random.default_rng(seed)
     returns = rng.normal(0.0005, 0.015, n)
     close = 100.0 * np.cumprod(1 + returns)
@@ -41,11 +42,12 @@ _NAMES = [
 
 
 def _entries(sig):
+    """Extract entry signals from BacktestSignals or boolean array."""
     return sig.entries if isinstance(sig, BacktestSignals) else (sig > 0)
 
 
 @pytest.mark.parametrize("name", _NAMES)
-def test_momentum_signals_are_causal(name):
+def test_momentum_signals_are_causal(name: str) -> None:
     cls = STRATEGY_REGISTRY.get(name)
     if cls is None:
         pytest.skip(f"{name} not in registry")
@@ -58,7 +60,6 @@ def test_momentum_signals_are_causal(name):
     for k in (180, 240):
         trunc = _entries(inst.backtest_signals(df.iloc[:k])).reset_index(drop=True)
         assert len(trunc) == k
-        # entries[:k] must match exactly — no future bar may influence a past signal
         mismatches = int((full.iloc[:k].values != trunc.values).sum())
         assert mismatches == 0, (
             f"{name}: {mismatches} entry(ies) in [0:{k}] changed when future data "
@@ -67,7 +68,7 @@ def test_momentum_signals_are_causal(name):
 
 
 @pytest.mark.parametrize("name", _NAMES)
-def test_momentum_no_entry_on_first_bar(name):
+def test_momentum_no_entry_on_first_bar(name: str) -> None:
     cls = STRATEGY_REGISTRY.get(name)
     if cls is None:
         pytest.skip(f"{name} not in registry")
