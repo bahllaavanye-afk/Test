@@ -16,7 +16,6 @@ except ImportError:
     CCXT_AVAILABLE = False
     logger.info("ccxt not installed — Binance broker disabled")
 
-
 INTERVAL_MAP = {
     "1m": "1m",
     "5m": "5m",
@@ -44,6 +43,11 @@ class BinanceBroker(AbstractBroker):
         # Cache for expensive calls
         self._ticker_cache = {"data": None, "timestamp": 0.0}
         self._ticker_lock = asyncio.Lock()
+
+        # Cache for per‑symbol quote requests
+        self._quote_cache = {}
+        self._quote_lock = asyncio.Lock()
+        self._quote_ttl = 5.0  # seconds
 
     async def close(self):
         await self.exchange.close()
@@ -83,7 +87,12 @@ class BinanceBroker(AbstractBroker):
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
@@ -108,13 +117,21 @@ class BinanceBroker(AbstractBroker):
         }
 
     async def get_quote(self, symbol: str) -> QuoteResult:
-        try:
-            ticker = await asyncio.wait_for(
-                self.exchange.fetch_ticker(symbol), timeout=10.0
-            )
-        except asyncio.TimeoutError:
-            logger.warning("Binance fetch_ticker timed out", symbol=symbol)
-            raise BrokerError(f"Binance quote timed out for {symbol}")
+        async with self._quote_lock:
+            now = time.monotonic()
+            cached = self._quote_cache.get(symbol)
+            if cached and now - cached["timestamp"] < self._quote_ttl:
+                ticker = cached["data"]
+            else:
+                try:
+                    ticker = await asyncio.wait_for(
+                        self.exchange.fetch_ticker(symbol), timeout=10.0
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("Binance fetch_ticker timed out", symbol=symbol)
+                    raise BrokerError(f"Binance quote timed out for {symbol}")
+                self._quote_cache[symbol] = {"data": ticker, "timestamp": now}
+
         return QuoteResult(
             symbol=symbol,
             bid=float(ticker["bid"]),
@@ -126,6 +143,8 @@ class BinanceBroker(AbstractBroker):
     async def get_historical(
         self, symbol: str, interval: str = "1d", limit: int = 500
     ) -> list[dict]:
+        if limit <= 0:
+            return []
         tf = INTERVAL_MAP.get(interval, "1d")
         ohlcv = await self.exchange.fetch_ohlcv(symbol, tf, limit=limit)
         return [
