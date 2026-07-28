@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Check timestamp sync",
-    "Check disk space",
-    "Test market data feeds",
     "Integrate macro features",
     "Integrate S4 layers",
     "**User requests**: Users are asking for one-sentence status updates, specifically requesting details on current tasks and activities (e.g. from token_monitor and algo_agent).",
@@ -199,8 +196,11 @@
     "Test network latency",
     "Implement Temporal Fusion",
     "Monitor model drift",
-    "Optimize Sharpe ratio"
+    "Optimize Sharpe ratio",
+    "Detect market halted",
+    "Cache recent quotes",
+    "Streamline color tokens"
   ],
-  "last_updated": "2026-07-28T06:23:19.607466+00:00",
+  "last_updated": "2026-07-28T09:15:58.430847+00:00",
   "total": 200
 }
