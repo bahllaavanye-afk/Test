@@ -228,6 +228,32 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## ✅ 2026-07-28 19:30 — fractional shorts CONFIRMED zero; two more order-time rejects fixed
+**Verified on the next live run, as promised.** Fractional-short 422s across three runs:
+`3 → 1 → 0`. Two market replacements occurred in the last run and neither failed, so the
+market-path fix holds. Orders `11 → 15 → 16`.
+
+Two other classes were still dying at the broker, both recurring:
+```
+403 {"code":40310000,"message":"insufficient qty available for order
+     (requested: 1.77, available: 1)","symbol":"SPY"}          x2 in one run
+422 {"code":42210000,"message":"asset \"EIDO\" cannot be sold short"}  x2 runs
+```
+1. **Alpaca will not let ONE order flip a short into a long.** Short 1 SPY, buy 1.77 → 403. The
+   buy is now capped at the short size so it **closes** the short — the risk-reducing half of the
+   intent, and what Alpaca requires be done first. The long can open next run.
+2. **Some assets cannot be shorted at all.** EIDO was rejected *after* the qty was correctly
+   rounded to 44 whole shares — whole-sharing does not help when the ASSET is the problem. Now
+   checks `/v2/assets/{symbol}` `shortable`, cached, **fail-soft TRUE** so a lookup blip cannot
+   silently stop the desks selling. Closing a long in a non-shortable asset is still allowed —
+   blocking that would strand every such position.
+
+31 tests, 2 fail against each new guard specifically.
+
+**The pattern across all four of these:** a constraint discovered at ORDER time instead of before
+it — the same shape as the delisted-asset filter that already existed. Worth checking the broker
+error codes in a live run whenever order counts look lower than signal counts.
+
 ## 🔁 2026-07-28 18:00 — the fractional-short fix was HALF a fix (completed)
 Verified the 17:30 fix live: **4 whole-share conversions** (HD 1.42→1, ORCL 2.72→2, UNG 37.27→37,
 EIDO 44.29→44) and orders up **11 → 15**. But **one 422 survived**, and the log showed exactly why:
