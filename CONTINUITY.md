@@ -228,6 +228,37 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## 👁️ 2026-07-28 13:10 — "STILL NO TRADES": THE DASHBOARD COULD NOT SEE THE BOOK (fixed)
+User reported no trades. **They were right about the product surface and wrong about the system** —
+and the surface is what counts. Measured live:
+```
+GET /api/v1/positions/            -> []          Alpaca: equity $21,752.63
+GET /api/v1/positions/?account_id -> []                  cash   $17,545.47
+GET /api/v1/trades/               -> []          => ~$4.2k of OPEN positions
+GET /api/v1/analytics/daily-pnl   -> all zeros
+```
+Meanwhile the 12:49 desk run placed 3 orders (+$978.87), two filled — including SHIB at conf
+0.81, one of the symbols the new ensemble rule unblocked.
+
+**Two separate causes, both now understood:**
+1. **`trades: []` is CORRECT.** `desk_trade_sync` only writes **closed round trips** (FIFO). The
+   desks have been buying; nothing has round-tripped yet. Not a bug.
+2. **`positions: []` was a BUG.** The desks place orders straight at Alpaca and never write the
+   `Position` table; nothing else populates it. The endpoint's live-Alpaca branch could not cover
+   for that because it required BOTH an explicit `account_id` AND a per-account `encrypted_key` —
+   and this deployment's Alpaca credentials live in the **environment**, not on an Account row.
+   Every default call fell through to an empty table and reported an empty book.
+
+Fixed: when the DB has no rows, serve live positions from the env-configured Alpaca account.
+Follows the pattern `analytics.py` already uses in three places — those env credentials ARE this
+deployment's trading account. Scoped to users owning an Alpaca account row; **DB rows keep
+priority**, so bot-managed positions stay authoritative. Fail-soft to `[]` so a broker outage
+degrades rather than 500s. 5 tests.
+
+**Standing trap this is the third instance of:** the backend DB is on the sqlite fallback and is
+NOT a record of live trading. `orders`/`trades`/`positions` being empty says nothing about
+whether the desks are trading — check the Actions logs or Alpaca directly.
+
 ## ⚖️ 2026-07-28 12:20 — A LONE 0.16 DISSENT WAS VETOING A 0.97 CONSENSUS (behaviour CHANGED)
 The instrumentation answered in one run. 76 conflicts across 7 desks, now attributed:
 ```
