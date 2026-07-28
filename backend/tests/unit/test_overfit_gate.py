@@ -48,6 +48,12 @@ def test_dsr_more_trials_lowers_confidence():
     assert deflated_sharpe_ratio(sr, n_trials=len(sr)) >= deflated_sharpe_ratio(sr, n_trials=200)
 
 
+def test_dsr_zero_variance_negative_sharpes():
+    # All Sharpe values are identical and negative → probability should be 0.
+    sr = [-0.3, -0.3, -0.3]
+    assert deflated_sharpe_ratio(sr, len(sr)) == 0.0
+
+
 # ── Probabilistic Sharpe Ratio ───────────────────────────────────────────────
 
 def test_psr_bounds_and_zero_point():
@@ -78,6 +84,11 @@ def test_psr_too_few_obs():
     assert probabilistic_sharpe_ratio(0.5, 1) == 0.0
 
 
+def test_psr_extreme_sharpe_bounds():
+    # Very high Sharpe values should be capped at 1.0.
+    assert probabilistic_sharpe_ratio(5.0, 100) == pytest.approx(1.0, abs=1e-6)
+
+
 # ── Probability of Backtest Overfitting (CSCV) ───────────────────────────────
 
 def test_pbo_high_for_pure_noise():
@@ -106,6 +117,14 @@ def test_pbo_failsoft_on_tiny_matrix():
 
 def test_pbo_failsoft_on_single_config():
     out = probability_of_backtest_overfitting(np.zeros((500, 1)), n_splits=10)
+    assert out["pbo"] == 1.0
+
+
+def test_pbo_zero_splits_returns_soft_fail():
+    # Zero splits should trigger a soft‑fail and return pbo=1.0.
+    rng = np.random.default_rng(42)
+    M = rng.normal(0, 0.01, size=(100, 10))
+    out = probability_of_backtest_overfitting(M, n_splits=0)
     assert out["pbo"] == 1.0
 
 
@@ -140,6 +159,13 @@ def test_verdict_empty():
     assert v["is_robust"] is False and v["verdict"] == "insufficient_data"
 
 
+def test_verdict_boundary_min_windows():
+    # Minimal acceptable number of windows with decent Sharpe values should pass.
+    sr = [0.6, 0.7, 0.65, 0.68, 0.66, 0.7]
+    v = robustness_verdict(sr)
+    assert v["is_robust"] is True
+
+
 # ── walk_forward() integration: verdict populated + initial_equity accepted ──
 
 def test_walk_forward_populates_verdict_and_accepts_initial_equity():
@@ -162,3 +188,12 @@ def test_walk_forward_populates_verdict_and_accepts_initial_equity():
     assert isinstance(result.deflated_sharpe, float)
     assert result.n_windows == len([w for w in result.windows if "sharpe" in w])
     assert result.verdict  # non-empty string
+
+
+def test_walk_forward_empty_prices_returns_insufficient():
+    empty_prices = pd.Series([], dtype=float)
+    def dummy_signals(train, test):
+        return pd.Series([], index=test.index)
+    result = walk_forward(dummy_signals, empty_prices, train_years=1, test_months=3, initial_equity=10_000)
+    assert result.is_robust is False
+    assert result.verdict == "insufficient_data"
