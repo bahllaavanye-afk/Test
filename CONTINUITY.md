@@ -163,6 +163,12 @@ daily cooling-off rule; pathological at 18 days. I could not tell which and did 
 instead the Discord summary now carries `equity $X vs prior close $Y (-Z%, cap 2%) · N
 position(s) eligible to reduce` + `⚠️ nothing can pass while this is 0`, so the next run answers
 it in-channel. 8 tests.
+**Follow-up 04:30:** the Discord-only numbers were unreadable from where I actually investigate
+(Actions API, not Discord), so the CONSOLE banner now repeats them at the point of blocking —
+a 20-line tail suffices. Also added a **contradiction detector**: with 0 positions and no fills
+equity cannot move, so `equity == last_equity` while the cap is ACTIVE means the cap is firing
+on **stale inputs**, not a real loss. The run now says so explicitly. Next desk run answers
+"correct daily cap vs stale last_equity" without inference.
 **The Alpaca paper-account reset is now the CONFIRMED blocker on trading**, not a nag.
 Also noted: nearly every crypto symbol logs `sell/buy conflict — stand aside` — only 3 signals
 survived 9 desks. Separate ceiling on trade count, worth its own investigation.

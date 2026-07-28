@@ -82,3 +82,30 @@ def test_the_line_is_always_well_formed(equity, last_equity):
     assert line.startswith("🛑 loss cap ACTIVE")
     assert line.endswith("\n")
     assert "$" in line and "%" in line
+
+
+# ── the contradiction detector ───────────────────────────────────────────────
+# `daily_loss_cap_hit` is `equity < last_equity * (1 - cap)`. With ZERO open
+# positions and no fills, equity cannot move, so equity should EQUAL prior
+# close and the cap cannot legitimately be active. If it is, the inputs are
+# wrong — a stale `last_equity` is the known candidate (there is already a
+# 2026-07-20 note in the source about weekend crypto drift against Friday's
+# close). Eighteen days of a "daily" cap is not a weekend, so the run needs to
+# say which of the two it is looking at rather than leaving it to inference.
+
+def cap_is_self_contradictory(equity: float, last_equity: float) -> bool:
+    """True when the cap is active but the numbers cannot justify it."""
+    return bool(last_equity) and abs(equity - last_equity) < 1e-9
+
+
+def test_a_flat_account_under_an_active_cap_is_flagged_as_contradictory():
+    assert cap_is_self_contradictory(22_266.11, 22_266.11)
+
+
+def test_a_genuine_drawdown_is_not_flagged():
+    assert not cap_is_self_contradictory(21_000.0, 22_266.11)
+
+
+def test_a_missing_prior_close_is_not_flagged_as_contradictory():
+    """last_equity == 0 means the fetch failed, which is a different problem."""
+    assert not cap_is_self_contradictory(22_266.11, 0.0)
