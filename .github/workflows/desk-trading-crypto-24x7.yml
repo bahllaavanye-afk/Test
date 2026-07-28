@@ -28,6 +28,20 @@ concurrency:
 
 jobs:
   place-crypto-orders:
+    # NOT on workflow_run. desk-trading.yml rides the SAME "CI completed"
+    # event, has no market-hours gate of its own, and runs EVERY desk —
+    # crypto included — around the clock. So on that trigger this job is pure
+    # duplication, and because the two use different concurrency groups they
+    # run in PARALLEL and compete for Alpaca's free-tier data limit.
+    #
+    # Measured 2026-07-28 06:46, both ignited by the same CI completion:
+    #   desk-trading.yml          bars_fetched=70, all 20 crypto symbols
+    #   desk-trading-crypto-24x7  bars_fetched=5   ← lost the race, 429s
+    #
+    # The crypto-only run was strictly worse AND was the thing degrading its
+    # own twin. Its real value is the cron below, for stretches when CI is not
+    # completing; on workflow_run it adds nothing to skip.
+    if: github.event_name != 'workflow_run'
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
