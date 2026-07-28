@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785253241.7605166,
+    "last_updated": 1785254277.6115718,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -62,38 +62,38 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-07-27T16:06:41.865299+00:00",
+      "generated_at": "2026-07-28T15:57:19.260031+00:00",
       "signals": {
         "vix": {
-          "value": 19.47,
+          "value": 18.05,
           "trend": "flat"
         },
         "spy": {
-          "price": 737.81,
-          "sma50": 744.06,
-          "sma200": 695.8,
+          "price": 742.08,
+          "sma50": 744.0,
+          "sma200": 696.18,
           "trend": "above_200sma"
         },
         "yield_curve": {
-          "ratio": 1.0225,
+          "ratio": 1.0283,
           "median": 1.0517,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 2.176,
+          "hyg_lqd_momentum_20d": 1.968,
           "signal": "tightening"
         },
         "breadth": {
-          "sectors_above_sma20": 7,
+          "sectors_above_sma20": 8,
           "total_sectors": 11,
-          "breadth_pct": 63.6
+          "breadth_pct": 72.7
         },
         "btc": {
-          "price": 64544,
-          "24h_pct": -0.21
+          "price": 63811,
+          "24h_pct": -1.14
         }
       },
-      "score": 2,
+      "score": 3,
       "regime": "bull",
       "strategy_gates": {
         "directional": true,
@@ -107,7 +107,7 @@
       "min_confidence": 0.6,
       "size_multiplier": 1.0
     },
-    "opinion_score": 2,
+    "opinion_score": 3,
     "macro_score": 2,
     "vix": 18.82,
     "market_scan_ts": 1785249839.7776124,
@@ -155,13 +155,6 @@
     "last_brain_update": 1785238475.148819
   },
   "episodic": [
-    {
-      "lesson": "A prior autonomous edit (#298) broke main, indicating insufficient testing or rollback mechanisms for automated changes. Implement mandatory CI checks and automatic rollback on test failures for autonomous PRs.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784368464.5997603
-    },
     {
       "lesson": "Vercel free tier deployment limit reached (100/day). Upgrade to Pro or throttle deployments to avoid blocking releases.",
       "category": "execution",
@@ -2032,6 +2025,18 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785249839.8115814
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 3,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1785254277.6170166
     }
   ],
   "github_insights": [
