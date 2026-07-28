@@ -2,9 +2,20 @@
 # Version: 1.0.0  |  Mode: paper (live trading permanently disabled)
 # Config loaded from environment variables via Pydantic BaseSettings
 # TRADING_MODE defaults to "paper" — live mode is permanently disabled
+
+"""Configuration module for the QuantEdge backend.
+
+This module defines the :class:`Settings` class, a Pydantic ``BaseSettings`` subclass
+that loads configuration values from environment variables (or a ``.env`` file) and
+provides convenient helpers for runtime checks such as secret‑key validation and
+CORS origin parsing.
+"""
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, model_validator
 import os as _os
+from typing import Dict, List
+
 
 # Resolve .env to the backend/ dir regardless of where uvicorn is launched from.
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
@@ -12,6 +23,13 @@ _BACKEND_ENV = _os.path.join(_HERE, "..", ".env")
 
 
 class Settings(BaseSettings):
+    """Pydantic settings container for application configuration.
+
+    The class reads values from environment variables and a ``.env`` file located
+    relative to this module. It provides defaults for development and validates
+    critical values such as the secret key.
+    """
+
     model_config = SettingsConfigDict(env_file=_BACKEND_ENV, extra="ignore")
 
     # App
@@ -42,14 +60,19 @@ class Settings(BaseSettings):
 
     @model_validator(mode="before")
     @classmethod
-    def _normalise_database_url(cls, values: dict) -> dict:
-        """Render and Supabase provide postgres:// — SQLAlchemy async needs postgresql+asyncpg://."""
+    def _normalise_database_url(cls, values: Dict[str, str]) -> Dict[str, str]:
+        """Normalize ``database_url`` to the asyncpg dialect expected by SQLAlchemy.
+
+        Supabase provides ``postgres://`` URLs, but the async driver requires the
+        ``postgresql+asyncpg://`` scheme. This validator rewrites the URL accordingly
+        before the model is instantiated.
+        """
         url = values.get("database_url", "")
         if isinstance(url, str):
             if url.startswith("postgres://"):
-                url = "postgresql+asyncpg://" + url[len("postgres://"):]
+                url = "postgresql+asyncpg://" + url[len("postgres://") :]
             elif url.startswith("postgresql://"):
-                url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+                url = "postgresql+asyncpg://" + url[len("postgresql://") :]
             values["database_url"] = url
         return values
 
@@ -100,6 +123,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_secret_key(self) -> "Settings":
+        """Validate that ``secret_key`` is a secure 32‑byte hex string.
+
+        In non‑development environments the placeholder values are prohibited.
+        A short key also raises an error. This guard prevents accidental deployment
+        with an insecure secret.
+        """
         placeholder = "change-me-in-production-32-byte-hex"
         test_placeholder = "test-secret-key-32-bytes-hex-xxxxx"
         if self.secret_key in (placeholder, test_placeholder):
@@ -114,10 +143,12 @@ class Settings(BaseSettings):
 
     @property
     def is_paper(self) -> bool:
+        """Return ``True`` if the application is running in paper‑trading mode."""
         return self.trading_mode == "paper"
 
     @property
-    def cors_origins(self) -> list[str]:
+    def cors_origins(self) -> List[str]:
+        """Parse ``allowed_origins`` into a list of origin strings for CORS configuration."""
         return [o.strip() for o in self.allowed_origins.split(",")]
 
 
