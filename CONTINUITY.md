@@ -228,6 +228,38 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## 🚨 2026-07-28 — BUY ON MARGIN → GET LIQUIDATED → GET FROZEN (P0, fixed)
+The origin instrument answered in ONE run. All 8 closes were `EXTERNAL`, and all filled
+**within ~1.5 seconds of each other** — a mass flatten, not per-position stops. Traced it:
+```
+17:49  desk-trading         13 orders, +$9,634    cash -$10,829.50  bp $25,001.91  ← healthy
+18:42  desk-trading-CRYPTO  🚑 RECOVERY: flattening 25 position(s)
+                                                   cash -$14,972.80  bp $17,247.12  ← healthy
+18:43  broker               25 sells all filled within ~1.5s
+23:44  desk-trading         equity $21,745.65 == cash, -2.28%, 🛑 CAP, 0 positions, frozen
+```
+**`recover_negative_cash` was destroying a healthy book every cycle.** Its guard was
+`cash < 0 AND non_marginable_buying_power <= 0` — but buying marginable equities drives cash
+negative and nmbp to zero **by construction**, so that reduces to *"this account used margin"*
+and matches every healthy long book the equity desks open. The pathology it is genuinely for
+is "$0 available" (orphaned notional buys, Alpaca 403ing 'insufficient balance for USD'), which
+has **no buying power left**. Healthy margin use does. Now also requires `buying_power <= 0`.
+
+**Why it hid for so long:** the recovery fires from the **crypto** workflow while the positions
+it destroys were opened by the **equity** desks. Reading either workflow's log alone shows only
+half the loop — and I had checked only `desk-trading.yml`, so I recorded "recovery never fired"
+in good faith and was wrong. **Always check `desk-trading-crypto-24x7.yml` too; it runs the
+same script.**
+
+**Test-methodology note, the important part.** My first draft asserted `recover_negative_cash(...)
+is False` and **passed against the unfixed code** — because without credentials the flatten
+*attempt* raises, the broad `except` swallows it, and the function returns False either way.
+The return value cannot distinguish "declined" from "tried and failed". Rewrote to patch
+`_alpaca_delete_sync` and assert on whether the destructive DELETE was *attempted*. Now 5 of 8
+fail on pre-fix code while the 3 guarding the real pathology still pass — proving the fix stops
+the bad liquidation without disabling the feature. **Third time a green test has been worthless
+here; always run new guards against the pre-fix tree.**
+
 ## 🛡️ 2026-07-28 — the 5xx guard never covered parameterised routes
 After fixing the scanner 500 the obvious question was: there IS a
 `test_no_get_endpoint_returns_5xx` — why didn't it catch it? Because it walks **parameterless**
