@@ -204,6 +204,30 @@ precisely the wrong conclusion to hand the next investigation. Now a signed retu
 — a bad equity day freezes the crypto desks for the ~17.5h until the next open. Same family as
 the 2026-07-20 weekend-drift note in the source. Design question, not a bug; not addressed here.
 
+### ❓ 05:56 — WHO closed the book? Nothing could answer, so now it can (#1123)
+The 13 orders were flat within 6h, realising the loss that tripped the cap. **Nothing in the
+repo could say what closed them**, and I checked every candidate rather than guessing:
+- orders carry **no bracket/OCO legs** (plain limit-first, see the placement loop) → not Alpaca
+- `recover_negative_cash` **never fired** — no 🚑 line in any run's log. Note its guard is
+  `cash < 0 AND non_marginable_buying_power <= 0`; at 17:49 cash was −$10,829.50 (an ordinary
+  **margin debit**, bp still $25,001.91), so it correctly declined
+- no other Actions script closes positions — `live_trading_reporter` / `research_to_trade` only
+  `GET /v2/positions`
+- the backend DB returned **zero order rows** (sqlite fallback) → no record there either
+
+The one witness that survives all of that is **`client_order_id`, which lives at the broker**.
+Everything this repo places is tagged `qe-<strategy>-<sym>-<ts>`; anything else is external.
+Prime suspect is the backend's **`PositionMonitor` exit loop** — wired up 2026-07-27, and if it
+is the closer then it is doing exactly its job and this was a normal stop-out, not a fault.
+**Unconfirmed — I could not verify it without Alpaca creds or Render logs, and did not assert
+it.** A flat book under an active cap now prints the last 8 closed orders with each one's
+origin, so the next occurrence names the closer. 11 tests, incl. that a lookalike prefix
+(`qexit-`, `QE-`) is NOT claimed as ours — misattribution would send the next investigation
+back to working code.
+
+**Reusable lesson:** when a question survives a session, ship the instrument rather than the
+inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
+
 ## 🛡️ 2026-07-28 — the 5xx guard never covered parameterised routes
 After fixing the scanner 500 the obvious question was: there IS a
 `test_no_get_endpoint_returns_5xx` — why didn't it catch it? Because it walks **parameterless**
