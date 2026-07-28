@@ -1,0 +1,7 @@
+{
+  "_README": "Assets the broker's ORDER ENGINE refuses even though its asset metadata lists them as active and tradable. Pre-filtering against /v2/assets cannot catch these — see CONTINUITY.md 2026-07-28 22:00. Entries expire after DENYLIST_TTL_DAYS (7) so a reversed delisting self-heals without anyone editing this file; if the reject recurs after expiry the desk log names it again and the entry gets its timestamp refreshed. Format: SYMBOL -> {since: ISO8601, reason: str}.",
+  "MKR/USD": {
+    "since": "2026-07-28T21:52:00Z",
+    "reason": "alpaca 422 40010001 'asset MKR/USD is not active' — /v2/assets?status=active still lists it tradable, so the order engine contradicts the metadata"
+  }
+}

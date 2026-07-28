@@ -329,6 +329,44 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+### ✅ 22:00 — B1 CONFIRMED. Alpaca's metadata contradicts its own order engine
+Run `30402044105` (21:46, carrying the full instrumentation) is decisive. It logged the reject
+and the memory line, and **none** of the three bail-out lines:
+```
+· ensemble[Crypto]: MKR/USD buy x2 (...) -> conf=0.89
+  ⚠ alpaca POST /v2/orders → 422: {"code":40010001,"message":"asset MKR/USD is not active"}
+  ⓘ MKR/USD marked INACTIVE for the rest of this run
+                                                  <- no "lookup FAILED"    → lookup healthy
+                                                  <- no "format mismatch"  → set is SYM/USD
+                                                  <- no "skipping N"       → nothing dropped
+```
+`_filter_tradable_crypto` is called unconditionally for every desk and prints whenever it drops
+anything, so only one reading survives: **`/v2/assets?asset_class=crypto&status=active` returns
+MKR/USD as tradable while `POST /v2/orders` refuses it as not active.**
+
+**This disproves the IMPROVEMENTS.md item** (*"the universe should be filtered against Alpaca's
+active-asset list before signals are generated, not discovered at order time"*). Filtering
+against that list **cannot** fix this class, because the list is the thing that's wrong. Marked
+accordingly rather than left to be re-attempted by a future session.
+
+**What actually works is memory.** The in-process set catches every repeat within a run but
+never the FIRST attempt — and that attempt is expensive: MKR/USD took 1 of only 3 passing
+signals in BOTH runs, roughly a third of the crypto desk's capacity. So the desk now seeds from
+`.github/state/inactive_assets.json` and drops those symbols **before signal generation**,
+freeing the slot for a pair that can actually trade. Follows the existing `strategy_trims.json`
+pattern: the desk READS state, it never writes from the trading hot path.
+
+Entries **expire after 7 days** (`DENYLIST_TTL_DAYS`). A delisting can be reversed, and a
+denylist nobody re-confirms is exactly how a permanently-stale exclusion happens; decay forces
+the evidence to stay fresh. If the reject recurs the log names it again and the entry is
+refreshed. Fail-soft throughout: a missing/corrupt file, an undated entry, or a denylist that
+would empty a desk's universe are all ignored rather than idling the desk. 19 tests.
+
+**Three ticks, three levels of silence.** Closed on one clean run → reopened. Instrumented the
+lookup → still ambiguous. Instrumented the remaining bail-outs → answered. Each step the silent
+path was one level deeper, and each time the *stated* conclusion outran the evidence by exactly
+one step. Instrument every early return in a fail-soft function at once.
+
 ## ✅ 2026-07-28 19:30 — fractional shorts CONFIRMED zero; two more order-time rejects fixed
 **Verified on the next live run, as promised.** Fractional-short 422s across three runs:
 `3 → 1 → 0`. Two market replacements occurred in the last run and neither failed, so the
