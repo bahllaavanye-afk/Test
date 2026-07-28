@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785249687.9526281,
+    "last_updated": 1785249839.8061674,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 2,
     "macro_score": 2,
-    "vix": 18.83,
-    "market_scan_ts": 1785249687.923455,
+    "vix": 18.82,
+    "market_scan_ts": 1785249839.7776124,
     "sector_leaders": [
       "Energy",
       "Financials",
@@ -122,46 +122,39 @@
       "Tech"
     ],
     "active_universe": [
+      "KO",
       "NOW",
       "TSLA",
       "ADBE",
-      "TMO",
       "QQQ",
+      "MO",
       "XLK",
       "BRK-B",
-      "INTU",
       "COST",
+      "INTU",
+      "WMT",
+      "PEP",
       "XLV",
-      "JNJ",
       "NVDA",
       "NFLX",
       "SLB",
-      "ABT",
       "AMZN",
       "PANW",
-      "CRWD",
       "HD",
-      "GOOGL"
+      "CRWD"
     ],
     "top_momentum": [
       "ADBE",
       "INTU",
-      "ABT",
       "AAPL",
-      "TMO"
+      "KO",
+      "SLB"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785238475.148819
   },
   "episodic": [
-    {
-      "lesson": "Autonomous PR modifying protected file `backend/app/brokers/base.py` was revoked after a previous similar edit broke main. Strengthen path protection enforcement and require explicit human review for all changes to risk-manager and broker bases.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784368464.5961812
-    },
     {
       "lesson": "A prior autonomous edit (#298) broke main, indicating insufficient testing or rollback mechanisms for automated changes. Implement mandatory CI checks and automatic rollback on test failures for autonomous PRs.",
       "category": "risk",
@@ -2024,6 +2017,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785249687.958206
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Cons. Staples"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785249839.8115814
     }
   ],
   "github_insights": [
