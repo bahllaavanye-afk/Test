@@ -11,6 +11,18 @@ name: Security Scan — SAST + deps + secret + agent red-team
 # repairs it. Free (all OSS tooling), weekly + on PR to catch regressions.
 
 on:
+  # `pull_request` ALONE gated nothing. Agent branches get their PR opened by
+  # auto-pr.yml, so the run's actor is github-actions[bot] — and a bot-actored
+  # PR run lands in `action_required`, waiting on a human approval that never
+  # comes. Measured 2026-07-28: of the last 30 PR runs, 21 were action_required
+  # and every one of them was bot-actored, including the improver PRs. Pushing
+  # the branch is actored by the pusher, needs no approval, and fires before
+  # the PR exists. main is excluded on purpose: 27 of its 129 commits in the
+  # last 24h touch these paths (state bots), which would be pure burn — the
+  # weekly cron already covers merged code.
+  push:
+    branches-ignore: [main]
+    paths: ["backend/**", ".github/scripts/**", ".github/workflows/**"]
   pull_request:
     paths: ["backend/**", ".github/scripts/**", ".github/workflows/**"]
   schedule:
@@ -30,10 +42,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      # Scheduled runs execute on the default branch's copy; pin main so the scan
-      # sees the latest merged code (enforced by test_script_safety.py).
+      # `ref: main` was UNCONDITIONAL, so a PR run scanned main instead of the
+      # code being proposed — the scan could not see the diff it was gating.
+      # That is why the five "success" runs on this branch proved nothing about
+      # the branch. Scheduled/dispatch runs still pin main (latest merged code,
+      # enforced by test_script_safety.py); event-driven runs scan the commit
+      # that triggered them.
       - uses: actions/checkout@v4
-        with: { ref: main }
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'main' || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
