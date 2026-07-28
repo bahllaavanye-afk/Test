@@ -131,3 +131,87 @@ def test_the_position_map_is_fetched_at_most_once(monkeypatch):
     assert calls["n"] == 1, f"fetched {calls['n']} times"
     assert all(m == {"ORCL": 100.0} for m in maps)
     dop._position_map_cache = None
+
+
+# ── the market-replacement path ──────────────────────────────────────────────
+# The first fix covered the LIMIT branch only, and one 422 survived the next
+# live run:
+#
+#   · UNG sell 37.27 -> 37 whole shares      <- limit path, correctly fixed
+#   ↻ limit unfilled after 20s — replaced with market
+#   ⚠ 422 {"code":42210000,"message":"fractional orders cannot be sold short"}
+#
+# `_ensure_filled` cancel-replaces an unfilled limit by calling `_place_order`
+# with NO limit price, which takes the equity market branch. That branch sent a
+# NOTIONAL order, so Alpaca derived the share count itself — fractionally — and
+# rejected it short. A short-side equity market order must carry an explicit
+# whole `qty`.
+
+
+def _place_body(monkeypatch, symbol, side, notional, *, price=10.0, held=None):
+    """Capture the body `_place_order` would POST, with no limit price."""
+    import asyncio
+
+    posted: dict = {}
+
+    async def _fake_post(path, body):
+        posted.update(body)
+        return {"id": "x", "status": "accepted"}
+
+    async def _fake_price(_sym):
+        return price
+
+    monkeypatch.setattr(dop, "_alpaca_post", _fake_post)
+    monkeypatch.setattr(dop, "_equity_last_price", _fake_price)
+    monkeypatch.setattr(dop, "_position_map_cache",
+                        {} if held is None else {symbol: held}, raising=False)
+    asyncio.run(dop._place_order(symbol, side, notional))
+    dop._position_map_cache = None
+    return posted
+
+
+def test_a_short_market_order_carries_whole_qty_not_notional(monkeypatch):
+    """THE SURVIVING BUG: notional -> Alpaca derives a fraction -> 422."""
+    body = _place_body(monkeypatch, "UNG", "sell", 372.7, price=10.0)
+    assert body.get("qty") == "37.0", body
+    assert "notional" not in body, "notional lets Alpaca pick a fractional qty"
+
+
+def test_a_buy_market_order_still_uses_notional(monkeypatch):
+    """Fractional longs are legal — do not lose notional precision on buys."""
+    body = _place_body(monkeypatch, "UNG", "buy", 372.7, price=10.0)
+    assert body.get("notional") == "372.7", body
+    assert "qty" not in body
+
+
+def test_a_short_market_order_under_one_share_is_not_sent(monkeypatch):
+    """floor gives 0 — skip rather than post a guaranteed rejection."""
+    body = _place_body(monkeypatch, "UNG", "sell", 4.0, price=10.0)
+    assert body == {}, body
+
+
+def test_selling_into_a_long_keeps_notional_precision(monkeypatch):
+    """A close is fractional-legal, so it need not be whole-shared."""
+    body = _place_body(monkeypatch, "UNG", "sell", 37.0, price=10.0, held=100.0)
+    assert body.get("qty") == "3.7", body
+
+
+def test_an_unavailable_price_falls_back_to_notional(monkeypatch):
+    """Fail-soft: worse for shorts, but never worse than not ordering."""
+    import asyncio
+
+    posted: dict = {}
+
+    async def _fake_post(path, body):
+        posted.update(body)
+        return {"id": "x"}
+
+    async def _no_price(_sym):
+        return None
+
+    monkeypatch.setattr(dop, "_alpaca_post", _fake_post)
+    monkeypatch.setattr(dop, "_equity_last_price", _no_price)
+    monkeypatch.setattr(dop, "_position_map_cache", {}, raising=False)
+    asyncio.run(dop._place_order("UNG", "sell", 372.7))
+    dop._position_map_cache = None
+    assert posted.get("notional") == "372.7", posted

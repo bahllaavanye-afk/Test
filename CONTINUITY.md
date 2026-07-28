@@ -228,6 +228,26 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## 🔁 2026-07-28 18:00 — the fractional-short fix was HALF a fix (completed)
+Verified the 17:30 fix live: **4 whole-share conversions** (HD 1.42→1, ORCL 2.72→2, UNG 37.27→37,
+EIDO 44.29→44) and orders up **11 → 15**. But **one 422 survived**, and the log showed exactly why:
+```
+· UNG sell 37.27 -> 37 whole shares      <- limit path, correctly fixed
+↻ limit unfilled after 20s — replaced with market
+⚠ 422 {"code":42210000,"message":"fractional orders cannot be sold short"}
+```
+`_ensure_filled` cancel-replaces an unfilled limit by calling `_place_order` with **no limit
+price**, taking the equity MARKET branch — which I had not covered. That branch sent a
+**notional** order, so Alpaca derived the share count itself, fractionally, and rejected it.
+
+Short-side equity market orders now carry an explicit whole `qty` (priced off
+`/v2/stocks/trades/latest`). Buys keep `notional` — fractional longs are legal and precision
+matters. Fail-soft: no price → notional, i.e. the old behaviour, never worse than not ordering.
+22 tests, 2 fail against the market-path regression.
+
+**Lesson: verify a fix on the NEXT live run, not just in tests.** The limit path was green and
+the tests passed; only the production log showed the replacement route was still broken.
+
 ## 💸 2026-07-28 17:30 — ~21% OF EQUITY ORDERS DIED AT THE BROKER, EVERY RUN
 Alpaca allows fractional shares on the LONG side but **rejects them short**. Measured on a live
 run — **3 of 14 attempted orders**:

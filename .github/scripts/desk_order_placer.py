@@ -875,6 +875,24 @@ async def _equity_short_safe_qty(
     return float(whole)
 
 
+async def _equity_last_price(symbol: str) -> float | None:
+    """Latest equity trade price, for converting a notional into whole shares.
+
+    Fail-soft None: the caller then falls back to a notional order, which is
+    what it did before this existed — worse for shorts, but never worse than
+    not placing the order at all.
+    """
+    try:
+        data = await _alpaca_get(
+            "/v2/stocks/trades/latest", {"symbols": symbol, "feed": "iex"},
+            data_api=True,
+        )
+        px = float(((data.get("trades") or {}).get(symbol) or {}).get("p", 0) or 0)
+        return px or None
+    except Exception:  # noqa: BLE001 — pricing is best-effort here
+        return None
+
+
 _position_map_cache: "dict[str, float] | None" = None
 
 
@@ -941,8 +959,33 @@ async def _place_order(
             body["type"] = "market"
             body["qty"]  = str(round(notional_usd / ask, 6))
         else:
-            body["type"]     = "market"
-            body["notional"] = str(round(notional_usd, 2))
+            body["type"] = "market"
+            # A NOTIONAL market order lets Alpaca derive the share count, and it
+            # derives a fractional one — which it then rejects on the short side.
+            # The limit path above is already whole-shared, but `_ensure_filled`
+            # replaces an unfilled limit with a market order through here, so the
+            # 422 came back on exactly that route:
+            #
+            #   · UNG sell 37.27 -> 37 whole shares
+            #   ↻ limit unfilled after 20s — replaced with market
+            #   ⚠ 422 {"code":42210000,"message":"fractional orders cannot be
+            #        sold short"}
+            #
+            # So a short-side equity market order has to carry an explicit whole
+            # `qty` instead of a notional.
+            qty_for_short = None
+            if side == "sell":
+                px = await _equity_last_price(symbol)
+                if px and px > 0:
+                    qty_for_short = await _equity_short_safe_qty(
+                        symbol, side, round(notional_usd / px, 2), is_crypto=False
+                    )
+                    if qty_for_short is None:
+                        return None
+            if qty_for_short is not None:
+                body["qty"] = str(qty_for_short)
+            else:
+                body["notional"] = str(round(notional_usd, 2))
 
         return await _alpaca_post("/v2/orders", body)
     except Exception as exc:
