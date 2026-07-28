@@ -1675,11 +1675,17 @@ async def main() -> None:
                 # see them from the log.
                 _eq = locals().get("equity") or 0.0
                 _last_eq = locals().get("last_equity") or 0.0
-                _dd = (1.0 - _eq / _last_eq) if _last_eq else 0.0
+                # SIGNED RETURN, not the drawdown magnitude. The first cut of
+                # this computed `1 - eq/last_eq` (positive on a loss) and then
+                # formatted it `{:+.2%}`, so the 2026-07-28 run reported a
+                # 2.28% LOSS as "+2.28%" — a diagnostic that states the
+                # opposite of what happened. Read as a gain, it makes an
+                # active loss cap look like a bug; it wasn't.
+                _ret = (_eq / _last_eq - 1.0) if _last_eq else 0.0
                 print(f"  🛑 Loss cap ACTIVE — only risk-reducing orders allowed "
                       f"({len(_cap_positions)} open positions eligible to reduce)", flush=True)
                 print(f"     equity ${_eq:,.2f} vs prior close ${_last_eq:,.2f} "
-                      f"({_dd:+.2%}, cap {DAILY_LOSS_CAP_PCT:.0%})"
+                      f"({_ret:+.2%}, cap -{DAILY_LOSS_CAP_PCT:.0%})"
                       + ("  ⚠️ 0 reducible → NOTHING can pass" if not _cap_positions else ""),
                       flush=True)
                 if _last_eq and abs(_eq - _last_eq) < 1e-9:
@@ -1898,12 +1904,15 @@ async def main() -> None:
                 # persists, and these two numbers are what distinguish them.
                 _eq = locals().get("equity") or 0.0
                 _last_eq = locals().get("last_equity") or 0.0
-                _dd = (1.0 - _eq / _last_eq) if _last_eq else 0.0
+                # Signed return — see the note at the console twin above: the
+                # drawdown magnitude formatted `{:+.2%}` printed a loss as a
+                # gain, which is worse than printing nothing.
+                _ret = (_eq / _last_eq - 1.0) if _last_eq else 0.0
                 _n_reducible = len(locals().get("_cap_positions") or {})
                 summary += (
                     f"🛑 loss cap ACTIVE — new exposure blocked, risk-reducing only. "
                     f"equity ${_eq:,.2f} vs prior close ${_last_eq:,.2f} "
-                    f"({_dd:+.2%}, cap {DAILY_LOSS_CAP_PCT:.0%}) · "
+                    f"({_ret:+.2%}, cap -{DAILY_LOSS_CAP_PCT:.0%}) · "
                     f"{_n_reducible} position(s) eligible to reduce"
                     + ("  ⚠️ nothing can pass while this is 0" if _n_reducible == 0 else "")
                     + "\n"
