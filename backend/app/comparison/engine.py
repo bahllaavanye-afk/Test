@@ -3,6 +3,7 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -12,6 +13,11 @@ from scipy import stats
 from app.backtest.engine import run_backtest, BacktestMetrics
 from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stats
 from app.utils.logging import logger
+
+
+class ComparisonEngineError(Exception):
+    """Custom exception for errors occurring within the StrategyComparisonEngine."""
+    pass
 
 
 @dataclass
@@ -87,11 +93,47 @@ class StrategyComparisonEngine:
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
 
-        manual_metrics = run_backtest(manual_signals, prices, initial_equity)
-        ml_metrics = run_backtest(ml_signals, prices, initial_equity)
+        try:
+            manual_metrics = run_backtest(manual_signals, prices, initial_equity)
+        except Exception as exc:
+            logger.exception(
+                "Backtest failed for manual signals",
+                strategy=strategy_name,
+                signal_type="manual",
+                error=str(exc),
+            )
+            raise ComparisonEngineError("Failed to run backtest for manual signals") from exc
 
-        benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
-        benchmark_stats = get_benchmark_stats()
+        try:
+            ml_metrics = run_backtest(ml_signals, prices, initial_equity)
+        except Exception as exc:
+            logger.exception(
+                "Backtest failed for ML-enhanced signals",
+                strategy=strategy_name,
+                signal_type="ml",
+                error=str(exc),
+            )
+            raise ComparisonEngineError("Failed to run backtest for ML-enhanced signals") from exc
+
+        try:
+            benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
+        except Exception as exc:
+            logger.exception(
+                "Failed to fetch benchmark curves",
+                start_date=start_date,
+                end_date=end_date,
+                error=str(exc),
+            )
+            raise ComparisonEngineError("Failed to fetch benchmark curves") from exc
+
+        try:
+            benchmark_stats = get_benchmark_stats()
+        except Exception as exc:
+            logger.exception(
+                "Failed to compute benchmark statistics",
+                error=str(exc),
+            )
+            raise ComparisonEngineError("Failed to compute benchmark statistics") from exc
 
         manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
         ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
@@ -100,7 +142,15 @@ class StrategyComparisonEngine:
 
         min_len = min(len(manual_ret), len(ml_ret))
         if min_len > 10:
-            t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
+            try:
+                t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
+            except Exception as exc:
+                logger.exception(
+                    "Statistical test failed",
+                    min_samples=min_len,
+                    error=str(exc),
+                )
+                t_stat, p_val = 0.0, 1.0
         else:
             t_stat, p_val = 0.0, 1.0
 
