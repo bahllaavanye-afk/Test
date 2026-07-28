@@ -647,6 +647,51 @@ async def _alpaca_position_map() -> dict[str, float]:
         return {}
 
 
+def _order_origin(client_order_id: str | None) -> str:
+    """Who placed an order, from its client_order_id.
+
+    Every order this script places is tagged `qe-<strategy>-<sym>-<ts>` (see
+    the `coid = ...` line in the placement loop). Anything else came from
+    somewhere we are not looking at: the backend's PositionMonitor exit loop,
+    Alpaca's own auto-liquidation, or a hand-placed order.
+    """
+    if client_order_id and client_order_id.startswith("qe-"):
+        return "this desk placer"
+    return "EXTERNAL (backend exit loop / broker / manual)"
+
+
+async def _report_recent_closes(limit: int = 8) -> None:
+    """Print who most recently closed positions. Fail-soft and diagnostic only.
+
+    Written after a book of 13 orders (+$9,634 notional, placed 2026-07-27
+    17:49) was fully flat by 23:44 having realised enough loss to trip the
+    daily cap — and NOTHING in this repo could say what closed it. The orders
+    carried no bracket legs, `recover_negative_cash` never fired, and no other
+    Actions script closes positions. The backend DB is on its sqlite fallback
+    and had zero order rows, so it held no evidence either.
+
+    `client_order_id` is the one discriminator that survives all of that, and
+    it lives at the broker rather than in any of our storage. Reading it back
+    turns "something flattened the book" into a name.
+    """
+    try:
+        orders = await _alpaca_get("/v2/orders", {"status": "closed",
+                                                  "limit": limit,
+                                                  "direction": "desc"})
+    except Exception as exc:  # noqa: BLE001
+        print(f"     (recent-close lookup failed: {str(exc)[:70]})", flush=True)
+        return
+    if not orders:
+        print("     no closed orders on record — the book was never filled", flush=True)
+        return
+    print(f"     last {len(orders)} closed order(s), newest first:", flush=True)
+    for o in orders:
+        print(f"       {o.get('filled_at') or o.get('updated_at')} "
+              f"{o.get('symbol')} {o.get('side')} qty={o.get('filled_qty')} "
+              f"[{o.get('status')}] ← {_order_origin(o.get('client_order_id'))}",
+              flush=True)
+
+
 def _vol_scalar(bars) -> float:
     """target/realized annualized vol from 20d closes, clamped [0.5, 2.0].
     1.0 when bars are absent/short/degenerate — sizing then falls back to
@@ -1688,6 +1733,10 @@ async def main() -> None:
                       f"({_ret:+.2%}, cap -{DAILY_LOSS_CAP_PCT:.0%})"
                       + ("  ⚠️ 0 reducible → NOTHING can pass" if not _cap_positions else ""),
                       flush=True)
+                if not _cap_positions:
+                    # A flat book under an active cap means the loss was
+                    # REALISED — something closed the positions. Name it.
+                    await _report_recent_closes()
                 if _last_eq and abs(_eq - _last_eq) < 1e-9:
                     # equity == last_equity cannot trip a drawdown cap. If this
                     # ever prints, the cap is firing on stale/mismatched inputs
