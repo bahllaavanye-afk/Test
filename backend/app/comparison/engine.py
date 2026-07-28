@@ -3,6 +3,7 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -133,3 +134,122 @@ class StrategyComparisonEngine:
             is_significant=p_val < 0.05,
             winner=winner,
         )
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge cases
+# ----------------------------------------------------------------------
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+
+def _dummy_metrics():
+    """Create a minimal BacktestMetrics‑like object for mocking."""
+    dummy = MagicMock()
+    dummy.equity_curve = [{"equity": 100_000}, {"equity": 101_000}]
+    dummy.sharpe = 1.0
+    return dummy
+
+
+@pytest.mark.asyncio
+async def test_empty_manual_signals_raises():
+    """Empty manual_signals should trigger a ValueError."""
+    engine = StrategyComparisonEngine()
+    manual = pd.Series([], dtype=float)
+    ml = pd.Series([1, 0, 1])
+    prices = pd.Series([100, 101, 102])
+
+    with pytest.raises(ValueError, match="manual_signals series cannot be empty"):
+        await engine.run_comparison(
+            manual_signals=manual,
+            ml_signals=ml,
+            prices=prices,
+            strategy_name="test",
+            symbol="TEST",
+            interval="1d",
+            start_date=date(2023, 1, 1),
+            end_date=date(2023, 1, 10),
+        )
+
+
+@pytest.mark.asyncio
+async def test_start_date_after_end_date_raises():
+    """start_date later than end_date must raise a ValueError."""
+    engine = StrategyComparisonEngine()
+    idx = pd.date_range("2023-01-01", periods=3)
+    manual = pd.Series([1, 0, 1], index=idx)
+    ml = pd.Series([0, 1, 0], index=idx)
+    prices = pd.Series([100, 101, 102], index=idx)
+
+    with pytest.raises(ValueError, match="start_date cannot be later than end_date"):
+        await engine.run_comparison(
+            manual_signals=manual,
+            ml_signals=ml,
+            prices=prices,
+            strategy_name="test",
+            symbol="TEST",
+            interval="1d",
+            start_date=date(2023, 2, 1),
+            end_date=date(2023, 1, 31),
+        )
+
+
+@pytest.mark.asyncio
+async def test_no_common_index_raises():
+    """If the three series share no index, a ValueError should be raised."""
+    engine = StrategyComparisonEngine()
+    manual = pd.Series([1, 0, 1], index=pd.date_range("2023-01-01", periods=3))
+    ml = pd.Series([0, 1, 0], index=pd.date_range("2023-02-01", periods=3))
+    prices = pd.Series([100, 101, 102], index=pd.date_range("2023-03-01", periods=3))
+
+    with pytest.raises(ValueError, match="must share at least one common index"):
+        await engine.run_comparison(
+            manual_signals=manual,
+            ml_signals=ml,
+            prices=prices,
+            strategy_name="test",
+            symbol="TEST",
+            interval="1d",
+            start_date=date(2023, 1, 1),
+            end_date=date(2023, 1, 10),
+        )
+
+
+@pytest.mark.asyncio
+async def test_successful_comparison_returns_expected_fields():
+    """Happy path with mocked dependencies to ensure result structure."""
+    engine = StrategyComparisonEngine()
+    idx = pd.date_range("2023-01-01", periods=5)
+    manual = pd.Series([1, 0, 1, 0, 1], index=idx)
+    ml = pd.Series([0, 1, 0, 1, 0], index=idx)
+    prices = pd.Series([100, 101, 102, 103, 104], index=idx)
+
+    with patch("app.backtest.engine.run_backtest", side_effect=lambda *args, **kwargs: _dummy_metrics()), \
+         patch("app.comparison.benchmarks.fetch_benchmark_curves", new_callable=AsyncMock) as mock_curves, \
+         patch("app.comparison.benchmarks.get_benchmark_stats", return_value={"dummy": "stats"}):
+        mock_curves.return_value = {"benchmark": "data"}
+
+        result = await engine.run_comparison(
+            manual_signals=manual,
+            ml_signals=ml,
+            prices=prices,
+            strategy_name="test_strategy",
+            symbol="TEST",
+            interval="1d",
+            start_date=date(2023, 1, 1),
+            end_date=date(2023, 1, 5),
+        )
+
+        assert isinstance(result, ComparisonResult)
+        assert result.strategy_name == "test_strategy"
+        assert result.manual is not None
+        assert result.ml_enhanced is not None
+        assert result.benchmark_curves == {"benchmark": "data"}
+        assert result.benchmark_stats == {"dummy": "stats"}
+        # With identical Sharpe values, winner should be "neither"
+        assert result.winner == "neither"
+        # p_value defaults to 1.0 because sample size <=10
+        assert result.p_value == 1.0
+        assert result.is_significant is False
