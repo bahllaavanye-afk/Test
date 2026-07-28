@@ -147,7 +147,7 @@ against a 1-day limit. Equity is downsampled (default hourly) and scaled by
 square-root-of-time, which assumes i.i.d. returns and understates tail risk under positive
 autocorrelation — a floor, not a ceiling.
 
-## 🔴 2026-07-28 — ZERO trades for 18 days: the loss cap is the terminal gate
+## ✅ 2026-07-28 — "ZERO trades for 18 days": wrong premise, and the loss cap is behaving
 Verified the fixes landed: **scanner fix confirmed LIVE** (`/api/v1/scanners/polymarket` → 200,
 `score: 0.75`, `side: "buy"`; was 500). Then checked trade flow — **9 trades total, most recent
 2026-07-10**. Those 9 are real (desk_trade_sync backfills Alpaca's 30-day history), not seed.
@@ -169,9 +169,40 @@ a 20-line tail suffices. Also added a **contradiction detector**: with 0 positio
 equity cannot move, so `equity == last_equity` while the cap is ACTIVE means the cap is firing
 on **stale inputs**, not a real loss. The run now says so explicitly. Next desk run answers
 "correct daily cap vs stale last_equity" without inference.
-**The Alpaca paper-account reset is now the CONFIRMED blocker on trading**, not a nag.
 Also noted: nearly every crypto symbol logs `sell/buy conflict — stand aside` — only 3 signals
 survived 9 desks. Separate ceiling on trade count, worth its own investigation.
+
+### ✅ 05:45 — ANSWERED, and the premise was wrong on both counts
+The instrumentation paid off. Pulled the full job logs for three consecutive desk runs:
+```
+17:49 Jul 27  equity $21,819.46  cash $-10,829.50  bp $25,001.91  → 13 ORDERS, +$9,634 notional
+23:44 Jul 27  equity $21,745.65  cash $21,745.65   bp $86,982.60  → flat, cap ACTIVE, 0 orders
+04:46 Jul 28  identical to the cent                               → still capped
+```
+**1. The desks ARE trading.** 13 orders on Jul 27. The "9 trades, nothing since 2026-07-10"
+reading came from the **backend DB, which is on its sqlite fallback** and never sees orders the
+Actions desks place directly at the broker. The DB is not a record of trading right now — it is
+a record of what `desk_trade_sync` managed to backfill before Postgres went down. Do not read
+trade flow from it until Postgres is back.
+
+**2. The cap is CORRECT — the contradiction detector stayed silent, as it should.** `cash ==
+equity` exactly ⇒ genuinely zero positions; $21,745.65 vs a $22,253.58 prior close is a real
+**-2.28% day** against a 2% cap, booked while the account still held the positions it opened at
+17:49. Not stale inputs. The freeze lifts when Alpaca rolls `last_equity` — which happens at
+the **next session open, not at the closing bell**, which is why three runs spanning six hours
+all read the same prior close and looked stale.
+
+**3. A real bug, and it was mine.** The diagnostic shipped in #1121 computed the drawdown
+*magnitude* (`1 - equity/last_equity`, positive on a loss) and formatted it `{:+.2%}`, so it
+reported the -2.28% day as **"+2.28%"** — asserting the opposite of what happened, at both the
+console and Discord sites. Read as a gain it makes a correctly-firing cap look broken, which is
+precisely the wrong conclusion to hand the next investigation. Now a signed return
+(`equity/last_equity - 1`) rendering `(-2.28%, cap -2%)`. 15 tests, incl. a generalised
+"no loss is ever reported with a plus sign" property.
+
+**Standing caveat:** the cap keys off the *equity* trading-day rollover, but crypto trades 24/7
+— a bad equity day freezes the crypto desks for the ~17.5h until the next open. Same family as
+the 2026-07-20 weekend-drift note in the source. Design question, not a bug; not addressed here.
 
 ## 🛡️ 2026-07-28 — the 5xx guard never covered parameterised routes
 After fixing the scanner 500 the obvious question was: there IS a
