@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785258620.951994,
+    "last_updated": 1785260465.956936,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 3,
     "macro_score": 2,
-    "vix": 18.08,
-    "market_scan_ts": 1785256232.9717114,
+    "vix": 18.17,
+    "market_scan_ts": 1785260465.934109,
     "sector_leaders": [
       "Financials",
       "Energy",
@@ -122,46 +122,39 @@
       "Tech"
     ],
     "active_universe": [
-      "KO",
-      "TSLA",
       "NOW",
       "ADBE",
+      "TSLA",
       "INTU",
+      "TMO",
       "QQQ",
       "XLK",
-      "XLV",
       "SLB",
+      "XLV",
+      "JNJ",
       "BRK-B",
-      "MO",
-      "COST",
       "NVDA",
-      "WMT",
-      "BLK",
-      "PEP",
+      "COST",
       "NFLX",
+      "BLK",
+      "ABT",
+      "AMZN",
       "MRK",
-      "GS",
-      "AMZN"
+      "PANW",
+      "V"
     ],
     "top_momentum": [
       "ADBE",
       "INTU",
       "AAPL",
-      "BLK",
-      "NOW"
+      "NOW",
+      "MPC"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785258620.950635
   },
   "episodic": [
-    {
-      "lesson": "Multiple auto-fix failures indicate patch application issues. Review the auto-fix pipeline for incorrect diffs or missing dependencies; consider manual fixes as fallback.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784380114.9428966
-    },
     {
       "lesson": "Recurring rate-limit errors (Vercel, Slack) suggest need for centralized monitoring of API quotas and proactive upgrade or throttling strategy.",
       "category": "strategy",
@@ -2053,6 +2046,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Financials, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785256233.0069163
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Financials",
+        "Energy",
+        "Healthcare"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Financials, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785260465.9613411
     }
   ],
   "github_insights": [
