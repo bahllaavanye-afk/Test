@@ -147,6 +147,20 @@ against a 1-day limit. Equity is downsampled (default hourly) and scaled by
 square-root-of-time, which assumes i.i.d. returns and understates tail risk under positive
 autocorrelation — a floor, not a ceiling.
 
+## 🛡️ 2026-07-28 — the 5xx guard never covered parameterised routes
+After fixing the scanner 500 the obvious question was: there IS a
+`test_no_get_endpoint_returns_5xx` — why didn't it catch it? Because it walks **parameterless**
+GETs only. **25 of 128 GET routes take a path param and were never smoke-tested.** Now covered:
+placeholders are bogus ids and the assertion is "does not 5xx", so 404/422 passes and no
+fixtures are needed. `test_every_path_parameter_has_a_placeholder` stops a new param silently
+dropping a route out of the walk.
+**One value per param is NOT enough** — my first draft used `desk="equity"` and PASSED against
+the unfixed scanner (equity returns empty here; only polymarket produced a row). Placeholders
+are now lists expanded over every value; re-verified failing on the pre-fix tree.
+**500 vs 502/503:** three market-data routes 502 with `{"detail": "Alpaca bars error: 401"}`
+and one 503s on Redis — deliberate HTTPExceptions for absent upstreams, not crashes. Those pass;
+a 502/503 *without* a `detail` still fails. A guard that cries wolf gets deleted.
+
 ## 🔴 2026-07-28 — /api/v1/scanners 500'd on EVERY non-empty result (fixed)
 Found by writing the first test for a live endpoint with 0% coverage. Producer and schema
 disagreed on BOTH fields since they were written: scanners emit `min(score,100)` (0-100) against

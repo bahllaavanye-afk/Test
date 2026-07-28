@@ -1,5 +1,17 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🛡️ 2026-07-28 — the 5xx guard never covered parameterised routes (the hole the scanner bug fell through)
+
+After fixing the `/api/v1/scanners/{desk}` 500, the obvious question: there is already a `test_no_get_endpoint_returns_5xx` — why didn't it catch it?
+
+Because it walks **parameterless** GETs only, by construction. **25 of the 128 GET routes take a path parameter and were never smoke-tested at all.** The parameterless twin `/scanners/` passed because it reads an empty cache in tests.
+
+- [x] **Extended the walk to parameterised routes.** No fixtures needed: placeholders are deliberately non-existent ids, and the assertion is "does not 5xx" — a 404/422 on a bogus id is a pass. `test_every_path_parameter_has_a_placeholder` fails if a new param name appears with no placeholder, so a future `/{portfolio_id}` cannot silently drop out of the walk — which is exactly how this hole persisted.
+- [x] **One value per parameter is not enough — my first draft proved it.** With `desk="equity"` the new walk **passed against the unfixed scanner**: equity returns an empty result set here and never reaches the serialisation path; only `polymarket` produced a row. I nearly shipped a guard advertised as catching the bug it did not catch. Placeholders are now **lists**, expanded over every value for enum-like params. Re-verified against the pre-fix tree, where it now reports `/api/v1/scanners/{desk} (as /api/v1/scanners/polymarket) → 500`.
+- [x] **500 vs 502/503 distinguished.** Three market-data routes return `502 {"detail": "Alpaca bars error: 401"}` and one returns `503 {"detail": "Redis unavailable"}` in this environment — those are *deliberate* `HTTPException`s for absent upstreams, not crashes. Failing on them would make the guard environment-dependent, and a guard that cries wolf gets deleted. A 502/503 **without** a `detail` still fails: that shape means something escaped rather than being handled.
+
+Full suite, two consecutive CI-invocation runs: **1941 passed**, 29 skipped, 5 xfailed.
+
 ## 🔴 2026-07-28 — /api/v1/scanners returned 500 for EVERY non-empty result
 
 Found by writing the first-ever test for a live endpoint that had 0% coverage. The reachability triage split the 37 zero-coverage modules into dead ones (guarded) and **live but wholly untested** ones — `api/v1/scanners` → `tasks/stock_scanners` (275 statements), `api/v1/releases` → `ml/serving/serve` + `ab_router`. That second group is worse than dead code: dead code cannot break a user.
