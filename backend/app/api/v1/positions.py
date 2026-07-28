@@ -72,7 +72,71 @@ async def list_positions(
         query = query.where(Position.account_id == account_id)
 
     result = await db.execute(query)
-    return result.scalars().all()
+    rows = list(result.scalars().all())
+    if rows:
+        return rows
+
+    # NOTHING IN THE DB IS NOT THE SAME AS AN EMPTY BOOK.
+    #
+    # The desks in .github/scripts/desk_order_placer.py place their orders
+    # straight at Alpaca using the platform's own credentials; they never write
+    # to the `Position` table. Nothing else populates it either. So this
+    # endpoint returned `[]` while the broker actually held the book — measured
+    # 2026-07-28 with equity $21,752.63 against cash $17,545.47, i.e. ~$4.2k of
+    # open positions the dashboard could not see.
+    #
+    # The live branch above is unreachable for them: it needs an explicit
+    # `account_id` AND a per-account `encrypted_key`, and the platform's
+    # Alpaca credentials live in the environment, not on an Account row.
+    #
+    # Reading them here follows the pattern analytics.py already uses in three
+    # places — `settings.alpaca_api_key` IS this deployment's trading account.
+    # Scoped to users who own an Alpaca account row, so it stays an account the
+    # caller is entitled to see rather than a blanket exposure.
+    return await _live_platform_positions(db, current_user)
+
+
+async def _live_platform_positions(db: AsyncSession, user: User) -> list[dict]:
+    """Open positions from the environment-configured Alpaca account.
+
+    Fail-soft: any problem returns [] so an empty dashboard degrades rather
+    than 500s. The caller has already established the DB has nothing to show.
+    """
+    from app.config import settings
+
+    if not (settings.alpaca_api_key and settings.alpaca_secret_key):
+        return []
+
+    owns_alpaca = (
+        await db.execute(
+            select(Account.id)
+            .where(Account.user_id == user.id, Account.broker == "alpaca")
+            .limit(1)
+        )
+    ).first()
+    if not owns_alpaca:
+        return []
+
+    import httpx
+
+    from app.brokers.alpaca_orders import ALPACA_PAPER
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{ALPACA_PAPER}/v2/positions",
+                headers={
+                    "APCA-API-KEY-ID": settings.alpaca_api_key,
+                    "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
+                },
+            )
+            resp.raise_for_status()
+            live = resp.json()
+    except Exception as exc:  # noqa: BLE001 — an empty list beats a 500 here
+        logger.warning("live platform positions fetch failed: %s", exc)
+        return []
+
+    return [_alpaca_position_to_out(p) for p in live or []]
 
 
 @router.get("/{symbol}/exit-config")
