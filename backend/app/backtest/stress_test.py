@@ -205,3 +205,103 @@ def stress_summary(results: list[StressResult]) -> dict:
                 "num_trades": r.metrics.num_trades,
             }
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Unit tests for edge cases
+# --------------------------------------------------------------------------- #
+
+import unittest
+from datetime import datetime
+from types import SimpleNamespace
+import sys
+from unittest.mock import patch
+
+
+class TestStressTestEdgeCases(unittest.TestCase):
+    def setUp(self):
+        # Simple mock metrics object returned by the patched run_backtest
+        self.mock_metrics = SimpleNamespace(
+            total_return=0.05,
+            max_drawdown=-0.10,
+            sharpe=1.2,
+            win_rate=0.55,
+            num_trades=8,
+        )
+
+    def _run_with_mock(self, signals, prices, scenario):
+        """Helper to run run_stress_tests with run_backtest patched."""
+        module = sys.modules[__name__]
+        with patch.object(module, "run_backtest", return_value=self.mock_metrics):
+            return run_stress_tests(
+                signals=signals,
+                prices=prices,
+                scenarios=[scenario],
+            )
+
+    def test_exact_five_data_points_boundary(self):
+        """Scenario where price series has exactly 5 points – should be evaluated."""
+        dates = pd.date_range(start="2020-01-01", periods=5, freq="D")
+        prices = pd.Series([100, 101, 102, 103, 104], index=dates)
+        signals = pd.Series([1, 0, 1, 0, 1], index=dates)
+
+        scenario = StressScenario(
+            name="exact_five",
+            label="Exact Five",
+            start=date(2020, 1, 1),
+            end=date(2020, 1, 5),
+            description="Exactly five data points",
+        )
+
+        results = self._run_with_mock(signals, prices, scenario)
+        self.assertEqual(len(results), 1)
+        res = results[0]
+        self.assertTrue(res.period_covered)
+        self.assertIsNotNone(res.metrics)
+        self.assertEqual(res.data_points, 5)
+
+    def test_less_than_five_data_points(self):
+        """Scenario where price series has fewer than 5 points – should be skipped."""
+        dates = pd.date_range(start="2020-01-01", periods=4, freq="D")
+        prices = pd.Series([100, 101, 102, 103], index=dates)
+        signals = pd.Series([1, 0, 1, 0], index=dates)
+
+        scenario = StressScenario(
+            name="less_than_five",
+            label="Less Than Five",
+            start=date(2020, 1, 1),
+            end=date(2020, 1, 4),
+            description="Fewer than five data points",
+        )
+
+        results = self._run_with_mock(signals, prices, scenario)
+        self.assertEqual(len(results), 1)
+        res = results[0]
+        self.assertFalse(res.period_covered)
+        self.assertIsNone(res.metrics)
+        self.assertEqual(res.data_points, 4)
+
+    def test_no_intersection_with_price_index(self):
+        """Scenario window does not intersect price index – should return covered=False."""
+        dates = pd.date_range(start="2020-02-01", periods=10, freq="D")
+        prices = pd.Series([100 + i for i in range(10)], index=dates)
+        signals = pd.Series([1] * 10, index=dates)
+
+        scenario = StressScenario(
+            name="no_intersection",
+            label="No Intersection",
+            start=date(2020, 1, 1),
+            end=date(2020, 1, 31),
+            description="Window outside price data range",
+        )
+
+        results = self._run_with_mock(signals, prices, scenario)
+        self.assertEqual(len(results), 1)
+        res = results[0]
+        self.assertFalse(res.period_covered)
+        self.assertIsNone(res.metrics)
+        self.assertEqual(res.data_points, 0)
+
+
+if __name__ == "__main__":
+    unittest.main(argv=[""], exit=False)
