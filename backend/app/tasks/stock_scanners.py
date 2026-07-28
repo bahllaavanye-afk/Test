@@ -115,7 +115,7 @@ class EquityScanner:
             logger.debug("EquityScanner fetch %s: %s", symbol, e)
             return None
 
-    def _score(self, symbol: str, df: pd.DataFrame) -> ScanResult:
+    def _score(self, symbol: str, df: pd.DataFrame) -> ScanResult | None:
         close = df["close"]
         vol = df["volume"]
         score = 0.0
@@ -171,6 +171,12 @@ class EquityScanner:
             signals.append("atr_breakout")
 
         side = "long" if roc_20 > 0 or last_rsi < 35 else "short" if last_rsi > 65 else "neutral"
+
+        # Same as the crypto twin: no signal fired, nothing to report. This one
+        # had not 500'd yet only because equity rows happened not to reach the
+        # serialiser empty — the defect is identical.
+        if not signals:
+            return None
 
         return ScanResult(
             symbol=symbol, desk="equity", score=min(score, 100), signals=signals, side=side,
@@ -250,7 +256,7 @@ class CryptoScanner:
         except Exception:
             return None
 
-    def _score(self, symbol: str, df: pd.DataFrame, funding_rate: float | None) -> ScanResult:
+    def _score(self, symbol: str, df: pd.DataFrame, funding_rate: float | None) -> ScanResult | None:
         close = df["close"]
         vol = df["volume"]
         score = 0.0
@@ -306,6 +312,13 @@ class CryptoScanner:
 
         side = "long" if last_rsi < 35 or last_close < lower.iloc[-1] else \
                "short" if last_rsi > 65 or last_close > upper.iloc[-1] else "neutral"
+
+        # Nothing fired → nothing to report. A scanner exists to surface the
+        # symbols where a condition triggered; emitting a row with no signals
+        # and a zero score just dilutes the ranked list, and it 500s the API
+        # (ScanResultOut rejects an empty `signals`).
+        if not signals:
+            return None
 
         return ScanResult(
             symbol=symbol, desk="crypto", score=min(score, 100), signals=signals, side=side,

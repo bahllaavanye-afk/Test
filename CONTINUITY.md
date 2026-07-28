@@ -228,6 +228,32 @@ back to working code.
 **Reusable lesson:** when a question survives a session, ship the instrument rather than the
 inference. That is now 2-for-2 (the cap diagnostic answered its question in one run).
 
+## 🚨 2026-07-28 10:50 — THE BARS FIX WOKE A LATENT 500 IN THE CRYPTO SCANNER (fixed)
+**My own guards caught it**, on a docs-only PR: `test_each_scanner_desk_answers_without_erroring
+[crypto]` and `test_no_parameterised_get_endpoint_returns_5xx` both went red on main.
+```
+crypto scanner 500'd: 1 validation error for ScanResultOut
+signals  Value error, signals list cannot be empty
+```
+`ScanResultOut.validate_signals` rejects an empty `signals`, but the equity AND crypto scanners
+returned a `ScanResult` **unconditionally** — a symbol where no condition fired arrives with
+`signals=[]`, `score=0`, `side="neutral"`. The endpoint serialises the batch, so **one** such row
+500s the whole response.
+
+**It was the pagination fix that surfaced it.** While crypto was starved of bars it returned
+nothing and the endpoint served `results: []`; restoring the universe made it emit signal-less
+rows. Exact same shape as the original polymarket 500 — latent until a desk produced a non-empty
+result. **Live prod still answers 200 only because the crypto Redis cache is empty right now.**
+
+Fixed at BOTH layers, deliberately: producers return `None` when nothing fired (a zero-score
+no-signal row is the scanner saying "nothing here" — it only dilutes a ranked list), and the read
+path drops such rows anyway via `_normalise_scan_items()` at all 3 sites, because **Redis rows
+written before the fix outlive the deploy**. Dropping, not a placeholder signal name: fabricating
+`["unspecified"]` would put a meaningless entry in a list the UI presents as opportunities.
+13 tests. Note the fixture: a "flat" price series does NOT produce zero signals — constant gives
+RSI 0 (`rsi_oversold`), a tight zig-zag gives `ema_stack_bearish`. Found a genuinely quiet series
+(sine, period 30) **by testing rather than assuming**.
+
 ## 🚨 2026-07-28 09:40 — THE DESKS ONLY EVER SAW THE FIRST PAGE OF THE ALPHABET (P0, fixed)
 **Two state changes first:** the **loss cap has LIFTED** (Alpaca rolled `last_equity` at the
 session open, as predicted) and the desks are **trading again — 2 orders at 09:27**, with
