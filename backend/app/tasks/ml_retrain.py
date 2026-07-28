@@ -8,7 +8,7 @@ import asyncio
 import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 
 import pandas as pd
 
@@ -22,7 +22,7 @@ MIN_HIST_LENGTH: int = 200
 MAX_EPOCHS: int = 30
 DEFAULT_TRAIN_DAYS: int = 730
 CONFIGS_DIR: Path = Path(__file__).parents[3] / "experiments" / "configs"
-DEFAULT_RETRAIN_CONFIGS: list[tuple[str, str, str]] = [
+DEFAULT_RETRAIN_CONFIGS: List[Tuple[str, str, str]] = [
     ("lstm", "BTC-USD", "1h"),
     ("lstm", "ETH-USD", "1h"),
     ("lstm", "SPY", "1d"),
@@ -58,13 +58,28 @@ except Exception:  # pragma: no cover
     _load_yaml = None
 
 
-async def _download_hist(symbol: str, interval: str, start: datetime, end: datetime) -> pd.DataFrame | None:
+async def _download_hist(
+    symbol: str | None,
+    interval: str | None,
+    start: datetime,
+    end: datetime,
+) -> pd.DataFrame | None:
     """
     Retrieve historical price data, using an in‑process cache to avoid duplicate
     downloads within the same nightly run.
 
-    Returns a pandas DataFrame or ``None`` on failure.
+    Returns a pandas DataFrame or ``None`` on failure or if inputs are invalid.
     """
+    # Guard against None or empty inputs.
+    if not symbol or not interval:
+        logger.warning("Invalid symbol or interval for download", symbol=symbol, interval=interval)
+        return None
+
+    # Guard against inverted date range (off‑by‑one / logical errors).
+    if start > end:
+        logger.warning("Start date is after end date for download", start=start, end=end)
+        return None
+
     cache_key = (symbol, interval)
     cached = _DATA_CACHE.get(cache_key)
     if cached:
@@ -94,7 +109,13 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
         logger.error("Failed to download data", symbol=symbol, interval=interval, error=str(exc))
         return None
 
-    if hist is None or len(hist) < MIN_HIST_LENGTH:
+    if hist is None or len(hist) < MIN_HIST_LENGTH or hist.empty:
+        logger.info(
+            "Insufficient data retrieved",
+            symbol=symbol,
+            interval=interval,
+            rows=len(hist) if hasattr(hist, "__len__") else 0,
+        )
         return None
 
     # Normalize column names once.
@@ -105,8 +126,21 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
     return hist
 
 
-async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_INTERVAL) -> dict:
+async def retrain_model(
+    model_name: str | None,
+    symbol: str | None,
+    interval: str = DEFAULT_INTERVAL,
+) -> dict:
     """Download 2 years of data and retrain a model. Returns result dict."""
+    # Validate inputs early to avoid downstream failures.
+    if not model_name or not symbol:
+        logger.warning(
+            "Retrain skipped due to missing model_name or symbol",
+            model=model_name,
+            symbol=symbol,
+        )
+        return {"status": "skipped", "reason": "invalid inputs"}
+
     try:
         end = datetime.now(timezone.utc)
         start = end - timedelta(days=DEFAULT_TRAIN_DAYS)
@@ -139,21 +173,25 @@ async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_IN
         return {"status": "error", "error": str(e)}
 
 
-def _load_retrain_configs() -> list[tuple[str, str, str]]:
+def _load_retrain_configs() -> List[Tuple[str, str, str]]:
     """
     Discover retrain targets dynamically from experiment configs (*.yaml).
     Falls back to a minimal default set if no configs exist or yaml is unavailable.
     Returns list of (model_name, symbol, interval).
     """
     configs_dir = CONFIGS_DIR
-    seen: set[tuple[str, str, str]] = set()
-    results: list[tuple[str, str, str]] = []
+    seen: set[Tuple[str, str, str]] = set()
+    results: List[Tuple[str, str, str]] = []
+
+    if not configs_dir.is_dir():
+        logger.warning("Config directory does not exist or is not a directory", path=str(configs_dir))
+        return list(DEFAULT_RETRAIN_CONFIGS)
 
     for cfg_path in sorted(configs_dir.glob("*.yaml")):
         try:
             with open(cfg_path) as f:
                 if _load_yaml:
-                    cfg = _load_yaml(f)
+                    cfg = _load_yaml(f) or {}
                 else:
                     # Minimal fallback: regex‑extract model/symbol/interval from YAML text
                     text = f.read()
@@ -167,7 +205,7 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
                             )
                         }
                     }
-            exp = cfg.get("experiment", {})
+            exp = cfg.get("experiment", {}) or {}
             model = exp.get("model", "lstm")
             symbol = exp.get("symbol", "SPY")
             interval = exp.get("interval", "1d")
@@ -175,7 +213,8 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
             if key not in seen:
                 seen.add(key)
                 results.append(key)
-        except Exception:
+        except Exception as exc:
+            logger.error("Failed to load retrain config", path=str(cfg_path), error=str(exc))
             continue
 
     if not results:
@@ -188,7 +227,7 @@ async def nightly_retrain() -> None:
     """Retrain all models discovered from experiment configs. Called by APScheduler at 02:00 UTC."""
     retrain_configs = _load_retrain_configs()
     # Cap at 10 per night to avoid overwhelming free‑tier CPU
-    retrain_configs = retrain_configs[:MAX_RETRAIN_PER_NIGHT]
+    retrain_configs = retrain_configs[:MAX_RETRAIN_PER_NIGHT] if retrain_configs else []
 
     if not retrain_configs:
         logger.info("No retrain configurations found")
@@ -199,7 +238,11 @@ async def nightly_retrain() -> None:
         *(retrain_model(m, s, i) for m, s, i in retrain_configs),
         return_exceptions=True,
     )
-    successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
+    successes = sum(
+        1
+        for r in results
+        if isinstance(r, dict) and r.get("status") not in ("error", "skipped")
+    )
     logger.info(
         "Nightly retrain complete",
         total=len(retrain_configs),
