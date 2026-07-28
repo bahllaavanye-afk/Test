@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-27T22:09:24.663062+00:00",
+  "last_updated": "2026-07-28T05:18:09.276653+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -40,15 +40,15 @@
       ]
     },
     "strategies": {
-      "summary": "Based on the collective knowledge, here are the top insights:\n\n\u2022 **Cross-Asset EMA Strategy:** A new cross-asset EMA strategy is being drafted (#4 and #3).\n\u2022 **Supertrend-RSI Divergence Filter:** The 5-minute Supertrend + RSI-divergence filter is projected to result in a high Sharpe ratio (1.2 \u00b1 0.2, #5 and #6).\n\u2022 **NVDA Volume-Weighted MACD Breakout:** The strongest bullish signal (NVDA, confidence 0.90, strategy to be backtested as \"NVDA Volume-Weighted MACD Breakout (15-minute)\") is expected to yield a Sharpe ratio of 1.2 \u00b1 0.2 (#9 and #10).",
-      "source_count": 57,
-      "updated_at": "2026-07-27T14:29:31.178210+00:00",
+      "summary": "Here are 2-3 concise bullet points of the most important, actionable knowledge:\n\n* **Backtesting Multiple Strategies:** The platform is actively backtesting a \"QQQ Momentum-Volume Weighted MACD Breakout (10-min)\" variant, which combines VWAP-price filters and RSI-based volume analysis, with an estimated Sharpe ratio of 1.15 \u00b1 0.15.\n* **Strategy Exploration:** The UCB1 bandit algorithm is being used to explore and evaluate various trading strategies, with experiments being run and performance metrics saved regularly.\n* **Signal Generation:** Trading signals are being fired for multiple symbols, including SPY and NVDA, and are being used to inform backtesting and strategy evaluation.",
+      "source_count": 54,
+      "updated_at": "2026-07-28T05:18:09.276653+00:00",
       "raw_recent": [
-        "[quick_backtest in #desk-equities @ 2026-07-27T10:08] Given the 5\u2011minute supertrend\u202f+\u202fRSI\u2011divergence filter that isolates only strong trend\u2011aligned moves while allowing rapid exits, I\u2019d project a Sharpe a",
-        "[algo_agent @ 2026-07-27T11:20] The system: We are an algo_agent with role UCB1 bandit for strategy exploration. We need to respond in first person, concise, 2 sentences max, referen",
-        "[signal_runner in #desk-equities @ 2026-07-27T13:41] We need to respond as signal runner, reporting signals fired in last cycle across given symbols, using data from agent_memory.json signals array. The ",
-        "[strategy_generator in #desk-equities @ 2026-07-27T13:41] Based on the strongest bullish signal (NVDA, confidence 0.90), I propose backtesting a **\u201cNVDA Volume\u2011Weighted MACD Breakout (15\u2011min)\u201d** variant: ente",
-        "[quick_backtest in #desk-equities @ 2026-07-27T13:41] I\u2019d project a Sharpe around\u202f1.2\u202f\u00b1\u202f0.2 for the VWAP\u2011MACD\u2011volume filter because the 20\u2011period VWAP and MACD crossover already isolate trending moves, wh"
+        "[signal_runner in #desk-equities @ 2026-07-27T23:00] The last cycle generated signals for all five symbols: SPY (bullish,",
+        "[strategy_generator in #desk-equities @ 2026-07-27T23:00] Given the bullish SPY and NVDA signals, I suggest backtesting a **\"QQQ Momentum-Volume Weighted MACD Breakout (10-min)\"** variant, which combines a 20",
+        "[quick_backtest in #desk-equities @ 2026-07-27T23:00] I\u2019d estimate a Sharpe around\u202f1.15\u202f\u00b1\u202f0.15 for the \u201cQQQ Momentum\u2011Volume Weighted MACD Breakout (10\u2011min)\u201d because the VWAP\u2011price filter and RSI\u2011volume we",
+        "[run_experiments @ 2026-07-28T02:30] I\u2019m currently running the next batch of strategy experiments and saving their performance metrics to\u202f`",
+        "[algo_agent @ 2026-07-28T02:30] We need to respond as the algo_agent, UCB1 bandit for strategy exploration. Provide one-sentence status update, first person, concise, referencing rea"
       ]
     },
     "risk": {
