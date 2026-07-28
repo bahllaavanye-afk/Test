@@ -7,12 +7,16 @@ average across calm and turbulent regimes.
 """
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
 from datetime import date
 
 import pandas as pd
 
 from app.backtest.engine import BacktestMetrics, run_backtest
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -129,6 +133,11 @@ def run_stress_tests(
 
         # Fast check: if the scenario window does not intersect the price index, skip early
         if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
+            logger.info(
+                "Stress scenario %s skipped (no overlapping price data)",
+                scenario.name,
+                extra={"scenario": scenario.name, "covered": False},
+            )
             results.append(
                 StressResult(
                     scenario=scenario,
@@ -145,6 +154,12 @@ def run_stress_tests(
         s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
 
         if s_prices is None or len(s_prices) < 5:
+            logger.info(
+                "Stress scenario %s insufficient data (data_points=%d)",
+                scenario.name,
+                len(s_prices) if s_prices is not None else 0,
+                extra={"scenario": scenario.name, "covered": False},
+            )
             results.append(
                 StressResult(
                     scenario=scenario,
@@ -155,6 +170,9 @@ def run_stress_tests(
             )
             continue
 
+        signal_count = len(s_signals) if s_signals is not None else 0
+
+        start_time = time.perf_counter()
         metrics = run_backtest(
             signals=s_signals,
             prices=s_prices,
@@ -163,6 +181,24 @@ def run_stress_tests(
             initial_equity=initial_equity,
             commission_pct=commission_pct,
             slippage_pct=slippage_pct,
+        )
+        duration = time.perf_counter() - start_time
+
+        total_return_pct = round(metrics.total_return * 100, 2) if metrics else None
+
+        logger.info(
+            "Stress scenario %s completed: signals=%d, duration=%.3fs, total_return=%.2f%%",
+            scenario.name,
+            signal_count,
+            duration,
+            total_return_pct if total_return_pct is not None else 0.0,
+            extra={
+                "scenario": scenario.name,
+                "signals": signal_count,
+                "duration_sec": duration,
+                "total_return_pct": total_return_pct,
+                "covered": True,
+            },
         )
 
         results.append(
@@ -204,4 +240,5 @@ def stress_summary(results: list[StressResult]) -> dict:
                 "win_rate": r.metrics.win_rate,
                 "num_trades": r.metrics.num_trades,
             }
+    logger.info("Stress test summary generated", extra={"summary": out})
     return out
