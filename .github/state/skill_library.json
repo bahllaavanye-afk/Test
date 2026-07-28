@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Update pipelines",
-    "* As a general guideline, agents should provide a one-sentence status update in the first person, concise, and specific when responding to user queries.",
-    "Track API calls",
-    "Based on the recent agent learnings, the following 3 concise bullet points represent the most important and actionable knowledge:",
-    "Scan for updates",
     "Monitor drift metrics",
     "Use timeout retries",
     "Here are 3 concise bullet points of the most important, actionable knowledge:",
@@ -199,8 +194,13 @@
     "Retry on timeout",
     "Improve model accuracy",
     "Enhance type safety",
-    "Optimize retraining"
+    "Optimize retraining",
+    "Log error codes",
+    "Test DB connections",
+    "Audit React components",
+    "Refine trading signals",
+    "Integrate macro features"
   ],
-  "last_updated": "2026-07-27T22:57:22.835596+00:00",
+  "last_updated": "2026-07-28T00:03:57.764685+00:00",
   "total": 200
 }
