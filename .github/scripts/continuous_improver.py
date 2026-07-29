@@ -181,6 +181,13 @@ You are improving existing code files. Rules:
 6. Keep changes minimal and focused on the specified improvement type
 7. The output must be syntactically valid Python"""
 
+# Files above this are never sent to the model: a whole-file rewrite of
+# something this large is how PR #420 destroyed brokers/alpaca.py. The caller
+# checks it too, so an oversized file is reported as a SKIP rather than as a
+# failed attempt — see the note at that check.
+MAX_FILE_CHARS = 8000
+
+
 def improve_file(file_path: str, content: str, improvement_type: str,
                  improvement_desc: str, failure_context: str = "", skills: list[str] = []) -> str | None:
     # NEVER truncate the input and then write back the LLM's "complete file":
@@ -188,8 +195,8 @@ def improve_file(file_path: str, content: str, improvement_type: str,
     # the "... (truncated for brevity)" marker and 6 of 7 broker methods were
     # deleted (silently: the stub still compiled). Files too big to fit go
     # untouched instead of half-rewritten.
-    if len(content) > 8000:
-        print(f"  · {file_path} is {len(content)} chars (> 8000) — skipped, whole-file rewrite unsafe")
+    if len(content) > MAX_FILE_CHARS:
+        print(f"  · {file_path} is {len(content)} chars (> {MAX_FILE_CHARS}) — skipped, whole-file rewrite unsafe")
         return None
 
     skill_hint = ""
@@ -332,6 +339,7 @@ def main():
     improved_count = 0
     tried = set()
     attempts = 0
+    skipped_too_large = 0
 
     # Pull latest state first
     subprocess.run(["git", "pull", "--rebase", "--quiet"], capture_output=True)
@@ -356,6 +364,21 @@ def main():
             continue
 
         if len(original_content) < 100:
+            continue
+
+        # An oversized file is a deliberate policy SKIP, not a failed attempt.
+        # It used to fall through to improve_file(), which returned None for
+        # both "too big to send" and "the model gave me nothing" — so the caller
+        # could not tell them apart and logged the skip as "LLM returned empty".
+        # The LLM was never called. Measured in run 30476849972: 5 of 10 attempts
+        # were oversized files, every one recorded as an LLM failure, which is
+        # half that run's failure count attributed to a model that never saw the
+        # input. That pollutes the counter fixed in #1235 at the moment it
+        # started working.
+        if len(original_content) > MAX_FILE_CHARS:
+            print(f"  · {target} is {len(original_content)} chars "
+                  f"(> {MAX_FILE_CHARS}) — skipped, whole-file rewrite unsafe")
+            skipped_too_large += 1
             continue
 
         # Reflexion: build failure context for this file
@@ -442,6 +465,12 @@ def main():
         print("No improvements this run — nothing to gate.")
 
     print(f"\n✓ Committed {improved_count} improvements (type: {improvement_type})")
+    if skipped_too_large:
+        # Surfaced because it is the dominant reason attempts are consumed:
+        # 5 of 10 in run 30476849972. Silently burning half the attempt budget
+        # on files the guard will always reject is worth seeing in the summary.
+        print(f"  · {skipped_too_large} file(s) skipped as > {MAX_FILE_CHARS} chars "
+              f"(not counted as failures — the model was never called)")
 
     summary = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
