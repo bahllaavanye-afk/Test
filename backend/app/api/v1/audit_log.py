@@ -9,6 +9,7 @@ from app.models.user import User
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 
+
 router = APIRouter(prefix="/audit-log", tags=["audit-log"])
 
 
@@ -33,24 +34,30 @@ async def list_audit_log(
 ) -> list[AuditLogOut]:
     """Return the last N audit events for the authenticated user.
 
-    Handles edge cases:
-    - `limit` being None.
-    - `limit` outside allowed bounds (defensive clamping).
-    - Missing or empty result set.
+    Raises:
+        ValueError: If input parameters are invalid.
+        HTTPException: If the authenticated user is not found.
     """
+    # Validate authenticated user presence
     if current_user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authenticated user not found.",
         )
 
-    # Defensive handling for limit being None or out of range.
+    # Validate database session
+    if db is None:
+        raise ValueError("Database session (db) must be provided.")
+
+    # Validate limit type
+    if limit is not None and not isinstance(limit, int):
+        raise ValueError("Parameter 'limit' must be an integer.")
+
+    # Apply defensive defaults and clamping with explicit validation
     if limit is None:
         limit = 100
-    elif limit < 1:
-        limit = 1
-    elif limit > 500:
-        limit = 500
+    elif limit < 1 or limit > 500:
+        raise ValueError("Parameter 'limit' must be between 1 and 500 inclusive.")
 
     result = await db.execute(
         select(AuditLog)
