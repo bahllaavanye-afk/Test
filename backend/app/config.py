@@ -47,9 +47,9 @@ class Settings(BaseSettings):
         url = values.get("database_url", "")
         if isinstance(url, str):
             if url.startswith("postgres://"):
-                url = "postgresql+asyncpg://" + url[len("postgres://"):]
+                url = "postgresql+asyncpg://" + url[len("postgres://") :]
             elif url.startswith("postgresql://"):
-                url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+                url = "postgresql+asyncpg://" + url[len("postgresql://") :]
             values["database_url"] = url
         return values
 
@@ -110,6 +110,44 @@ class Settings(BaseSettings):
                 )
         elif len(self.secret_key) < 32:
             raise ValueError("SECRET_KEY must be at least 32 characters long.")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_fields(self) -> "Settings":
+        # Environment validation
+        if self.environment not in ("development", "staging", "production"):
+            raise ValueError(
+                "environment must be one of 'development', 'staging', or 'production'."
+            )
+
+        # Trading mode validation
+        if self.trading_mode not in ("paper", "live"):
+            raise ValueError("trading_mode must be either 'paper' or 'live'.")
+
+        # Allowed origins validation
+        if not self.allowed_origins:
+            raise ValueError("allowed_origins cannot be empty.")
+        for origin in self.allowed_origins.split(","):
+            o = origin.strip()
+            if not (o.startswith("http://") or o.startswith("https://")):
+                raise ValueError(
+                    f"allowed_origin '{o}' must start with 'http://' or 'https://'."
+                )
+
+        # Percentage fields validation
+        for name in ("max_position_pct", "max_drawdown_pct", "arb_bucket_pct", "ml_bucket_pct"):
+            val = getattr(self, name)
+            if not (0.0 <= val <= 1.0):
+                raise ValueError(f"{name} must be between 0 and 1 (inclusive).")
+
+        # Polymarket chain ID validation
+        if self.polymarket_chain_id <= 0:
+            raise ValueError("polymarket_chain_id must be a positive integer.")
+
+        # Models directory validation
+        if not self.models_dir:
+            raise ValueError("models_dir cannot be empty.")
+
         return self
 
     @property
