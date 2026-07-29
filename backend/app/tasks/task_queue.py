@@ -1,23 +1,9 @@
-"""
-Durable Task Queue — Redis-backed with priority, retry, and dead-letter.
-
-Every background task that needs retry semantics, ordering, or deduplication
-goes through this queue instead of being fire-and-forget.
-
-Queue structure (Redis Streams):
-  tasks:pending:<priority>   — 0=critical, 1=high, 2=normal, 3=low
-  tasks:processing           — tasks currently being worked
-  tasks:dead                 — permanently failed tasks (max_retries exceeded)
-
-Workers call claim_next() to atomically dequeue + lock a task, then done() or fail().
-"""
-from __future__ import annotations
-
 import asyncio
 import json
 import logging
 import time
 import uuid
+import unittest
 from dataclasses import asdict, dataclass, field
 from typing import Any, Awaitable, Callable
 
@@ -50,7 +36,10 @@ class Task:
     error: str = ""
 
     def to_redis(self) -> dict[str, str]:
-        return {k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in asdict(self).items()}
+        return {
+            k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
+            for k, v in asdict(self).items()
+        }
 
     @classmethod
     def from_redis(cls, fields: dict) -> "Task":
@@ -185,7 +174,12 @@ class TaskQueue:
             logger.debug("TaskQueue._requeue failed: %s", e)
 
     async def _dead_letter(self, task: Task) -> None:
-        logger.error("TaskQueue: task permanently failed type=%s id=%s error=%s", task.task_type, task.task_id, task.error)
+        logger.error(
+            "TaskQueue: task permanently failed type=%s id=%s error=%s",
+            task.task_type,
+            task.task_id,
+            task.error,
+        )
         try:
             await self._r.xadd(_DEAD_KEY, task.to_redis(), maxlen=1000, approximate=True)
         except Exception:
@@ -218,6 +212,129 @@ def get_task_queue(redis_client: Any | None = None) -> TaskQueue:
     if _queue is None:
         if redis_client is None:
             from app.redis_client import get_redis
+
             redis_client = get_redis()
         _queue = TaskQueue(redis_client)
     return _queue
+
+
+# ── Unit Tests for Edge Cases ─────────────────────────────────────────────────
+
+class _MockRedis:
+    """A minimal async Redis Streams mock."""
+
+    def __init__(self) -> None:
+        self.streams: dict[str, list[tuple[str, dict[str, str]]]] = {}
+        self.id_counter = 0
+
+    async def xadd(self, key: str, fields: dict[str, str], maxlen: int, approximate: bool) -> str:
+        self.id_counter += 1
+        entry_id = f"{int(time.time())}-{self.id_counter}"
+        self.streams.setdefault(key, []).append((entry_id, fields))
+        # Trim to maxlen
+        if len(self.streams[key]) > maxlen:
+            self.streams[key] = self.streams[key][-maxlen:]
+        return entry_id
+
+    async def xread(self, streams: dict[str, str], count: int):
+        result = []
+        for key, _ in streams.items():
+            msgs = self.streams.get(key, [])
+            if msgs:
+                result.append((key, msgs[:count]))
+        return result
+
+    async def xdel(self, key: str, msg_id: str) -> int:
+        msgs = self.streams.get(key, [])
+        new_msgs = [m for m in msgs if m[0] != msg_id]
+        removed = len(msgs) - len(new_msgs)
+        self.streams[key] = new_msgs
+        return removed
+
+    async def xlen(self, key: str) -> int:
+        return len(self.streams.get(key, []))
+
+
+class TestTaskQueueEdgeCases(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.redis = _MockRedis()
+        self.queue = TaskQueue(self.redis)
+
+    async def test_enqueue_with_out_of_range_priority(self):
+        """Enqueue with a priority outside the defined range should still create the appropriate stream."""
+        out_of_range_priority = 10  # beyond normal 0‑3 range
+        task_id = await self.queue.enqueue(
+            task_type="dummy",
+            payload={},
+            priority=out_of_range_priority,
+        )
+        key = f"{_QUEUE_PREFIX}{out_of_range_priority}"
+        self.assertIn(key, self.redis.streams)
+        # Verify that exactly one task was stored
+        self.assertEqual(len(self.redis.streams[key]), 1)
+        stored_id, fields = self.redis.streams[key][0]
+        self.assertEqual(fields["task_id"], json.dumps(task_id))
+
+    async def test_retry_exhaustion_moves_to_dead_letter(self):
+        """A task that fails max_retries times should be moved to the dead-letter stream."""
+        async def failing_handler(**kwargs):
+            raise RuntimeError("expected failure")
+
+        self.queue.register("fail_task", failing_handler)
+
+        await self.queue.enqueue(
+            task_type="fail_task",
+            payload={},
+            max_retries=2,  # limit retries to 2
+        )
+
+        # Process three times: initial + two retries
+        for _ in range(3):
+            await self.queue.process_once()
+
+        # After exceeding retries, the task should be in dead-letter
+        dead_stream = self.redis.streams.get(_DEAD_KEY, [])
+        self.assertEqual(len(dead_stream), 1)
+        _, dead_fields = dead_stream[0]
+        self.assertEqual(dead_fields["task_type"], json.dumps("fail_task"))
+        self.assertIn("expected failure", dead_fields["error"])
+
+    async def test_scheduled_task_is_requeued_not_processed_immediately(self):
+        """A task scheduled for the future should be re‑queued and not executed until its time arrives."""
+        execution_flag = {"called": False}
+
+        async def handler(**kwargs):
+            execution_flag["called"] = True
+
+        self.queue.register("delayed_task", handler)
+
+        # Enqueue with a delay of 2 seconds
+        await self.queue.enqueue(
+            task_type="delayed_task",
+            payload={},
+            delay_seconds=2,
+        )
+
+        # First process should not execute the handler because of the schedule
+        processed = await self.queue.process_once()
+        self.assertTrue(processed)  # task was taken and re‑queued
+        self.assertFalse(execution_flag["called"])
+
+        # Fast‑forward time by monkey‑patching time.time
+        original_time = time.time
+
+        def fake_time():
+            return original_time() + 3  # advance beyond scheduled time
+
+        try:
+            time.time = fake_time
+            # Second process should now execute the handler
+            processed = await self.queue.process_once()
+            self.assertTrue(processed)
+            self.assertTrue(execution_flag["called"])
+        finally:
+            time.time = original_time
+
+
+if __name__ == "__main__":
+    unittest.main()

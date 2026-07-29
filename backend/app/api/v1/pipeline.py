@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -158,3 +159,72 @@ def pipeline_run_detail(run_id: str):
 def pipeline_definitions():
     """Return static pipeline stage definitions for the frontend."""
     return PIPELINE_DEFS
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge‑case behavior
+# ----------------------------------------------------------------------
+def test_resolve_state_file_env_override():
+    """When PIPELINE_STATE_FILE env var is set, the function should return it verbatim."""
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+        os.environ["PIPELINE_STATE_FILE"] = str(tmp_path)
+        try:
+            resolved = _resolve_state_file()
+            assert resolved == tmp_path
+        finally:
+            del os.environ["PIPELINE_STATE_FILE"]
+            tmp_path.unlink(missing_ok=True)
+
+
+def test_load_runs_malformed_json(tmp_path):
+    """If the JSON file does not contain a list, _load_runs should return an empty list."""
+    file_path = tmp_path / "pipeline_runs.json"
+    file_path.write_text('{"not": "a list"}')
+    global _STATE_FILE
+    _STATE_FILE = file_path
+    runs = _load_runs()
+    assert runs == []
+
+
+def test_load_runs_limit_and_sorting(tmp_path):
+    """_load_runs must respect the limit argument and sort by started_at descending."""
+    file_path = tmp_path / "pipeline_runs.json"
+    data = [
+        {"run_id": "a", "started_at": "2023-01-01"},
+        {"run_id": "b", "started_at": "2023-01-02"},
+        {"run_id": "c", "started_at": "2023-01-03"},
+    ]
+    file_path.write_text(json.dumps(data))
+    global _STATE_FILE
+    _STATE_FILE = file_path
+    runs = _load_runs(limit=2)
+    assert len(runs) == 2
+    assert runs[0]["run_id"] == "c"
+    assert runs[1]["run_id"] == "b"
+
+
+def test_enrich_run_stage_merging():
+    """_enrich_run should merge defined stages with actual data, add pending status for missing stages,
+    and preserve extra stages not in the definition."""
+    run = {
+        "pipeline": "ml_experiments",
+        "run_id": "test123",
+        "stages": [
+            {"name": "data_fetch", "status": "complete"},
+            {"name": "extra_stage", "status": "unknown"},
+        ],
+    }
+    enriched = _enrich_run(run)
+    # Verify order: all defined stages first, then the extra stage
+    defined_names = [s["name"] for s in PIPELINE_DEFS["ml_experiments"]["stages"]]
+    result_names = [s["name"] for s in enriched["stages"]]
+    assert result_names == defined_names + ["extra_stage"]
+    # Verify that a defined stage not present in the original gets a pending status
+    cache_stage = next(s for s in enriched["stages"] if s["name"] == "cache_check")
+    assert cache_stage["status"] == "pending"
+    # Verify that the extra stage is unchanged
+    extra = next(s for s in enriched["stages"] if s["name"] == "extra_stage")
+    assert extra["status"] == "unknown"
+    # Verify pipeline label is set correctly
+    assert enriched["pipeline_label"] == PIPELINE_DEFS["ml_experiments"]["label"]

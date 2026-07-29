@@ -150,3 +150,117 @@ async def list_trades(
         )
         for row in rows
     ]
+
+# ---------------------------------------------------------------------------
+# Unit tests for edge‑case validation and API boundary behavior
+# ---------------------------------------------------------------------------
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock, MagicMock
+from pydantic import ValidationError
+
+# Helper FastAPI app that includes the router under test
+app = FastAPI()
+app.include_router(router)
+
+
+@pytest.mark.parametrize(
+    "side_input",
+    ["hold", "BUY", "", "sell "],
+)
+def test_tradeout_invalid_side_raises(side_input: str):
+    """Side must be exactly 'buy' or 'sell'; any other value should raise ValidationError."""
+    with pytest.raises(ValidationError) as exc_info:
+        TradeOut(
+            id="trd_001",
+            symbol="AAPL",
+            side=side_input,
+            quantity=10,
+        )
+    assert "side must be either 'buy' or 'sell'" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "quantity_input",
+    [0, -5.0],
+)
+def test_tradeout_invalid_quantity_raises(quantity_input: float):
+    """Quantity must be > 0; zero or negative values should raise ValidationError."""
+    with pytest.raises(ValidationError) as exc_info:
+        TradeOut(
+            id="trd_002",
+            symbol="GOOG",
+            side="buy",
+            quantity=quantity_input,
+        )
+    assert "quantity must be greater than 0" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_list_trades_returns_empty_when_no_rows():
+    """When the DB query returns no rows, the endpoint should return an empty list."""
+    # Mock AsyncSession.execute to return an object whose .all() yields an empty list
+    mock_result = MagicMock()
+    mock_result.all.return_value = []
+    mock_session = MagicMock(spec=AsyncSession)
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    # Mock current user
+    mock_user = MagicMock()
+    mock_user.id = "user_123"
+
+    # Override dependencies
+    app.dependency_overrides[get_db] = lambda: mock_session
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+
+    async with TestClient(app) as client:
+        response = client.get("/trades/")
+        assert response.status_code == 200
+        assert response.json() == []
+
+    # Clean up overrides
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_list_trades_limit_boundary_values():
+    """The 'limit' query parameter must accept its minimum and maximum values without error."""
+    # Prepare a single synthetic row to return
+    class Row:
+        def __init__(self):
+            self.id = "trd_003"
+            self.symbol = "MSFT"
+            self.side = "sell"
+            self.realized_pnl = 12.5
+            self.entry_price = 250.0
+            self.exit_price = 255.0
+            self.avg_fill_price = 255.0
+            self.quantity = 20
+            self.opened_at = datetime.utcnow()
+            self.closed_at = datetime.utcnow()
+            self.strategy_name = "mean_rev_20_2"
+
+    mock_result = MagicMock()
+    mock_result.all.return_value = [Row()]
+    mock_session = MagicMock(spec=AsyncSession)
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    mock_user = MagicMock()
+    mock_user.id = "user_456"
+
+    app.dependency_overrides[get_db] = lambda: mock_session
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+
+    async with TestClient(app) as client:
+        # Minimum limit
+        resp_min = client.get("/trades/?limit=1")
+        assert resp_min.status_code == 200
+        assert isinstance(resp_min.json(), list)
+
+        # Maximum limit
+        resp_max = client.get("/trades/?limit=500")
+        assert resp_max.status_code == 200
+        assert isinstance(resp_max.json(), list)
+
+    app.dependency_overrides.clear()
