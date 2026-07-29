@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785341855.704073,
+    "last_updated": 1785345711.2872036,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -108,9 +108,9 @@
       "size_multiplier": 1.0
     },
     "opinion_score": 2,
-    "macro_score": 0,
-    "vix": 20.03,
-    "market_scan_ts": 1785341855.674853,
+    "macro_score": 1,
+    "vix": 19.51,
+    "market_scan_ts": 1785345711.2571208,
     "sector_leaders": [
       "Energy",
       "Financials",
@@ -125,43 +125,36 @@
       "GS",
       "KO",
       "PG",
+      "V",
       "DIA",
       "XLK",
-      "V",
       "QQQ",
       "MA",
+      "XLV",
+      "GLD",
+      "XLP",
+      "TMO",
       "MS",
       "SHY",
-      "XLP",
-      "XLV",
-      "IWM",
-      "TMO",
-      "XLF",
       "XLI",
-      "XLE",
-      "BLK",
-      "ABT",
-      "XLU"
+      "XLF",
+      "IWM",
+      "XLU",
+      "AAPL",
+      "ABT"
     ],
     "top_momentum": [
       "ABT",
       "AAPL",
       "TMO",
-      "MPC",
-      "XOM"
+      "XOM",
+      "CVX"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785327601.2126205
   },
   "episodic": [
-    {
-      "lesson": "Repeated deployment failures suggest systemic resource contention. Monitor deployment frequency and consider CI/CD pipeline improvements.",
-      "category": "risk",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784410436.170377
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -2114,6 +2107,21 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=0). Leading: Energy, Financials. Gaps: 7, Breakouts: 0, Risk flags: 0.",
       "ts": 1785341855.7097998
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 1,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Healthcare"
+      ],
+      "gap_count": 6,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=1). Leading: Energy, Financials. Gaps: 6, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785345711.2928603
     }
   ],
   "github_insights": [
