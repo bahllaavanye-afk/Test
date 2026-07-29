@@ -5,6 +5,8 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, model_validator
 import os as _os
+from typing import List
+
 
 # Resolve .env to the backend/ dir regardless of where uvicorn is launched from.
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
@@ -44,13 +46,14 @@ class Settings(BaseSettings):
     @classmethod
     def _normalise_database_url(cls, values: dict) -> dict:
         """Render and Supabase provide postgres:// — SQLAlchemy async needs postgresql+asyncpg://."""
-        url = values.get("database_url", "")
+        url = values.get("database_url")
         if isinstance(url, str):
             if url.startswith("postgres://"):
-                url = "postgresql+asyncpg://" + url[len("postgres://"):]
+                url = "postgresql+asyncpg://" + url[len("postgres://") :]
             elif url.startswith("postgresql://"):
-                url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+                url = "postgresql+asyncpg://" + url[len("postgresql://") :]
             values["database_url"] = url
+        # If url is None or not a string, leave it untouched; Pydantic will apply the default.
         return values
 
     # Redis (Upstash). Default is UNSET so the app cleanly no-ops the cache when no
@@ -102,13 +105,15 @@ class Settings(BaseSettings):
     def _validate_secret_key(self) -> "Settings":
         placeholder = "change-me-in-production-32-byte-hex"
         test_placeholder = "test-secret-key-32-bytes-hex-xxxxx"
-        if self.secret_key in (placeholder, test_placeholder):
+        # Guard against None values which could arise from misconfiguration
+        current_key = self.secret_key or ""
+        if current_key in (placeholder, test_placeholder):
             if self.trading_mode not in ("development", "dev", "test"):
                 raise ValueError(
                     "SECRET_KEY must be set to a secure random 32-byte hex value. "
                     "Run: python -c \"import secrets; print(secrets.token_hex(32))\""
                 )
-        elif len(self.secret_key) < 32:
+        elif len(current_key) < 32:
             raise ValueError("SECRET_KEY must be at least 32 characters long.")
         return self
 
@@ -117,8 +122,17 @@ class Settings(BaseSettings):
         return self.trading_mode == "paper"
 
     @property
-    def cors_origins(self) -> list[str]:
-        return [o.strip() for o in self.allowed_origins.split(",")]
+    def cors_origins(self) -> List[str]:
+        """
+        Returns a list of origins parsed from the allowed_origins string.
+        Handles None, empty strings, and filters out any blank entries that may
+        appear due to trailing commas.
+        """
+        if not self.allowed_origins:
+            return []
+        origins = [o.strip() for o in self.allowed_origins.split(",")]
+        # Filter out empty strings that can result from leading/trailing commas
+        return [o for o in origins if o]
 
 
 settings = Settings()
