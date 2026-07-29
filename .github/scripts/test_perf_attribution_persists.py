@@ -309,3 +309,61 @@ def test_a_missing_artifact_warns_and_does_not_fail(wf, tmp_path):
     out, committed = _run_persist(wf, tmp_path, content=None)
     assert not committed
     assert "nothing to persist" in out or "::warning" in out, out
+
+
+# ── consumers must stay coupled to the producer's schedule ───────────────────
+# Moving the tracker's cron in a previous change silently desynchronised
+# strategy-auto-tune, whose comment still claimed "30 min after fill tracker
+# completes" while it actually read data 4h19m old. Nothing failed — nothing
+# tied the schedules together. These tests do.
+
+_TUNE = _WF.parent / "strategy-auto-tune.yml"
+_TRIM = _WF.parent / "strategy-trim.yml"
+
+
+def _slot_minutes(cron: str) -> tuple[int, set[int]]:
+    """(minute, set of hours) for a cron using only literals and */N."""
+    minute, hour = cron.split()[0], cron.split()[1]
+    if hour == "*":
+        hours = set(range(24))
+    elif hour.startswith("*/"):
+        hours = set(range(0, 24, int(hour[2:])))
+    else:
+        hours = {int(h) for h in hour.split(",")}
+    return int(minute), hours
+
+
+def test_the_auto_tuner_reads_shortly_after_a_producer_slot():
+    """Its whole design is 'run just after fresh attribution lands'."""
+    p_min, p_hours = _slot_minutes(_cron_lines(_WF.read_text())[0])
+    t_min, t_hours = _slot_minutes(_cron_lines(_TUNE.read_text())[0])
+    lags = []
+    for th in sorted(t_hours):
+        prior = max((h for h in p_hours if h <= th), default=None)
+        if prior is None:
+            continue
+        lags.append((th - prior) * 60 + (t_min - p_min))
+    assert lags, "auto-tuner never runs after a producer slot"
+    assert min(lags) >= 0, "auto-tuner fires BEFORE the producer in its hour"
+    assert min(lags) <= 90, (
+        f"auto-tuner runs {min(lags)} min after the freshest attribution slot — "
+        f"its schedule has drifted from the producer's"
+    )
+
+
+@pytest.mark.parametrize("wf_path", ["strategy-auto-tune.yml", "strategy-trim.yml"])
+def test_consumers_run_every_day_not_just_weekdays(wf_path):
+    """Crypto trades 24/7; a weekday-only consumer ignores weekend fills."""
+    src = (_WF.parent / wf_path).read_text()
+    for cron in _cron_lines(src):
+        assert cron.split()[4] in ("*", "?"), (
+            f"{wf_path} cron {cron!r} restricts day-of-week, but fills accrue daily"
+        )
+
+
+def test_the_trimmer_still_reads_after_the_producer():
+    """The relationship that was already correct — pinned so it stays that way."""
+    p_min, p_hours = _slot_minutes(_cron_lines(_WF.read_text())[0])
+    c_min, c_hours = _slot_minutes(_cron_lines(_TRIM.read_text())[0])
+    assert p_hours == c_hours, "trimmer and tracker no longer share slot hours"
+    assert c_min > p_min, "trimmer would read the previous cycle's attribution"

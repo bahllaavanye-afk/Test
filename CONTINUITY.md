@@ -329,6 +329,43 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 🔗 2026-07-29 12:45 — I broke a producer/consumer coupling and nothing noticed for 9 hours
+Auditing the **third** consumer of the attribution artifact now that it finally exists.
+`strategy_auto_tuner.py` is wired correctly end to end — it reads the perf file, writes
+`tuned_thresholds.json`, its workflow **stages before comparing** (`git add` then
+`git diff --cached`, the right order — unlike the bug I shipped in #1191), the desk loads it at
+`desk_order_placer.py:282` and **uses** it at line 2047:
+```python
+threshold = max(_TUNED_THRESHOLDS.get(sname, desk.confidence_min), desk.confidence_min)
+```
+Nothing broken. But its schedule said:
+```yaml
+# Run at 22:30 UTC Mon–Fri (30 min after fill tracker completes)
+- cron: "30 22 * * 1-5"
+```
+**That comment became false when I moved the tracker in #1202** from `0 22 * * 1-5` to
+`11 */6 * * *`. At 22:30 the freshest attribution is from the 18:11 slot — **4h19m old, not 30
+minutes**. I changed a producer's schedule and never checked who depended on it. Nothing failed,
+because nothing tied the two schedules together; the comment just quietly stopped being true.
+
+Weekday-only was wrong for the same reason it was wrong on the tracker: the crypto desks trade
+24/7, so weekend fills never reached the tuner at all.
+
+Now `30 0 * * *` — 19 min after the 00:11 producer slot, every day. **Deliberately daily rather
+than matching the tracker's 6h cadence:** this moves per-strategy confidence thresholds, and
+re-tuning those 4×/day invites churn in what the desk will trade. The tuner needs ≥5 trades,
+which accrue over days — freshness matters less here than stability.
+
+**The durable fix is the test, not the cron.** `test_perf_attribution_persists.py` now asserts
+the *relationship*: each consumer must fire after a producer slot and within 90 minutes of it,
+and no consumer may be weekday-only. Both fail against the old cron. The next time someone
+moves the producer, the consumers fail loudly instead of drifting.
+
+**Lesson: a schedule is an interface.** Three workflows are coupled by cron arithmetic that
+exists nowhere in code, so changing one silently desynchronised another — and the only record of
+the contract was a comment, which is not checkable. Encode cross-workflow timing relationships
+as tests or they rot the moment anything moves.
+
 ## 🔬 2026-07-29 11:45 — the trim expansion was only tested against a FAKE 8-name registry
 Closing a gap in my own work from an hour ago. `_expand_truncated()` expands a legacy truncated
 attribution key only when **exactly one** registry entry shares the prefix — but *whether a

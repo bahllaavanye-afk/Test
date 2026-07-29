@@ -2,8 +2,24 @@ name: Strategy Auto-Tuner — Confidence Threshold Adjustment
 
 on:
   schedule:
-    # Run at 22:30 UTC Mon–Fri (30 min after fill tracker completes)
-    - cron: "30 22 * * 1-5"
+    # 19 minutes after the fill tracker's 00:11 slot, EVERY day.
+    #
+    # Was "30 22 * * 1-5" with the comment "30 min after fill tracker
+    # completes". That coupling was silently broken when the tracker moved from
+    # "0 22 * * 1-5" to "11 */6 * * *": at 22:30 the freshest attribution was
+    # from the 18:11 slot — 4h19m old, not 30 minutes. Nothing failed, because
+    # nothing tied the two schedules together; the comment simply became false.
+    # test_perf_attribution_persists.py now asserts the relationship.
+    #
+    # Weekday-only was also wrong for the same reason it was wrong on the
+    # tracker: the crypto desks trade 24/7, so weekend fills never reached the
+    # tuner at all.
+    #
+    # Deliberately DAILY rather than matching the tracker's 6h cadence — this
+    # moves per-strategy confidence thresholds, and re-tuning those 4x a day
+    # invites churn in what the desk will trade. Freshness matters less here
+    # than stability: the tuner needs >= 5 trades, which accrue over days.
+    - cron: "30 0 * * *"
   workflow_dispatch:
 
 permissions:
