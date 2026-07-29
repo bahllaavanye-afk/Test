@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Validate SSL certs",
-    "Use load balancing",
-    "Test DB queries",
     "Verify data feeds",
     "Test database conn",
     "Validate user input",
@@ -199,8 +196,11 @@
     "Implement fail-safes",
     "Monitor data drift",
     "Implement S4 layers",
-    "Retrain hybrid models"
+    "Retrain hybrid models",
+    "Log trade sizing",
+    "Check clock sync",
+    "Verify DLL versions"
   ],
-  "last_updated": "2026-07-29T12:27:49.843711+00:00",
+  "last_updated": "2026-07-29T14:42:54.942537+00:00",
   "total": 200
 }
