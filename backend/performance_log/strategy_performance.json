@@ -1,14 +1,22 @@
 {
-  "generated_at": "2026-07-29T10:19:16.652441+00:00",
+  "generated_at": "2026-07-29T16:11:15.659125+00:00",
   "period_days": 30,
   "strategies": {
+    "vol_of_vol": {
+      "trades": 1,
+      "wins": 0,
+      "win_rate": 0.0,
+      "avg_return_pct": -1.3278,
+      "total_return_pct": -1.3278,
+      "last_updated": "2026-07-29T16:11:15.659125+00:00"
+    },
     "avellaneda": {
-      "trades": 10,
-      "wins": 6,
-      "win_rate": 0.6,
-      "avg_return_pct": -0.7916,
-      "total_return_pct": -7.9157,
-      "last_updated": "2026-07-29T10:19:16.652441+00:00"
+      "trades": 11,
+      "wins": 7,
+      "win_rate": 0.6364,
+      "avg_return_pct": -0.5234,
+      "total_return_pct": -5.7573,
+      "last_updated": "2026-07-29T16:11:15.659125+00:00"
     }
   },
   "tracked_order_ids": [
@@ -18,6 +26,8 @@
     "72ab59eb-273c-4bdd-ae2b-a81c60b13b56",
     "7df7f9fe-4d25-40fc-a08b-551348c3952f",
     "84a76963-478f-4129-a7ec-1d789b5e1817",
+    "927f287e-ad09-4514-b395-53da899cedf1",
+    "92ee2268-ae05-4c65-9fb1-ba8f01b8c463",
     "cc6baddd-f24b-4117-a9ba-379c051692df",
     "ebf51e2b-d2dd-4e23-8e0a-fad8c17d2458",
     "f5092a3f-78ab-4194-917e-ebf28faca1b0",
