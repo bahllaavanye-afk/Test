@@ -1,5 +1,22 @@
 # QuantEdge — Improvements & Task Tracker
 
+## ✂ 2026-07-29 14:50 — the trimmer worked, and the workflow threw the answer away
+
+Went to verify the trimmer's first live retirement instead of assuming it. It had run — and lost. Run `30457733119`, 13:48 UTC, three consecutive lines:
+
+```
+[TRIM] avellaneda: cumulative return -7.9% ≤ -5.0% over 10 trades
+trimmed total: 1 | newly trimmed this run: 1
+No trim changes.
+```
+
+The third line contradicts the first two. The persist step gated on `! git diff --quiet -- .github/state/strategy_trims.json`, and **`git diff` is blind to untracked files** — the trims file had never been committed, so the gate reported "no change", the commit was skipped, and the file died with the runner. `git ls-files` confirms `strategy_trims.json` has never existed in this repo. This is the same blind spot I fixed in `fill-tracking.yml` a few hours earlier; I fixed the instance and not the class.
+
+- [x] **[P0] `strategy-trim.yml` now stages before it diffs.** `git add -- "$f"` then `git diff --cached --quiet -- "$f"`, which sees an addition as a change. Verified the whole chain end-to-end against the real registry, not a stand-in: a trims file keyed `avellaneda` expands through `_expand_truncated` to `{avellaneda, avellaneda_stoikov_mm}` (exactly one registry prefix match), and `_desk_strategies(['avellaneda_stoikov_mm','momentum'], trims)` returns `['momentum']`. The persist step was the only broken link.
+- [x] **[P1] `system-status.yml` had the identical bug, and had never once published.** Its own header promises "commits a fresh SYSTEM_STATUS.md so the repo always shows live truth" — `SYSTEM_STATUS.md` has never existed in the repository. Every run since it was written probed brain/Slack/Alpaca/backend, rendered the report, and discarded it. Same fix.
+- [x] **[P1] Swept the class.** `test_state_persist_sees_new_files.py` walks every workflow, finds each step that stages an explicitly-named path and commits it, and fails if that path is untracked while the gate omits `--cached`. `channel-monitor.yml` is fine (`agent_state.json` is tracked); `agent-health-monitor.yml` is fine and deliberately so (bare `git diff --quiet` paired with `git add -u`, which stages tracked changes only — the check and the staging agree). The test also builds a throwaway git repo and *demonstrates* the untracked-invisibility rather than asserting it, so it does not rest on my description of git. 4 tests; 3 fail against the pre-fix workflows.
+- [ ] **[P2] Cron starvation on this workflow, measured.** `41 */6 * * *` fired at 03:53 (+3h12m), 09:23 (+2h42m), 15:02 (+2h21m), 20:03 (+1h22m) — never once near its slot. The 13:48 run that produced the trim was `push`-triggered, not scheduled. Consistent with the desk measurements; not fixed here.
+
 ## 🔴 2026-07-29 14:00 — LIVE SWEEP (market open): four findings
 
 - [x] **[P0] The 61-bot OA fleet was evaluating on NO price data.** `_fetch_ohlcv` has two sources and BOTH failed, so it always returned an empty DataFrame. (a) The Redis read built `ohlcv:{symbol}:1d` by hand while the writer uses `ohlcv:{exchange}:{symbol}:{interval}` — no exchange segment, so it missed every symbol every tick (the documented `prices:{symbol}` topic-vs-key class, again). (b) `yf.download()` returns a **MultiIndex even for a single ticker** in yfinance ≥ 0.2.51 (`('Close','SPY')`), so `c.lower()` raised `'tuple' object has no attribute 'lower'` — visible in the live Render logs several times a minute for SPY and QQQ. Bots kept logging "Conditions not met", indistinguishable from a real no-signal verdict. Fixed; 6 tests, 3 fail pre-fix.

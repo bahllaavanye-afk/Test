@@ -6,7 +6,7 @@
 > lost. Keep it current: when you finish or start something material, update this file in
 > the same commit.
 
-_Last updated: 2026-07-28._
+_Last updated: 2026-07-29._
 
 ## 🛑 SUPABASE IS **PAUSED** — read this before the 07-25 section below, which is now WRONG
 **Measured 2026-07-29 14:00 via Supabase MCP `list_projects`:**
@@ -377,6 +377,45 @@ suspect.
 
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
+
+## ✂ 2026-07-29 14:50 — the trimmer produced the right answer and the workflow deleted it
+I went to *verify* the first live retirement rather than assume it, and found the run had already
+happened and already lost. Run `30457733119`, 13:48 UTC, three consecutive log lines:
+```
+[TRIM] avellaneda: cumulative return -7.9% ≤ -5.0% over 10 trades
+trimmed total: 1 | newly trimmed this run: 1
+No trim changes.
+```
+The third line contradicts the first two. The persist step read
+`if ! git diff --quiet -- .github/state/strategy_trims.json`, and **`git diff` cannot see an
+untracked file** — it compares the worktree to the index for tracked paths only. The trims file had
+never been committed (`git ls-files` confirms it has never existed here), so the gate said "no
+change", the commit was skipped, and the file was reclaimed with the runner. The desk then read a
+trims file that did not exist and `avellaneda_stoikov_mm` kept trading.
+
+**This is the same blind spot I fixed in `fill-tracking.yml` this morning.** I fixed the instance
+and not the class, and it cost a second full cycle. The class is now swept by a test.
+
+`system-status.yml` had it too, and had **never once published**: its header promises "commits a
+fresh SYSTEM_STATUS.md so the repo always shows live truth", and `SYSTEM_STATUS.md` has never
+existed in this repository. Every run rendered the report and threw it away.
+
+**Fix (both):** `git add -- "$f"` first, then `git diff --cached --quiet -- "$f"` — the index sees
+an addition as a change.
+
+**Verified end to end against the real registry**, not a stand-in: a trims file keyed `avellaneda`
+expands via `_expand_truncated` to `{avellaneda, avellaneda_stoikov_mm}` (exactly one registry
+prefix match), and `_desk_strategies(['avellaneda_stoikov_mm','momentum'], trims)` returns
+`['momentum']`. The persist step was the only broken link in the chain.
+
+**Guard:** `.github/scripts/test_state_persist_sees_new_files.py` walks every workflow, finds each
+step that stages a named path and commits it, and fails when that path is untracked while the gate
+omits `--cached`. It also builds a throwaway repo and *demonstrates* the untracked-invisibility
+instead of asserting it. 4 tests; 3 fail against the pre-fix workflows (checked by reverting).
+
+Not fixed, worth knowing: this workflow's `41 */6 * * *` cron fired at 03:53, 09:23, 15:02, 20:03 —
+between 1h22m and 3h12m late, never near its slot. The 13:48 run that produced the trim was
+`push`-triggered.
 
 ## 🧩 2026-07-29 13:55 — the LAST link in the trims chain was tested by presence only
 With the pipeline correct end to end, the remaining untested step was the one that matters most:

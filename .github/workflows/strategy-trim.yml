@@ -45,14 +45,28 @@ jobs:
             python .github/scripts/strategy_trimmer.py   # still records trims; just no Slack
           fi
 
+      # `git diff --quiet -- <path>` is BLIND to untracked files, and this file
+      # had never been committed. So every run since the trimmer started working
+      # did exactly this (run 30457733119, 13:48 UTC):
+      #
+      #     [TRIM] avellaneda: cumulative return -7.9% ≤ -5.0% over 10 trades
+      #     trimmed total: 1 | newly trimmed this run: 1
+      #     No trim changes.
+      #
+      # The trim was computed, written to the runner's disk, reported as "no
+      # change", and thrown away when the runner was reclaimed. The desk read a
+      # trims file that did not exist, so the retired strategy kept trading.
+      # Stage first, then diff the INDEX — that sees an addition.
       - name: Commit trim state if changed
         run: |
           git config user.name  "quantedge-trimmer-bot"
           git config user.email "trimmer-bot@quantedge.local"
-          if ! git diff --quiet -- .github/state/strategy_trims.json; then
-            git add .github/state/strategy_trims.json
+          f=".github/state/strategy_trims.json"
+          [ -f "$f" ] || { echo "trimmer wrote no state file"; exit 0; }
+          git add -- "$f"
+          if git diff --cached --quiet -- "$f"; then
+            echo "No trim changes."
+          else
             git commit -m "chore(trim): update retired strategies [skip ci]"
             for i in 1 2 3 4; do git push origin HEAD:main && break || sleep $((2**i)); done
-          else
-            echo "No trim changes."
           fi
