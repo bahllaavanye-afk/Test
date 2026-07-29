@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785339841.1591961,
+    "last_updated": 1785339919.7533731,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -60,7 +60,7 @@
     "autopilot_best_oos_sharpe": 1.1586,
     "autopilot_best_blended": 0.4018,
     "autopilot_overfit_count": 1,
-    "market_regime": "bull",
+    "market_regime": "neutral",
     "market_opinion": {
       "generated_at": "2026-07-29T15:43:23.960904+00:00",
       "signals": {
@@ -108,60 +108,53 @@
       "size_multiplier": 1.0
     },
     "opinion_score": 2,
-    "macro_score": 2,
-    "vix": 18.21,
-    "market_scan_ts": 1785272581.3694339,
+    "macro_score": 1,
+    "vix": 19.9,
+    "market_scan_ts": 1785339919.7235718,
     "sector_leaders": [
-      "Financials",
       "Energy",
+      "Financials",
       "Healthcare"
     ],
     "sector_laggards": [
-      "Utilities",
+      "Industrials",
       "Cons. Disc.",
       "Tech"
     ],
     "active_universe": [
-      "ADBE",
-      "TSLA",
-      "NOW",
-      "INTU",
-      "TMO",
-      "JNJ",
-      "BLK",
-      "QQQ",
-      "XLV",
+      "GS",
+      "PG",
+      "KO",
+      "DIA",
       "V",
-      "BRK-B",
-      "AMZN",
       "XLK",
-      "SLB",
-      "COST",
-      "PANW",
-      "NFLX",
+      "QQQ",
+      "MS",
+      "XLV",
+      "XLP",
       "MA",
-      "NVDA",
-      "ABT"
+      "XLF",
+      "IWM",
+      "SHY",
+      "TMO",
+      "XLE",
+      "XLI",
+      "XLU",
+      "BLK",
+      "AAPL"
     ],
     "top_momentum": [
-      "ADBE",
-      "INTU",
-      "AAPL",
       "ABT",
-      "TMO"
+      "TMO",
+      "MPC",
+      "AAPL",
+      "XOM"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785327601.2126205
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix aborted due to patch size exceeding 50-line limit. Increase limit or split changes into smaller patches.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784410436.1620605
-    },
     {
       "lesson": "Auto-fix patch application failures indicate code conflicts or malformed patches. Investigate patch generation logic and add conflict resolution.",
       "category": "code",
@@ -2098,6 +2091,21 @@
       },
       "lesson": "[LLM unavailable \u2014 all providers failed]",
       "ts": 1785339841.1635916
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 1,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Healthcare"
+      ],
+      "gap_count": 7,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=1). Leading: Energy, Financials. Gaps: 7, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785339919.7590594
     }
   ],
   "github_insights": [
