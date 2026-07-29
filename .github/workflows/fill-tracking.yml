@@ -10,10 +10,16 @@ on:
   # below is therefore the real schedule, not a fallback.
   # The crypto desk is the reliability anchor: cron "7,27,47 * * * *", 24/7, and
   # cron-actored — so it is NOT subject to the GITHUB_TOKEN suppression that
-  # makes the CI chain useless here. It fires ~72x/day and demonstrably lands,
-  # which is the property the schedule below does not have (06:11 on 2026-07-29
-  # was DROPPED outright, not delayed — 85 min past with no run recorded).
-  # A freshness gate in the job keeps the effective rate at ~4x/day.
+  # makes the CI chain useless here.
+  #
+  # CORRECTION (2026-07-29 08:40): an earlier version of this comment said it
+  # "fires ~72x/day and demonstrably lands". MEASURED: 11 scheduled runs in 24h
+  # against a nominal 72 — GitHub simply never created the other 61. Gaps ran
+  # 58-208 minutes against an intended 20. So this anchor is ~11x/day, not 72x.
+  # It is still a large improvement over a 6h cron that was observed dropped
+  # outright (06:11 that day, 85 min past with no run recorded), and the two
+  # triggers are redundant — but do not read this as a dense heartbeat.
+  # A freshness gate in the job holds the effective rate at ~4x/day regardless.
   workflow_run:
     workflows: ["CI", "Desk Trading — Crypto 24/7 (Paper Orders)"]
     types: [completed]

@@ -329,6 +329,46 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 🚨 2026-07-29 08:40 — THE 24/7 CRYPTO DESK IS RUNNING AT 15% OF ITS SCHEDULE
+Chasing the attribution artifact turned up something far more important than the artifact.
+
+`desk-trading-crypto-24x7.yml` has cron `7,27,47 * * * *` — **72 runs/day nominal**. Measured
+over the last 24h: **11 runs.** Gaps between consecutive runs, in minutes:
+
+```
+173  208  88  58  66  73  89  103  88  140      (intended: 20)
+```
+
+All 11 succeeded. `concurrency: cancel-in-progress: false`, and **zero** runs were cancelled —
+so this is not self-cancellation. GitHub simply **never created** the other 61 slots. The
+overnight trend is worse: the two most recent gaps are 173 and 208 minutes.
+
+**This is the live trading loop for a book that trades 24/7.** Signals are evaluated ~11×/day
+instead of 72×; anything driven off a desk run — including exits — carries up to **3.5 hours**
+of latency. The "24/7" in the filename is aspirational.
+
+**⚠️ This falsifies a claim I made an hour ago.** In #1209 I chained fill-tracking off this
+workflow and wrote that it *"fires ~72×/day and demonstrably lands"*, justified by having read
+its logs all session. I had seen several runs and never **counted** them. It fires ~11×/day.
+The chain is still a real improvement over a 6h cron that was dropped outright, and the two
+triggers are redundant — but the premise as I stated it was wrong, and the workflow comment is
+now corrected in place. *Seeing a thing happen a few times is not a rate.*
+
+**Consequences for two standing IMPROVEMENTS items, both now evidenced rather than asserted:**
+- **P0-GATE (always-on execution worker).** Last tick I attached one data point (62 min late).
+  This is a distribution: 85% of scheduled runs dropped, worst gap 3h28m, on the trading loop
+  itself. For paper this is degraded throughput; for live, an exit arriving 3.5h late is a loss.
+- **P2 workflow consolidation (105 workflows).** Its stated rationale — *"fewer schedules = less
+  cron starvation"* — is no longer speculative. The fleet is starving its own trading desk.
+
+**Not shipping a workaround.** Every available trigger is GitHub-scheduled and subject to the
+same dropping; adding more of them buys probability, not reliability, and the correct fix is
+already written down. The measurement is the deliverable.
+
+**Note on the artifact:** still absent, but the last crypto-desk run was **07:30 — before the
+chain merged at 07:47**, so the chain has not yet been exercised. Its absence is not evidence
+about the chain. Next desk run is the first real test.
+
 ## 🔁 2026-07-29 07:45 — the 06:11 cron was DROPPED, not delayed. Chained off the crypto desk.
 Last tick I could not distinguish "late" from "dropped" and said so. **Now resolved: dropped.**
 85 minutes past the slot, no run exists in the list at all — a delayed run would have appeared.
