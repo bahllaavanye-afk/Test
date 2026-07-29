@@ -16,8 +16,10 @@ def ohlcv():
     open_ = close * (1 + rng.normal(0, 0.001, n))
     volume = rng.integers(100_000, 1_000_000, n)
     idx = pd.date_range("2024-01-01", periods=n, freq="1D")
-    return pd.DataFrame({"open": open_, "high": high, "low": low,
-                         "close": close, "volume": volume}, index=idx)
+    return pd.DataFrame(
+        {"open": open_, "high": high, "low": low, "close": close, "volume": volume},
+        index=idx,
+    )
 
 
 def test_registry_not_empty():
@@ -35,9 +37,16 @@ def test_strategy_has_required_attrs(name):
     assert hasattr(inst, "risk_bucket")
 
 
-@pytest.mark.parametrize("name", [
-    "momentum", "mean_reversion", "rsi_macd", "breakout", "supertrend",
-])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "momentum",
+        "mean_reversion",
+        "rsi_macd",
+        "breakout",
+        "supertrend",
+    ],
+)
 def test_strategy_backtest_signals(name, ohlcv):
     cls = STRATEGY_REGISTRY.get(name)
     if cls is None:
@@ -47,6 +56,22 @@ def test_strategy_backtest_signals(name, ohlcv):
     if signals is None or (hasattr(signals, "__len__") and len(signals) == 0):
         pytest.skip(f"{name} returned no signals")
     if isinstance(signals, pd.Series):
+        # Ensure index alignment with input data
+        assert signals.index.equals(ohlcv.index), "Signal index must match OHLCV index"
+        # Ensure numeric dtype
+        assert np.issubdtype(signals.dtype, np.number), "Signals must be numeric"
+        # Verify allowed signal values
         unique = set(signals.dropna().unique())
-        # Should be subset of -1, 0, 1
         assert unique.issubset({-1, 0, 1, -1.0, 0.0, 1.0})
+        # At least one entry signal should be present
+        nonzero = signals[signals != 0].dropna()
+        assert len(nonzero) >= 1, "Strategy should generate at least one entry signal"
+        # Proportion of active signals should be reasonable (avoid overtrading)
+        prop_active = len(nonzero) / len(signals)
+        assert prop_active <= 0.5, "Too many active signals generated"
+        # Exit logic: consecutive non‑zero signals must alternate sign
+        signs = nonzero.values
+        for i in range(1, len(signs)):
+            assert signs[i] != signs[i - 1], "Consecutive non‑zero signals must alternate sign"
+    else:
+        pytest.fail(f"{name} returned signals in unexpected format")
