@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Confirm dependency",
-    "Verify library versions",
-    "Log API timeouts",
-    "Validate input data",
     "Analyze error logs daily",
     "Validate SSL certs",
     "Verify JSON schema",
@@ -199,8 +195,12 @@
     "Configure bandit modules",
     "Set connection limits",
     "Check data formats",
-    "Monitor system load"
+    "Monitor system load",
+    "Detect circular deps",
+    "Check SSL certificates",
+    "Optimize model retraining",
+    "Use Sharpe ratio metrics"
   ],
-  "last_updated": "2026-07-28T23:28:24.271719+00:00",
+  "last_updated": "2026-07-29T04:19:12.935019+00:00",
   "total": 200
 }
