@@ -15,6 +15,9 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     Returns the most common regime (bull/bear/sideways mapped from detector enums)
     and average confidence. Falls back to safe defaults when no data is available.
     """
+    if not isinstance(current_user, User):
+        raise ValueError("Invalid user: expected User instance.")
+
     states = regime_monitor.all_states()
     if not states:
         return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
@@ -28,6 +31,7 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     }
 
     from collections import Counter
+
     label_counts: Counter = Counter()
     confidences: list[float] = []
     latest_updated: str | None = None
@@ -55,11 +59,18 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
 @router.get("/states")
 async def get_regime_states(current_user: User = Depends(get_current_user)):
     """Current regime classification for all tracked symbols."""
+    if not isinstance(current_user, User):
+        raise ValueError("Invalid user: expected User instance.")
     return regime_monitor.all_states()
 
 
 @router.get("/states/{symbol}")
 async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_current_user)):
+    """Regime data for a specific symbol."""
+    if not isinstance(current_user, User):
+        raise ValueError("Invalid user: expected User instance.")
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise ValueError("Invalid symbol: must be a non-empty string.")
     state = regime_monitor.get(symbol.upper())
     if not state:
         return {"error": f"No regime data for {symbol}. Feed price data first."}
@@ -69,6 +80,8 @@ async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_cu
 @router.get("/correlation")
 async def get_correlation_matrix(current_user: User = Depends(get_current_user)):
     """Live cross-strategy correlation matrix."""
+    if not isinstance(current_user, User):
+        raise ValueError("Invalid user: expected User instance.")
     return {
         "matrix": correlation_monitor.matrix_as_list(),
         "reduced_strategies": list(correlation_monitor._reduced),
@@ -78,4 +91,7 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
 
 @router.get("/correlation/alerts")
 async def get_correlation_alerts(current_user: User = Depends(get_current_user)):
+    """Recent correlation alerts."""
+    if not isinstance(current_user, User):
+        raise ValueError("Invalid user: expected User instance.")
     return correlation_monitor.recent_alerts(50)

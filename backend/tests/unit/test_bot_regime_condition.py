@@ -18,6 +18,34 @@ from app.schemas.bot import ConditionConfig  # noqa: E402
 
 
 def _series(drift: float, vol: float, n: int = 120) -> pd.DataFrame:
+    """Generate a synthetic price series.
+
+    Parameters
+    ----------
+    drift : float
+        Expected return per period. Must be a numeric type.
+    vol : float
+        Standard deviation of returns. Must be a numeric type.
+    n : int, optional
+        Number of observations. Must be a positive integer. Default is 120.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with a single column ``close`` containing the generated series.
+
+    Raises
+    ------
+    ValueError
+        If any argument is of an invalid type or out of expected range.
+    """
+    if not isinstance(drift, (int, float)):
+        raise ValueError("drift must be a numeric type (int or float).")
+    if not isinstance(vol, (int, float)):
+        raise ValueError("vol must be a numeric type (int or float).")
+    if not isinstance(n, int) or n <= 0:
+        raise ValueError("n must be a positive integer.")
+
     rng = np.random.default_rng(0)
     rets = rng.normal(drift, vol, n)
     close = 100 * np.exp(np.cumsum(rets))
@@ -25,6 +53,30 @@ def _series(drift: float, vol: float, n: int = 120) -> pd.DataFrame:
 
 
 def _cond(regimes):
+    """Create a ConditionConfig for regime checking.
+
+    Parameters
+    ----------
+    regimes : list[str] | tuple[str, ...] | None
+        Allowed regimes. Must be a list/tuple of strings or None. Empty list or
+        None disables filtering (always allowed).
+
+    Returns
+    -------
+    ConditionConfig
+        Config object with type set to ``regime`` and the provided regimes.
+
+    Raises
+    ------
+    ValueError
+        If ``regimes`` is not None, list, or tuple, or contains non‑string items.
+    """
+    if regimes is not None and not isinstance(regimes, (list, tuple)):
+        raise ValueError("regimes must be a list, tuple, or None.")
+    if isinstance(regimes, (list, tuple)):
+        for r in regimes:
+            if not isinstance(r, str):
+                raise ValueError("each regime must be a string.")
     return ConditionConfig(type="regime", regimes=regimes)
 
 
