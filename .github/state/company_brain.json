@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785355256.0132325,
+    "last_updated": 1785356066.5369422,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -60,7 +60,7 @@
     "autopilot_best_oos_sharpe": 1.1054,
     "autopilot_best_blended": 0.3969,
     "autopilot_overfit_count": 1,
-    "market_regime": "bull",
+    "market_regime": "neutral",
     "market_opinion": {
       "generated_at": "2026-07-29T15:43:23.960904+00:00",
       "signals": {
@@ -108,47 +108,47 @@
       "size_multiplier": 1.0
     },
     "opinion_score": 2,
-    "macro_score": 2,
-    "vix": 17.72,
-    "market_scan_ts": 1785351858.7869692,
+    "macro_score": 0,
+    "vix": 20.28,
+    "market_scan_ts": 1785356066.5135725,
     "sector_leaders": [
       "Energy",
       "Financials",
-      "Healthcare"
+      "Cons. Staples"
     ],
     "sector_laggards": [
-      "Utilities",
+      "Industrials",
       "Cons. Disc.",
       "Tech"
     ],
     "active_universe": [
-      "NOW",
-      "ADBE",
-      "INTU",
       "GS",
-      "TSLA",
       "XLK",
-      "V",
+      "GLD",
       "QQQ",
-      "NVDA",
+      "DIA",
+      "TLT",
+      "KO",
+      "IWM",
+      "V",
+      "PG",
+      "XLP",
       "XLV",
       "TMO",
-      "MA",
-      "IWM",
-      "BLK",
       "XLI",
-      "MS",
+      "SPY",
+      "XLU",
       "XLF",
-      "MSFT",
-      "NFLX",
-      "AAPL"
+      "MS",
+      "WMT",
+      "MA"
     ],
     "top_momentum": [
-      "ADBE",
-      "INTU",
-      "NOW",
       "ABT",
-      "AAPL"
+      "TMO",
+      "MPC",
+      "AAPL",
+      "XOM"
     ],
     "risk_flags": [
       "Gold/SPY ratio surging (+3.1% 20d) \u2014 safe-haven rotation"
@@ -157,13 +157,6 @@
     "last_brain_update": 1785355256.0118628
   },
   "episodic": [
-    {
-      "lesson": "Deployment blocked due to Vercel free-tier daily limit (100 deploys/day), halting all releases for 24 hours.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784417698.072596
-    },
     {
       "lesson": "Continuous deployment strategy needs revision: either upgrade to a paid Vercel plan or implement deployment batching to avoid hitting the free-tier cap.",
       "category": "strategy",
@@ -2134,6 +2127,23 @@
       ],
       "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 4, Breakouts: 0, Risk flags: 1.",
       "ts": 1785351858.822027
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 0,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Cons. Staples"
+      ],
+      "gap_count": 7,
+      "breakout_count": 0,
+      "risk_flags": [
+        "Gold/SPY ratio surging (+3.1% 20d) \u2014 safe-haven rotation"
+      ],
+      "lesson": "Regime=neutral (score=0). Leading: Energy, Financials. Gaps: 7, Breakouts: 0, Risk flags: 1.",
+      "ts": 1785356066.5414748
     }
   ],
   "github_insights": [
