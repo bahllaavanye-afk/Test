@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Verify data feeds",
-    "Test database conn",
-    "Validate user input",
     "Validate trade sizes",
     "Review code changes",
     "Use retry backoff timers",
@@ -199,8 +196,11 @@
     "Retrain hybrid models",
     "Log trade sizing",
     "Check clock sync",
-    "Verify DLL versions"
+    "Verify DLL versions",
+    "Verify SSL certs",
+    "Test thread safety",
+    "Monitor data integrity"
   ],
-  "last_updated": "2026-07-29T14:42:54.942537+00:00",
+  "last_updated": "2026-07-29T16:18:17.790369+00:00",
   "total": 200
 }
