@@ -57,12 +57,31 @@ def evaluate_trim(stats: dict, min_trades: int = MIN_TRADES) -> tuple[bool, str]
 
 
 def load_perf() -> dict:
+    """The per-strategy stats map, unwrapped from fill_tracker's envelope.
+
+    fill_tracker.py writes {generated_at, period_days, strategies,
+    tracked_order_ids}; the stats live under "strategies". This used to return
+    the WHOLE document, so run() iterated the envelope: it evaluated keys like
+    "generated_at" and "period_days" as if each were a strategy's stats, and
+    the one dict-valued key ("strategies") was handed to evaluate_trim as a
+    single blob whose .get("trades") is 0 — "insufficient sample". The trimmer
+    could therefore never retire anything at any level of performance.
+
+    Invisible until the artifact existed: with no perf file, load_perf()
+    returned {} and the loop did nothing either way. strategy_auto_tuner.py
+    reads the same file and always unwrapped it correctly — the two consumers
+    simply disagreed about the schema.
+    """
     if not PERF_FILE.exists():
         return {}
     try:
-        return json.loads(PERF_FILE.read_text())
-    except Exception:
+        saved = json.loads(PERF_FILE.read_text())
+    except Exception:  # noqa: BLE001
         return {}
+    if not isinstance(saved, dict):
+        return {}
+    strategies = saved.get("strategies", {})
+    return strategies if isinstance(strategies, dict) else {}
 
 
 def load_trims() -> dict:
