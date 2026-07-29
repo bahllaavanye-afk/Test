@@ -1,9 +1,10 @@
 """ModelRelease ORM — tracks every trained model artifact through its serving lifecycle."""
 import uuid
+import functools
 from datetime import datetime
-from sqlalchemy import String, Float, Integer, Text, DateTime, JSON, Index
-from sqlalchemy.orm import Mapped, mapped_column
-from app.database import Base
+from sqlalchemy import String, Float, Integer, Text, DateTime, JSON, Index, event
+from sqlalchemy.orm import Mapped, mapped_column, Session
+from app.database import Base, SessionLocal
 from app.models.base import TimestampMixin
 
 
@@ -54,3 +55,33 @@ class ModelRelease(Base, TimestampMixin):
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Who registered this release (email or "system")
     created_by: Mapped[str] = mapped_column(String(128), nullable=False, default="system")
+
+    @classmethod
+    @functools.lru_cache(maxsize=256)
+    def get_champion_id(cls, model_name: str) -> str | None:
+        """
+        Retrieve the primary key of the current champion for a given model name.
+
+        This method caches the result, avoiding repeated expensive database scans.
+        Cache is cleared automatically on inserts/updates to ModelRelease.
+        """
+        with SessionLocal() as session:  # type: Session
+            result = (
+                session.query(cls.id)
+                .filter(cls.model_name == model_name, cls.status == "champion")
+                .order_by(cls.promoted_at.desc())
+                .first()
+            )
+            return result[0] if result else None
+
+    @classmethod
+    def invalidate_champion_cache(cls) -> None:
+        """Explicitly clear the champion‑id cache."""
+        cls.get_champion_id.cache_clear()
+
+
+# Invalidate the champion cache whenever a ModelRelease row is inserted or updated.
+@event.listens_for(ModelRelease, "after_insert")
+@event.listens_for(ModelRelease, "after_update")
+def _clear_champion_cache(mapper, connection, target):
+    ModelRelease.invalidate_champion_cache()

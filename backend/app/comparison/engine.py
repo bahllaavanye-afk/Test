@@ -3,15 +3,21 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Dict
 
+import numpy as np
 import pandas as pd
 from scipy import stats
 
 from app.backtest.engine import run_backtest, BacktestMetrics
 from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stats
 from app.utils.logging import logger
+
+# Simple in‑memory cache for benchmark curves to avoid repeated remote calls
+_benchmark_cache: Dict[tuple, dict] = {}
 
 
 @dataclass
@@ -45,7 +51,7 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = 100_000,
     ) -> ComparisonResult:
-        # Input validation
+        # ---- Input validation -------------------------------------------------
         if not isinstance(manual_signals, pd.Series):
             raise ValueError("manual_signals must be a pandas Series.")
         if not isinstance(ml_signals, pd.Series):
@@ -61,11 +67,11 @@ class StrategyComparisonEngine:
             raise ValueError("prices series cannot be empty.")
 
         if not isinstance(strategy_name, str) or not strategy_name.strip():
-            raise ValueError("strategy_name must be a non-empty string.")
+            raise ValueError("strategy_name must be a non‑empty string.")
         if not isinstance(symbol, str) or not symbol.strip():
-            raise ValueError("symbol must be a non-empty string.")
+            raise ValueError("symbol must be a non‑empty string.")
         if not isinstance(interval, str) or not interval.strip():
-            raise ValueError("interval must be a non-empty string.")
+            raise ValueError("interval must be a non‑empty string.")
 
         if not isinstance(start_date, date):
             raise ValueError("start_date must be a datetime.date instance.")
@@ -79,32 +85,55 @@ class StrategyComparisonEngine:
         if initial_equity <= 0:
             raise ValueError("initial_equity must be a positive number.")
 
-        # Ensure series are aligned on the same index (optional but helps consistency)
+        # ---- Align series ------------------------------------------------------
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
-            raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
+            raise ValueError(
+                "manual_signals, ml_signals, and prices must share at least one common index."
+            )
         manual_signals = manual_signals.loc[common_index]
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
 
+        # ---- Run backtests ------------------------------------------------------
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 
-        benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
+        # ---- Fetch benchmark curves with caching --------------------------------
+        cache_key = (start_date, end_date)
+        if cache_key in _benchmark_cache:
+            benchmark_curves = _benchmark_cache[cache_key]
+        else:
+            benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
+            _benchmark_cache[cache_key] = benchmark_curves
+
         benchmark_stats = get_benchmark_stats()
 
-        manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
-        ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
-        manual_ret = manual_eq.pct_change().dropna()
-        ml_ret = ml_eq.pct_change().dropna()
+        # ---- Compute returns using NumPy for speed ------------------------------
+        # Convert equity curves (list of dicts) to NumPy arrays directly
+        manual_eq_arr = np.fromiter((e["equity"] for e in manual_metrics.equity_curve), dtype=np.float64)
+        ml_eq_arr = np.fromiter((e["equity"] for e in ml_metrics.equity_curve), dtype=np.float64)
 
-        min_len = min(len(manual_ret), len(ml_ret))
-        if min_len > 10:
-            t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
-        else:
-            t_stat, p_val = 0.0, 1.0
+        # Guard against degenerate equity curves
+        if manual_eq_arr.size < 2 or ml_eq_arr.size < 2:
+            raise ValueError("Equity curves must contain at least two points to compute returns.")
 
+        manual_ret = np.diff(manual_eq_arr) / manual_eq_arr[:-1]
+        ml_ret = np.diff(ml_eq_arr) / ml_eq_arr[:-1]
+
+        # ---- Statistical test ---------------------------------------------------
+        # Early‑exit if improvement is negligible; avoids unnecessary heavy t‑test.
         improvement = ml_metrics.sharpe - manual_metrics.sharpe
+        if abs(improvement) < 0.01:
+            t_stat, p_val = 0.0, 1.0
+        else:
+            min_len = min(manual_ret.size, ml_ret.size)
+            if min_len > 10:
+                t_stat, p_val = stats.ttest_ind(ml_ret[:min_len], manual_ret[:min_len], equal_var=False)
+            else:
+                t_stat, p_val = 0.0, 1.0
+
+        # ---- Determine winner ----------------------------------------------------
         winner = "ml" if ml_metrics.sharpe > manual_metrics.sharpe else "manual"
         if abs(improvement) < 0.1:
             winner = "neither"
@@ -117,6 +146,7 @@ class StrategyComparisonEngine:
             p_value=round(p_val, 4),
         )
 
+        # ---- Return result -------------------------------------------------------
         return ComparisonResult(
             strategy_name=strategy_name,
             symbol=symbol,
