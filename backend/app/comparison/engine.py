@@ -3,6 +3,8 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
+import time
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -79,13 +81,17 @@ class StrategyComparisonEngine:
         if initial_equity <= 0:
             raise ValueError("initial_equity must be a positive number.")
 
-        # Ensure series are aligned on the same index (optional but helps consistency)
+        # Align series on a common index
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
-            raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
+            raise ValueError(
+                "manual_signals, ml_signals, and prices must share at least one common index."
+            )
         manual_signals = manual_signals.loc[common_index]
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
+
+        start_time = time.time()
 
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
@@ -109,11 +115,24 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
+        execution_time = time.time() - start_time
+        manual_final_equity = manual_metrics.equity_curve[-1]["equity"]
+        ml_final_equity = ml_metrics.equity_curve[-1]["equity"]
+        manual_pnl = manual_final_equity - initial_equity
+        ml_pnl = ml_final_equity - initial_equity
+
         logger.info(
             "Comparison complete",
             strategy=strategy_name,
+            manual_signal_count=len(manual_signals),
+            ml_signal_count=len(ml_signals),
             manual_sharpe=manual_metrics.sharpe,
             ml_sharpe=ml_metrics.sharpe,
+            manual_final_equity=manual_final_equity,
+            ml_final_equity=ml_final_equity,
+            manual_pnl=manual_pnl,
+            ml_pnl=ml_pnl,
+            execution_time_seconds=round(execution_time, 4),
             p_value=round(p_val, 4),
         )
 
