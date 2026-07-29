@@ -31,6 +31,14 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # `gh workflow run` posts to /actions/workflows/{id}/dispatches, which
+      # requires actions:write. Without it the dispatch below returned
+      # "HTTP 403: Resource not accessible by integration" on EVERY run since it
+      # was written — and `continue-on-error: true` reported the step as a
+      # success, so nothing ever surfaced. That dispatch is the only thing that
+      # gives an improver PR a CI run, which is why "the improver PRs bypass CI
+      # so main can silently break" kept being true.
+      actions: write
 
     steps:
       - uses: actions/checkout@v4
@@ -94,9 +102,17 @@ jobs:
           BRANCH=$(git -C . branch -r --list 'origin/improver/run-${{ github.run_id }}' --format='%(refname:short)' | sed 's|origin/||' | head -1)
           [ -z "$BRANCH" ] && BRANCH=$(gh pr list --author "github-actions[bot]" --state open --json headRefName --jq '.[0].headRefName' 2>/dev/null || true)
           if [ -n "$BRANCH" ]; then
-            gh workflow run test.yml --ref "$BRANCH" && echo "CI dispatched on $BRANCH"
+            # continue-on-error stays (a lost dispatch must not discard the
+            # improvements), but the failure must be VISIBLE. Bare `exit 1`
+            # under continue-on-error renders as a green step, which is exactly
+            # how a permanent 403 hid here for the workflow's whole lifetime.
+            if gh workflow run test.yml --ref "$BRANCH"; then
+              echo "CI dispatched on $BRANCH"
+            else
+              echo "::warning title=CI dispatch failed::Could not dispatch test.yml on $BRANCH. The PR will have NO CI run and the automerge gate cannot land it. Check that this job still grants actions:write."
+            fi
           else
-            echo "no improver branch found — nothing to dispatch"
+            echo "::warning title=No improver branch::Nothing to dispatch — the PR (if any) will have no CI run."
           fi
 
       - name: Post to step summary
