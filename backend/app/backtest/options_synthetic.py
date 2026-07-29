@@ -1,10 +1,12 @@
 """Synthetic options backtester — Black‑Scholes over underlying OHLCV.
 
-Honest limits (stated, not hidden): no skew/smile, no early exercise, vol
-proxy = realized (understates rich IV regimes, so short‑premium results here
-are CONSERVATIVE), fills at mid. Good for structure comparison and regime
-sanity checks — not for absolute P&L claims.
+This module provides a lightweight, deterministic backtester for option spreads
+using the Black‑Scholes formula. It assumes no volatility skew or smile, no
+early exercise, and uses realized close‑to‑close volatility as a proxy for the
+implied volatility. The implementation is intended for structural comparisons
+and regime sanity checks rather than absolute P&L claims.
 """
+
 from __future__ import annotations
 
 import math
@@ -17,7 +19,18 @@ TRADING_DAYS = 252
 
 
 def _norm_cdf(x: float) -> float:
-    """Standard normal cumulative distribution function."""
+    """Standard normal cumulative distribution function.
+
+    Parameters
+    ----------
+    x: float
+        Value at which to evaluate the CDF.
+
+    Returns
+    -------
+    float
+        The probability that a standard normal variable is less than or equal to ``x``.
+    """
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
@@ -29,7 +42,7 @@ def bs_price(
     kind: str,
     rate: float = 0.04,
 ) -> float:
-    """Black‑Scholes European price. At/past expiry returns intrinsic.
+    """Black‑Scholes European option price; returns intrinsic value if expired.
 
     Parameters
     ----------
@@ -49,7 +62,7 @@ def bs_price(
     Returns
     -------
     float
-        Option price.
+        The option price.
     """
     if spot <= 0 or strike <= 0:
         raise ValueError("spot and strike must be positive")
@@ -70,13 +83,37 @@ def bs_price(
 
 
 def realized_vol(close: pd.Series, window: int = 20) -> pd.Series:
-    """Annualized close‑to‑close realized vol — the IV proxy."""
+    """Compute annualized close‑to‑close realized volatility.
+
+    Parameters
+    ----------
+    close: pd.Series
+        Series of closing prices.
+    window: int, optional
+        Rolling window size (in days) for volatility calculation.
+
+    Returns
+    -------
+    pd.Series
+        Realized volatility series aligned with ``close``.
+    """
     rets = np.log(close / close.shift(1))
     return rets.rolling(window).std() * math.sqrt(TRADING_DAYS)
 
 
 @dataclass
 class SpreadLeg:
+    """Specification of a single leg in an option spread.
+
+    Attributes
+    ----------
+    kind: str
+        Option type, either ``"call"`` or ``"put"``.
+    side: str
+        Position side, ``"buy"`` for long or ``"sell"`` for short.
+    moneyness: float
+        Multiplier applied to the entry spot to obtain the strike price.
+    """
     kind: str          # call | put
     side: str          # buy | sell
     moneyness: float   # strike = moneyness * entry spot
@@ -84,6 +121,25 @@ class SpreadLeg:
 
 @dataclass
 class SpreadBacktestResult:
+    """Aggregated results from a spread backtest.
+
+    Attributes
+    ----------
+    trades: int
+        Total number of executed trades.
+    wins: int
+        Number of trades with positive P&L.
+    total_pnl: float
+        Sum of all trade P&L values.
+    avg_pnl: float
+        Mean P&L per trade.
+    win_rate: float | None
+        Proportion of winning trades; ``None`` if no trades were executed.
+    max_loss: float
+        Largest negative P&L (worst loss).
+    pnl_series: list[float]
+        List of individual trade P&L values.
+    """
     trades: int
     wins: int
     total_pnl: float
@@ -94,6 +150,7 @@ class SpreadBacktestResult:
 
     @property
     def summary(self) -> str:
+        """Human‑readable summary of the backtest statistics."""
         wr = f"{self.win_rate:.0%}" if self.win_rate is not None else "—"
         return (
             f"{self.trades} trades, win {wr}, total {self.total_pnl:+.2f}, "
@@ -109,7 +166,26 @@ def price_spread(
     t_years: float,
     sigma: float,
 ) -> float:
-    """Signed value of the spread to its HOLDER (long premium positive)."""
+    """Calculate the signed value of an option spread for its holder.
+
+    Parameters
+    ----------
+    spot: float
+        Underlying price at valuation.
+    legs: list[SpreadLeg]
+        List describing each leg of the spread.
+    strikes: list[float]
+        Corresponding strike prices for each leg.
+    t_years: float
+        Time to expiry (in years) for pricing.
+    sigma: float
+        Annualized volatility used in Black‑Scholes pricing.
+
+    Returns
+    -------
+    float
+        Net value of the spread (positive for a long holder).
+    """
     value = 0.0
     for leg, strike in zip(legs, strikes):
         p = bs_price(spot, strike, t_years, sigma, leg.kind)
@@ -125,22 +201,22 @@ def backtest_spread(
     hold_days: int = 21,
     vol_window: int = 20,
 ) -> SpreadBacktestResult:
-    """Open the spread on each entry date, close by re‑pricing ``hold_days`` later.
+    """Backtest an option spread by opening on entry dates and closing after a holding period.
 
     Parameters
     ----------
     df: pd.DataFrame
-        Must contain a ``close`` column.
+        DataFrame containing at least a ``close`` column with price data.
     legs: list[SpreadLeg]
-        Specification of each leg.
+        Specification of each leg in the spread.
     entry_mask: pd.Series | None, optional
-        Boolean mask indicating entry dates; defaults to weekly entries.
+        Boolean mask indicating entry dates; defaults to a weekly schedule.
     dte: int, optional
         Days to expiry at entry.
     hold_days: int, optional
-        Holding period in days.
+        Number of days to hold the spread before exiting.
     vol_window: int, optional
-        Window for realized volatility.
+        Window size for realized volatility estimation.
 
     Returns
     -------
