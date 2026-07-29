@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Validate trade sizes",
-    "Review code changes",
     "Use retry backoff timers",
     "Validate config files",
     "* The current net-used exposure is approximately 2.8% NAV, which is below the 5% NAV gross-exposure cap defined in `./state/risk_limits.yaml`.",
@@ -199,8 +197,10 @@
     "Verify DLL versions",
     "Verify SSL certs",
     "Test thread safety",
-    "Monitor data integrity"
+    "Monitor data integrity",
+    "Check disk space",
+    "Verify RAM usage"
   ],
-  "last_updated": "2026-07-29T16:18:17.790369+00:00",
+  "last_updated": "2026-07-29T17:46:13.291943+00:00",
   "total": 200
 }
