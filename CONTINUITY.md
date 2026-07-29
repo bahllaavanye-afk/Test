@@ -329,6 +329,49 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 🎯 2026-07-29 13:40 — THE TRIMMER READ THE ENVELOPE, NOT THE PAYLOAD. Found before the live run.
+The trims file still did not exist an hour after the 12:41 slot. First, the boring part: **no
+trimmer run has yet seen the data.** The artifact was committed 10:19:16; the last trimmer run
+was **09:23 — 56 minutes earlier**, and the 12:41 slot is late (this workflow's four observed
+slots ran 1h22m–3h12m late, more cron-starvation evidence).
+
+Rather than wait, I ran `strategy_trimmer.run()` against the **real committed artifact** in a
+sandbox. It produced **nothing**:
+```
+trimmed total: 0 | newly trimmed this run: 0     EVENTS []
+```
+…even though `evaluate_trim()` on that exact row returns
+`(True, "cumulative return -7.9% ≤ -5.0% over 10 trades")`.
+
+**Cause: `load_perf()` returned fill_tracker's WHOLE document**, so `run()` iterated the
+envelope —
+```
+{"generated_at": …, "period_days": 30, "strategies": {…}, "tracked_order_ids": […]}
+```
+`for name, stats in perf.items()` therefore evaluated `generated_at`, `period_days`… as if each
+were a strategy's stats. Only `strategies` is dict-valued, and `evaluate_trim()` on that blob
+sees `.get("trades") == 0` → *"insufficient sample"*. **No level of bad performance could ever
+trigger a trim.** Now `saved.get("strategies", {})`, matching the producer.
+
+Three things make this worth recording:
+1. **Seven existing unit tests all passed throughout** — every one calls `evaluate_trim()`
+   directly, and `evaluate_trim` was never broken. Nothing exercised `run()`, the function the
+   workflow actually invokes.
+2. **`strategy_auto_tuner.py` reads the same file and always unwrapped it correctly**
+   (`saved.get("strategies", {})`). Two consumers, one schema, silent disagreement — and only
+   the correct one was ever exercised. Verified the tuner works: it evaluated 1 strategy and
+   correctly changed nothing (win_rate 60% inside its band).
+3. **It was invisible until the artifact existed.** With no perf file, `load_perf()` returned
+   `{}` and the loop did nothing either way. The bug needed data to become observable, and the
+   data arrived three hours ago.
+
+7 new tests, 3 fail pre-fix — including one that drives `run()` against the **real committed
+artifact**, which is what found this. Post-fix, against real data:
+`[TRIM] avellaneda: cumulative return -7.9% ≤ -5.0% over 10 trades`.
+
+**Lesson: test the entry point the scheduler calls, not the pure helper underneath it.** The
+helper had excellent coverage and was correct; the caller was broken and had none.
+
 ## 🔗 2026-07-29 12:45 — I broke a producer/consumer coupling and nothing noticed for 9 hours
 Auditing the **third** consumer of the attribution artifact now that it finally exists.
 `strategy_auto_tuner.py` is wired correctly end to end — it reads the perf file, writes
