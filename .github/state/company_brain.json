@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785339919.7533731,
+    "last_updated": 1785341855.704073,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -108,9 +108,9 @@
       "size_multiplier": 1.0
     },
     "opinion_score": 2,
-    "macro_score": 1,
-    "vix": 19.9,
-    "market_scan_ts": 1785339919.7235718,
+    "macro_score": 0,
+    "vix": 20.03,
+    "market_scan_ts": 1785341855.674853,
     "sector_leaders": [
       "Energy",
       "Financials",
@@ -123,31 +123,31 @@
     ],
     "active_universe": [
       "GS",
-      "PG",
       "KO",
+      "PG",
       "DIA",
-      "V",
       "XLK",
+      "V",
       "QQQ",
-      "MS",
-      "XLV",
-      "XLP",
       "MA",
-      "XLF",
-      "IWM",
+      "MS",
       "SHY",
+      "XLP",
+      "XLV",
+      "IWM",
       "TMO",
-      "XLE",
+      "XLF",
       "XLI",
-      "XLU",
+      "XLE",
       "BLK",
-      "AAPL"
+      "ABT",
+      "XLU"
     ],
     "top_momentum": [
       "ABT",
+      "AAPL",
       "TMO",
       "MPC",
-      "AAPL",
       "XOM"
     ],
     "risk_flags": [],
@@ -155,13 +155,6 @@
     "last_brain_update": 1785327601.2126205
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix patch application failures indicate code conflicts or malformed patches. Investigate patch generation logic and add conflict resolution.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784410436.1662166
-    },
     {
       "lesson": "Repeated deployment failures suggest systemic resource contention. Monitor deployment frequency and consider CI/CD pipeline improvements.",
       "category": "risk",
@@ -2106,6 +2099,21 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=1). Leading: Energy, Financials. Gaps: 7, Breakouts: 0, Risk flags: 0.",
       "ts": 1785339919.7590594
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 0,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Healthcare"
+      ],
+      "gap_count": 7,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=0). Leading: Energy, Financials. Gaps: 7, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785341855.7097998
     }
   ],
   "github_insights": [
