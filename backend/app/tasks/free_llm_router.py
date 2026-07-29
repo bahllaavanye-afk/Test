@@ -107,19 +107,30 @@ class LLMResponse:
 
 async def _call_provider(
     provider: LLMProvider,
-    messages: list[dict],
+    messages: list[dict] | None,
     temperature: float = 0.3,
     max_tokens: int | None = None,
 ) -> LLMResponse | None:
+    """Call a single provider; return None on failure or invalid input."""
+    if not messages:
+        logger.debug("Provider %s called with empty or None messages; skipping.", provider.name)
+        return None
+    if not isinstance(messages, list):
+        logger.debug("Provider %s received non‑list messages; skipping.", provider.name)
+        return None
+
     api_key = os.getenv(provider.env_key, "")
     if not api_key or api_key in ("disabled", ""):
         return None
+
+    # Guard against non‑positive max_tokens which can cause provider errors
+    effective_max = max_tokens if (max_tokens and max_tokens > 0) else provider.max_tokens
 
     payload = {
         "model": provider.model,
         "messages": messages,
         "temperature": temperature,
-        "max_tokens": max_tokens or provider.max_tokens,
+        "max_tokens": effective_max,
     }
 
     t0 = time.monotonic()
@@ -144,12 +155,16 @@ async def _call_provider(
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 async def call_race(
-    messages: list[dict],
+    messages: list[dict] | None,
     temperature: float = 0.3,
     max_tokens: int = 2048,
     timeout: float = 30.0,
 ) -> LLMResponse | None:
     """Call all available providers in parallel; return the first successful response."""
+    if not messages:
+        logger.warning("call_race invoked with empty or None messages; returning None.")
+        return None
+
     tasks = {
         asyncio.create_task(_call_provider(p, messages, temperature, max_tokens)): p
         for p in PROVIDERS
@@ -176,12 +191,16 @@ async def call_race(
 
 
 async def call_consensus(
-    messages: list[dict],
+    messages: list[dict] | None,
     temperature: float = 0.3,
     max_tokens: int = 512,
     timeout: float = 40.0,
 ) -> list[LLMResponse]:
     """Call all providers and return all successful responses for consensus analysis."""
+    if not messages:
+        logger.warning("call_consensus invoked with empty or None messages; returning empty list.")
+        return []
+
     tasks = [
         _call_provider(p, messages, temperature, max_tokens)
         for p in PROVIDERS

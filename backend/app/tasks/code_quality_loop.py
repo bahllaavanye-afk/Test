@@ -18,7 +18,28 @@ QUALITY_FILE.parent.mkdir(parents=True, exist_ok=True)
 BACKEND_ROOT = Path(__file__).parents[2]
 
 
-def _count_loc(root: Path) -> dict:
+def _safe_root(root: Path | None) -> Path | None:
+    """Return the root if it is a valid directory, otherwise None."""
+    if root is None:
+        return None
+    try:
+        return root if root.is_dir() else None
+    except Exception:
+        return None
+
+
+def _count_loc(root: Path | None) -> dict:
+    root = _safe_root(root)
+    if not root:
+        return {
+            "files": 0,
+            "total_lines": 0,
+            "code_lines": 0,
+            "comment_lines": 0,
+            "blank_lines": 0,
+            "comment_ratio": 0.0,
+        }
+
     total_files = 0
     total_lines = 0
     code_lines = 0
@@ -53,18 +74,34 @@ def _count_loc(root: Path) -> dict:
     }
 
 
-def _count_strategies(root: Path) -> dict:
-    manual = list((root / "app" / "strategies" / "manual").glob("*.py"))
-    ml = list((root / "app" / "strategies" / "ml_enhanced").glob("*.py"))
+def _count_strategies(root: Path | None) -> dict:
+    root = _safe_root(root)
+    if not root:
+        return {"manual_strategies": 0, "ml_strategies": 0}
+
+    manual_dir = root / "app" / "strategies" / "manual"
+    ml_dir = root / "app" / "strategies" / "ml_enhanced"
+
+    manual = list(manual_dir.glob("*.py")) if manual_dir.is_dir() else []
+    ml = list(ml_dir.glob("*.py")) if ml_dir.is_dir() else []
+
     return {
         "manual_strategies": len([f for f in manual if not f.name.startswith("__")]),
         "ml_strategies": len([f for f in ml if not f.name.startswith("__")]),
     }
 
 
-def _count_tests(root: Path) -> dict:
-    unit = list((root / "tests" / "unit").glob("test_*.py"))
-    integration = list((root / "tests" / "integration").glob("test_*.py"))
+def _count_tests(root: Path | None) -> dict:
+    root = _safe_root(root)
+    if not root:
+        return {"unit_test_files": 0, "integration_test_files": 0}
+
+    unit_dir = root / "tests" / "unit"
+    integration_dir = root / "tests" / "integration"
+
+    unit = list(unit_dir.glob("test_*.py")) if unit_dir.is_dir() else []
+    integration = list(integration_dir.glob("test_*.py")) if integration_dir.is_dir() else []
+
     return {
         "unit_test_files": len(unit),
         "integration_test_files": len(integration),
@@ -88,11 +125,17 @@ class CodeQualityLoop:
             **tests,
         }
 
-    def _persist(self, snapshot: dict) -> None:
+    def _persist(self, snapshot: dict | None) -> None:
+        if not snapshot:
+            logger.warning("code_quality: received empty snapshot, skipping persist")
+            return
         try:
             history = json.loads(QUALITY_FILE.read_text()) if QUALITY_FILE.exists() else []
+            if not isinstance(history, list):
+                history = []
             history.append(snapshot)
-            history = history[-200:]
+            # Keep only the most recent 200 entries
+            history = history[-200:] if len(history) > 200 else history
             QUALITY_FILE.write_text(json.dumps(history, indent=2))
         except Exception as e:
             logger.warning("code_quality: failed to persist snapshot", error=str(e))
@@ -119,6 +162,8 @@ class CodeQualityLoop:
             return None
         try:
             history = json.loads(QUALITY_FILE.read_text())
-            return history[-1] if history else None
+            if not isinstance(history, list) or not history:
+                return None
+            return history[-1]
         except Exception:
             return None

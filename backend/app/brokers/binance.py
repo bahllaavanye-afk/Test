@@ -49,6 +49,10 @@ class BinanceBroker(AbstractBroker):
         await self.exchange.close()
 
     async def place_order(self, request: OrderRequest) -> OrderResult:
+        if request is None:
+            raise BrokerError("Binance: OrderRequest cannot be None")
+        if not request.symbol or not request.side or request.quantity is None:
+            raise BrokerError("Binance: Incomplete OrderRequest fields")
         try:
             if request.order_type == "market":
                 order = await self.exchange.create_market_order(
@@ -79,27 +83,41 @@ class BinanceBroker(AbstractBroker):
             raise BrokerError(f"Binance: {e}")
 
     async def cancel_order(self, broker_order_id: str, symbol: str = "") -> bool:
+        if not broker_order_id:
+            logger.warning("Binance cancel_order called with empty order_id")
+            return False
         try:
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
+        if not broker_order_id:
+            raise BrokerError("Binance: broker_order_id cannot be empty")
         return await self.exchange.fetch_order(broker_order_id, symbol)
 
     async def get_positions(self) -> list[dict]:
         balance = await self.exchange.fetch_balance()
+        if not balance or "total" not in balance:
+            return []
         positions = []
         for asset, info in balance["total"].items():
-            if info > 0 and asset != "USDT":
+            if info and info > 0 and asset != "USDT":
                 positions.append({"symbol": f"{asset}/USDT", "qty": info, "side": "long"})
         return positions
 
     async def get_account(self) -> dict:
         balance = await self.exchange.fetch_balance()
-        usdt = balance["total"].get("USDT", 0)
+        usdt = 0.0
+        if balance and isinstance(balance.get("total", {}), dict):
+            usdt = float(balance["total"].get("USDT", 0))
         return {
             "equity": usdt,
             "cash": usdt,
@@ -108,6 +126,8 @@ class BinanceBroker(AbstractBroker):
         }
 
     async def get_quote(self, symbol: str) -> QuoteResult:
+        if not symbol:
+            raise BrokerError("Binance: symbol cannot be empty for quote")
         try:
             ticker = await asyncio.wait_for(
                 self.exchange.fetch_ticker(symbol), timeout=10.0
@@ -115,19 +135,37 @@ class BinanceBroker(AbstractBroker):
         except asyncio.TimeoutError:
             logger.warning("Binance fetch_ticker timed out", symbol=symbol)
             raise BrokerError(f"Binance quote timed out for {symbol}")
+        except Exception as e:
+            logger.warning("Binance fetch_ticker failed", symbol=symbol, error=str(e))
+            raise BrokerError(f"Binance quote fetch error for {symbol}: {e}")
+
+        # Guard against missing fields
+        bid = ticker.get("bid")
+        ask = ticker.get("ask")
+        last = ticker.get("last")
+        if bid is None or ask is None or last is None:
+            raise BrokerError(f"Binance ticker incomplete for {symbol}")
+
         return QuoteResult(
             symbol=symbol,
-            bid=float(ticker["bid"]),
-            ask=float(ticker["ask"]),
-            last=float(ticker["last"]),
+            bid=float(bid),
+            ask=float(ask),
+            last=float(last),
             volume=float(ticker.get("baseVolume", 0)),
         )
 
     async def get_historical(
         self, symbol: str, interval: str = "1d", limit: int = 500
     ) -> list[dict]:
+        if not symbol:
+            raise BrokerError("Binance: symbol cannot be empty for historical data")
         tf = INTERVAL_MAP.get(interval, "1d")
+        # Ensure limit is a positive integer; default to 1 if invalid
+        if not isinstance(limit, int) or limit <= 0:
+            limit = 1
         ohlcv = await self.exchange.fetch_ohlcv(symbol, tf, limit=limit)
+        if not ohlcv:
+            return []
         return [
             {
                 "ts": self.exchange.iso8601(bar[0]),
@@ -141,10 +179,16 @@ class BinanceBroker(AbstractBroker):
         ]
 
     async def get_order_book(self, symbol: str, limit: int = 20) -> dict:
+        if not symbol:
+            raise BrokerError("Binance: symbol cannot be empty for order book")
+        if not isinstance(limit, int) or limit <= 0:
+            limit = 20
         return await self.exchange.fetch_order_book(symbol, limit)
 
     async def get_all_tickers(self, cache_ttl: int = 30) -> dict:
         """Fetch all tickers for triangular arb scanning with simple TTL caching."""
+        if not isinstance(cache_ttl, (int, float)) or cache_ttl < 0:
+            cache_ttl = 30
         async with self._ticker_lock:
             now = time.monotonic()
             if (
@@ -154,6 +198,9 @@ class BinanceBroker(AbstractBroker):
                 return self._ticker_cache["data"]
             try:
                 data = await self.exchange.fetch_tickers()
+                # Guard against None or empty response
+                if not data:
+                    data = {}
                 self._ticker_cache.update({"data": data, "timestamp": now})
                 return data
             except Exception as e:
