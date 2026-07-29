@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Improve logging handling",
-    "* Based on the 5% gross-NAV cap and current risk metrics, a position sizing recommendation of 3.5% allocation is suggested for today.",
-    "docstrings on ml/models/base_model.py: success \u2014 tests green",
-    "* **LLM Unavailability**: The `standup_agent` was unable to function due to an unavailable LLM (Language Model), with all providers failing to respond.",
     "* Validation of input logs in `\"/logs/input_logs.csv\"` ensures data accuracy and freshness before trading signal generation.",
     "* The risk exposure cap is 5% gross NAV, as defined in `state/risk_limits.yaml`, and the current risk metrics are available in `state/current_risk.json`.",
     "Check thread counts",
@@ -199,8 +195,12 @@
     "Use Sharpe ratio metrics",
     "Scan for malware",
     "Track memory usage",
-    "Use circuit breaker"
+    "Use circuit breaker",
+    "Monitor API rate limits",
+    "Check data types",
+    "Retrain models regularly",
+    "Test strategy variants"
   ],
-  "last_updated": "2026-07-29T05:25:13.087123+00:00",
+  "last_updated": "2026-07-29T07:17:03.471398+00:00",
   "total": 200
 }
