@@ -1,5 +1,29 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 📉 2026-07-29 17:25 — 41 failures were traced and none was counted, so the rate read 100%
+
+Follow-on from the roll-call fix at 15:40. I made the header print `no failures recorded` instead of a fabricated 100% success rate, because `improvement_stats[*]["failures"]` was never incremented. This is the other half: **why** it was never incremented, and the fix.
+
+`record_success()` initialises `failures: 0` and `agent_status_checker` sums that key. But `record_failure()` only appended to `failure_traces` — it never touched the counter. The counter existed, was read, and was never written, so the rate was pinned at 100% by construction.
+
+Measured in the live memory file:
+
+```
+failure_traces stored : 41      (list is capped at 50, so this is a FLOOR)
+improvement_stats     : every "failures" == 0
+successes             : 61
+
+by type          traces   successes          by reason
+  constants          9       1   <- flawless   syntax check failed  32
+  docstrings        10      10                 LLM returned empty    9
+  cleanup           10      10
+```
+
+- [x] **[P1] `record_failure()` now increments the counter as well as the trace.** True rate is nearer **61/(61+41) ≈ 60%** than 100%. 8 tests, 6 fail against the old code — including one asserting the 50-item trace cap must NOT cap the counter, since that cap is precisely why traces can't serve as a total.
+- [x] **Did not backfill the 41 historical failures.** The trace list is capped, so any backfill would be a known undercount presented as a total. The counter starts from the fix, which means the rate reads optimistically at first — accumulated successes against fresh failures. Disclosed here and in the source rather than papered over; a test pins the explanation so it can't quietly rot.
+- [ ] **[P1] 32 of 41 failures are "syntax check failed" — the improver's LLM output does not parse, ~78% of all failures.** This was invisible in every report. `constants` is the starkest case: 1 success against 9 traced failures, reported as flawless. Worth investigating as an output-quality problem (prompt, model choice in the cascade, or truncation) now that it is finally measurable.
+- [x] **Verified live: the 15:40 roll-call fix works in production.** The 17:14 run wrote `total_runs: 61, success_rate_pct: 100.0, failures_recorded: 0` — real numbers where it previously wrote `0` and `0`, and the new `failures_recorded` field is present and correctly reporting the gap this entry closes.
+
 ## 🔬 2026-07-29 15:10 — six trained models, zero reaching inference; and the roll call was counting the wrong dimension
 
 Two of the open questions from the 14:00 sweep, answered with measurements rather than inference.
