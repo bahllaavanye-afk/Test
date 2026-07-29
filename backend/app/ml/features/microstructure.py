@@ -16,6 +16,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from functools import lru_cache
+from typing import List
+
+from pydantic import BaseModel, Field, validator
 
 # Constants
 DEFAULT_LEVELS: int = 5
@@ -31,6 +34,91 @@ COL_LOB_IMBALANCE: str = "lob_imbalance"
 COL_SPREAD_BPS: str = "spread_bps"
 
 MICROSTRUCTURE_FEATURE_COLS = [COL_LOB_IMBALANCE, COL_SPREAD_BPS]
+
+
+class PriceSizePair(BaseModel):
+    """Single price level with associated order size."""
+
+    price: float = Field(
+        ...,
+        gt=0,
+        description="Price level of the order book entry",
+        example=100.5,
+    )
+    size: float = Field(
+        ...,
+        ge=0,
+        description="Order size at the given price",
+        example=200.0,
+    )
+
+
+class OrderBookSnapshot(BaseModel):
+    """Validated representation of a limit order book snapshot."""
+
+    bids: List[PriceSizePair] = Field(
+        ...,
+        min_items=1,
+        description="Bid side depth, best bid first. Prices must descend.",
+        example=[{"price": 100.5, "size": 200.0}, {"price": 100.0, "size": 150.0}],
+    )
+    asks: List[PriceSizePair] = Field(
+        ...,
+        min_items=1,
+        description="Ask side depth, best ask first. Prices must ascend.",
+        example=[{"price": 101.0, "size": 180.0}, {"price": 101.5, "size": 220.0}],
+    )
+
+    @validator("bids")
+    def bids_descending(cls, v: List[PriceSizePair]) -> List[PriceSizePair]:
+        prices = [p.price for p in v]
+        if any(prices[i] < prices[i + 1] for i in range(len(prices) - 1)):
+            raise ValueError("Bids must be sorted descending by price")
+        return v
+
+    @validator("asks")
+    def asks_ascending(cls, v: List[PriceSizePair]) -> List[PriceSizePair]:
+        prices = [p.price for p in v]
+        if any(prices[i] > prices[i + 1] for i in range(len(prices) - 1)):
+            raise ValueError("Asks must be sorted ascending by price")
+        return v
+
+
+class MicrostructureFeatures(BaseModel):
+    """Output schema for computed microstructure features."""
+
+    imbalance: float = Field(
+        ...,
+        ge=-1,
+        le=1,
+        description="Order book imbalance: (bid_vol - ask_vol) / (bid_vol + ask_vol)",
+        example=0.2,
+    )
+    spread_bps: float = Field(
+        ...,
+        ge=0,
+        description="Bid‑ask spread expressed in basis points",
+        example=12.5,
+    )
+    depth_ratio: float = Field(
+        ...,
+        ge=0,
+        description="Top‑of‑book depth ratio: best_bid_size / best_ask_size",
+        example=1.3,
+    )
+    pin_proxy: float = Field(
+        ...,
+        ge=0,
+        le=1,
+        description="Probability of Informed Trading proxy",
+        example=0.45,
+    )
+
+    @validator("*")
+    def finite_numbers(cls, v: float) -> float:
+        if not np.isfinite(v):
+            raise ValueError("Value must be a finite number")
+        return v
 
 
 class OrderBookFeatures:
