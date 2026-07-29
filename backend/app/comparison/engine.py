@@ -5,6 +5,7 @@ compare against benchmarks, compute statistical significance.
 from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
+from time import perf_counter
 
 import pandas as pd
 from scipy import stats
@@ -79,13 +80,15 @@ class StrategyComparisonEngine:
         if initial_equity <= 0:
             raise ValueError("initial_equity must be a positive number.")
 
-        # Ensure series are aligned on the same index (optional but helps consistency)
+        # Align series on common index
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
             raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
         manual_signals = manual_signals.loc[common_index]
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
+
+        start_time = perf_counter()
 
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
@@ -109,12 +112,23 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
+        elapsed_seconds = perf_counter() - start_time
+
         logger.info(
             "Comparison complete",
             strategy=strategy_name,
+            symbol=symbol,
+            interval=interval,
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+            manual_signal_count=len(manual_signals),
+            ml_signal_count=len(ml_signals),
             manual_sharpe=manual_metrics.sharpe,
             ml_sharpe=ml_metrics.sharpe,
+            manual_final_equity=manual_eq.iloc[-1] if not manual_eq.empty else None,
+            ml_final_equity=ml_eq.iloc[-1] if not ml_eq.empty else None,
             p_value=round(p_val, 4),
+            execution_time_seconds=round(elapsed_seconds, 4),
         )
 
         return ComparisonResult(

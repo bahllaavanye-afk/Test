@@ -31,8 +31,26 @@ class SlippageRecord(Base):
 def _log_slippage_record(mapper, connection, target: SlippageRecord):
     """
     Structured logging for SlippageRecord creation.
-    Logs key metrics at INFO level.
+    Logs key metrics at INFO level, including signal count, execution time, and P&L.
     """
+    # Compute derived metrics safely
+    signal_count = None
+    if hasattr(target, "order") and target.order is not None:
+        # Assume Order may have a 'signals' collection; fallback to None if not present
+        signals = getattr(target.order, "signals", None)
+        if signals is not None:
+            try:
+                signal_count = len(signals)
+            except Exception:
+                signal_count = None
+
+    pnl = None
+    if target.fill_price is not None and target.expected_price is not None:
+        try:
+            pnl = float(target.fill_price) - float(target.expected_price)
+        except Exception:
+            pnl = None
+
     logger.info(
         "SlippageRecord created",
         extra={
@@ -46,6 +64,8 @@ def _log_slippage_record(mapper, connection, target: SlippageRecord):
             "execution_duration_seconds": target.execution_duration_seconds,
             "is_cost_bps": float(target.is_cost_bps) if target.is_cost_bps is not None else None,
             "vwap_shortfall_bps": float(target.vwap_shortfall_bps) if target.vwap_shortfall_bps is not None else None,
+            "signal_count": signal_count,
+            "pnl": pnl,
         },
     )
 
