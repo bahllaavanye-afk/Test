@@ -378,6 +378,31 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 🎯 2026-07-29 23:40 — the improver was spending half its budget on files it cannot improve
+`improve_file()` rejects anything over `MAX_FILE_CHARS` (8000), and `main()` caps the loop at 10
+attempts for 5 wanted improvements. `pick_target_file()` did not know about the limit, so it kept
+returning files guaranteed to be rejected — 5 of 10 attempts in run `30476849972`.
+
+I deferred this last tick as *"changes which files the improver ever touches"*. **That was wrong.**
+Those files were already rejected 100% of the time by the guard, so filtering at selection changes
+nothing about which files can be improved; it only stops spending a scarce attempt on a certain
+rejection. Shipped.
+
+`_too_large()` filters **both** candidate lists — the hour's pattern and the repo-wide fallback.
+Filtering only the first leaks oversized files straight back in through the second, and a test pins
+that (`_too_large` must appear ≥2 times in `pick_target_file`).
+
+7 tests, 6 fail against the old code. One runs the real selector over the real tree for all 24
+hour-slots to prove the filter has not *starved* selection — a filter that returns `None` would be
+worse than the waste it removes. Another asserts the four measured offenders are now excluded.
+
+**Explicitly NOT done, and it belongs to a human:** `backend/tests/unit/*.py` stays in
+`CANDIDATE_PATTERNS`. The improver writing false invariants into a shared test (#1246,
+`"Consecutive non-zero signals must alternate sign"` — false for any trend-follower) is a real
+structural conflict, but `test_cases` is a *configured* improvement type ("Add 2-3 new unit test
+cases for edge cases not currently tested"). Removing tests from selection would disable a designed
+capability, so the trade is the operator's, not mine.
+
 ## ✅ 2026-07-29 22:45 — the dispatch fix works, and it fixed a STALL, not a safety hole
 Verified on a live run rather than assumed. Improver run `30496380998` (22:30, head `fa4a99a2`,
 first run carrying the `actions: write` fix) dispatched successfully, and **PR #1246 has CI check
