@@ -1,4 +1,19 @@
-"""API v1 router — mounts all sub-routers."""
+"""API v1 router — mounts all sub-routers.
+
+This module aggregates the individual FastAPI routers that implement the
+different sections of the version‑1 public API.  By including each sub‑router
+into a single ``APIRouter`` instance, the main application can mount a single
+router at ``/api/v1`` and expose a coherent hierarchy such as::
+
+    /api/v1/auth/
+    /api/v1/accounts/
+    /api/v1/orders/
+    ...
+
+The router is constructed at import time and does not contain any runtime
+logic beyond the inclusion of the sub‑routers.
+"""
+
 from fastapi import APIRouter
 
 from app.api.v1 import (
@@ -34,23 +49,26 @@ from app.api.v1.bots import router as bots_router
 from app.api.v1.discord_interactions import router as discord_router
 from app.api.v1.webhooks import router as webhooks_router
 
-api_router = APIRouter()
+api_router: APIRouter = APIRouter()
 
+# Core functional routers
 api_router.include_router(auth.router)
 api_router.include_router(accounts.router)
 api_router.include_router(orders.router)
 api_router.include_router(positions.router)
 api_router.include_router(trades.router)
 
+# Strategy‑related routers
 api_router.include_router(strategies.router)
 
+# Analytical and back‑testing routers
 api_router.include_router(backtests.router)
 api_router.include_router(comparison.router)
 api_router.include_router(experiments.router)
 api_router.include_router(ml.router)
 api_router.include_router(risk.router)
 api_router.include_router(market_data.router)
-# Underscore-prefix alias so /market_data/* and /market-data/* both resolve
+# Underscore‑prefix alias so /market_data/* and /market-data/* both resolve
 api_router.include_router(market_data.router_underscore)
 api_router.include_router(analytics.router)
 api_router.include_router(agents.router)
@@ -58,6 +76,8 @@ api_router.include_router(notifications.router)
 api_router.include_router(archive.router)
 api_router.include_router(improvements.router)
 api_router.include_router(monitoring.router)
+
+# Additional feature routers
 api_router.include_router(options_router)
 api_router.include_router(regime_router)
 api_router.include_router(audit_log_router)
@@ -69,3 +89,5 @@ api_router.include_router(bots_router)
 api_router.include_router(scanners_router)
 api_router.include_router(discord_router)
 api_router.include_router(webhooks_router)
+
+__all__ = ["api_router"]
