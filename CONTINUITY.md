@@ -378,6 +378,38 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 🔓 2026-07-29 21:40 — "improver PRs bypass CI" was ONE MISSING PERMISSION
+The risk restated at the top of every monitor tick — *"the improver PRs bypass CI so main can
+silently break (this has happened 3 sessions running)"* — was not GITHUB_TOKEN event suppression.
+It was `actions: write`.
+
+`continuous-improvement.yml` granted `contents: write` + `pull-requests: write`. `gh workflow run`
+posts to `/actions/workflows/{id}/dispatches`, which requires **actions: write**. So every run since
+the step was written ended:
+```
+could not create workflow dispatch event: HTTP 403: Resource not accessible by integration
+##[error]Process completed with exit code 1
+```
+…while `continue-on-error: true` reported the step as **success**. Verified in runs `30476849972`
+and `30483279439`: job conclusion `success`, step conclusion `success`, 403 in the log.
+
+**The approach was never wrong.** `workflow_dispatch` is one of the two events *excepted* from the
+GITHUB_TOKEN recursion guard; `test.yml` declares `workflow_dispatch:`; and `pacemaker.yml` proves
+the mechanism works in this repo ("19 of the last 40 CI runs were dispatched by github-actions[bot]").
+The improver simply never asked for the permission.
+
+Kept `continue-on-error` deliberately — a lost dispatch must not discard a run's improvements — but
+the failure now emits a `::warning::`, because a bare non-zero exit under `continue-on-error` renders
+GREEN. That is exactly how a permanent 403 stayed invisible for the workflow's whole lifetime.
+
+`test_workflow_dispatch_permissions.py` sweeps all 102 workflows for the class. 2 tests fail against
+the old file.
+
+**Note against myself:** the sweep's first version also flagged `pacemaker.yml`, and I nearly
+reported "the pacemaker has never worked" — the workflow holding the fleet's heartbeat together. It
+grants the permission on line 74 *with a trailing comment*, and my regex anchored on end-of-line.
+Caught by opening the file instead of trusting my own red test.
+
 ## ⚖️ 2026-07-29 19:30 — CORRECTION to the 18:45 entry, plus the improver's real current failure
 I claimed the fence-extraction bug caused "32 of 41 failures, 78% of everything that went wrong".
 **Not supported.** Those 32 `syntax check failed` traces are historical. Reading the last full
@@ -404,9 +436,7 @@ separately in the run summary. 5 tests, all 5 fail against the old code.
 - `pick_target_file()` picks files it can never act on — 5 of 10 attempts wasted against a budget of
   10 for 5 wanted improvements. Size-filtering at selection would roughly double useful work, but it
   changes which files the improver ever touches.
-- **The improver's CI dispatch has ALWAYS failed**: `HTTP 403: Resource not accessible by
-  integration` → `##[error]Process completed with exit code 1`, while the job still reports success.
-  That is the mechanical cause of "improver PRs bypass CI" noted in every monitor tick. Pre-existing.
+- **The improver's CI dispatch has ALWAYS failed** — **FIXED 21:40, see below.**
 
 ## 📉 2026-07-29 17:25 — the improver's success rate was 100% because failures were never counted
 Second half of the 15:40 roll-call fix. There I stopped the header printing a fabricated 100%; here
