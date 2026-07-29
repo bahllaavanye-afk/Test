@@ -3,7 +3,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import case, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -94,11 +94,24 @@ async def list_trades(
     limit: int = Query(50, ge=1, le=500),
     symbol: str | None = Query(None, description="Filter by symbol"),
     account_id: str | None = Query(None, description="Filter by account ID"),
+    closed_only: bool = Query(True, description="Return only closed trades (exit_price present)"),
+    min_realized_pnl: float | None = Query(
+        None, description="Minimum realized P&L to include (filters out low‑quality signals)"
+    ),
+    max_holding_seconds: int | None = Query(
+        None,
+        description="Maximum trade duration in seconds (filters excessively long holdings)",
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return a list of recent trades for the current user with optional filters."""
-    # Build a lightweight query that selects only needed columns and computes avg_fill_price in SQL.
+    """Return a list of recent trades for the current user with optional filters.
+
+    Enhanced filters help tighten entry quality and improve exit logic by allowing
+    callers to request only closed trades, enforce a minimum profit threshold,
+    and limit trade duration.
+    """
+    # Compute average fill price directly in SQL.
     fill_price_expr = case(
         (Trade.side == "buy", Trade.entry_price),
         else_=Trade.exit_price,
@@ -123,17 +136,26 @@ async def list_trades(
         .order_by(Trade.opened_at.desc())
         .limit(limit)
     )
+
     if account_id:
         query = query.where(Trade.account_id == account_id)
     if symbol:
         query = query.where(Trade.symbol == symbol)
+
+    # Confirmation / quality filters
+    if closed_only:
+        query = query.where(Trade.exit_price.is_not(None))
+    if min_realized_pnl is not None:
+        query = query.where(Trade.realized_pnl >= min_realized_pnl)
+    if max_holding_seconds is not None:
+        holding_seconds = func.extract("epoch", Trade.closed_at) - func.extract("epoch", Trade.opened_at)
+        query = query.where(holding_seconds <= max_holding_seconds)
 
     result = await db.execute(query)
     rows = result.all()
     if not rows:
         return []
 
-    # Convert rows to response models using a list comprehension for speed.
     return [
         TradeOut(
             id=row.id,
