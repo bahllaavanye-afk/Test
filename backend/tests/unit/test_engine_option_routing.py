@@ -50,6 +50,12 @@ _STRIKE_LEGS = [
 ]
 _DELTA_LEGS = [OptionLeg(side="sell", option_type="put", delta=0.25, dte=30, ratio=1)]
 
+# Helper leg set with mismatched DTEs for confirmation filter test
+_STRIKE_LEGS_MISMATCH_DTE = [
+    OptionLeg(side="sell", option_type="put", strike=440, dte=30, ratio=1),
+    OptionLeg(side="buy", option_type="put", strike=430, dte=31, ratio=1),
+]
+
 
 @pytest.mark.asyncio
 async def test_paper_account_never_routes(monkeypatch):
@@ -111,3 +117,35 @@ async def test_live_ts_explicit_strikes_routes(monkeypatch):
     assert len(captured["legs"]) == 2
     assert captured["legs"][0]["symbol"].startswith("SPY ")
     assert captured["legs"][0]["side"] == "sell"
+
+
+@pytest.mark.asyncio
+async def test_live_ts_mismatched_dte_legs_not_routed(monkeypatch):
+    """Explicit‑strike legs must share the same DTE; mismatched DTEs should be filtered."""
+    eng = BotEngine()
+    db = _FakeDB(_account())
+
+    import app.utils.security as sec
+    monkeypatch.setattr(sec, "decrypt_secret", lambda v: "decrypted")
+
+    oid = await eng._route_option_spread(_bot(), _STRIKE_LEGS_MISMATCH_DTE, db)
+    assert oid is None
+
+
+@pytest.mark.asyncio
+async def test_live_ts_order_failure_returns_none(monkeypatch):
+    """If the broker returns a failed order status, the routing should yield None."""
+    eng = BotEngine()
+    db = _FakeDB(_account())
+
+    import app.utils.security as sec
+    monkeypatch.setattr(sec, "decrypt_secret", lambda v: "decrypted")
+
+    async def _fake_place_fail(self, legs, quantity=1, order_type="market", limit_price=None, *, opening=True):
+        return OrderResult(broker_order_id=None, status="rejected", filled_qty=0.0, avg_fill_price=None)
+
+    from app.brokers.tradestation import TradeStationBroker
+    monkeypatch.setattr(TradeStationBroker, "place_option_order", _fake_place_fail)
+
+    oid = await eng._route_option_spread(_bot(), _STRIKE_LEGS, db)
+    assert oid is None
