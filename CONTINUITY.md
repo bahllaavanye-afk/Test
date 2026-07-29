@@ -8,7 +8,54 @@
 
 _Last updated: 2026-07-28._
 
-## 🟢 DURABLE POSTGRES — CLUSTER FIX CONFIRMED LIVE 2026-07-25 07:36 UTC (password is the ONLY blocker)
+## 🛑 SUPABASE IS **PAUSED** — read this before the 07-25 section below, which is now WRONG
+**Measured 2026-07-29 14:00 via Supabase MCP `list_projects`:**
+```
+ref: vexzwnfbmznvxoxxktax   name: Trade   region: us-west-1   status: "INACTIVE"
+```
+`INACTIVE` = the free-tier project has **auto-paused**. And `/health/detailed` has reverted to
+```
+(ENOTFOUND) tenant/user postgres.vexzwnfbmznvxoxxktax not found
+```
+after reading `password authentication failed` for the whole of 2026-07-28.
+
+### Why the section below is wrong, and how it misleads
+It concludes *"Fault #1 is closed. Fault #2 (the password) is the single remaining blocker"*, and
+treats `tenant not found` as **proof of the wrong cluster**. That inference was reasonable when
+the project was running, but it is **not the only cause of that message**: a *paused* project has
+no tenant on ANY pooler, so it returns exactly the same error from the correct host. The
+"aws-0 vs aws-1" table below cannot distinguish "wrong cluster" from "project paused" — it was
+taken while the project was still awake.
+
+**Do NOT start with the password reset.** Resetting the credential on a paused project changes
+nothing, and the reset itself may not apply until the project is restored.
+
+### The two faults COMPOUND, which is why this got stuck
+auth failure → no successful connections → Supabase counts the project as inactive → auto-pause →
+now the tenant does not resolve at all. The `DB Keep-Alive` workflow exists to prevent exactly
+this, but it cannot ping a database it was never able to authenticate to.
+
+### ACTION (user — I deliberately did not do this)
+1. **Unpause/restore** project `vexzwnfbmznvxoxxktax` in the Supabase dashboard (or tell me to
+   call `restore_project`; I held off because direct Supabase actions were previously declined
+   and restoring is a bigger step than the SQL that was refused).
+2. **Then** reset the DB password and update Render's `DATABASE_URL` exactly as the 07-25 section
+   describes — that part is still correct, and the host/port there is still the right guess.
+3. **Verify:** `/health/detailed` → `database.fallback` gone, `database_primary.ok` true.
+   `database_primary` is a BOOT-time value, so it only changes after a restart.
+
+### What this one thing is costing, measured today
+Everything durable is downstream of it: ephemeral sqlite → **trade history wiped on every
+redeploy** (the 13:12 desk run logged `✓ Performance weights active for 11 strategies`; after the
+13:48 deploy `/api/v1/trades/` and `/leaderboard/live` both returned **0**) → attribution-weight
+pruning (`✂ pruned by attribution`) goes **inert**, leaving the file-based trimmer as the only
+working pruning path. Positions survive only because `/api/v1/positions/` falls back to live
+Alpaca.
+
+⚠️ Supabase MCP was disconnected at the 14:37 tick, so `INACTIVE` could not be re-confirmed then;
+the unchanged `tenant/user … not found` error corroborates it.
+
+## ⚠️ SUPERSEDED — DURABLE POSTGRES — CLUSTER FIX 2026-07-25 07:36 UTC (see the PAUSED section above)
 **CONFIRMED IN PRODUCTION 07:36 UTC:** `/health/detailed` now reports
 `password authentication failed for user "postgres"` — it previously said
 `(ENOTFOUND) tenant/user ... not found`. That change is hard proof the cluster fix reached the
@@ -31,6 +78,8 @@ aws-0-us-west-1...:5432  -> tenant/user not found                   [no_tenant]
 2. **STALE DB PASSWORD (needs the user — cannot be automated).** `aws-1` RECOGNISES the tenant
    and rejects the credential. An auth failure is a POSITIVE identification of the right cluster;
    no host change can fix it.
+   ⚠️ **STILL TRUE AS AN OBSERVATION, BUT NO LONGER THE FIRST STEP** — the project has since
+   auto-paused, so the tenant no longer resolves at all. Unpause first (see the top section).
    **ACTION (~2 min): Supabase dashboard → project `vexzwnfbmznvxoxxktax` → Settings → Database →
    Reset database password → copy it → Render → quantedge-api → Environment → set `DATABASE_URL`
    to `postgresql+asyncpg://postgres.vexzwnfbmznvxoxxktax:<NEW_PASSWORD>@aws-1-us-west-1.pooler.supabase.com:6543/postgres`
