@@ -7,27 +7,85 @@ from app.api.deps import get_current_user, get_current_active_superuser
 from app.models.strategy import Strategy
 from app.models.user import User
 from app.strategies import STRATEGY_REGISTRY, list_desks, strategies_by_desk
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, Field, validator, ConfigDict
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
 
 
 class StrategyOut(BaseModel):
-    id: str
-    name: str
-    market_type: str
-    strategy_type: str
-    risk_bucket: str
-    is_enabled: bool
-    symbols: list[str]
-    tick_interval_seconds: float
-    confidence_threshold: float
+    id: str = Field(
+        ...,
+        description="Unique identifier for the strategy.",
+        example="123e4567-e89b-12d3-a456-426614174000",
+    )
+    name: str = Field(
+        ...,
+        description="Human‑readable name of the strategy.",
+        example="Mean Reversion 20",
+    )
+    market_type: str = Field(
+        ...,
+        description="Market classification (e.g., equities, crypto).",
+        example="equities",
+    )
+    strategy_type: str = Field(
+        ...,
+        description="Category of the strategy logic.",
+        example="mean_rev_20_2",
+    )
+    risk_bucket: str = Field(
+        ...,
+        description="Risk bucket label used for allocation.",
+        example="medium",
+    )
+    is_enabled: bool = Field(
+        ...,
+        description="Flag indicating whether the strategy is active.",
+        example=True,
+    )
+    symbols: list[str] = Field(
+        ...,
+        description="List of ticker symbols the strategy trades.",
+        example=["AAPL", "MSFT"],
+    )
+    tick_interval_seconds: float = Field(
+        ...,
+        description="Time interval in seconds between ticks.",
+        example=300,
+    )
+    confidence_threshold: float = Field(
+        ...,
+        description="Minimum confidence required to place an order.",
+        example=0.7,
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
+    @validator("tick_interval_seconds")
+    def tick_interval_positive(cls, v):
+        if v <= 0:
+            raise ValueError("tick_interval_seconds must be positive")
+        return v
+
+    @validator("confidence_threshold")
+    def confidence_between_zero_and_one(cls, v):
+        if not 0 <= v <= 1:
+            raise ValueError("confidence_threshold must be between 0 and 1")
+        return v
+
+    @validator("symbols")
+    def symbols_must_be_list_of_strings(cls, v):
+        if not isinstance(v, list) or not all(isinstance(item, str) for item in v):
+            raise ValueError("symbols must be a list of strings")
+        return v
+
 
 class StrategyToggle(BaseModel):
-    is_enabled: bool
+    is_enabled: bool = Field(
+        ...,
+        description="Desired enabled state for the strategy.",
+        example=False,
+    )
 
 
 @router.get("/params-schema")
