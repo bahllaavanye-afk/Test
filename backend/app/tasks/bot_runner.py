@@ -21,18 +21,20 @@ def _first_run_time() -> datetime:
     """
     return datetime.now(timezone.utc) + timedelta(seconds=random.uniform(30, 150))
 
+
 if TYPE_CHECKING:
     from app.models.bot import Bot
 
+
 # Map interval strings to APScheduler kwargs
 _INTERVAL_MAP: dict[str, dict] = {
-    "1m":  {"minutes": 1},
-    "5m":  {"minutes": 5},
+    "1m": {"minutes": 1},
+    "5m": {"minutes": 5},
     "15m": {"minutes": 15},
     "30m": {"minutes": 30},
-    "1h":  {"hours": 1},
-    "4h":  {"hours": 4},
-    "1d":  {"hours": 24},
+    "1h": {"hours": 1},
+    "4h": {"hours": 4},
+    "1d": {"hours": 24},
 }
 
 
@@ -62,6 +64,8 @@ class BotRunner:
         lifecycle jobs), every bot at `last_run_at=None`, zero orders, zero
         trades.
         """
+        if not isinstance(only_missing, bool):
+            raise ValueError("only_missing must be a boolean")
         try:
             from app.database import AsyncSessionLocal
             from app.models.bot import Bot
@@ -78,7 +82,9 @@ class BotRunner:
             pending = [b for b in bots if not (only_missing and self._has_job(b.id))]
             logger.info(
                 "BotRunner: scheduling bots",
-                enabled=len(bots), scheduling=len(pending), only_missing=only_missing,
+                enabled=len(bots),
+                scheduling=len(pending),
+                only_missing=only_missing,
             )
             for bot in pending:
                 await self.reschedule(bot)
@@ -92,7 +98,8 @@ class BotRunner:
                     "BotRunner: %d enabled bot(s) have NO scheduler job — they "
                     "cannot fire and no orders will be placed",
                     len(unscheduled),
-                    enabled=len(bots), unscheduled=len(unscheduled),
+                    enabled=len(bots),
+                    unscheduled=len(unscheduled),
                 )
             return len(pending)
         except Exception as exc:
@@ -101,6 +108,8 @@ class BotRunner:
 
     async def _run_bot(self, bot_id: str) -> None:
         """Called by scheduler — fetch bot from DB, evaluate, update."""
+        if not isinstance(bot_id, str) or not bot_id:
+            raise ValueError("bot_id must be a non‑empty string")
         try:
             from app.database import AsyncSessionLocal
             from app.models.bot import Bot
@@ -126,6 +135,12 @@ class BotRunner:
 
     async def reschedule(self, bot: "Bot") -> None:
         """Add or update a bot job in the scheduler."""
+        if bot is None:
+            raise ValueError("bot cannot be None")
+        if not hasattr(bot, "id") or not isinstance(bot.id, str) or not bot.id:
+            raise ValueError("bot.id must be a non‑empty string")
+        if not hasattr(bot, "trigger"):
+            raise ValueError("bot must have a 'trigger' attribute")
         try:
             trigger_cfg: dict = bot.trigger or {}
             trigger_type = trigger_cfg.get("type", "schedule")
@@ -148,7 +163,7 @@ class BotRunner:
                 logger.debug("Bot scheduled", bot_id=bot.id, interval=interval_str)
 
             elif trigger_type in ("price_cross", "indicator"):
-                # For non-schedule triggers, poll every 5 minutes and let the engine decide
+                # For non‑schedule triggers, poll every 5 minutes and let the engine decide
                 self._scheduler.add_job(
                     self._run_bot,
                     "interval",
@@ -166,6 +181,8 @@ class BotRunner:
 
     async def unschedule(self, bot_id: str) -> None:
         """Remove a bot job from the scheduler."""
+        if not isinstance(bot_id, str) or not bot_id:
+            raise ValueError("bot_id must be a non‑empty string")
         job_id = f"bot_{bot_id}"
         try:
             self._scheduler.remove_job(job_id)

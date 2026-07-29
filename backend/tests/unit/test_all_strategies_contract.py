@@ -37,6 +37,30 @@ _NAMES = sorted(STRATEGY_REGISTRY)
 
 
 def _ohlcv(n: int = 260, seed: int = 5) -> pd.DataFrame:
+    """Generate a synthetic OHLCV DataFrame for testing.
+
+    Parameters
+    ----------
+    n : int
+        Number of rows to generate. Must be a positive integer.
+    seed : int
+        Random seed for reproducibility. Must be an integer.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns ['open', 'high', 'low', 'close', 'volume'].
+
+    Raises
+    ------
+    ValueError
+        If `n` is not a positive integer or `seed` is not an integer.
+    """
+    if not isinstance(n, int) or n <= 0:
+        raise ValueError(f"`n` must be a positive integer, got {n!r}")
+    if not isinstance(seed, int):
+        raise ValueError(f"`seed` must be an integer, got {seed!r}")
+
     rng = np.random.default_rng(seed)
     r = rng.normal(0.0005, 0.015, n)
     c = 100 * np.cumprod(1 + r)
@@ -53,7 +77,29 @@ def _ohlcv(n: int = 260, seed: int = 5) -> pd.DataFrame:
 
 
 def _signals_or_skip(name: str):
-    """Return (instance, BacktestSignals) or skip strategies that need special data."""
+    """Return (instance, BacktestSignals) or skip strategies that need special data.
+
+    Parameters
+    ----------
+    name : str
+        Name of the strategy to test. Must be a non‑empty string present in the
+        strategy registry.
+
+    Returns
+    -------
+    tuple
+        (strategy instance, BacktestSignals object)
+
+    Raises
+    ------
+    ValueError
+        If `name` is not a string, is empty, or is not registered.
+    """
+    if not isinstance(name, str) or not name:
+        raise ValueError(f"`name` must be a non‑empty string, got {name!r}")
+    if name not in STRATEGY_REGISTRY:
+        raise ValueError(f"Strategy `{name}` is not registered in STRATEGY_REGISTRY")
+
     cls = STRATEGY_REGISTRY[name]
     if cls is None:
         pytest.skip(f"{name}: disabled (optional dep missing)")
