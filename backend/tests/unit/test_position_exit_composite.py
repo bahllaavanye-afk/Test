@@ -8,11 +8,32 @@ strategies, but escalate loudly when NOTHING evaluated.
 """
 from __future__ import annotations
 
+from pydantic import BaseModel, Field, validator
 from app.execution.position_exit import CompositeExit
 
 
+class Position(BaseModel):
+    """Schema representing a trading position payload.
+
+    Attributes
+    ----------
+    symbol: str
+        Ticker symbol of the asset (e.g., ``\"AAPL\"``).
+    qty: int
+        Quantity of the asset. Must be a non‑negative integer.
+    """
+    symbol: str = Field(..., description="Ticker symbol of the asset", example="AAPL")
+    qty: int = Field(..., description="Number of shares/contracts", example=1, ge=0)
+
+    @validator("symbol")
+    def symbol_must_be_nonempty(cls, v: str) -> str:
+        if not v:
+            raise ValueError("symbol must be a non‑empty string")
+        return v
+
+
 class _Ok:
-    def __init__(self, triggered=False, reason="tp"):
+    def __init__(self, triggered: bool = False, reason: str = "tp"):
         self._t, self._r = triggered, reason
 
     def should_exit(self, position, current_price, context):
