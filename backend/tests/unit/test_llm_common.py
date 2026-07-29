@@ -35,8 +35,11 @@ class _FakeResp:
 
 _OK = {"choices": [{"message": {"content": "OK"}}]}
 _PROVIDER = {
-    "name": "test", "url": "https://example.test/v1/chat", "fmt": "openai",
-    "key_env": "TEST_LLM_KEY", "model": "m",
+    "name": "test",
+    "url": "https://example.test/v1/chat",
+    "fmt": "openai",
+    "key_env": "TEST_LLM_KEY",
+    "model": "m",
 }
 
 
@@ -96,10 +99,6 @@ def test_call_provider_raises_when_no_key(monkeypatch):
         pass
 
 
-# --- Reasoning-model content extraction -------------------------------------- #
-# Regression: Cerebras gpt-oss / DeepSeek-R1 return message.content=None and put
-# the answer under reasoning_content/reasoning. The old ["content"].strip() died
-# with a 'content' KeyError, silently dropping a whole free provider.
 def test_extract_content_plain():
     assert L._extract_openai_content({"choices": [{"message": {"content": "hi"}}]}) == "hi"
 
@@ -116,6 +115,7 @@ def test_extract_content_falls_back_to_reasoning():
 
 def test_extract_content_empty_raises():
     import pytest
+
     with pytest.raises(ValueError):
         L._extract_openai_content({"choices": [{"message": {"content": "  "}}]})
 
