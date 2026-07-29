@@ -8,8 +8,48 @@ so they catch regressions even when the brain is down.
 """
 from pathlib import Path
 
+from pydantic import BaseModel, Field, validator
+
 API = Path(__file__).resolve().parents[2] / "app" / "api" / "v1"
 CONFIG = Path(__file__).resolve().parents[2] / "app" / "config.py"
+
+
+class PathSchema(BaseModel):
+    """Schema representing critical project paths used in security invariant tests.
+
+    Attributes
+    ----------
+    api_path: Path
+        Path to the API v1 directory. Must exist and be a directory.
+    config_path: Path
+        Path to the application configuration file. Must exist and be a file.
+    """
+    api_path: Path = Field(
+        ...,
+        description="Path to the API v1 directory containing route definitions.",
+        example="/path/to/project/app/api/v1",
+    )
+    config_path: Path = Field(
+        ...,
+        description="Path to the main application configuration file.",
+        example="/path/to/project/app/config.py",
+    )
+
+    @validator("api_path")
+    def api_path_must_be_directory(cls, v: Path) -> Path:
+        if not v.is_dir():
+            raise ValueError(f"api_path does not exist or is not a directory: {v}")
+        return v
+
+    @validator("config_path")
+    def config_path_must_be_file(cls, v: Path) -> Path:
+        if not v.is_file():
+            raise ValueError(f"config_path does not exist or is not a file: {v}")
+        return v
+
+
+# Instantiate the schema for potential external use; tests continue to use API and CONFIG directly.
+PATHS = PathSchema(api_path=API, config_path=CONFIG)
 
 
 def test_rest_order_submission_is_risk_gated():
