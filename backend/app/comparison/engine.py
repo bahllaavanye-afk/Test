@@ -3,6 +3,8 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
+import time
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -87,6 +89,8 @@ class StrategyComparisonEngine:
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
 
+        start_time = time.time()
+
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 
@@ -109,12 +113,32 @@ class StrategyComparisonEngine:
         if abs(improvement) < 0.1:
             winner = "neither"
 
+        # Structured logging of core comparison results
         logger.info(
             "Comparison complete",
             strategy=strategy_name,
             manual_sharpe=manual_metrics.sharpe,
             ml_sharpe=ml_metrics.sharpe,
             p_value=round(p_val, 4),
+        )
+
+        # Additional monitoring metrics
+        execution_seconds = round(time.time() - start_time, 4)
+        manual_signal_count = len(manual_signals)
+        ml_signal_count = len(ml_signals)
+        manual_pnl = round(manual_eq.iloc[-1] - initial_equity, 2)
+        ml_pnl = round(ml_eq.iloc[-1] - initial_equity, 2)
+
+        logger.info(
+            "Comparison run metrics",
+            strategy=strategy_name,
+            symbol=symbol,
+            interval=interval,
+            manual_signal_count=manual_signal_count,
+            ml_signal_count=ml_signal_count,
+            execution_seconds=execution_seconds,
+            manual_pnl=manual_pnl,
+            ml_pnl=ml_pnl,
         )
 
         return ComparisonResult(
