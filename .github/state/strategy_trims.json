@@ -1,0 +1,12 @@
+{
+  "avellaneda": {
+    "trimmed_at": "2026-07-29T15:01:25.481499+00:00",
+    "reason": "cumulative return -7.9% \u2264 -5.0% over 10 trades",
+    "stats_at_trim": {
+      "trades": 10,
+      "win_rate": 0.6,
+      "avg_return_pct": -0.7916,
+      "total_return_pct": -7.9157
+    }
+  }
+}
