@@ -18,10 +18,17 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, List, Tuple
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.tasks.free_llm_router import call_race
 from app.tasks.agent_memory import AgentMemory
+
+# Optional RedisError import – fallback to generic Exception if unavailable
+try:
+    from aioredis.exceptions import RedisError  # type: ignore
+except Exception:  # pragma: no cover
+    RedisError = Exception  # noqa: BLE001
 
 logger = logging.getLogger(__name__)
 
@@ -39,34 +46,45 @@ class SelfImprovingLoop:
             await self._auto_disable_underperformers(metrics)
             await self._llm_improvement_pass(metrics)
             await self._broadcast_regime(metrics)
-            logger.info("SelfImprovingLoop: cycle complete (%d strategies evaluated)", len(metrics))
-        except Exception as e:
-            logger.exception("SelfImprovingLoop cycle error: %s", e)
+            logger.info(
+                "SelfImprovingLoop: cycle complete (%d strategies evaluated)",
+                len(metrics),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("SelfImprovingLoop cycle error: %s", e, extra={"stage": "run_cycle"})
 
     # ── Metric collection ─────────────────────────────────────────────────────
 
     async def _collect_strategy_metrics(self) -> List[dict]:
         """Pull per-strategy Sharpe + win-rate from trade history (last 30d)."""
         cutoff = datetime.now(timezone.utc) - timedelta(days=30)
-        async with self._factory() as session:
-            result = await session.execute(
-                text(
+        try:
+            async with self._factory() as session:
+                result = await session.execute(
+                    text(
+                        """
+                    SELECT
+                        strategy_name,
+                        COUNT(*) AS num_trades,
+                        SUM(pnl) AS total_pnl,
+                        AVG(pnl) AS avg_pnl,
+                        STDDEV(pnl) AS std_pnl,
+                        SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)::float / COUNT(*) AS win_rate
+                    FROM trades
+                    WHERE closed_at >= :cutoff AND strategy_name IS NOT NULL
+                    GROUP BY strategy_name
                     """
-                SELECT
-                    strategy_name,
-                    COUNT(*) AS num_trades,
-                    SUM(pnl) AS total_pnl,
-                    AVG(pnl) AS avg_pnl,
-                    STDDEV(pnl) AS std_pnl,
-                    SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)::float / COUNT(*) AS win_rate
-                FROM trades
-                WHERE closed_at >= :cutoff AND strategy_name IS NOT NULL
-                GROUP BY strategy_name
-                """
-                ),
-                {"cutoff": cutoff},
+                    ),
+                    {"cutoff": cutoff},
+                )
+                rows = result.fetchall()
+        except SQLAlchemyError as exc:
+            logger.error(
+                "Failed to collect strategy metrics from DB",
+                exc_info=True,
+                extra={"exception": exc, "cutoff": cutoff.isoformat()},
             )
-            rows = result.fetchall()
+            return []
 
         metrics: List[dict] = []
         for row in rows:
@@ -88,25 +106,35 @@ class SelfImprovingLoop:
 
     async def _auto_disable_underperformers(self, metrics: List[dict]) -> None:
         """Disable strategies with Sharpe < 0 and >= 10 trades in the last 30 days."""
-        underperformers = [m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10]
+        underperformers = [
+            m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10
+        ]
         if not underperformers:
             return
 
-        async with self._factory() as session:
-            for m in underperformers:
-                await session.execute(
-                    text(
+        try:
+            async with self._factory() as session:
+                for m in underperformers:
+                    await session.execute(
+                        text(
+                            """
+                        UPDATE strategies SET is_active = false, disabled_reason = :reason
+                        WHERE name = :name AND is_active = true
                         """
-                    UPDATE strategies SET is_active = false, disabled_reason = :reason
-                    WHERE name = :name AND is_active = true
-                    """
-                    ),
-                    {
-                        "name": m["strategy"],
-                        "reason": f"auto-disabled: Sharpe={m['sharpe']:.2f} (30d)",
-                    },
-                )
-            await session.commit()
+                        ),
+                        {
+                            "name": m["strategy"],
+                            "reason": f"auto-disabled: Sharpe={m['sharpe']:.2f} (30d)",
+                        },
+                    )
+                await session.commit()
+        except SQLAlchemyError as exc:
+            logger.error(
+                "Error disabling underperforming strategies",
+                exc_info=True,
+                extra={"exception": exc, "strategies": [m["strategy"] for m in underperformers]},
+            )
+            return
 
         names = [m["strategy"] for m in underperformers]
         logger.info("SelfImprovingLoop: auto-disabled %s", names)
@@ -121,11 +149,20 @@ class SelfImprovingLoop:
         top, bottom = self._select_top_bottom_strategies(metrics)
         prompt = self._build_llm_prompt(top, bottom)
 
-        response = await call_race(
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.4,
-            max_tokens=512,
-        )
+        try:
+            response = await call_race(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.4,
+                max_tokens=512,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "LLM call failed",
+                exc_info=True,
+                extra={"exception": exc, "prompt_length": len(prompt)},
+            )
+            return
+
         if response:
             await self._store_llm_suggestion(response)
 
@@ -161,7 +198,10 @@ Be concise. Each suggestion under 2 sentences."""
                 "suggestion": response.content,
             },
         )
-        logger.info("SelfImprovingLoop: LLM suggestion from %s stored", response.provider)
+        logger.info(
+            "SelfImprovingLoop: LLM suggestion from %s stored",
+            response.provider,
+        )
 
     # ── Regime broadcast ──────────────────────────────────────────────────────
 
@@ -170,7 +210,11 @@ Be concise. Each suggestion under 2 sentences."""
         total = len(metrics) or 1
         health = profitable / total
 
-        regime = "bull" if health > 0.6 else ("bear" if health < 0.3 else "sideways")
+        regime = (
+            "bull"
+            if health > 0.6
+            else ("bear" if health < 0.3 else "sideways")
+        )
         await self._memory.set_latest(
             "platform_health",
             {
@@ -182,6 +226,19 @@ Be concise. Each suggestion under 2 sentences."""
         )
 
         try:
-            await self._redis.publish("platform:regime", json.dumps({"regime": regime, "health": health}))
-        except Exception as exc:  # noqa: BLE001 — subscribers just miss one regime tick
-            logger.debug("self-improving loop: regime publish failed: %s", exc)
+            await self._redis.publish(
+                "platform:regime",
+                json.dumps({"regime": regime, "health": health}),
+            )
+        except RedisError as exc:
+            logger.debug(
+                "self-improving loop: regime publish failed",
+                exc_info=True,
+                extra={"exception": exc, "regime": regime},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "self-improving loop: unexpected error during regime publish",
+                exc_info=True,
+                extra={"exception": exc, "regime": regime},
+            )

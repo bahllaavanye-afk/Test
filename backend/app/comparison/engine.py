@@ -3,6 +3,7 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -12,6 +13,26 @@ from scipy import stats
 from app.backtest.engine import run_backtest, BacktestMetrics
 from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stats
 from app.utils.logging import logger
+
+
+class InvalidInputError(ValueError):
+    """Raised when input validation fails."""
+
+
+class DataAlignmentError(ValueError):
+    """Raised when the input series cannot be aligned."""
+
+
+class BacktestExecutionError(RuntimeError):
+    """Raised when backtest execution fails."""
+
+
+class BenchmarkFetchError(RuntimeError):
+    """Raised when fetching benchmark data fails."""
+
+
+class StatisticalComputationError(RuntimeError):
+    """Raised when statistical calculations fail."""
 
 
 @dataclass
@@ -45,70 +66,142 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = 100_000,
     ) -> ComparisonResult:
-        # Input validation
-        if not isinstance(manual_signals, pd.Series):
-            raise ValueError("manual_signals must be a pandas Series.")
-        if not isinstance(ml_signals, pd.Series):
-            raise ValueError("ml_signals must be a pandas Series.")
-        if not isinstance(prices, pd.Series):
-            raise ValueError("prices must be a pandas Series.")
+        # ------------------------------
+        # Input validation with logging
+        # ------------------------------
+        try:
+            if not isinstance(manual_signals, pd.Series):
+                raise InvalidInputError("manual_signals must be a pandas Series.")
+            if not isinstance(ml_signals, pd.Series):
+                raise InvalidInputError("ml_signals must be a pandas Series.")
+            if not isinstance(prices, pd.Series):
+                raise InvalidInputError("prices must be a pandas Series.")
 
-        if manual_signals.empty:
-            raise ValueError("manual_signals series cannot be empty.")
-        if ml_signals.empty:
-            raise ValueError("ml_signals series cannot be empty.")
-        if prices.empty:
-            raise ValueError("prices series cannot be empty.")
+            if manual_signals.empty:
+                raise InvalidInputError("manual_signals series cannot be empty.")
+            if ml_signals.empty:
+                raise InvalidInputError("ml_signals series cannot be empty.")
+            if prices.empty:
+                raise InvalidInputError("prices series cannot be empty.")
 
-        if not isinstance(strategy_name, str) or not strategy_name.strip():
-            raise ValueError("strategy_name must be a non-empty string.")
-        if not isinstance(symbol, str) or not symbol.strip():
-            raise ValueError("symbol must be a non-empty string.")
-        if not isinstance(interval, str) or not interval.strip():
-            raise ValueError("interval must be a non-empty string.")
+            if not isinstance(strategy_name, str) or not strategy_name.strip():
+                raise InvalidInputError("strategy_name must be a non-empty string.")
+            if not isinstance(symbol, str) or not symbol.strip():
+                raise InvalidInputError("symbol must be a non-empty string.")
+            if not isinstance(interval, str) or not interval.strip():
+                raise InvalidInputError("interval must be a non-empty string.")
 
-        if not isinstance(start_date, date):
-            raise ValueError("start_date must be a datetime.date instance.")
-        if not isinstance(end_date, date):
-            raise ValueError("end_date must be a datetime.date instance.")
-        if start_date > end_date:
-            raise ValueError("start_date cannot be later than end_date.")
+            if not isinstance(start_date, date):
+                raise InvalidInputError("start_date must be a datetime.date instance.")
+            if not isinstance(end_date, date):
+                raise InvalidInputError("end_date must be a datetime.date instance.")
+            if start_date > end_date:
+                raise InvalidInputError("start_date cannot be later than end_date.")
 
-        if not isinstance(initial_equity, (int, float)):
-            raise ValueError("initial_equity must be a numeric type.")
-        if initial_equity <= 0:
-            raise ValueError("initial_equity must be a positive number.")
+            if not isinstance(initial_equity, (int, float)):
+                raise InvalidInputError("initial_equity must be a numeric type.")
+            if initial_equity <= 0:
+                raise InvalidInputError("initial_equity must be a positive number.")
+        except InvalidInputError as exc:
+            logger.error(
+                "Input validation failed",
+                strategy=strategy_name,
+                error=str(exc),
+            )
+            raise
 
-        # Ensure series are aligned on the same index (optional but helps consistency)
-        common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
-        if common_index.empty:
-            raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
-        manual_signals = manual_signals.loc[common_index]
-        ml_signals = ml_signals.loc[common_index]
-        prices = prices.loc[common_index]
+        # ---------------------------------
+        # Align series and handle misalignment
+        # ---------------------------------
+        try:
+            common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
+            if common_index.empty:
+                raise DataAlignmentError(
+                    "manual_signals, ml_signals, and prices must share at least one common index."
+                )
+            manual_signals = manual_signals.loc[common_index]
+            ml_signals = ml_signals.loc[common_index]
+            prices = prices.loc[common_index]
+        except DataAlignmentError as exc:
+            logger.error(
+                "Data alignment error",
+                strategy=strategy_name,
+                error=str(exc),
+            )
+            raise
 
-        manual_metrics = run_backtest(manual_signals, prices, initial_equity)
-        ml_metrics = run_backtest(ml_signals, prices, initial_equity)
+        # -------------------------------
+        # Execute backtests with error capture
+        # -------------------------------
+        try:
+            manual_metrics = run_backtest(manual_signals, prices, initial_equity)
+        except Exception as exc:
+            logger.error(
+                "Backtest execution failed for manual strategy",
+                strategy=strategy_name,
+                error=str(exc),
+            )
+            raise BacktestExecutionError("Manual backtest failed") from exc
 
-        benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
-        benchmark_stats = get_benchmark_stats()
+        try:
+            ml_metrics = run_backtest(ml_signals, prices, initial_equity)
+        except Exception as exc:
+            logger.error(
+                "Backtest execution failed for ML-enhanced strategy",
+                strategy=strategy_name,
+                error=str(exc),
+            )
+            raise BacktestExecutionError("ML backtest failed") from exc
 
-        manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
-        ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
-        manual_ret = manual_eq.pct_change().dropna()
-        ml_ret = ml_eq.pct_change().dropna()
+        # -------------------------------
+        # Fetch benchmark data
+        # -------------------------------
+        try:
+            benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
+            benchmark_stats = get_benchmark_stats()
+        except Exception as exc:
+            logger.error(
+                "Benchmark fetching failed",
+                strategy=strategy_name,
+                start_date=str(start_date),
+                end_date=str(end_date),
+                error=str(exc),
+            )
+            raise BenchmarkFetchError("Failed to retrieve benchmark information") from exc
 
-        min_len = min(len(manual_ret), len(ml_ret))
-        if min_len > 10:
-            t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
-        else:
-            t_stat, p_val = 0.0, 1.0
+        # -------------------------------
+        # Compute returns and statistical test
+        # -------------------------------
+        try:
+            manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
+            ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
+            manual_ret = manual_eq.pct_change().dropna()
+            ml_ret = ml_eq.pct_change().dropna()
 
+            min_len = min(len(manual_ret), len(ml_ret))
+            if min_len > 10:
+                t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
+            else:
+                t_stat, p_val = 0.0, 1.0
+        except Exception as exc:
+            logger.error(
+                "Statistical computation error",
+                strategy=strategy_name,
+                error=str(exc),
+            )
+            raise StatisticalComputationError("Failed during return or t-test calculation") from exc
+
+        # -------------------------------
+        # Determine improvement and winner
+        # -------------------------------
         improvement = ml_metrics.sharpe - manual_metrics.sharpe
         winner = "ml" if ml_metrics.sharpe > manual_metrics.sharpe else "manual"
         if abs(improvement) < 0.1:
             winner = "neither"
 
+        # -------------------------------
+        # Log successful comparison
+        # -------------------------------
         logger.info(
             "Comparison complete",
             strategy=strategy_name,
@@ -117,6 +210,9 @@ class StrategyComparisonEngine:
             p_value=round(p_val, 4),
         )
 
+        # -------------------------------
+        # Return result dataclass
+        # -------------------------------
         return ComparisonResult(
             strategy_name=strategy_name,
             symbol=symbol,
