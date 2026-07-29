@@ -378,6 +378,31 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## ✅ 2026-07-29 15:19 — THE TRIM CHAIN IS LIVE. Verified in production, not inferred.
+The whole path finally ran end to end, on a real desk run, 18 minutes after the persist fix merged.
+
+`.github/state/strategy_trims.json` is now **tracked in the repo** — first time ever. The trimmer
+committed it at 15:01 as `c10a64fa`:
+```json
+{"avellaneda": {"trimmed_at": "2026-07-29T15:01:25Z",
+                "reason": "cumulative return -7.9% ≤ -5.0% over 10 trades",
+                "stats_at_trim": {"trades": 10, "win_rate": 0.6, "total_return_pct": -7.9157}}}
+```
+Then the 15:19 equity desk run (`30465278667`, head `7f79e920`) printed:
+```
+✂ 2 strategy(ies) retired by the trimmer will not trade: avellaneda, avellaneda_stoikov_mm
+```
+Two names because `_expand_truncated` resolved the legacy 10-char attribution key to its single
+registry match — exactly the mechanism that was only ever tested against a fake registry before.
+
+**The proof that it took effect, not just printed:** `avellaneda` appears **exactly once** in the
+805-line log — that line. No signal, no sizing, no order. The run was otherwise fully active:
+`Done. 9 orders placed across 9 desks`, orders filling, no loss cap.
+
+So the sequence attribution → trim → **persist** → desk read → key expansion → exclusion is now
+closed and observed. Persist was the only broken link; every other stage had already been fixed
+this session and was waiting on it.
+
 ## 🔬 2026-07-29 15:10 — two open questions from the sweep, answered by measurement
 **`ml_models: ok=false, count=0` is NOT "training isn't running".** `lstm-training.yml` has run six
 times, weekly, all six green, 1.05 MB of artifacts each. Three independent breaks stop any of it
