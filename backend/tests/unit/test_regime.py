@@ -1,32 +1,70 @@
 """Tests for regime detector and correlation monitor."""
 import numpy as np
+from typing import List
+
 from app.ml.regime.detector import detect_regime, Regime, _hurst_exponent
 from app.risk.correlation_monitor import CrossStrategyCorrelationMonitor
 
 
-def _make_trending(n: int = 80) -> list[float]:
-    """Generate a strongly trending price series."""
+def _make_trending(n: int = 80) -> List[float]:
+    """Generate a strongly trending price series.
+
+    Parameters
+    ----------
+    n : int, optional
+        Length of the series, by default 80
+
+    Returns
+    -------
+    List[float]
+        Simulated price series with a clear upward trend.
+    """
+    rng = np.random.default_rng()
     prices = [100.0]
     for _ in range(n - 1):
-        prices.append(prices[-1] * (1 + np.random.normal(0.002, 0.005)))
+        prices.append(prices[-1] * (1 + rng.normal(0.002, 0.005)))
     return prices
 
 
-def _make_mean_reverting(n: int = 80) -> list[float]:
-    """Generate a mean‑reverting (OU process) price series."""
+def _make_mean_reverting(n: int = 80) -> List[float]:
+    """Generate a mean‑reverting (Ornstein‑Uhlenbeck) price series.
+
+    Parameters
+    ----------
+    n : int, optional
+        Length of the series, by default 80
+
+    Returns
+    -------
+    List[float]
+        Simulated price series that oscillates around a long‑run mean.
+    """
     prices = [100.0]
     mu, theta, sigma = 100.0, 0.3, 0.5
+    rng = np.random.default_rng()
     for _ in range(n - 1):
         prev = prices[-1]
-        prices.append(prev + theta * (mu - prev) + np.random.normal(0, sigma))
+        prices.append(prev + theta * (mu - prev) + rng.normal(0, sigma))
     return prices
 
 
-def _make_high_vol(n: int = 60) -> list[float]:
-    """Generate a high‑volatility price series."""
+def _make_high_vol(n: int = 60) -> List[float]:
+    """Generate a high‑volatility price series.
+
+    Parameters
+    ----------
+    n : int, optional
+        Length of the series, by default 60
+
+    Returns
+    -------
+    List[float]
+        Simulated price series with amplified random moves.
+    """
+    rng = np.random.default_rng()
     prices = [100.0]
     for _ in range(n - 1):
-        prices.append(max(1.0, prices[-1] * (1 + np.random.normal(0, 0.035))))
+        prices.append(max(1.0, prices[-1] * (1 + rng.normal(0, 0.035))))
     return prices
 
 
@@ -54,6 +92,13 @@ class TestDetectRegime:
         state = detect_regime(prices, high_vol_threshold=0.20)
         assert state.regime == Regime.HIGH_VOL
         assert state.sizing_multiplier == 0.50
+
+    def test_mean_rev_regime(self):
+        """Mean‑reverting series should be identified as a mean‑reverting regime."""
+        state = detect_regime(_make_mean_reverting(60))
+        assert state.regime == Regime.MEAN_REV
+        # Confidence for mean‑reverting should be reasonably high
+        assert state.confidence >= 0.5
 
     def test_too_short_returns_unknown(self):
         state = detect_regime([100, 101, 102])
