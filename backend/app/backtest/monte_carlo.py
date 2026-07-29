@@ -1,5 +1,13 @@
-"""Monte Carlo simulation: bootstrap equity curve for robustness confidence intervals."""
+"""Monte Carlo simulation utilities for bootstrapping equity curves.
+
+This module provides a single public function, :func:`monte_carlo_simulation`,
+which generates Monte‑Carlo equity‑curve paths by resampling historical daily
+returns. The function returns a :class:`MonteCarloResult` dataclass containing
+summary statistics useful for assessing strategy robustness.
+"""
+
 from __future__ import annotations
+
 import numbers
 import numpy as np
 import pandas as pd
@@ -8,6 +16,26 @@ from dataclasses import dataclass
 
 @dataclass
 class MonteCarloResult:
+    """Container for aggregated Monte‑Carlo simulation statistics.
+
+    Attributes
+    ----------
+    median_sharpe: float
+        Median annualised Sharpe ratio across all simulated paths.
+    p5_sharpe: float
+        5th percentile of the Sharpe ratio distribution.
+    p95_sharpe: float
+        95th percentile of the Sharpe ratio distribution.
+    median_max_dd: float
+        Median maximum drawdown (as a negative fraction) across simulations.
+    p95_max_dd: float
+        95th percentile of the maximum drawdown distribution.
+    prob_positive_return: float
+        Probability that the final portfolio value exceeds the initial capital.
+    num_simulations: int
+        Number of Monte‑Carlo paths that were generated.
+    """
+
     median_sharpe: float
     p5_sharpe: float
     p95_sharpe: float
@@ -31,28 +59,39 @@ def monte_carlo_simulation(
     n_years: int = 3,
     risk_free_daily: float = 0.05 / 252,
 ) -> MonteCarloResult:
-    """Bootstrap daily returns to simulate N years of paths.
+    """Bootstrap daily returns to simulate *n_years* of equity‑curve paths.
+
+    The function resamples the supplied ``daily_returns`` with replacement,
+    constructs a cumulative equity curve for each simulation, and computes a
+    set of performance metrics. Results are aggregated into a
+    :class:`MonteCarloResult` instance.
 
     Parameters
     ----------
     daily_returns : pd.Series
-        Series of daily returns. Must be non‑empty, numeric, and contain finite values.
-    n_simulations : int
+        Historical daily returns. Must be non‑empty, numeric, and contain only
+        finite values. NaNs are dropped before resampling.
+    n_simulations : int, default 1000
         Number of Monte‑Carlo paths to generate. Must be a positive integer.
-    n_years : int
-        Number of years to simulate. Must be a positive integer.
-    risk_free_daily : float
-        Daily risk‑free rate. Must be a real number.
+    n_years : int, default 3
+        Length of each simulated path expressed in years. Must be a positive
+        number; the function assumes 252 trading days per year.
+    risk_free_daily : float, default 0.05 / 252
+        Daily risk‑free rate used to compute excess returns for the Sharpe
+        ratio. Must be a real number.
 
     Returns
     -------
     MonteCarloResult
-        Aggregated statistics from the simulations.
+        Aggregated statistics from the simulations, including median and
+        percentile Sharpe ratios, drawdowns, and the probability of a positive
+        final return.
 
     Raises
     ------
     ValueError
-        If any input is invalid.
+        If any input fails validation (e.g., wrong type, empty series, or
+        non‑finite values).
     """
     # Input validation
     if not isinstance(daily_returns, pd.Series):
@@ -72,8 +111,8 @@ def monte_carlo_simulation(
 
     n_days = int(n_years * 252)
     returns_array = daily_returns.dropna().values
-    sharpes = []
-    max_dds = []
+    sharpes: list[float] = []
+    max_dds: list[float] = []
     positive = 0
 
     rng = np.random.default_rng(42)
