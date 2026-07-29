@@ -24,15 +24,14 @@ from app.api.v1 import (
     pipeline,
     leaderboard,
     releases,
-    bots,
 )
 from app.api.v1.scanners import router as scanners_router
 from app.api.v1.options import router as options_router
 from app.api.v1.regime import router as regime_router
 from app.api.v1.audit_log import router as audit_log_router
-from app.api.v1.bots import router as bots_router
 from app.api.v1.discord_interactions import router as discord_router
 from app.api.v1.webhooks import router as webhooks_router
+from app.api.v1.bots import router as bots_router
 
 api_router = APIRouter()
 
