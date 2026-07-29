@@ -21,36 +21,50 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_desk_sync.db")
 _DESK_MOD = Path(__file__).parents[3] / ".github" / "scripts" / "desk_order_placer.py"
 
 
+def _load_module_from_path(file_path: Path, module_name: str):
+    """Load a Python module from the given file path, skipping the test if missing."""
+    if not file_path.exists():
+        pytest.skip(f"{file_path.name} not present")
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    if spec is None or spec.loader is None:
+        pytest.fail(f"Unable to create module spec for {file_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
+
+
 def _load_desks():
-    if not _DESK_MOD.exists():
-        pytest.skip("desk_order_placer.py not present in this checkout")
-    spec = importlib.util.spec_from_file_location("dop_sync_test", _DESK_MOD)
-    m = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(m)  # type: ignore[union-attr]
-    return m
+    """Load the desk definitions from the GitHub Actions script."""
+    return _load_module_from_path(_DESK_MOD, "dop_sync_test")
+
+
+def _collect_missing_strategies(desks, registry) -> set[str]:
+    """Return a set of missing strategy identifiers in the form 'desk_name/strategy'."""
+    missing: set[str] = set()
+    for desk in desks:
+        for strat_name in desk.strategy_names:
+            if registry.get(strat_name) is None:
+                missing.add(f"{desk.name}/{strat_name}")
+    return missing
+
+
+def _collect_missing_fx_strategies(strategies, registry) -> list[str]:
+    """Return a list of FX desk strategy names that are not present in the registry."""
+    return [s for s in strategies if registry.get(s) is None]
 
 
 def test_every_desk_strategy_exists_in_registry():
     from app.strategies import STRATEGY_REGISTRY
 
     dop = _load_desks()
-    missing = {
-        f"{d.name}/{s}"
-        for d in dop.DESKS
-        for s in d.strategy_names
-        if STRATEGY_REGISTRY.get(s) is None
-    }
+    missing = _collect_missing_strategies(dop.DESKS, STRATEGY_REGISTRY)
     assert not missing, f"desks reference unknown/unloadable strategies: {sorted(missing)}"
 
 
 def test_fx_desk_strategies_exist_in_registry():
     from app.strategies import STRATEGY_REGISTRY
 
-    fx_mod = _DESK_MOD.parent / "fx_desk.py"
-    if not fx_mod.exists():
-        pytest.skip("fx_desk.py not present")
-    spec = importlib.util.spec_from_file_location("fx_sync_test", fx_mod)
-    m = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(m)  # type: ignore[union-attr]
-    missing = [s for s in m.STRATEGIES if STRATEGY_REGISTRY.get(s) is None]
+    fx_mod_path = _DESK_MOD.parent / "fx_desk.py"
+    fx_mod = _load_module_from_path(fx_mod_path, "fx_sync_test")
+    missing = _collect_missing_fx_strategies(fx_mod.STRATEGIES, STRATEGY_REGISTRY)
     assert not missing, f"FX desk references unknown strategies: {missing}"
