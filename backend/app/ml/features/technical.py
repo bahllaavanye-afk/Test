@@ -17,6 +17,7 @@ Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
 from __future__ import annotations
 
 import logging
+import unittest
 from typing import Optional
 
 import numpy as np
@@ -181,3 +182,47 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             _logger.error("Failed to compute ADX feature", exc_info=exc)
 
     return df
+
+
+class TestAddTechnicalFeatures(unittest.TestCase):
+    """Edge‑case unit tests for ``add_technical_features``."""
+
+    def test_minimal_close_series(self):
+        """A single‑row DataFrame should not raise and should contain NaNs for lagged features."""
+        df = pd.DataFrame({"close": [100.0]})
+        result = add_technical_features(df)
+        self.assertIn("close", result.columns)
+        # Returns with lag > 0 are NaN
+        self.assertTrue(np.isnan(result["returns_1"].iloc[0]))
+        # EMA diff should be zero (close == ema) -> result is 0
+        self.assertTrue(np.isclose(result["ema_9_diff"].iloc[0], 0.0))
+
+    def test_missing_high_low_defaults(self):
+        """When ``high`` and ``low`` are absent they should default to ``close``."""
+        df = pd.DataFrame({"close": [100, 101, 102]})
+        result = add_technical_features(df)
+        self.assertIn("ema_9_diff", result.columns)
+        # Ensure EMA diff is computed (not all NaN)
+        self.assertFalse(result["ema_9_diff"].isnull().all())
+        # Volume ratio should be 1 (default volume of ones divided by its rolling mean)
+        self.assertTrue((result["volume_ratio"].fillna(1) == 1).all())
+
+    def test_zero_volume_handling(self):
+        """Zero volume should not produce infinities in volume_ratio."""
+        df = pd.DataFrame(
+            {
+                "close": [100, 101, 102, 103],
+                "volume": [0, 0, 0, 0],
+                "high": [100, 101, 102, 103],
+                "low": [100, 101, 102, 103],
+            }
+        )
+        result = add_technical_features(df)
+        # Volume ratio = 0 / mean(0) -> 0 (handled by small epsilon)
+        self.assertTrue((result["volume_ratio"].fillna(0) == 0).all())
+        # Ensure no infinities appear
+        self.assertFalse(np.isinf(result["volume_ratio"]).any())
+
+
+if __name__ == "__main__":
+    unittest.main()

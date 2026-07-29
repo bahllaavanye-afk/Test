@@ -150,3 +150,78 @@ async def list_trades(
         )
         for row in rows
     ]
+
+# --------------------------------------------------------------------------- #
+# Unit tests for edge cases
+# --------------------------------------------------------------------------- #
+
+import pytest
+from fastapi import FastAPI
+from httpx import AsyncClient
+from unittest.mock import AsyncMock, MagicMock
+
+# Create a minimal FastAPI app for testing
+app = FastAPI()
+app.include_router(router)
+
+
+# Mock dependencies
+async def override_get_current_user():
+    mock_user = MagicMock()
+    mock_user.id = "user_test"
+    return mock_user
+
+
+class MockResult:
+    def all(self):
+        return []  # Return empty list to simulate no trades
+
+
+class MockAsyncSession:
+    async def execute(self, query):
+        return MockResult()
+
+
+async def override_get_db():
+    yield MockAsyncSession()
+
+
+app.dependency_overrides[get_current_user] = override_get_current_user
+app.dependency_overrides[get_db] = override_get_db
+
+
+@pytest.mark.asyncio
+async def test_tradeout_invalid_side():
+    """Validate that TradeOut raises for an invalid side value."""
+    with pytest.raises(ValueError) as exc_info:
+        TradeOut(
+            id="trd_1",
+            symbol="AAPL",
+            side="hold",  # Invalid side
+            quantity=10,
+        )
+    assert "side must be either 'buy' or 'sell'" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_tradeout_nonpositive_quantity():
+    """Validate that TradeOut raises for zero or negative quantity."""
+    with pytest.raises(ValueError) as exc_info:
+        TradeOut(
+            id="trd_2",
+            symbol="GOOG",
+            side="buy",
+            quantity=0,  # Non-positive quantity
+        )
+    assert "quantity must be greater than 0" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit_value", [1, 500])
+async def test_list_trades_limit_boundary(limit_value):
+    """Ensure the limit parameter respects its defined boundaries."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        response = await client.get(f"/trades?limit={limit_value}")
+        assert response.status_code == 200
+        # Since the mock DB returns no rows, the response should be an empty list
+        assert response.json() == []

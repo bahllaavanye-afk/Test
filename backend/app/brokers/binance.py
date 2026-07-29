@@ -62,6 +62,7 @@ class BinanceBroker(AbstractBroker):
                     request.limit_price,
                 )
             else:
+                # Fallback to market order for unsupported types
                 order = await self.exchange.create_market_order(
                     request.symbol, request.side, request.quantity
                 )
@@ -159,3 +160,50 @@ class BinanceBroker(AbstractBroker):
             except Exception as e:
                 logger.error("Failed to fetch tickers from Binance", error=str(e))
                 raise BrokerError(f"Binance ticker fetch error: {e}")
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge‑case behavior
+# ----------------------------------------------------------------------
+import unittest
+from unittest.mock import AsyncMock, MagicMock
+
+class TestBinanceBroker(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        # Instantiate broker with dummy credentials
+        self.broker = BinanceBroker("dummy_key", "dummy_secret", testnet=True)
+
+        # Mock the underlying exchange
+        mock_ex = MagicMock()
+        mock_ex.create_market_order = AsyncMock(return_value={"id": "mkt123", "status": "closed", "filled": 0.5, "average": 25000})
+        mock_ex.create_limit_order = AsyncMock(return_value={"id": "lim123", "status": "open"})
+        mock_ex.fetch_ohlcv = AsyncMock(return_value=[[1609459200000, 1, 2, 0.5, 1.5, 1000]])
+        mock_ex.fetch_tickers = AsyncMock(return_value={"BTC/USDT": {"bid": 50000, "ask": 50010}})
+        mock_ex.iso8601 = MagicMock(side_effect=lambda ts: f"2021-01-01T00:00:00Z")
+        self.broker.exchange = mock_ex
+        self.mock_ex = mock_ex
+
+    async def test_get_historical_invalid_interval_defaults_to_1d(self):
+        """When an unsupported interval is provided, the broker should fall back to '1d'."""
+        await self.broker.get_historical("BTC/USDT", interval="9m")
+        self.mock_ex.fetch_ohlcv.assert_awaited_once_with("BTC/USDT", "1d", limit=500)
+
+    async def test_get_all_tickers_caches_within_ttl(self):
+        """Second call within TTL should return cached data without invoking fetch_tickers."""
+        first = await self.broker.get_all_tickers(cache_ttl=1)
+        self.mock_ex.fetch_tickers.assert_awaited_once()
+        self.mock_ex.fetch_tickers.reset_mock()
+
+        second = await self.broker.get_all_tickers(cache_ttl=1)
+        self.mock_ex.fetch_tickers.assert_not_awaited()
+        self.assertIs(first, second)
+
+    async def test_place_order_unknown_type_falls_back_to_market(self):
+        """An unknown order_type should be treated as a market order."""
+        req = OrderRequest(symbol="BTC/USDT", side="buy", quantity=0.1, order_type="foobar")
+        result = await self.broker.place_order(req)
+        self.mock_ex.create_market_order.assert_awaited_once_with("BTC/USDT", "buy", 0.1)
+        self.assertEqual(result.broker_order_id, "mkt123")
+        self.assertEqual(result.status, "closed")
+        self.assertAlmostEqual(result.filled_qty, 0.5)
+        self.assertAlmostEqual(result.avg_fill_price, 25000)

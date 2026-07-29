@@ -133,3 +133,139 @@ class StrategyComparisonEngine:
             is_significant=p_val < 0.05,
             winner=winner,
         )
+
+
+# ----------------------------------------------------------------------
+# Unit Tests for Edge Cases
+# ----------------------------------------------------------------------
+import unittest
+import asyncio
+from unittest.mock import patch, AsyncMock
+
+
+class _MockMetrics:
+    """Simple mock for BacktestMetrics with required attributes."""
+    def __init__(self, equity_curve, sharpe):
+        self.equity_curve = equity_curve
+        self.sharpe = sharpe
+
+
+class TestStrategyComparisonEngine(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.engine = StrategyComparisonEngine()
+        self.base_date = date(2023, 1, 1)
+        self.end_date = date(2023, 1, 10)
+
+        # Common index for successful path
+        self.idx = pd.date_range(start="2023-01-01", periods=15, freq="D")
+        self.manual_signals = pd.Series([1] * 15, index=self.idx)
+        self.ml_signals = pd.Series([1] * 15, index=self.idx)
+        self.prices = pd.Series([100 + i for i in range(15)], index=self.idx)
+
+        # Minimal equity curve mock (equity values increasing linearly)
+        self.equity_curve = [{"equity": 100_000 + i * 1000} for i in range(15)]
+
+    @patch("backend.app.comparison.engine.run_backtest")
+    @patch("backend.app.comparison.engine.fetch_benchmark_curves", new_callable=AsyncMock)
+    @patch("backend.app.comparison.engine.get_benchmark_stats")
+    async def test_empty_manual_signals_raises(self, mock_bench_stats, mock_fetch_curves, mock_run_bt):
+        mock_run_bt.return_value = _MockMetrics(self.equity_curve, 1.0)
+        mock_fetch_curves.return_value = {}
+        mock_bench_stats.return_value = {}
+
+        empty_series = pd.Series([], dtype=float)
+
+        with self.assertRaises(ValueError) as cm:
+            await self.engine.run_comparison(
+                manual_signals=empty_series,
+                ml_signals=self.ml_signals,
+                prices=self.prices,
+                strategy_name="TestStrategy",
+                symbol="TEST",
+                interval="1D",
+                start_date=self.base_date,
+                end_date=self.end_date,
+            )
+        self.assertIn("manual_signals series cannot be empty", str(cm.exception))
+
+    @patch("backend.app.comparison.engine.run_backtest")
+    @patch("backend.app.comparison.engine.fetch_benchmark_curves", new_callable=AsyncMock)
+    @patch("backend.app.comparison.engine.get_benchmark_stats")
+    async def test_start_date_after_end_date_raises(self, mock_bench_stats, mock_fetch_curves, mock_run_bt):
+        mock_run_bt.return_value = _MockMetrics(self.equity_curve, 1.0)
+        mock_fetch_curves.return_value = {}
+        mock_bench_stats.return_value = {}
+
+        with self.assertRaises(ValueError) as cm:
+            await self.engine.run_comparison(
+                manual_signals=self.manual_signals,
+                ml_signals=self.ml_signals,
+                prices=self.prices,
+                strategy_name="TestStrategy",
+                symbol="TEST",
+                interval="1D",
+                start_date=self.end_date,
+                end_date=self.base_date,
+            )
+        self.assertIn("start_date cannot be later than end_date", str(cm.exception))
+
+    @patch("backend.app.comparison.engine.run_backtest")
+    @patch("backend.app.comparison.engine.fetch_benchmark_curves", new_callable=AsyncMock)
+    @patch("backend.app.comparison.engine.get_benchmark_stats")
+    async def test_insufficient_common_index_uses_default_statistics(self, mock_bench_stats, mock_fetch_curves, mock_run_bt):
+        # Provide non‑overlapping indices to trigger the common index empty error
+        manual = pd.Series([1, 1], index=pd.date_range("2023-01-01", periods=2))
+        ml = pd.Series([1, 1], index=pd.date_range("2023-02-01", periods=2))
+        prices = pd.Series([100, 101], index=pd.date_range("2023-03-01", periods=2))
+
+        mock_run_bt.return_value = _MockMetrics(self.equity_curve, 1.0)
+        mock_fetch_curves.return_value = {}
+        mock_bench_stats.return_value = {}
+
+        with self.assertRaises(ValueError) as cm:
+            await self.engine.run_comparison(
+                manual_signals=manual,
+                ml_signals=ml,
+                prices=prices,
+                strategy_name="TestStrategy",
+                symbol="TEST",
+                interval="1D",
+                start_date=self.base_date,
+                end_date=self.end_date,
+            )
+        self.assertIn("must share at least one common index", str(cm.exception))
+
+    @patch("backend.app.comparison.engine.run_backtest")
+    @patch("backend.app.comparison.engine.fetch_benchmark_curves", new_callable=AsyncMock)
+    @patch("backend.app.comparison.engine.get_benchmark_stats")
+    async def test_boundary_min_len_returns_default_t_and_p(self, mock_bench_stats, mock_fetch_curves, mock_run_bt):
+        # Create series where after pct_change we have only 5 returns (<10)
+        short_idx = pd.date_range(start="2023-01-01", periods=6, freq="D")
+        manual = pd.Series([1] * 6, index=short_idx)
+        ml = pd.Series([1] * 6, index=short_idx)
+        prices = pd.Series([100 + i for i in range(6)], index=short_idx)
+
+        mock_run_bt.return_value = _MockMetrics(
+            [{"equity": 100_000 + i * 1000} for i in range(6)], sharpe=1.0
+        )
+        mock_fetch_curves.return_value = {}
+        mock_bench_stats.return_value = {}
+
+        result = await self.engine.run_comparison(
+            manual_signals=manual,
+            ml_signals=ml,
+            prices=prices,
+            strategy_name="BoundaryStrategy",
+            symbol="BND",
+            interval="1D",
+            start_date=self.base_date,
+            end_date=self.end_date,
+        )
+
+        self.assertEqual(result.t_statistic, 0.0)
+        self.assertEqual(result.p_value, 1.0)
+        self.assertFalse(result.is_significant)
+
+
+if __name__ == "__main__":
+    unittest.main()
