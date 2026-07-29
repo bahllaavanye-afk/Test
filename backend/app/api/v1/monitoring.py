@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -26,7 +25,7 @@ QA_CYCLE_STARTED_MESSAGE = "QA cycle started — poll /monitoring/health for res
 router = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
 
 
-def _load_health_report() -> Dict[str, Any]:
+def _load_health_report() -> dict:
     """Load the health report JSON from disk.
 
     Returns a dictionary with the report contents. Raises HTTPException if the
@@ -40,7 +39,7 @@ def _load_health_report() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=HEALTH_REPORT_CORRUPTED_DETAIL) from exc
 
 
-def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
+def _read_fix_log(limit: int) -> list:
     """Read the fix log file and return the most recent *limit* entries.
 
     The log is stored as newline‑delimited JSON. Empty or missing files result in
