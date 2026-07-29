@@ -329,6 +329,43 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## ⏱️ 2026-07-29 03:40 — the attribution producer ran 1×/day for a consumer that reads 4×/day
+Chasing why `strategy_performance.json` still had not appeared 3h after the commit-step fix.
+It is not that the fix failed — **nothing has run it yet**, and the reason is structural.
+
+**`workflow_run: [CI]` is dead for agent branches.** Agent-branch CI is dispatched by
+`auto-pr.yml` using `GITHUB_TOKEN`, and GitHub does not create new workflow runs from
+`GITHUB_TOKEN`-triggered events. So the chain is suppressed for *exactly the branches that
+generate the fills*. Measured: **one firing in three hours** across many CI passes — and that
+one came from the single CI run triggered by `pull_request` (PR I opened myself via the app, a
+different actor). Every other CI run on the branch is `workflow_dispatch | actor:
+github-actions[bot]`.
+
+So the cron was the real schedule all along, and it was badly mismatched:
+
+| | cadence |
+|---|---|
+| producer `fill-tracking` | `0 22 * * 1-5` — **1×/day, weekdays only** |
+| consumer `strategy-trim` | `41 */6 * * *` — **4×/day, every day** |
+
+Three of four trimmer runs read stale attribution, and every weekend run read data up to three
+days old — while the crypto desks trade 24/7 and produce fills daily.
+
+The old cron was aligned to "after US market close + settlement buffer", but the tracker only
+scores fills **already ≥24h old**, so time-of-day cannot matter. The alignment bought nothing
+and starved every consumer. Now `11 */6 * * *` — every 6h, all week, 30 min ahead of the
+trimmer so it reads fresh data. Safe to run often: fills are de-duplicated via
+`tracked_order_ids`, so a repeat run only adds newly-matured fills.
+
+3 new tests compare the two workflows' cadences directly (producer ≥ consumer, no day-of-week
+restriction, producer fires earlier in the shared slot); 2 fail against the old cron.
+
+**Lesson: a trigger that LOOKS frequent is not a schedule.** I read `workflow_run: [CI]` as
+"runs after every CI pass" and treated the missing artifact as merely pending, twice. The
+trigger existed, was syntactically correct, and fired ~never. Same family as the rest of this
+session — but the tell here was *rate*, not presence: **when an artifact is late, measure how
+often its producer actually ran, don't infer it from the trigger list.**
+
 ## 🧹 2026-07-29 02:40 — THREE "open" IMPROVEMENTS items were already done. I nearly redid one.
 Picking the next clean item, I chose the **stdlib-logger-kwargs guard** (P2, line ~383) — a
 preventive AST scan, well specified, zero blast radius. I had the design worked out and was

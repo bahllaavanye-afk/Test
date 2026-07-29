@@ -1,12 +1,31 @@
 name: Fill Tracker — Strategy P&L Attribution
 
 on:
+  # Kept, but CANNOT be relied on. Measured 2026-07-29: this chained exactly
+  # once in three hours despite many CI passes. Agent-branch CI is dispatched
+  # by auto-pr.yml using GITHUB_TOKEN, and GitHub does not create new workflow
+  # runs from GITHUB_TOKEN-triggered events — so `workflow_run` is suppressed
+  # for precisely the branches that produce the fills. The one firing came from
+  # the single CI run triggered by `pull_request` (a different actor). The cron
+  # below is therefore the real schedule, not a fallback.
   workflow_run:
     workflows: ["CI"]
     types: [completed]
   schedule:
-    # Run at 22:00 UTC Mon–Fri (after US market close + settlement buffer)
-    - cron: "0 22 * * 1-5"
+    # Every 6h, all week, 30 min AHEAD of the trimmer's "41 */6" so it reads
+    # fresh attribution rather than yesterday's.
+    #
+    # Was "0 22 * * 1-5" — once a day, weekdays only — which starved every
+    # consumer: the trimmer runs 4x a day EVERY day, so 3 of 4 runs read stale
+    # data and every weekend run read data up to three days old, while the
+    # crypto desks trade 24/7 and generate fills daily.
+    #
+    # The old cron was aligned to "after US market close + settlement buffer",
+    # but this tracker only scores fills that are already >=24h old, so the
+    # time of day cannot matter — the alignment bought nothing and cost the
+    # consumers their input. Safe to run often: fills are de-duplicated by
+    # `tracked_order_ids`, so a repeat run adds newly-matured fills only.
+    - cron: "11 */6 * * *"
   workflow_dispatch:
 
 concurrency:

@@ -57,6 +57,60 @@ def test_the_workflow_commits_the_file_it_writes(wf):
     )
 
 
+# ── the producer must keep up with its consumers ─────────────────────────────
+# Committing the file was necessary but not sufficient: it also has to be
+# RECENT. `workflow_run: [CI]` looks like a frequent trigger and is not one —
+# agent-branch CI is dispatched by auto-pr.yml with GITHUB_TOKEN, and GitHub
+# does not create new workflow runs from GITHUB_TOKEN-triggered events, so the
+# chain is suppressed for exactly the branches that generate the fills.
+# Measured 2026-07-29: one firing in three hours across many CI passes. The
+# cron is the real schedule.
+
+def _cron_lines(src: str) -> list[str]:
+    return re.findall(r'cron:\s*"([^"]+)"', src)
+
+
+def test_the_tracker_runs_at_least_as_often_as_the_trimmer_reads(wf):
+    """A once-a-day producer feeding a 4x-a-day consumer starves it."""
+    trim = (_WF.parent / "strategy-trim.yml").read_text()
+    trim_crons = _cron_lines(trim)
+    assert trim_crons, "trimmer has no cron — this comparison is meaningless"
+
+    def per_day(cron: str) -> float:
+        minute, hour, dom, month, dow = cron.split()
+        runs = 24 / int(hour.split("/")[1]) if hour.startswith("*/") else (
+            1 if hour.isdigit() else 24
+        )
+        days = 5 / 7 if dow == "1-5" else 1
+        return runs * days
+
+    tracker_rate = max(per_day(c) for c in _cron_lines(wf))
+    trimmer_rate = max(per_day(c) for c in trim_crons)
+    assert tracker_rate >= trimmer_rate, (
+        f"fill-tracking runs {tracker_rate:g}x/day but strategy-trim reads it "
+        f"{trimmer_rate:g}x/day — most trimmer runs would see stale attribution"
+    )
+
+
+def test_the_tracker_runs_every_day_not_just_weekdays(wf):
+    """The crypto desks trade 24/7; weekday-only left weekend fills unscored."""
+    for cron in _cron_lines(wf):
+        assert cron.split()[4] in ("*", "?"), (
+            f"cron {cron!r} restricts the day-of-week, but fills accrue daily"
+        )
+
+
+def test_the_tracker_lands_before_the_trimmer_reads(wf):
+    """Ordering within the shared 6h slot: produce, then consume."""
+    trim = (_WF.parent / "strategy-trim.yml").read_text()
+    t_min = int(_cron_lines(wf)[0].split()[0])
+    c_min = int(_cron_lines(trim)[0].split()[0])
+    assert t_min < c_min, (
+        f"fill-tracking fires at :{t_min:02d} and strategy-trim at :{c_min:02d} — "
+        f"the trimmer would read the previous cycle's data"
+    )
+
+
 def test_it_has_write_permission(wf):
     """A commit step without contents: write fails at push time, not at parse."""
     m = re.search(r"^permissions:\s*$(.*?)^\S", wf, re.MULTILINE | re.DOTALL)
