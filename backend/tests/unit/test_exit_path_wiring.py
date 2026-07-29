@@ -18,7 +18,7 @@ independent faults on the exit path, both silent:
    written to Redis. The miss is indistinguishable from a cold cache, so each
    silently took its fallback:
      * bots/engine._fetch_current_price → a yfinance DAILY bar, meaning the
-       live `bot_exit_checker` job evaluated intraday TP/SL against a daily
+       live `bot_exit_checker` job evaluated intraday TP/LP against a daily
        close
      * tasks/position_monitor          → a broker quote per position per tick
      * api/v1/positions                → pnl_pct always None
@@ -36,6 +36,34 @@ import pathlib
 import pytest
 
 from app.redis_client import exchange_for, price_key
+
+# ── Input validation for public functions ─────────────────────────────────────
+
+# Validate `price_key` inputs
+_original_price_key = price_key
+
+
+def _validated_price_key(exchange: str, symbol: str) -> str:
+    if not isinstance(exchange, str) or not exchange:
+        raise ValueError("price_key: 'exchange' must be a non‑empty string")
+    if not isinstance(symbol, str) or not symbol:
+        raise ValueError("price_key: 'symbol' must be a non‑empty string")
+    return _original_price_key(exchange, symbol)
+
+
+# Validate `exchange_for` inputs
+_original_exchange_for = exchange_for
+
+
+def _validated_exchange_for(symbol: str) -> str:
+    if not isinstance(symbol, str) or not symbol:
+        raise ValueError("exchange_for: 'symbol' must be a non‑empty string")
+    return _original_exchange_for(symbol)
+
+
+# Apply validated wrappers globally
+price_key = _validated_price_key
+exchange_for = _validated_exchange_for
 
 APP = pathlib.Path(__file__).resolve().parents[2] / "app"
 MAIN = APP / "main.py"

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import List, Sequence
 
 import numpy as np
 import pandas as pd
@@ -38,9 +39,9 @@ def bs_price(
     strike: float
         Option strike (>0).
     t_years: float
-        Time to expiry in years.
+        Time to expiry in years (>=0).
     sigma: float
-        Annualized volatility.
+        Annualized volatility (>=0).
     kind: str
         Either ``"call"`` or ``"put"`` (case‑insensitive).
     rate: float, optional
@@ -51,13 +52,27 @@ def bs_price(
     float
         Option price.
     """
+    if not isinstance(spot, (int, float)):
+        raise ValueError("spot must be a numeric type")
+    if not isinstance(strike, (int, float)):
+        raise ValueError("strike must be a numeric type")
     if spot <= 0 or strike <= 0:
         raise ValueError("spot and strike must be positive")
+    if not isinstance(t_years, (int, float)):
+        raise ValueError("t_years must be a numeric type")
+    if not isinstance(sigma, (int, float)):
+        raise ValueError("sigma must be a numeric type")
+    if not isinstance(rate, (int, float)):
+        raise ValueError("rate must be a numeric type")
+    if t_years < 0:
+        raise ValueError("t_years cannot be negative")
+    if sigma < 0:
+        raise ValueError("sigma cannot be negative")
     kind = kind.lower()
     if kind not in {"call", "put"}:
         raise ValueError('kind must be "call" or "put"')
     intrinsic = max(spot - strike, 0.0) if kind == "call" else max(strike - spot, 0.0)
-    if t_years <= 0 or sigma <= 0:
+    if t_years == 0 or sigma == 0:
         return intrinsic
     d1 = (
         math.log(spot / strike)
@@ -71,6 +86,10 @@ def bs_price(
 
 def realized_vol(close: pd.Series, window: int = 20) -> pd.Series:
     """Annualized close‑to‑close realized vol — the IV proxy."""
+    if not isinstance(close, pd.Series):
+        raise ValueError("close must be a pandas Series")
+    if not isinstance(window, int) or window <= 0:
+        raise ValueError("window must be a positive integer")
     rets = np.log(close / close.shift(1))
     return rets.rolling(window).std() * math.sqrt(TRADING_DAYS)
 
@@ -102,24 +121,62 @@ class SpreadBacktestResult:
         )
 
 
+def _validate_spread_leg(leg: SpreadLeg) -> None:
+    if not isinstance(leg, SpreadLeg):
+        raise ValueError("All legs must be instances of SpreadLeg")
+    if leg.kind.lower() not in {"call", "put"}:
+        raise ValueError('leg.kind must be "call" or "put"')
+    if leg.side.lower() not in {"buy", "sell"}:
+        raise ValueError('leg.side must be "buy" or "sell"')
+    if not isinstance(leg.moneyness, (int, float)):
+        raise ValueError("leg.moneyness must be numeric")
+    if leg.moneyness <= 0:
+        raise ValueError("leg.moneyness must be positive")
+
+
 def price_spread(
     spot: float,
-    legs: list[SpreadLeg],
-    strikes: list[float],
+    legs: List[SpreadLeg],
+    strikes: List[float],
     t_years: float,
     sigma: float,
 ) -> float:
     """Signed value of the spread to its HOLDER (long premium positive)."""
+    if not isinstance(spot, (int, float)):
+        raise ValueError("spot must be numeric")
+    if spot <= 0:
+        raise ValueError("spot must be positive")
+    if not isinstance(legs, Sequence) or len(legs) == 0:
+        raise ValueError("legs must be a non‑empty sequence of SpreadLeg")
+    if not isinstance(strikes, Sequence) or len(strikes) == 0:
+        raise ValueError("strikes must be a non‑empty sequence of floats")
+    if len(legs) != len(strikes):
+        raise ValueError("legs and strikes must have the same length")
+    if not isinstance(t_years, (int, float)):
+        raise ValueError("t_years must be numeric")
+    if t_years < 0:
+        raise ValueError("t_years cannot be negative")
+    if not isinstance(sigma, (int, float)):
+        raise ValueError("sigma must be numeric")
+    if sigma < 0:
+        raise ValueError("sigma cannot be negative")
+    for leg in legs:
+        _validate_spread_leg(leg)
+    for strike in strikes:
+        if not isinstance(strike, (int, float)):
+            raise ValueError("Each strike must be numeric")
+        if strike <= 0:
+            raise ValueError("Each strike must be positive")
     value = 0.0
     for leg, strike in zip(legs, strikes):
         p = bs_price(spot, strike, t_years, sigma, leg.kind)
-        value += p if leg.side == "buy" else -p
+        value += p if leg.side.lower() == "buy" else -p
     return value
 
 
 def backtest_spread(
     df: pd.DataFrame,
-    legs: list[SpreadLeg],
+    legs: List[SpreadLeg],
     entry_mask: pd.Series | None = None,
     dte: int = 35,
     hold_days: int = 21,
@@ -147,6 +204,23 @@ def backtest_spread(
     SpreadBacktestResult
         Aggregated backtest statistics.
     """
+    if not isinstance(df, pd.DataFrame):
+        raise ValueError("df must be a pandas DataFrame")
+    if "close" not in df.columns:
+        raise ValueError("df must contain a 'close' column")
+    if not isinstance(legs, Sequence) or len(legs) == 0:
+        raise ValueError("legs must be a non‑empty sequence of SpreadLeg")
+    for leg in legs:
+        _validate_spread_leg(leg)
+    if entry_mask is not None and not isinstance(entry_mask, pd.Series):
+        raise ValueError("entry_mask must be a pandas Series or None")
+    if not isinstance(dte, int) or dte <= 0:
+        raise ValueError("dte must be a positive integer")
+    if not isinstance(hold_days, int) or hold_days <= 0:
+        raise ValueError("hold_days must be a positive integer")
+    if not isinstance(vol_window, int) or vol_window <= 0:
+        raise ValueError("vol_window must be a positive integer")
+
     close = df["close"].astype(float)
     vol = realized_vol(close, vol_window)
 
@@ -154,7 +228,7 @@ def backtest_spread(
         entry_mask = pd.Series(False, index=df.index)
         entry_mask.iloc[vol_window::5] = True
 
-    pnls: list[float] = []
+    pnls: List[float] = []
     n = len(df)
 
     for i in np.flatnonzero(entry_mask.to_numpy()):
