@@ -34,7 +34,7 @@ STDLIB_KWARGS = {"exc_info", "stack_info", "stacklevel", "extra"}
 
 
 def _logger_bindings(tree: ast.Module) -> tuple[set[str], set[str]]:
-    """(names bound to a stdlib logger, names bound to a structlog logger)."""
+    """Return (names bound to a stdlib logger, names bound to a structlog logger)."""
     stdlib: set[str] = set()
     structlog_names: set[str] = set()
 
@@ -45,7 +45,7 @@ def _logger_bindings(tree: ast.Module) -> tuple[set[str], set[str]]:
             targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
             if attr == "getLogger":
                 stdlib.update(targets)
-            elif attr == "get_logger":       # structlog.get_logger()
+            elif attr == "get_logger":  # structlog.get_logger()
                 structlog_names.update(targets)
 
         # `from app.utils.logging import logger` — the project's structlog instance
@@ -58,26 +58,53 @@ def _logger_bindings(tree: ast.Module) -> tuple[set[str], set[str]]:
     return stdlib, structlog_names
 
 
+def _is_stdlib_logger_call(node: ast.Call, stdlib_names: set[str]) -> bool:
+    """Return True if *node* is a call to a stdlib logger method."""
+    if not isinstance(node, ast.Call):
+        return False
+    fn = node.func
+    if not isinstance(fn, ast.Attribute):
+        return False
+    if fn.attr not in LOG_METHODS:
+        return False
+    if not isinstance(fn.value, ast.Name):
+        return False
+    return fn.value.id in stdlib_names
+
+
+def _bad_kwargs(node: ast.Call) -> list[str]:
+    """Return a list of keyword argument names that are not allowed for stdlib loggers."""
+    return [
+        kw.arg
+        for kw in node.keywords
+        if kw.arg is not None and kw.arg not in STDLIB_KWARGS
+    ]
+
+
 def _scan(tree: ast.Module) -> list[tuple[int, str, str, list[str]]]:
-    stdlib, structlog_names = _logger_bindings(tree)
-    # A name bound both ways in one module is ambiguous — say nothing.
-    stdlib -= structlog_names
-    if not stdlib:
+    """Find stdlib logger calls that use structlog‑style keyword arguments.
+
+    Returns a list of tuples:
+        (line number, logger variable name, method name, list of offending keywords)
+    """
+    stdlib_names, structlog_names = _logger_bindings(tree)
+
+    # If a name is bound both ways in the same module it is ambiguous – ignore it.
+    stdlib_names -= structlog_names
+    if not stdlib_names:
         return []
 
-    found = []
+    findings: list[tuple[int, str, str, list[str]]] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+        if not _is_stdlib_logger_call(node, stdlib_names):
             continue
-        fn = node.func
-        if not isinstance(fn, ast.Attribute) or fn.attr not in LOG_METHODS:
-            continue
-        if not isinstance(fn.value, ast.Name) or fn.value.id not in stdlib:
-            continue
-        bad = [k.arg for k in node.keywords if k.arg is not None and k.arg not in STDLIB_KWARGS]
-        if bad:
-            found.append((node.lineno, fn.value.id, fn.attr, bad))
-    return found
+
+        fn = node.func  # type: ignore[assignment]  # guarded by _is_stdlib_logger_call
+        offending = _bad_kwargs(node)  # type: ignore[arg-type]
+        if offending:
+            findings.append((node.lineno, fn.value.id, fn.attr, offending))
+
+    return findings
 
 
 def test_no_stdlib_logger_is_called_with_structlog_fields():

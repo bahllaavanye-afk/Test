@@ -4,11 +4,12 @@ Runs every hour. Tracks LOC, test coverage, lint warnings.
 Does NOT modify source — just reports.
 """
 from __future__ import annotations
+
 import asyncio
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable, Dict
 
 from app.utils.logging import logger
 
@@ -76,19 +77,32 @@ class CodeQualityLoop:
         self.interval_seconds = interval_seconds
         self._running = False
 
-    async def _snapshot(self) -> dict:
+    async def _run_in_executor(self, func: Callable[[Path], dict]) -> dict:
+        """Execute a counting function in the default thread pool."""
         loop = asyncio.get_running_loop()
-        loc = await loop.run_in_executor(None, _count_loc, BACKEND_ROOT)
-        strat = await loop.run_in_executor(None, _count_strategies, BACKEND_ROOT)
-        tests = await loop.run_in_executor(None, _count_tests, BACKEND_ROOT)
+        return await loop.run_in_executor(None, func, BACKEND_ROOT)
+
+    async def _gather_metrics(self) -> dict:
+        """Collect LOC, strategy, and test metrics concurrently."""
+        loc_task = asyncio.create_task(self._run_in_executor(_count_loc))
+        strat_task = asyncio.create_task(self._run_in_executor(_count_strategies))
+        tests_task = asyncio.create_task(self._run_in_executor(_count_tests))
+
+        loc = await loc_task
+        strat = await strat_task
+        tests = await tests_task
+        return {**loc, **strat, **tests}
+
+    async def _snapshot(self) -> dict:
+        """Create a snapshot containing a timestamp and all collected metrics."""
+        metrics = await self._gather_metrics()
         return {
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            **loc,
-            **strat,
-            **tests,
+            **metrics,
         }
 
     def _persist(self, snapshot: dict) -> None:
+        """Append a snapshot to the history file, keeping only the most recent 200 entries."""
         try:
             history = json.loads(QUALITY_FILE.read_text()) if QUALITY_FILE.exists() else []
             history.append(snapshot)
