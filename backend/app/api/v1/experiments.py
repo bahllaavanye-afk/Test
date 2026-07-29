@@ -3,15 +3,17 @@ import asyncio
 import logging
 import uuid
 from pathlib import Path
-from fastapi import APIRouter, Body, Depends, HTTPException
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.database import get_db
+
+from app.database import get_db, async_session
 from app.api.deps import get_current_user
 from app.models.experiment import Experiment
 from app.models.user import User
 from pydantic import BaseModel, ConfigDict
-from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -55,16 +57,45 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
 
     script = Path(__file__).parents[4] / "experiments" / "run_experiment.py"
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
+    start_time = datetime.now(timezone.utc)
+    logger.info(
+        "Experiment %s started",
+        {"experiment_id": experiment_id, "config_name": config_name, "start_time": start_time.isoformat()},
+    )
     try:
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, str(script), "--config", str(config_path),
-            "--experiment-id", experiment_id,
+            sys.executable,
+            str(script),
+            "--config",
+            str(config_path),
+            "--experiment-id",
+            experiment_id,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         await proc.wait()
     except Exception as exc:
         logger.error("Experiment %s failed: %s", experiment_id, exc)
+        return
+
+    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+    # Retrieve latest metrics from DB for structured logging
+    async with async_session() as db:
+        result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
+        exp = result.scalar_one_or_none()
+        signal_count = getattr(exp, "signal_count", None)
+        pnl = getattr(exp, "pnl", None)
+
+    logger.info(
+        "Experiment %s completed",
+        {
+            "experiment_id": experiment_id,
+            "config_name": config_name,
+            "execution_time_seconds": elapsed,
+            "signal_count": signal_count,
+            "pnl": pnl,
+        },
+    )
 
 
 @router.post("/train")

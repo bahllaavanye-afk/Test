@@ -1,8 +1,21 @@
 import uuid
-from datetime import datetime
-from sqlalchemy import String, Numeric, DateTime, Boolean, Integer, JSON, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+import logging
+from datetime import datetime, timezone
+from sqlalchemy import (
+    String,
+    Numeric,
+    DateTime,
+    Boolean,
+    Integer,
+    JSON,
+    ForeignKey,
+    event,
+    func,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship, Session
 from app.database import Base
+
+logger = logging.getLogger(__name__)
 
 
 class MLModel(Base):
@@ -25,14 +38,62 @@ class MLModel(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     trained_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    predictions: Mapped[list["MLPrediction"]] = relationship("MLPrediction", back_populates="model")
+    predictions: Mapped[list["MLPrediction"]] = relationship(
+        "MLPrediction", back_populates="model", cascade="all, delete-orphan"
+    )
+
+    def log_metrics(self, session: Session) -> None:
+        """
+        Log key performance metrics for the model.
+
+        Metrics:
+        - signal_count: total number of predictions generated for this model.
+        - avg_execution_latency_ms: average time between prediction creation and now.
+        - total_confidence: sum of confidence values, used as a proxy for P&L.
+        """
+        now = datetime.now(timezone.utc)
+
+        agg = (
+            session.query(
+                func.count(MLPrediction.id).label("signal_count"),
+                func.avg(
+                    func.extract(
+                        "epoch",
+                        func.age(now, MLPrediction.created_at),
+                    )
+                ).label("avg_latency_seconds"),
+                func.sum(MLPrediction.confidence).label("total_confidence"),
+            )
+            .filter(MLPrediction.model_id == self.id)
+            .one()
+        )
+
+        signal_count = agg.signal_count or 0
+        avg_latency_ms = (agg.avg_latency_seconds or 0) * 1000
+        total_confidence = agg.total_confidence or 0.0
+
+        logger.info(
+            "MLModel metrics",
+            extra={
+                "model_id": self.id,
+                "model_name": self.name,
+                "signal_count": signal_count,
+                "avg_execution_latency_ms": round(avg_latency_ms, 2),
+                "total_confidence": round(float(total_confidence), 4),
+            },
+        )
 
 
 class MLPrediction(Base):
     __tablename__ = "ml_predictions"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    model_id: Mapped[str] = mapped_column(String, ForeignKey("ml_models.id", ondelete="CASCADE"), nullable=False, index=True)
+    model_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("ml_models.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     symbol: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     prediction: Mapped[str] = mapped_column(String(8), nullable=False)   # up|down|neutral
@@ -42,3 +103,31 @@ class MLPrediction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     model: Mapped["MLModel"] = relationship("MLModel", back_populates="predictions")
+
+
+def _after_insert_prediction(mapper, connection, target: MLPrediction):
+    """
+    SQLAlchemy event hook triggered after a new prediction row is inserted.
+    Logs a concise entry and triggers model-level metric aggregation.
+    """
+    logger.info(
+        "New MLPrediction inserted",
+        extra={
+            "prediction_id": target.id,
+            "model_id": target.model_id,
+            "symbol": target.symbol,
+            "timestamp": target.ts.isoformat(),
+            "confidence": float(target.confidence),
+        },
+    )
+    # Use a new Session bound to the same connection to compute aggregated metrics
+    sess = Session(bind=connection)
+    try:
+        model = sess.get(MLModel, target.model_id)
+        if model:
+            model.log_metrics(sess)
+    finally:
+        sess.close()
+
+
+event.listen(MLPrediction, "after_insert", _after_insert_prediction)
