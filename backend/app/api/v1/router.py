@@ -1,5 +1,8 @@
 """API v1 router — mounts all sub-routers."""
+from datetime import datetime
+
 from fastapi import APIRouter
+from pydantic import BaseModel, Field, validator
 
 from app.api.v1 import (
     auth,
@@ -34,7 +37,42 @@ from app.api.v1.bots import router as bots_router
 from app.api.v1.discord_interactions import router as discord_router
 from app.api.v1.webhooks import router as webhooks_router
 
+
+class HealthResponse(BaseModel):
+    """Schema for the health‑check endpoint."""
+    status: str = Field(
+        ...,
+        description="Health status of the API",
+        example="healthy",
+    )
+    timestamp: datetime = Field(
+        ...,
+        description="Current server timestamp in ISO‑8601 format",
+        example="2023-01-01T00:00:00Z",
+    )
+
+    @validator("status")
+    def status_must_be_healthy(cls, v: str) -> str:
+        """Ensure the status field is always 'healthy'."""
+        if v != "healthy":
+            raise ValueError("status must be 'healthy'")
+        return v
+
+
 api_router = APIRouter()
+
+
+@api_router.get(
+    "/health",
+    response_model=HealthResponse,
+    tags=["health"],
+    summary="Health check",
+    description="Simple endpoint to verify that the API service is operational.",
+)
+def health_check() -> HealthResponse:
+    """Return a basic health status with the current UTC timestamp."""
+    return HealthResponse(status="healthy", timestamp=datetime.utcnow())
+
 
 api_router.include_router(auth.router)
 api_router.include_router(accounts.router)
