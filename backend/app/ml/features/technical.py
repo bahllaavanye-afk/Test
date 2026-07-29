@@ -17,7 +17,7 @@ Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 import pandas as pd
@@ -27,21 +27,24 @@ import app.ml.features.pandas_ta_compat as ta
 _logger = logging.getLogger(__name__)
 
 
-def _safe_apply(func, *args, **kwargs) -> Optional[pd.DataFrame]:
+def _safe_apply(func: Callable[..., pd.DataFrame], *args, **kwargs) -> Optional[pd.DataFrame]:
     """
-    Helper to execute a function safely.
+    Execute a technical indicator function safely, catching common errors.
 
     Parameters
     ----------
-    func : callable
-        The function to execute.
-    *args, **kwargs :
-        Arguments passed to ``func``.
+    func : Callable[..., pd.DataFrame]
+        The pandas‑ta compatible function to execute.
+    *args
+        Positional arguments forwarded to ``func``.
+    **kwargs
+        Keyword arguments forwarded to ``func``.
 
     Returns
     -------
     Optional[pd.DataFrame]
-        The result of ``func`` if successful, otherwise ``None``.
+        The resulting DataFrame if the call succeeds; otherwise ``None`` and
+        an error is logged.
     """
     try:
         return func(*args, **kwargs)
@@ -80,10 +83,10 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("Input DataFrame must contain a 'close' column.")
 
     df = df.copy()
-    close = df["close"]
-    high = df.get("high", close)
-    low = df.get("low", close)
-    volume = df.get("volume", pd.Series(1, index=df.index))
+    close: pd.Series = df["close"]
+    high: pd.Series = df.get("high", close)
+    low: pd.Series = df.get("low", close)
+    volume: pd.Series = df.get("volume", pd.Series(1, index=df.index))
 
     # --- Returns ---
     for n in [1, 5, 10, 21]:
