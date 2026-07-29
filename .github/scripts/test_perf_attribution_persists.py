@@ -66,6 +66,13 @@ def test_the_workflow_commits_the_file_it_writes(wf):
 # Measured 2026-07-29: one firing in three hours across many CI passes. The
 # cron is the real schedule.
 
+def _yaml_on(src: str) -> dict:
+    """The parsed `on:` block. YAML 1.1 turns the key `on` into True."""
+    yaml = pytest.importorskip("yaml")
+    doc = yaml.safe_load(src)
+    return doc.get("on", doc.get(True)) or {}
+
+
 def _cron_lines(src: str) -> list[str]:
     return re.findall(r'cron:\s*"([^"]+)"', src)
 
@@ -108,6 +115,75 @@ def test_the_tracker_lands_before_the_trimmer_reads(wf):
     assert t_min < c_min, (
         f"fill-tracking fires at :{t_min:02d} and strategy-trim at :{c_min:02d} — "
         f"the trimmer would read the previous cycle's data"
+    )
+
+
+# ── the cron alone does not deliver ──────────────────────────────────────────
+# Measured 2026-07-29: the 06:11 slot was DROPPED, not delayed — 85 minutes
+# past with no run recorded, while the rest of the fleet fired normally. The
+# previous cron (0 22) had started 62 minutes late. GitHub silently drops
+# scheduled runs under load, and a dropped run never appears in the run list,
+# so a schedule is not a delivery guarantee. The crypto desk fires
+# "7,27,47 * * * *" 24/7 and is cron-actored — so it escapes the GITHUB_TOKEN
+# suppression that makes the CI chain useless here — and is used as the
+# reliability anchor, with a freshness gate keeping the effective rate at ~4x/day.
+
+def test_it_chains_off_a_reliable_cron_actored_workflow(wf):
+    triggers = _yaml_on(wf)
+    chained = triggers.get("workflow_run", {}).get("workflows", [])
+    assert any("Crypto 24/7" in w for w in chained), (
+        "fill-tracking relies on its own cron, which has been observed dropped "
+        f"outright. Chain it off a frequently-firing cron-actored workflow. "
+        f"Currently chained to: {chained}"
+    )
+
+
+def test_the_freshness_gate_exists_so_the_chain_does_not_run_it_72x_a_day(wf):
+    assert "generated_at" in wf, (
+        "no freshness gate — chaining off a 20-minute workflow without one "
+        "would run the tracker ~72x/day and commit as often"
+    )
+    assert "steps.due.outputs.run" in wf, "gate computed but not applied to any step"
+
+
+def test_every_expensive_step_is_gated(wf):
+    """A gate applied to some steps but not others still pays the cost."""
+    yaml = pytest.importorskip("yaml")
+    steps = yaml.safe_load(wf)["jobs"]["track-fills"]["steps"]
+    must_gate = ("Run fill tracker", "Persist strategy performance",
+                 "Install dependencies", "Set up Python 3.11")
+    for s in steps:
+        if s.get("name") in must_gate:
+            assert s.get("if") == "steps.due.outputs.run == 'true'", (
+                f"step {s.get('name')!r} is not gated on the freshness check"
+            )
+
+
+def test_the_gate_window_is_under_the_cron_period(wf):
+    """A window >= the cron period would let a scheduled run skip itself."""
+    m = re.search(r"MAX_AGE_S\s*=\s*(\d+)\s*\*\s*3600", wf)
+    assert m, "freshness window not found"
+    hours = int(m.group(1))
+    # For "*/N" on the HOUR field the period is N hours. (24/N is runs-per-day,
+    # which is what this line said at first — it made a 5h window look like it
+    # exceeded a 4h period. Caught by this test failing on a correct workflow.)
+    cron_hours = int(_cron_lines(wf)[0].split()[1].split("/")[1])
+    assert hours < cron_hours, (
+        f"gate window {hours}h >= cron period {cron_hours}h — a scheduled run "
+        f"could find the artifact 'fresh' and skip, defeating its own schedule"
+    )
+
+
+def test_the_gate_fails_open(wf):
+    """Missing or unparseable artifact must RUN, not skip.
+
+    The entire defect being fixed is 'never produced anything', so a gate that
+    fails closed would recreate it in a new form.
+    """
+    body = wf.split("python3 - <<'PY'", 1)[1].split("PY", 1)[0]
+    assert "except Exception" in body and 'print("run=true")' in body, (
+        "the freshness gate must default to running when it cannot read the "
+        "artifact's timestamp"
     )
 
 

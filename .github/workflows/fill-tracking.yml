@@ -8,8 +8,14 @@ on:
   # for precisely the branches that produce the fills. The one firing came from
   # the single CI run triggered by `pull_request` (a different actor). The cron
   # below is therefore the real schedule, not a fallback.
+  # The crypto desk is the reliability anchor: cron "7,27,47 * * * *", 24/7, and
+  # cron-actored — so it is NOT subject to the GITHUB_TOKEN suppression that
+  # makes the CI chain useless here. It fires ~72x/day and demonstrably lands,
+  # which is the property the schedule below does not have (06:11 on 2026-07-29
+  # was DROPPED outright, not delayed — 85 min past with no run recorded).
+  # A freshness gate in the job keeps the effective rate at ~4x/day.
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI", "Desk Trading — Crypto 24/7 (Paper Orders)"]
     types: [completed]
   schedule:
     # Every 6h, all week, 30 min AHEAD of the trimmer's "41 */6" so it reads
@@ -52,15 +58,48 @@ jobs:
         with:
           ref: main
 
+      # The desk chain fires ~72x/day; the intended refresh rate is ~4x/day.
+      # Gate on the artifact's OWN `generated_at` rather than git history —
+      # actions/checkout is depth-1, so `git log -- <file>` returns nothing and
+      # a git-based staleness check would silently always say "stale".
+      - name: Is a refresh due?
+        id: due
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          from datetime import datetime, timezone
+          MAX_AGE_S = 5 * 3600      # under the 6h cron so a scheduled run is never skipped
+          f = "backend/performance_log/strategy_performance.json"
+          try:
+              gen = json.load(open(f)).get("generated_at", "")
+              age = (datetime.now(timezone.utc)
+                     - datetime.fromisoformat(str(gen).replace("Z", "+00:00"))).total_seconds()
+          except Exception as exc:
+              print("run=true")
+              print(f"why=no usable artifact ({type(exc).__name__})")
+          else:
+              due = age >= MAX_AGE_S
+              print(f"run={'true' if due else 'false'}")
+              print(f"why={'stale' if due else 'fresh'} — {age/3600:.1f}h old")
+          PY
+
+      - name: Skip note
+        if: steps.due.outputs.run != 'true'
+        run: echo "⏭  ${{ steps.due.outputs.why }} — not re-running" | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Set up Python 3.11
+        if: steps.due.outputs.run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: steps.due.outputs.run == 'true'
         run: pip install requests
 
       - name: Run fill tracker
+        if: steps.due.outputs.run == 'true'
         env:
           ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
@@ -74,6 +113,7 @@ jobs:
       # Without this the attribution data never survives the runner. Mirrors the
       # commit step in strategy-trim.yml.
       - name: Persist strategy performance
+        if: steps.due.outputs.run == 'true'
         run: |
           cd $GITHUB_WORKSPACE
           git config user.name  "quantedge-fill-bot"

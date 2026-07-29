@@ -329,6 +329,37 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 🔁 2026-07-29 07:45 — the 06:11 cron was DROPPED, not delayed. Chained off the crypto desk.
+Last tick I could not distinguish "late" from "dropped" and said so. **Now resolved: dropped.**
+85 minutes past the slot, no run exists in the list at all — a delayed run would have appeared.
+That was the stated trigger for acting, so I acted.
+
+**Fix: chain off the crypto desk** (`Desk Trading — Crypto 24/7 (Paper Orders)`, cron
+`7,27,47 * * * *`, 24/7). Two properties make it the right anchor:
+- it is **cron-actored**, so it escapes the `GITHUB_TOKEN` suppression that makes the CI chain
+  useless here (03:40 entry);
+- it fires ~72×/day and **demonstrably lands** — I have been reading its run logs all session.
+
+Redundancy, not replacement: the 6h cron stays. Delivery now needs *either* to work.
+
+**A 20-minute anchor would run the tracker 72×/day**, so a freshness gate reads the artifact's
+own `generated_at` and skips unless it is ≥5h old — effective rate stays ~4×/day. Deliberately
+gated on the artifact's *contents*, not git history: `actions/checkout` is depth-1, so
+`git log -- <file>` returns nothing and a git-based check would silently always say "stale".
+
+**The gate fails OPEN** (missing file, unparseable timestamp → run). The entire defect being
+fixed is *"never produced anything"*; a gate that failed closed would recreate it in a new form.
+Verified all six cases against the shipped code by extracting the step's Python and running it:
+missing→run, 1h→skip, 4h55m→skip, 5h05m→run, 6h→run, garbage→run.
+
+5 new tests, all 5 failing on the pre-fix workflow.
+
+**⚠️ My own test caught an arithmetic error in my own test.** `test_the_gate_window_is_under_
+the_cron_period` computed the period of `*/6` as `24/6 = 4` hours — that is *runs per day*, not
+hours per period, so a valid 5h window looked like it exceeded a 4h period. The workflow was
+correct; the test was wrong. Worth noting because it failed *loudly on a correct change*, which
+is the cheap direction for a guard to be wrong.
+
 ## ⏳ 2026-07-29 06:45 — cron starvation MEASURED: the attribution artifact still has not landed
 The commit-step fix (#1191) and the cadence fix (#1202) are both correct and merged. The
 artifact still does not exist — because **the cron did not fire**.
