@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785350479.984689,
+    "last_updated": 1785351858.8164525,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -60,7 +60,7 @@
     "autopilot_best_oos_sharpe": 1.1586,
     "autopilot_best_blended": 0.4018,
     "autopilot_overfit_count": 1,
-    "market_regime": "neutral",
+    "market_regime": "bull",
     "market_opinion": {
       "generated_at": "2026-07-29T15:43:23.960904+00:00",
       "signals": {
@@ -108,60 +108,55 @@
       "size_multiplier": 1.0
     },
     "opinion_score": 2,
-    "macro_score": 1,
-    "vix": 19.41,
-    "market_scan_ts": 1785348572.8240163,
+    "macro_score": 2,
+    "vix": 17.72,
+    "market_scan_ts": 1785351858.7869692,
     "sector_leaders": [
       "Energy",
       "Financials",
       "Healthcare"
     ],
     "sector_laggards": [
-      "Industrials",
+      "Utilities",
       "Cons. Disc.",
       "Tech"
     ],
     "active_universe": [
+      "NOW",
+      "ADBE",
+      "INTU",
       "GS",
+      "TSLA",
       "XLK",
-      "PG",
-      "KO",
       "V",
-      "DIA",
       "QQQ",
-      "GLD",
-      "MA",
+      "NVDA",
       "XLV",
-      "XLP",
       "TMO",
-      "SHY",
+      "MA",
       "IWM",
-      "MS",
+      "BLK",
       "XLI",
-      "AAPL",
+      "MS",
       "XLF",
-      "XLU",
-      "MSFT"
+      "MSFT",
+      "NFLX",
+      "AAPL"
     ],
     "top_momentum": [
+      "ADBE",
+      "INTU",
+      "NOW",
       "ABT",
-      "AAPL",
-      "TMO",
-      "MPC",
-      "BLK"
+      "AAPL"
     ],
-    "risk_flags": [],
+    "risk_flags": [
+      "Gold/SPY ratio surging (+3.1% 20d) \u2014 safe-haven rotation"
+    ],
     "risk_status": "normal",
     "last_brain_update": 1785350479.9832437
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix pipeline repeatedly fails to apply patches, indicating conflicts or incorrect patch generation that requires manual code review and fix.",
-      "category": "code",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784417698.0673792
-    },
     {
       "lesson": "Deployment blocked due to Vercel free-tier daily limit (100 deploys/day), halting all releases for 24 hours.",
       "category": "risk",
@@ -2122,6 +2117,23 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=1). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785348572.8616638
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Healthcare"
+      ],
+      "gap_count": 4,
+      "breakout_count": 0,
+      "risk_flags": [
+        "Gold/SPY ratio surging (+3.1% 20d) \u2014 safe-haven rotation"
+      ],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 4, Breakouts: 0, Risk flags: 1.",
+      "ts": 1785351858.822027
     }
   ],
   "github_insights": [
