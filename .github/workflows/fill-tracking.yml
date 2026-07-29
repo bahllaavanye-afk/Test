@@ -116,19 +116,32 @@ jobs:
           cd $GITHUB_WORKSPACE
           python .github/scripts/fill_tracker.py
 
-      # Without this the attribution data never survives the runner. Mirrors the
-      # commit step in strategy-trim.yml.
+      # Without this the attribution data never survives the runner.
+      #
+      # STAGE FIRST, THEN COMPARE. The previous version tested
+      # `! git diff --quiet -- <path>` BEFORE staging, and `git diff` does not
+      # see UNTRACKED files — so for a file that has never been committed it
+      # reported "no change", took the else branch, and skipped the commit.
+      # That condition could never make the FIRST commit of a new file, which
+      # is the only commit that mattered here: the run on 2026-07-29 08:53
+      # succeeded, wrote the file, printed "No attribution changes.", and left
+      # the repo empty. `git add` then `git diff --cached` sees an addition and
+      # a modification alike.
       - name: Persist strategy performance
         if: steps.due.outputs.run == 'true'
         run: |
           cd $GITHUB_WORKSPACE
+          f=backend/performance_log/strategy_performance.json
           git config user.name  "quantedge-fill-bot"
           git config user.email "fill-bot@quantedge.local"
-          if [ -f backend/performance_log/strategy_performance.json ] && \
-             ! git diff --quiet -- backend/performance_log/strategy_performance.json; then
-            git add backend/performance_log/strategy_performance.json
+          if [ ! -f "$f" ]; then
+            echo "::warning::tracker produced no $f — nothing to persist"
+            exit 0
+          fi
+          git add -- "$f"
+          if git diff --cached --quiet -- "$f"; then
+            echo "No attribution changes."
+          else
             git commit -m "chore(fills): update strategy P&L attribution [skip ci]"
             for i in 1 2 3 4; do git push origin HEAD:main && break || sleep $((2**i)); done
-          else
-            echo "No attribution changes."
           fi

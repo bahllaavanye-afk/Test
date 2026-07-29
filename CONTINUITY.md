@@ -329,6 +329,44 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 🪤 2026-07-29 09:45 — `git diff` DOES NOT SEE UNTRACKED FILES. That was the real blocker.
+The chain worked. **fill-tracking ran at 08:53:32, succeeded in 8 seconds — and the artifact is
+still not in the repo.** The log says:
+
+```
+No attribution changes.
+```
+
+**My own #1191 fix was wrong.** The persist step tested, *before staging*:
+```bash
+if [ -f "$f" ] && ! git diff --quiet -- "$f"; then   git add "$f"; git commit; ...
+```
+`git diff` only compares **tracked** files. The artifact had never been committed, so git
+reported no difference, `! git diff --quiet` was false, the `else` branch ran, and the commit
+was skipped. **That condition could never make the FIRST commit of a new file** — which is the
+only commit that ever mattered here.
+
+So the four-tick chase resolves to: commit step (#1191) ✓ correct in intent but unable to create
+the file; cadence (#1202) ✓; chained trigger (#1209) ✓ — *it delivered a run today*; and this,
+the actual blocker, sitting inside the fix that was supposed to solve it. Now:
+```bash
+git add -- "$f"
+if git diff --cached --quiet -- "$f"; then echo "No attribution changes."; else commit; push; fi
+```
+Staging first makes an **addition** and a **modification** look the same to the comparison.
+A missing file now emits `::warning` instead of silently taking the no-op branch.
+
+**Four behavioural tests run the SHIPPED shell against a throwaway git repo** — brand-new file,
+modified file, unchanged file, missing file. `test_a_brand_new_artifact_is_committed` **fails on
+the pre-fix step**, reproducing the live bug exactly. Static assertions would not have caught
+this: the old step *contained* `git add`, `git commit` and `git push`, so every string-matching
+check I wrote passed while the step did nothing.
+
+**Lesson, and it is the sharpest one of the session:** *"the job succeeded"* and *"the job did
+its job"* are different claims, and every layer here asserted the first. The workflow exited 0,
+the step exited 0, the tests were green, and the output did not exist. **Test the effect on a
+real substrate, not the presence of the commands that would produce it.**
+
 ## 🚨 2026-07-29 08:40 — THE 24/7 CRYPTO DESK IS RUNNING AT 15% OF ITS SCHEDULE
 Chasing the attribution artifact turned up something far more important than the artifact.
 

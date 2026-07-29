@@ -234,3 +234,78 @@ def test_the_trimmer_still_fails_soft_on_a_missing_file():
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     assert mod.load_perf() == {} or isinstance(mod.load_perf(), dict)
     assert isinstance(mod.load_trims(), dict)
+
+
+# ── the commit must work for a file that has NEVER been committed ────────────
+# The 2026-07-29 08:53 run succeeded, wrote the artifact, printed
+# "No attribution changes.", and left the repo empty. Cause: the step tested
+#     ! git diff --quiet -- <path>
+# BEFORE staging, and `git diff` does not see UNTRACKED files. So for a file
+# that has never been committed it reported "no change" and skipped the commit
+# — the condition could never make the FIRST commit, the only one that
+# mattered. These tests run the SHIPPED shell against a real repo.
+
+def _persist_script(wf: str) -> str:
+    body = wf.split("- name: Persist strategy performance", 1)[1]
+    body = body.split("run: |", 1)[1]
+    lines = []
+    for line in body.split("\n"):
+        if line.strip() and not line.startswith(" " * 10):
+            break
+        lines.append(line[10:] if line.startswith(" " * 10) else line)
+    return "\n".join(lines)
+
+
+def _run_persist(wf: str, tmp_path, content: str | None, precommit: str | None = None):
+    """Execute the real persist step in a throwaway repo. Returns (stdout, committed)."""
+    import subprocess
+    repo = tmp_path / "repo"
+    (repo / "backend" / "performance_log").mkdir(parents=True)
+    sh = lambda *a: subprocess.run(a, cwd=repo, capture_output=True, text=True)
+    sh("git", "init", "-q", "-b", "main")
+    sh("git", "config", "user.email", "t@t"); sh("git", "config", "user.name", "t")
+    (repo / "seed").write_text("x")
+    sh("git", "add", "seed"); sh("git", "commit", "-qm", "seed")
+    f = repo / "backend/performance_log/strategy_performance.json"
+    if precommit is not None:
+        f.write_text(precommit)
+        sh("git", "add", "-A"); sh("git", "commit", "-qm", "prior")
+    if content is not None:
+        f.write_text(content)
+    before = sh("git", "rev-parse", "HEAD").stdout.strip()
+    script = _persist_script(wf).replace("$GITHUB_WORKSPACE", str(repo))
+    # the push has no remote here; drop it so we test staging/commit only
+    script = "\n".join(l for l in script.split("\n") if "git push" not in l)
+    out = subprocess.run(["bash", "-c", script], cwd=repo, capture_output=True, text=True)
+    after = sh("git", "rev-parse", "HEAD").stdout.strip()
+    return out.stdout + out.stderr, before != after
+
+
+def test_a_brand_new_artifact_is_committed(wf, tmp_path):
+    """The regression. Untracked file must still produce a commit."""
+    out, committed = _run_persist(wf, tmp_path, content='{"generated_at": "2026-01-01T00:00:00Z"}')
+    assert committed, (
+        "a never-before-committed artifact was NOT committed — this is the "
+        f"untracked-file bug returning. Output:\n{out}"
+    )
+
+
+def test_an_updated_artifact_is_committed(wf, tmp_path):
+    out, committed = _run_persist(
+        wf, tmp_path, content='{"generated_at": "2026-01-02T00:00:00Z"}',
+        precommit='{"generated_at": "2026-01-01T00:00:00Z"}')
+    assert committed, f"a modified artifact was not committed:\n{out}"
+
+
+def test_an_unchanged_artifact_is_not_committed(wf, tmp_path):
+    same = '{"generated_at": "2026-01-01T00:00:00Z"}'
+    out, committed = _run_persist(wf, tmp_path, content=same, precommit=same)
+    assert not committed, f"committed an unchanged artifact:\n{out}"
+    assert "No attribution changes" in out
+
+
+def test_a_missing_artifact_warns_and_does_not_fail(wf, tmp_path):
+    """The tracker can legitimately produce nothing; that must not fail the job."""
+    out, committed = _run_persist(wf, tmp_path, content=None)
+    assert not committed
+    assert "nothing to persist" in out or "::warning" in out, out
