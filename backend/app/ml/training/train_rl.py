@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+from pydantic import BaseModel, Field, ValidationError, validator
 
 from app.ml.models.a3c_lstm import A3CLSTMAgent
 
@@ -62,6 +63,90 @@ def _step_reward(df: pd.DataFrame, action: int, t: int) -> float:
         return 0.0
 
 
+class TrainRLConfig(BaseModel):
+    """Configuration schema for RL training.
+
+    Example:
+        {
+            "ohlcv_df": "<pandas.DataFrame with required columns>",
+            "n_episodes": 1000,
+            "gamma": 0.99,
+            "lr": 1e-4,
+            "grad_clip": 0.5,
+            "checkpoint_every": 100,
+            "n_features": 3,
+            "hidden_size": 128,
+            "model_path": null
+        }
+    """
+    ohlcv_df: pd.DataFrame = Field(
+        ...,
+        description="DataFrame containing OHLCV columns: open, high, low, close, volume",
+    )
+    n_episodes: int = Field(
+        1000,
+        ge=1,
+        description="Number of training episodes",
+        example=1000,
+    )
+    gamma: float = Field(
+        0.99,
+        ge=0.0,
+        le=1.0,
+        description="Discount factor for future rewards",
+        example=0.99,
+    )
+    lr: float = Field(
+        1e-4,
+        gt=0.0,
+        description="Adam optimizer learning rate",
+        example=1e-4,
+    )
+    grad_clip: float = Field(
+        0.5,
+        gt=0.0,
+        description="Maximum norm for gradient clipping",
+        example=0.5,
+    )
+    checkpoint_every: int = Field(
+        100,
+        gt=0,
+        description="Save a checkpoint every N episodes",
+        example=100,
+    )
+    n_features: int = Field(
+        3,
+        gt=0,
+        description="Feature dimension; must match model architecture",
+        example=3,
+    )
+    hidden_size: int = Field(
+        128,
+        gt=0,
+        description="LSTM hidden layer size",
+        example=128,
+    )
+    model_path: str | None = Field(
+        None,
+        description="Path to save the final model; defaults to the checkpoints directory",
+        example=None,
+    )
+
+    @validator("ohlcv_df")
+    def _validate_ohlcv_df(cls, v: pd.DataFrame) -> pd.DataFrame:
+        required_cols = {"open", "high", "low", "close", "volume"}
+        if not isinstance(v, pd.DataFrame):
+            raise TypeError("ohlcv_df must be a pandas DataFrame")
+        missing = required_cols - set(v.columns)
+        if missing:
+            raise ValueError(f"ohlcv_df missing required columns: {missing}")
+        return v
+
+    class Config:
+        arbitrary_types_allowed = True
+        json_encoders = {pd.DataFrame: lambda _: "<DataFrame>"}
+
+
 async def train_rl_agent(
     ohlcv_df: pd.DataFrame,
     n_episodes: int = 1000,
@@ -94,7 +179,24 @@ async def train_rl_agent(
     Returns:
         Trained A3CLSTMAgent
     """
-    features = _build_features(ohlcv_df)  # (T, n_features_raw)
+    # Validate configuration using Pydantic schema
+    try:
+        cfg = TrainRLConfig(
+            ohlcv_df=ohlcv_df,
+            n_episodes=n_episodes,
+            gamma=gamma,
+            lr=lr,
+            grad_clip=grad_clip,
+            checkpoint_every=checkpoint_every,
+            n_features=n_features,
+            hidden_size=hidden_size,
+            model_path=model_path,
+        )
+    except ValidationError as exc:
+        logger.error("Invalid training configuration: %s", exc)
+        raise
+
+    features = _build_features(cfg.ohlcv_df)  # (T, n_features_raw)
     T = len(features)
 
     if T < _SEQ_LEN + 2:
@@ -102,20 +204,20 @@ async def train_rl_agent(
 
     # Pad or trim to expected n_features
     raw_dim = features.shape[1]
-    if raw_dim < n_features:
-        pad = np.zeros((T, n_features - raw_dim))
+    if raw_dim < cfg.n_features:
+        pad = np.zeros((T, cfg.n_features - raw_dim))
         features = np.hstack([features, pad])
     else:
-        features = features[:, :n_features]
+        features = features[:, : cfg.n_features]
 
-    agent = A3CLSTMAgent(n_features=n_features, hidden_size=hidden_size, n_actions=3)
-    optimizer = torch.optim.Adam(agent.parameters(), lr=lr)
+    agent = A3CLSTMAgent(n_features=cfg.n_features, hidden_size=cfg.hidden_size, n_actions=3)
+    optimizer = torch.optim.Adam(agent.parameters(), lr=cfg.lr)
 
-    save_path = model_path or str(_CHECKPOINT_DIR / "a3c_lstm_latest.pt")
+    save_path = cfg.model_path or str(_CHECKPOINT_DIR / "a3c_lstm_latest.pt")
 
     total_rewards: list[float] = []
 
-    for episode in range(1, n_episodes + 1):
+    for episode in range(1, cfg.n_episodes + 1):
         states: list[torch.Tensor] = []
         actions: list[int] = []
         rewards: list[float] = []
@@ -126,7 +228,7 @@ async def train_rl_agent(
                 window = features[t - _SEQ_LEN : t]  # (seq_len, n_features)
                 x = torch.tensor(window, dtype=torch.float32).unsqueeze(0)  # (1, seq_len, n_feat)
                 action = agent.select_action(x)
-                reward = _step_reward(ohlcv_df, action, t)
+                reward = _step_reward(cfg.ohlcv_df, action, t)
 
                 states.append(x.squeeze(0))  # (seq_len, n_features)
                 actions.append(action)
@@ -144,10 +246,10 @@ async def train_rl_agent(
         agent.train()
         optimizer.zero_grad()
         loss_dict = agent.actor_critic_loss(
-            states_tensor, actions_tensor, rewards, dones, gamma=gamma
+            states_tensor, actions_tensor, rewards, dones, gamma=cfg.gamma
         )
         loss_dict["loss"].backward()
-        nn.utils.clip_grad_norm_(agent.parameters(), grad_clip)
+        nn.utils.clip_grad_norm_(agent.parameters(), cfg.grad_clip)
         optimizer.step()
 
         ep_reward = float(sum(rewards))
@@ -158,22 +260,22 @@ async def train_rl_agent(
             logger.info(
                 "Episode %d/%d  reward=%.4f  avg10=%.4f  loss=%.4f",
                 episode,
-                n_episodes,
+                cfg.n_episodes,
                 ep_reward,
                 avg,
                 loss_dict["loss"].item(),
             )
 
         # Save checkpoint
-        if episode % checkpoint_every == 0:
+        if episode % cfg.checkpoint_every == 0:
             ckpt_path = save_path.replace(".pt", f"_ep{episode:04d}.pt")
             agent.save(
                 ckpt_path,
                 metadata={
                     "episode": episode,
                     "avg_reward": float(np.mean(total_rewards[-100:])),
-                    "n_features": n_features,
-                    "hidden_size": hidden_size,
+                    "n_features": cfg.n_features,
+                    "hidden_size": cfg.hidden_size,
                 },
             )
             logger.info("Checkpoint saved → %s", ckpt_path)
@@ -182,10 +284,10 @@ async def train_rl_agent(
     agent.save(
         save_path,
         metadata={
-            "episode": n_episodes,
+            "episode": cfg.n_episodes,
             "avg_reward": float(np.mean(total_rewards[-100:]) if total_rewards else 0.0),
-            "n_features": n_features,
-            "hidden_size": hidden_size,
+            "n_features": cfg.n_features,
+            "hidden_size": cfg.hidden_size,
         },
     )
     logger.info("Training complete. Final model saved → %s", save_path)
