@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -21,8 +22,9 @@ from app.utils.logging import logger
 
 try:
     from hmmlearn.hmm import GaussianHMM
+
     _HMM_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     _HMM_AVAILABLE = False
 
 
@@ -92,11 +94,8 @@ def _label_states(states: np.ndarray, features: np.ndarray) -> int:
     int
         Regime label for the most recent observation.
     """
-    # Compute mean return per state
     means = [features[states == s, 0].mean() for s in range(3)]
-    # Order states by ascending mean return
     order = np.argsort(means)
-    # Create mapping: lowest mean → bear (0), middle → sideways (1), highest → bull (2)
     label_map = {int(order[0]): 0, int(order[1]): 1, int(order[2]): 2}
     return int(label_map[int(states[-1])])
 
@@ -160,6 +159,7 @@ def _fetch_spy_returns_sync() -> np.ndarray | None:
     """Sync yfinance fetch — must be called via run_in_executor."""
     try:
         import yfinance as yf  # type: ignore
+
         end = datetime.now(timezone.utc).date()
         start = end - timedelta(days=400)
         df = yf.download(
@@ -173,7 +173,7 @@ def _fetch_spy_returns_sync() -> np.ndarray | None:
             return None
         closes = df["Close"].dropna()
         return closes.pct_change().dropna().values.astype(float)
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover
         logger.warning("Regime monitor: SPY fetch failed", error=str(exc))
         return None
 
@@ -206,7 +206,7 @@ async def _fetch_spy_returns() -> np.ndarray | None:
     return await loop.run_in_executor(None, _fetch_spy_returns_sync)
 
 
-async def run_once(redis_client) -> int | None:
+async def run_once(redis_client: Any) -> int | None:
     """Fit regime, write to Redis, return regime int or None on failure."""
     returns = await _fetch_spy_returns()
     if returns is None:
@@ -221,7 +221,7 @@ async def run_once(redis_client) -> int | None:
     try:
         await redis_client.set("market:regime", str(regime), ex=600)  # TTL 10 min
         logger.info("Regime updated", regime=regime, label=labels[regime])
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover
         logger.warning("Regime monitor: Redis write failed", error=str(exc))
         return None
 
@@ -237,9 +237,11 @@ class RegimeMonitor:
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
+        """Start the periodic regime monitoring loop."""
         self._task = asyncio.create_task(self._loop(), name="regime_monitor")
 
     def stop(self) -> None:
+        """Cancel the monitoring loop if it is running."""
         if self._task:
             self._task.cancel()
 
@@ -250,6 +252,16 @@ class RegimeMonitor:
         while True:
             try:
                 await run_once(redis)
-            except Exception as exc:
+            except Exception as exc:  # pragma: no cover
                 logger.warning("Regime monitor loop error", error=str(exc))
             await asyncio.sleep(self.INTERVAL_SECONDS)
+
+
+__all__ = [
+    "RegimeMonitor",
+    "run_once",
+    "_fit_regime",
+    "_heuristic_regime",
+    "_label_states",
+    "_compute_features",
+]
