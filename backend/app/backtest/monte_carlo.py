@@ -1,5 +1,6 @@
 """Monte Carlo simulation: bootstrap equity curve for robustness confidence intervals."""
 from __future__ import annotations
+
 import numbers
 import numpy as np
 import pandas as pd
@@ -40,9 +41,9 @@ def monte_carlo_simulation(
     n_simulations : int
         Number of Monte‑Carlo paths to generate. Must be a positive integer.
     n_years : int
-        Number of years to simulate. Must be a positive integer.
+        Number of years to simulate. Must be a positive number.
     risk_free_daily : float
-        Daily risk‑free rate. Must be a real number.
+        Daily risk‑free rate. Must be a real, finite number.
 
     Returns
     -------
@@ -61,19 +62,25 @@ def monte_carlo_simulation(
         raise ValueError("daily_returns series cannot be empty.")
     if not np.issubdtype(daily_returns.dtype, np.number):
         raise ValueError("daily_returns must contain numeric values.")
+    # Ensure all non‑NaN values are finite
     if not np.isfinite(daily_returns.dropna()).all():
         raise ValueError("daily_returns contains non‑finite values (NaN or Inf).")
-    if not isinstance(n_simulations, int) or n_simulations <= 0:
+    # After dropping NaNs there must be at least one observation
+    if daily_returns.dropna().shape[0] == 0:
+        raise ValueError("daily_returns series must contain at least one finite value.")
+
+    if isinstance(n_simulations, bool) or not isinstance(n_simulations, int) or n_simulations <= 0:
         raise ValueError("n_simulations must be a positive integer.")
-    if not isinstance(n_years, (int, float)) or n_years <= 0:
+    if isinstance(n_years, bool) or not isinstance(n_years, (int, float)) or n_years <= 0:
         raise ValueError("n_years must be a positive number.")
-    if not isinstance(risk_free_daily, numbers.Real):
-        raise ValueError("risk_free_daily must be a real number.")
+    if not isinstance(risk_free_daily, numbers.Real) or not np.isfinite(risk_free_daily):
+        raise ValueError("risk_free_daily must be a finite real number.")
 
     n_days = int(n_years * 252)
     returns_array = daily_returns.dropna().values
-    sharpes = []
-    max_dds = []
+
+    sharpes: list[float] = []
+    max_dds: list[float] = []
     positive = 0
 
     rng = np.random.default_rng(42)
