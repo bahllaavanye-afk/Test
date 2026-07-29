@@ -329,6 +329,38 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## ⏳ 2026-07-29 06:45 — cron starvation MEASURED: the attribution artifact still has not landed
+The commit-step fix (#1191) and the cadence fix (#1202) are both correct and merged. The
+artifact still does not exist — because **the cron did not fire**.
+
+| | nominal | actual |
+|---|---|---|
+| fill-tracking, old cron `0 22 * * 1-5` | 22:00 | **23:02:41 → 62 min late** |
+| fill-tracking, new cron `11 */6` | 06:11 | **not started by 06:41 → ≥30 min late, possibly dropped** |
+
+The 62-minute figure is unambiguous: that workflow had exactly one cron at the time. Meanwhile
+the rest of the fleet *is* firing (10+ scheduled runs between 06:19 and 06:37), so this is not a
+global Actions outage — it is ordinary GitHub cron jitter, which **delays and sometimes silently
+drops** scheduled runs under load. A dropped run never appears in the run list at all, so
+"didn't fire" and "will fire soon" look identical until the next slot.
+
+**This quantifies the P0-GATE claim.** IMPROVEMENTS has long asserted *"GitHub Actions cadence
+(cron starvation, ~15-min floor, suppressed events) is acceptable for PAPER only"* as the reason
+an always-on worker is required before `TRADING_MODE=live`. That was an assertion; it now has a
+number attached — **62 minutes late on a measured run**, on the workflow that feeds strategy
+retirement. For a paper book that is a nuisance. For a live book, a stop-loss sweep or an exit
+arriving an hour late is a loss, and this is exactly the failure mode the gate exists for.
+
+**Deliberately NOT shipping a workaround.** The tempting fix is to chain fill-tracking off a
+`workflow_run` from a reliably-firing cron workflow (desk-trading fires every ~15 min and is
+cron-actored, so it would not hit the GITHUB_TOKEN suppression from the 03:40 entry). But that
+trades one best-effort GitHub trigger for another and adds a second trigger path to reason
+about, when the real answer is already written down: the always-on worker. Cadence is now
+4×/day nominal; the next slot is 12:11 UTC.
+
+**Verify next tick:** if 12:11 also produces nothing, the cron is being dropped rather than
+delayed and the trigger genuinely needs replacing — that would be new information, not a repeat.
+
 ## 📐 2026-07-29 05:55 — root principle #5 rests on ONE wire, and the record miscounted it
 `CLAUDE.md` #5 is *"Walk-forward only: no in-sample-only backtests are accepted as valid."*
 Re-audited it. There are **three** separately-written walk-forward implementations:
