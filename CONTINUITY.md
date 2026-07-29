@@ -329,6 +329,36 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 🔎 2026-07-29 04:45 — arb-bucket audit: 4 of 32 strategies can never place an order
+Answered half of a long-standing IMPROVEMENTS question (*"32 strategies in the arb bucket but
+near-zero desk fills"*). Of the 32 registry strategies with `risk_bucket == "arbitrage"`:
+
+**28 are desk-wired. 4 are not**, and each for a real reason:
+
+| strategy | why it cannot trade |
+|---|---|
+| `covered_call` | needs share inventory — already excluded *inline* in the Options desk roster |
+| `crypto_basis_roll` | short perp + long spot; Alpaca paper has **no perpetual futures** |
+| `funding_rate_arb` | trades perpetual funding rates; same missing venue |
+| `dex_cex_arb` | Uniswap v3 vs CEX; **no DEX connectivity** in this deployment |
+
+**None is a defect** — but all four are counted in the bucket while being structurally unable to
+produce an order, which inflates its apparent capacity by ~12% and is part of why fills
+attributed to it look sparse. The 70/30 arb/directional capital split is stated against a
+strategy count that overstates what can actually trade.
+
+Now a maintained invariant rather than a one-off finding:
+`backend/tests/unit/test_arb_bucket_reachability.py` fails if an arb strategy is neither
+desk-wired nor listed in `DORMANT_BY_DESIGN` **with a stated reason**, and separately fails if a
+dormant entry goes stale (gets wired, or leaves the bucket). Same idiom as
+`test_factor_exposure_is_still_honestly_unwired`. 5 tests; verified it fires by removing one
+dormant entry.
+
+**⚠️ Deliberately only half-answered.** Whether the *28 wired* strategies actually fill, or die
+at the confidence gate, needs per-strategy attribution — and `strategy_performance.json` has
+never existed; its producer was only fixed hours ago and first runs 06:11 UTC. Guessing would
+have been easy and worthless. Recorded as STILL OPEN with the date the data starts existing.
+
 ## ⏱️ 2026-07-29 03:40 — the attribution producer ran 1×/day for a consumer that reads 4×/day
 Chasing why `strategy_performance.json` still had not appeared 3h after the commit-step fix.
 It is not that the fix failed — **nothing has run it yet**, and the reason is structural.
