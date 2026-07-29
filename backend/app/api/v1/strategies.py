@@ -1,13 +1,16 @@
 """Strategy management endpoints."""
+from typing import Any, Dict, List
+
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
-from app.database import get_db, AsyncSessionLocal
-from app.api.deps import get_current_user, get_current_active_superuser
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_active_superuser, get_current_user
+from app.database import AsyncSessionLocal, get_db
 from app.models.strategy import Strategy
 from app.models.user import User
 from app.strategies import STRATEGY_REGISTRY, list_desks, strategies_by_desk
-from pydantic import BaseModel, ConfigDict
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
 
@@ -19,7 +22,7 @@ class StrategyOut(BaseModel):
     strategy_type: str
     risk_bucket: str
     is_enabled: bool
-    symbols: list[str]
+    symbols: List[str]
     tick_interval_seconds: float
     confidence_threshold: float
 
@@ -31,9 +34,9 @@ class StrategyToggle(BaseModel):
 
 
 @router.get("/params-schema")
-async def get_params_schema(current_user: User = Depends(get_current_user)):
+async def get_params_schema(current_user: User = Depends(get_current_user)) -> Dict[str, Any]:
     """Return configurable params for each strategy that exposes DEFAULT_PARAMS."""
-    schema = {}
+    schema: Dict[str, Any] = {}
     for name, cls in STRATEGY_REGISTRY.items():
         if hasattr(cls, "DEFAULT_PARAMS"):
             schema[name] = {
@@ -44,17 +47,17 @@ async def get_params_schema(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/available")
-async def list_available(current_user: User = Depends(get_current_user)):
+async def list_available(current_user: User = Depends(get_current_user)) -> List[Dict[str, str]]:
     """List all registered strategy classes."""
     return [{"name": k} for k in STRATEGY_REGISTRY.keys()]
 
 
 @router.get("/desks")
-async def list_strategy_desks(current_user: User = Depends(get_current_user)):
+async def list_strategy_desks(current_user: User = Depends(get_current_user)) -> Dict[str, Any]:
     """Unified cross-desk view: every strategy grouped by trading desk.
 
-    Desks are derived from each strategy's own attributes (no hand-maintained list),
-    so the equities/crypto/options/prediction-market/TradingView desks all share one
+    Desks are derived from each strategy's own attributes (no hand‑maintained list),
+    so the equities/crypto/options/prediction‑market/TradingView desks all share one
     format and a new strategy is placed automatically.
     """
     grouped = strategies_by_desk()
@@ -70,18 +73,16 @@ async def list_strategy_desks(current_user: User = Depends(get_current_user)):
 async def list_active(
     request: Request,
     current_user: User = Depends(get_current_user),
-):
+) -> List[Dict[str, Any]]:
     """Return the strategies that are currently running in the strategy runner.
 
-    Reads from app.state.active_strategies (populated at startup by main.py).
+    Reads from ``app.state.active_strategies`` (populated at startup by ``main.py``).
     Falls back to querying the DB when app state is not yet populated.
     """
-    # Try in-process state first (populated by lifespan at startup)
     active = getattr(request.app.state, "active_strategies", None)
     if active is not None:
         return active
 
-    # Fallback: query DB directly with a lightweight column selection
     try:
         async with AsyncSessionLocal() as db:
             stmt = select(
@@ -111,7 +112,7 @@ async def list_active(
 async def list_strategies(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
+) -> List[Strategy]:
     result = await db.execute(select(Strategy))
     return result.scalars().all()
 
@@ -122,11 +123,12 @@ async def toggle_strategy(
     body: StrategyToggle,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
-):
+) -> Dict[str, Any]:
+    """Enable or disable a strategy."""
     result = await db.execute(select(Strategy).where(Strategy.id == strategy_id))
     strategy = result.scalar_one_or_none()
     if not strategy:
-        raise HTTPException(404, "Strategy not found")
+        raise HTTPException(status_code=404, detail="Strategy not found")
     strategy.is_enabled = body.is_enabled
     await db.commit()
     return {"id": strategy_id, "is_enabled": body.is_enabled}
