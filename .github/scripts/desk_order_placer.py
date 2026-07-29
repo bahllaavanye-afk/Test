@@ -1701,6 +1701,31 @@ def _expand_truncated(name: str, registry: "set[str]") -> str:
     return matches[0] if len(matches) == 1 else name
 
 
+def _desk_strategies(names: "list[str]", trimmed: set) -> list:
+    """Instantiate a desk's strategies, EXCLUDING any the trimmer retired.
+
+    Extracted from main()'s signal-generation stage so the exclusion can be
+    tested for effect rather than presence. It previously lived inline, and the
+    only coverage was `test_no_dead_desk_path` asserting that
+    `_trimmed_strategies()` is *called* and called before `_load_strategy` —
+    neither of which would notice if the `continue` were deleted.
+
+    That distinction is not theoretical here. Twice in this pipeline a helper
+    had thorough tests while its caller was silently broken: `run_desk()` held
+    this very check and was never called at all, and `strategy_trimmer.run()`
+    iterated the wrong dict while `evaluate_trim()` stayed green. Inline logic
+    inside a 500-line async main() is logic nothing can test.
+    """
+    out = []
+    for sname in names:
+        if sname in trimmed:
+            continue
+        s = _load_strategy(sname)
+        if s is not None:
+            out.append(s)
+    return out
+
+
 def _trimmed_strategies() -> set:
     """Names retired by strategy_trimmer.py — they must NOT trade until recovered."""
     import json
@@ -1885,13 +1910,7 @@ async def main() -> None:
                 print(f"  ✂ {len(_trimmed)} strategy(ies) retired by the trimmer "
                       f"will not trade: {', '.join(sorted(_trimmed))}", flush=True)
             for desk in active_desks:
-                strategies = []
-                for sname in desk.strategy_names:
-                    if sname in _trimmed:
-                        continue
-                    s = _load_strategy(sname)
-                    if s is not None:
-                        strategies.append(s)
+                strategies = _desk_strategies(desk.strategy_names, _trimmed)
 
                 for symbol in desk.symbols:
                     df = bars_cache.get(symbol)

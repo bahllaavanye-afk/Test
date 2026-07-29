@@ -329,6 +329,40 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 🧩 2026-07-29 13:55 — the LAST link in the trims chain was tested by presence only
+With the pipeline correct end to end, the remaining untested step was the one that matters most:
+**does the desk actually exclude a retired strategy?** Coverage was:
+```
+test_no_dead_desk_path   `_trimmed_strategies()` is CALLED, and appears before `_load_strategy`
+```
+Neither assertion notices if the `continue` is deleted. The exclusion lived inline inside
+`main()`'s signal-generation stage, so nothing could reach it.
+
+**That gap is exactly what bit twice already in this same pipeline:** `run_desk()` held this very
+check and was never called at all; `strategy_trimmer.run()` iterated the envelope while
+`evaluate_trim()` sat behind seven passing tests. Both times the *tested unit* was fine and the
+*untested caller* did nothing.
+
+Extracted to `_desk_strategies(names, trimmed)` and covered for **effect**: 8 tests, and
+deleting the `continue` fails 5 of them. Includes `test_matching_is_exact_not_prefix` — trimming
+`supertrend` must not take out `supertrend_rsi_tv`, the same prefix hazard the key expansion
+refuses to guess at.
+
+### ⚠️ The refactor broke an existing test, and the test was the thing that was wrong
+`test_the_trimmer_runs_before_strategies_are_loaded` asserted **source byte offsets**: that
+`_trimmed = …` appeared earlier *in the file* than `s = _load_strategy(sname)`. Moving the
+selection into a helper defined above `main()` inverted those offsets while the behaviour got
+strictly better — so it failed on a correct change (`assert 88480 < 78477`).
+
+**Position in a file is not execution order.** Replaced with a real data-flow assertion: walk
+`main()`'s AST, find the variable assigned from `_trimmed_strategies()`, and require that
+variable to be *passed into* `_desk_strategies()`. Verified it fires by swapping the argument
+for `set()` — which is precisely the silent regression a position check cannot see.
+
+**Two kinds of weak test, both retired today:** presence ("the function is called") and position
+("the lines are in this order"). Neither survives a refactor, and neither notices a deletion.
+Assert data flow, or assert effect.
+
 ## 🎯 2026-07-29 13:40 — THE TRIMMER READ THE ENVELOPE, NOT THE PAYLOAD. Found before the live run.
 The trims file still did not exist an hour after the 12:41 slot. First, the boring part: **no
 trimmer run has yet seen the data.** The artifact was committed 10:19:16; the last trimmer run
