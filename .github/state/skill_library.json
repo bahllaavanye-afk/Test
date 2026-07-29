@@ -1,12 +1,5 @@
 {
   "skills": [
-    "* Validation of input logs in `\"/logs/input_logs.csv\"` ensures data accuracy and freshness before trading signal generation.",
-    "* The risk exposure cap is 5% gross NAV, as defined in `state/risk_limits.yaml`, and the current risk metrics are available in `state/current_risk.json`.",
-    "Check thread counts",
-    "Test API keys",
-    "Retrain ML models",
-    "Estimate Sharpe ratio",
-    "Log trade rejects",
     "Validate SSL certs",
     "Use load balancing",
     "Test DB queries",
@@ -199,8 +192,15 @@
     "Monitor API rate limits",
     "Check data types",
     "Retrain models regularly",
-    "Test strategy variants"
+    "Test strategy variants",
+    "Check network latency",
+    "Use timeout retries",
+    "Test dependency updates",
+    "Implement fail-safes",
+    "Monitor data drift",
+    "Implement S4 layers",
+    "Retrain hybrid models"
   ],
-  "last_updated": "2026-07-29T07:17:03.471398+00:00",
+  "last_updated": "2026-07-29T12:27:49.843711+00:00",
   "total": 200
 }
