@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Retry on timeout",
-    "Verify DB connections",
-    "Check RAM allocation",
-    "Implement circuit breaker",
-    "Use retry mechanisms",
     "Test market hours",
     "Monitor trade execution",
     "Based on the collective knowledge, here are the top insights:",
@@ -199,8 +194,13 @@
     "Verify RAM usage",
     "Verify OS updates",
     "Eliminate type leaks",
-    "Integrate real-time logic"
+    "Integrate real-time logic",
+    "Validate config files",
+    "Log error stacks",
+    "Test dependency chains",
+    "Verify CPU usage",
+    "Optimize model training"
   ],
-  "last_updated": "2026-07-29T19:09:31.407076+00:00",
+  "last_updated": "2026-07-29T20:29:06.628561+00:00",
   "total": 200
 }
