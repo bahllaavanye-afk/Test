@@ -329,6 +329,60 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## ✅ 2026-07-29 00:15 — MKR/USD RESOLVED, and two corrections to what I reported
+**The wiring works, first live run.** Run `30409299307` (23:51, `head_sha 95710006`):
+```
+ⓘ Crypto: skipping 1 non-tradable pair(s): MKR/USD
+[stage] ✓ Fetch account and market bars — bars_fetched=97   (was 98 — one fewer request)
+```
+MKR/USD no longer reaches signal generation, no longer consumes a top-K slot, and produced no
+422. `bars_fetched` dropping 98 → 97 is the filter paying for itself before the batch request.
+
+**Correction 1 — Alpaca was right all along.** The filter dropped MKR/USD as **non-tradable**,
+which means `/v2/assets?asset_class=crypto&status=active` does **NOT** list it. My "B1
+confirmed — the metadata contradicts the order engine" was wrong, and so was reopening the
+IMPROVEMENTS premise as impossible. **The originally-proposed fix was correct**: filter the
+universe against the active-asset list. It had simply never been wired to anything.
+
+**Correction 2 — I overstated the trimmer damage.** I wrote that "the entire performance-pruning
+loop was decorative, so a strategy retired for losing money kept trading". Not so. There are
+**two** pruning mechanisms and only one was dead:
+- **LIVE and working:** `_fetch_performance_weights()` reads `/api/v1/leaderboard/live`, sets
+  weight `0.0` for sustained losers, and the order path skips them outright —
+  `✂ {strategy}/{symbol} pruned by attribution (sustained negative live P&L) — no order`.
+  Losing strategies *were* being stopped, every run.
+- **Dead:** the file-based trimmer, a redundant second mechanism.
+
+### 🔌 00:15 — and the trimmer is dead at the SOURCE, not the consumer (fixed)
+Wiring `_trimmed_strategies()` into the pipeline last tick was necessary but not sufficient —
+the file it reads is never produced. The chain breaks three links upstream:
+
+`fill_tracker.py` attributes fills back to strategies and writes
+`backend/performance_log/strategy_performance.json`. `fill-tracking.yml` runs it on schedule,
+exits zero, and **never commits the output** — so on an ephemeral runner the file is computed
+and thrown away. It has never existed in the repository. Three consumers read that exact path
+and all three are inert:
+
+| consumer | effect |
+|---|---|
+| `strategy_trimmer.py` | `load_perf() -> {}` → `strategy_trims.json` never written |
+| `strategy_auto_tuner.py` | prints *"not found — no data to tune from"* and stops |
+| `desk_order_placer.py` | reads a trims file the trimmer never produces |
+
+Fixed: `permissions: contents: write` plus a conditional commit/push step mirroring
+`strategy-trim.yml` (`[skip ci]` because this workflow triggers on `workflow_run: [CI]` and
+would otherwise loop; backoff retry because state-bot pushes to main are constant). 9 tests,
+5 fail pre-fix.
+
+**Same shape as the dead `run_desk()`, one layer out:** a workflow that writes a file it does
+not commit is indistinguishable from one that does — until something tries to read it. Green
+job, zero exit, no output. **When a scheduled job's whole purpose is to produce an artifact,
+check the artifact exists in the repo, not that the job succeeded.**
+
+**Verify next:** after the 22:00 UTC run (or a manual dispatch), `strategy_performance.json`
+should appear in the repo; then `strategy_trims.json` within 6h; then a `✂ N strategy(ies)
+retired by the trimmer` line on the desk.
+
 ### ❌ 23:45 — THE "B1 CONFIRMED" BELOW IS WRONG. The filter was never running.
 **Read this before the 22:00 entry.** I concluded from a missing `ⓘ skipping` line that Alpaca
 must be listing MKR/USD as active while its order engine refused it. The reasoning was
