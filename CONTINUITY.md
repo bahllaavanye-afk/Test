@@ -329,6 +329,34 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 🪤 2026-07-29 00:50 — `[skip ci]` ANYWHERE IN A COMMIT MESSAGE SKIPS EVERY PUSH WORKFLOW
+Cost ~15 minutes and it will recur, so it is written down. I pushed `09a01eee` and **no push
+workflow ran at all** — not `auto-pr`, not `security-scan`. PR #1191 sat with only a Vercel
+check and no CI.
+
+The cause: my **commit message body** contained the literal token `[skip ci]` — in a sentence
+*explaining why the workflow's own commit step needs it*:
+
+> `[skip ci] because this workflow triggers on workflow_run:[CI] and would otherwise loop`
+
+GitHub honours that token **anywhere in the commit message, not just the first line**, so it
+silently skipped every push-triggered workflow for that SHA. Amending the message to
+`a skip-ci marker because…` and force-pushing brought all 16 checks back immediately.
+
+**Two traps in one:**
+1. **Writing *about* `[skip ci]` disables your own CI.** Any commit that documents skip-ci
+   behaviour must avoid the literal token — use `skip-ci` unbracketed.
+2. **On this repo, no CI is invisible.** CI (`test.yml`) triggers on `pull_request` and
+   `workflow_dispatch` only. PRs opened with `GITHUB_TOKEN` never fire `pull_request`
+   (recursion guard), so `auto-pr.yml` **dispatches CI explicitly**. Skip auto-pr and you get
+   *no CI at all* — and a PR with zero check runs looks calm, not broken. This also means:
+   **if I open the PR myself before auto-pr does, CI is never dispatched.** Let auto-pr open it,
+   or push again afterwards so auto-pr fires and dispatches CI onto the existing PR.
+
+Same family as everything else this session: a green-looking absence. `git push` succeeded, the
+PR existed, nothing was red — and nothing had run. **Check that the checks EXIST, not just that
+none of them failed.**
+
 ## ✅ 2026-07-29 00:15 — MKR/USD RESOLVED, and two corrections to what I reported
 **The wiring works, first live run.** Run `30409299307` (23:51, `head_sha 95710006`):
 ```
