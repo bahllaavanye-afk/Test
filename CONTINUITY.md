@@ -378,6 +378,36 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## ⚠️ 2026-07-29 15:55 — CORRECTION: the ML promotion fix I proposed at 15:10 cannot work
+The 15:10 entry below lists three breaks between the trainer and inference and proposes emitting
+`lstm_latest.pt` in `AbstractModel`'s schema. **There is a fourth break, and it invalidates that
+fix.** There are two classes named `LSTMPredictor` and they are different networks:
+
+```
+.github/scripts/ci_lstm_trainer.py      backend/app/ml/models/lstm.py
+──────────────────────────────────      ────────────────────────────────
+self.lstm                               self.lstm
+(no attention)                          self.attention   <- SelfAttention
+self.norm                               self.norm
+head: Linear(h*2,32)…Linear(32,1)       head: Linear(h*2,64)…Linear(64,1)
+      + Sigmoid  → probabilities              no sigmoid → logits
+__init__(n_features, hidden,            __init__(n_features, hidden_size,
+         layers, dropout)                        num_layers, dropout, bidirectional)
+```
+`load_state_dict()` fails twice: missing `attention.*` keys, and `head.0.weight` shape 32×256 vs
+64×256. Getting the wrapper schema right does not help when the tensors describe another network,
+and a forced load would silently mis-scale every prediction (probabilities read as logits).
+
+**Promotion requires unifying the architectures first** — the trainer should import and train
+`app.ml.models.lstm.LSTMPredictor` instead of defining a second network with the same name. This is
+the same duplicate-implementation failure as `run_desk()`: a copy that reads exactly like the real
+thing, so a change to either looks correct and does nothing.
+
+`.github/scripts/test_lstm_promotion_contract.py` encodes the invariant *conditionally* — green
+today, fails the moment the trainer writes a path `InferenceService` reads while the architectures
+still differ. The wrong recipe in `lstm-training.yml`'s header has been replaced with the real
+constraints, so nobody follows it by hand either.
+
 ## ✅ 2026-07-29 15:19 — THE TRIM CHAIN IS LIVE. Verified in production, not inferred.
 The whole path finally ran end to end, on a real desk run, 18 minutes after the persist fix merged.
 

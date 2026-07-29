@@ -4,10 +4,26 @@ name: LSTM Model Training (CPU — Weekly)
 # Runtime: ~15-20 min on ubuntu-latest.
 # Models saved as workflow artifacts (30-day retention) AND posted to Slack.
 #
-# To promote a trained model to production inference:
-#   1. Download artifact from Actions tab
-#   2. Commit to backend/models_artifacts/<exp_name>/
-#   3. InferenceService auto-loads on next deploy
+# ⚠️ THESE MODELS CANNOT CURRENTLY BE PROMOTED. Six weekly runs have succeeded
+# and not one has ever reached inference. The recipe that used to sit here —
+# "download the artifact, commit to backend/models_artifacts/<exp_name>/,
+# InferenceService auto-loads on next deploy" — is wrong at every step:
+#
+#   · InferenceService reads the FLAT path models_artifacts/lstm_latest.pt.
+#     It never recurses into <exp_name>/ and never looks for model.pt.
+#   · AbstractModel.load() expects {"state_dict", "model_type", "metadata"}.
+#     This script saves {"model_state_dict", "n_features", "hidden", ...},
+#     so a correctly-NAMED file still raises KeyError.
+#   · ci_lstm_trainer.LSTMPredictor and app.ml.models.lstm.LSTMPredictor are
+#     DIFFERENT networks — the backend has a SelfAttention block this one
+#     lacks, a 64-wide head against this one's 32, and returns logits where
+#     this one returns sigmoid probabilities. load_state_dict() would fail on
+#     the missing attention.* keys and on head.0.weight's shape.
+#
+# Promotion therefore needs the architectures unified first: this script should
+# import and train app.ml.models.lstm.LSTMPredictor instead of defining a second
+# network with the same name. .github/scripts/test_lstm_promotion_contract.py
+# fails if promotion is wired up without that.
 
 on:
   schedule:
