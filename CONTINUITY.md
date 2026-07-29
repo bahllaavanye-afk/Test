@@ -329,6 +329,39 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 🧹 2026-07-29 02:40 — THREE "open" IMPROVEMENTS items were already done. I nearly redid one.
+Picking the next clean item, I chose the **stdlib-logger-kwargs guard** (P2, line ~383) — a
+preventive AST scan, well specified, zero blast radius. I had the design worked out and was
+about to write `backend/tests/unit/test_logger_kwargs.py` when I checked whether the path
+existed.
+
+**It already did — written 2026-07-27, 6 tests, passing.** Same design, down to the allowed
+keyword set and the ambiguous-binding skip. It even has the meta-assertion I was going to add
+(`assert stdlib_modules` — so a broken scanner cannot pass vacuously). The only thing missing
+was the checkbox.
+
+Swept the neighbours and found two more already delivered:
+
+| item | evidence |
+|---|---|
+| P2 stdlib-logger kwargs guard | `test_logger_kwargs.py` exists, 6 tests pass |
+| P1 test-isolation flake (measured) | `_isolate_each_file` per-file DB fixture landed 2026-07-27 |
+| P2 original flake note | same fixture supersedes it |
+
+Verified the flake items under the **exact failing configuration** rather than trusting the
+fixture's existence — `pytest tests/ -n 4 --dist loadfile`: **1997 passed, 31 skipped, 5
+xfailed, 0 failed**, including `test_seed_additive::test_seed_is_additive_and_idempotent`.
+All three now closed with that evidence inline.
+
+**Why this matters more than three checkboxes:** an item that says "open" but is done is a trap
+that costs a whole tick, and the cost is silent — I would have shipped a duplicate file, it
+would have passed CI, and nothing would have flagged it. This is the same shape as everything
+else this session (dead code, uncommitted artifact, skipped workflow, self-referential guard):
+**the record disagreed with reality, and only reality was checked by anything.**
+
+**Rule going forward: before implementing any IMPROVEMENTS item, grep for its artifact first.**
+Closing an item costs a minute; rediscovering it costs a session.
+
 ## 🔗 2026-07-29 01:20 — the trimmer chain had a FOURTH broken link: truncated attribution keys
 Verifying #1191 (commit the P&L file) turned up the next link. The tracker **does** produce real
 data — `✓ Saved performance data: 2 strategies, 18 new fills` — but the keys can never match.
