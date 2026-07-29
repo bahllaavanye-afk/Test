@@ -12,6 +12,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPTS = Path(__file__).resolve().parents[3] / ".github" / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
@@ -35,8 +37,11 @@ class _FakeResp:
 
 _OK = {"choices": [{"message": {"content": "OK"}}]}
 _PROVIDER = {
-    "name": "test", "url": "https://example.test/v1/chat", "fmt": "openai",
-    "key_env": "TEST_LLM_KEY", "model": "m",
+    "name": "test",
+    "url": "https://example.test/v1/chat",
+    "fmt": "openai",
+    "key_env": "TEST_LLM_KEY",
+    "model": "m",
 }
 
 
@@ -89,11 +94,8 @@ def test_has_key_treats_disabled_as_absent(monkeypatch):
 def test_call_provider_raises_when_no_key(monkeypatch):
     for n in ("TEST_LLM_KEY", "TEST_LLM_KEY_1", "TEST_LLM_KEY_2", "TEST_LLM_KEY_3"):
         monkeypatch.delenv(n, raising=False)
-    try:
+    with pytest.raises(KeyError):
         L._call_provider(_PROVIDER, "s", "p", 16, 0.0)
-        assert False, "expected KeyError"
-    except KeyError:
-        pass
 
 
 # --- Reasoning-model content extraction -------------------------------------- #
@@ -115,7 +117,6 @@ def test_extract_content_falls_back_to_reasoning():
 
 
 def test_extract_content_empty_raises():
-    import pytest
     with pytest.raises(ValueError):
         L._extract_openai_content({"choices": [{"message": {"content": "  "}}]})
 
@@ -129,3 +130,45 @@ def test_call_provider_handles_reasoning_model(monkeypatch):
 
     monkeypatch.setattr(L.urllib.request, "urlopen", fake_urlopen)
     assert L._call_provider(_PROVIDER, "sys", "hi", 16, 0.0) == "RM"
+
+
+# --------------------------------------------------------------------------- #
+# Edge‑case tests – ensure graceful handling of None, empty collections, and
+# off‑by‑one indexing in provider key collection.
+def test_provider_keys_none_input(monkeypatch):
+    """Passing None as provider should raise a clear exception."""
+    with pytest.raises(TypeError):
+        L._provider_keys(None)
+
+
+def test_provider_keys_off_by_one_variant(monkeypatch):
+    """Only keys up to _3 are considered; higher suffixes are ignored."""
+    for n in ("TEST_LLM_KEY", "TEST_LLM_KEY_1", "TEST_LLM_KEY_2", "TEST_LLM_KEY_3", "TEST_LLM_KEY_4"):
+        monkeypatch.delenv(n, raising=False)
+    monkeypatch.setenv("TEST_LLM_KEY", "base")
+    monkeypatch.setenv("TEST_LLM_KEY_4", "extra")
+    # Expect only the base key to be returned; the _4 variant is out of range.
+    assert L._provider_keys(_PROVIDER) == ["base"]
+
+
+def test_extract_openai_content_none_payload():
+    """A None payload should raise a ValueError rather than cause an AttributeError."""
+    with pytest.raises(ValueError):
+        L._extract_openai_content(None)
+
+
+def test_extract_openai_content_empty_choices():
+    """Payload with empty 'choices' list must be treated as invalid."""
+    with pytest.raises(ValueError):
+        L._extract_openai_content({"choices": []})
+
+
+def test_call_provider_none_system_and_prompt(monkeypatch):
+    """Calling with None for system or prompt should still attempt the request
+    and return the extracted content if the provider responds."""
+    monkeypatch.setenv("TEST_LLM_KEY", "k")
+    def fake_urlopen(req, timeout=30):
+        return _FakeResp(_OK)
+    monkeypatch.setattr(L.urllib.request, "urlopen", fake_urlopen)
+    # Both arguments are None; the function should handle them gracefully.
+    assert L._call_provider(_PROVIDER, None, None, 16, 0.0) == "OK"
