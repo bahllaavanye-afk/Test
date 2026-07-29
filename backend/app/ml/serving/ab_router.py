@@ -1,10 +1,10 @@
 """
 A/B traffic router for ML model serving.
 
-Maintains an in-memory snapshot of release states refreshed lazily from DB.
+Maintains an in‑memory snapshot of release states refreshed lazily from DB.
 Routes each inference request to champion or challenger based on traffic_pct.
 
-Thread-safety: uses asyncio.Lock to prevent thundering-herd refreshes.
+Thread‑safety: uses asyncio.Lock to prevent thundering‑herd refreshes.
 """
 from __future__ import annotations
 
@@ -34,11 +34,11 @@ class RouteDecision(NamedTuple):
 
 class ABRouter:
     """
-    In-memory A/B router backed by the model_releases DB table.
+    In‑memory A/B router backed by the model_releases DB table.
 
     The snapshot is a dict mapping model_name → list of active release dicts.
-    It is refreshed at most once per `refresh_interval_s` seconds using a
-    lazy-refresh strategy so the hot inference path is never blocked by a DB
+    It is refreshed at most once per ``refresh_interval_s`` seconds using a
+    lazy‑refresh strategy so the hot inference path is never blocked by a DB
     query (unless the cache is completely cold).
 
     Usage::
@@ -63,7 +63,7 @@ class ABRouter:
     async def refresh(self) -> None:
         """Reload champion/challenger/shadow state from DB."""
         async with self._refresh_lock:
-            # Double-checked locking: another coroutine may have refreshed while
+            # Double‑checked locking: another coroutine may have refreshed while
             # we were waiting for the lock.
             if time.monotonic() - self._last_refresh < self._refresh_interval:
                 return
@@ -107,7 +107,7 @@ class ABRouter:
                     n_models=len(snapshot),
                     total_releases=sum(len(v) for v in snapshot.values()),
                 )
-            except Exception as exc:
+            except Exception as exc:  # pragma: no cover
                 logger.error("ABRouter: refresh failed", error=str(exc))
 
     async def _maybe_refresh(self) -> None:
@@ -116,28 +116,50 @@ class ABRouter:
 
     # ── Traffic routing ────────────────────────────────────────────────────────
 
-    async def route(self, model_name: str) -> RouteDecision | None:
+    async def route(self, model_name: str | None) -> RouteDecision | None:
         """
-        Return a RouteDecision for *model_name*.
+        Return a :class:`RouteDecision` for *model_name*.
 
-        Returns None if no champion exists for this model name.
+        Returns ``None`` if:
+
+        * ``model_name`` is ``None`` or an empty string.
+        * No champion release exists for the given model.
+        * The snapshot is empty for the model.
 
         Traffic splitting:
-        - If no challenger: champion receives 100 % of calls.
-        - If challenger with traffic_pct=T: challenger receives T % of calls,
-          champion receives (100-T) %.
-        - Shadow releases: never routed; use :meth:`route_shadow` for logging.
+
+        * If no challenger: champion receives 100 % of calls.
+        * If a challenger with ``traffic_pct`` = *T*: challenger receives *T* % of calls,
+          champion receives ``100 - T`` % (clamped to the range ``0‑100``).
+        * Shadow releases are never routed; use :meth:`route_shadow` for logging.
         """
+        if not model_name:
+            # Guard against ``None`` or empty strings – nothing to route.
+            return None
+
         await self._maybe_refresh()
 
         releases = self._snapshot.get(model_name, [])
+        if not releases:
+            return None
+
         champion = next((r for r in releases if r["status"] == "champion"), None)
         challenger = next((r for r in releases if r["status"] == "challenger"), None)
 
         if champion is None:
             return None
 
-        if challenger and random.random() * 100 < challenger["traffic_pct"]:
+        # Normalise traffic_pct to a safe numeric range.
+        challenger_pct = 0.0
+        if challenger:
+            try:
+                challenger_pct = float(challenger.get("traffic_pct", 0) or 0)
+            except (TypeError, ValueError):
+                challenger_pct = 0.0
+            challenger_pct = max(0.0, min(100.0, challenger_pct))
+
+        # Decide which release to use.
+        if challenger and (challenger_pct >= 100.0 or random.random() * 100 < challenger_pct):
             chosen = challenger
         else:
             chosen = champion
@@ -152,15 +174,19 @@ class ABRouter:
             traffic_pct=chosen["traffic_pct"],
         )
 
-    def get_champion(self, model_name: str) -> dict | None:
+    def get_champion(self, model_name: str | None) -> dict | None:
         """Return the champion release dict for *model_name* from the snapshot."""
+        if not model_name:
+            return None
         return next(
             (r for r in self._snapshot.get(model_name, []) if r["status"] == "champion"),
             None,
         )
 
-    def get_challenger(self, model_name: str) -> dict | None:
+    def get_challenger(self, model_name: str | None) -> dict | None:
         """Return the challenger release dict for *model_name* from the snapshot, if any."""
+        if not model_name:
+            return None
         return next(
             (r for r in self._snapshot.get(model_name, []) if r["status"] == "challenger"),
             None,
@@ -168,10 +194,11 @@ class ABRouter:
 
     def invalidate(self, model_name: str | None = None) -> None:
         """
-        Force the next call to route() to re-read from DB.
+        Force the next call to :meth:`route` to re‑read from DB.
 
         Call this after any promote/archive action to prevent stale routing.
-        Pass model_name to invalidate just one model, or None for full invalidation.
+        Pass ``model_name`` to invalidate just one model, or ``None`` for full
+        invalidation.
         """
         if model_name:
             self._snapshot.pop(model_name, None)
@@ -180,7 +207,7 @@ class ABRouter:
         self._last_refresh = 0.0
 
 
-# ── Module-level singleton ────────────────────────────────────────────────────
+# ── Module‑level singleton ────────────────────────────────────────────────────
 # Initialised in app startup (main.py lifespan or first use).
 _router: ABRouter | None = None
 
@@ -189,5 +216,6 @@ def get_ab_router() -> ABRouter:
     global _router
     if _router is None:
         from app.database import AsyncSessionLocal
+
         _router = ABRouter(AsyncSessionLocal)
     return _router
