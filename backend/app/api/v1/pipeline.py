@@ -11,6 +11,18 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
+# ----------------------------------------------------------------------
+# Constants
+# ----------------------------------------------------------------------
+PIPELINE_STATE_ENV = "PIPELINE_STATE_FILE"
+DEFAULT_STATE_FILENAME = "pipeline_runs.json"
+DEFAULT_STATE_SEARCH_DEPTH = 4
+
+DEFAULT_LOAD_LIMIT = 50
+DEFAULT_LIMIT = 20
+MAX_LIMIT = 50
+LATEST_LOAD_LIMIT = 100
+
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
 
@@ -25,16 +37,16 @@ def _resolve_state_file() -> Path:
     default that simply may not exist (readers already handle absence). Never
     raises at import.
     """
-    override = os.environ.get("PIPELINE_STATE_FILE")
+    override = os.environ.get(PIPELINE_STATE_ENV)
     if override:
         return Path(override)
     here = Path(__file__).resolve()
     for parent in here.parents:
-        candidate = parent / "pipeline_runs.json"
+        candidate = parent / DEFAULT_STATE_FILENAME
         if candidate.exists():
             return candidate
-    idx = min(4, len(here.parents) - 1)
-    return here.parents[idx] / "pipeline_runs.json"
+    idx = min(DEFAULT_STATE_SEARCH_DEPTH, len(here.parents) - 1)
+    return here.parents[idx] / DEFAULT_STATE_FILENAME
 
 
 _STATE_FILE = _resolve_state_file()
@@ -75,7 +87,7 @@ PIPELINE_DEFS = {
 }
 
 
-def _load_runs(limit: int = 50) -> list[dict]:
+def _load_runs(limit: int = DEFAULT_LOAD_LIMIT) -> list[dict]:
     if not _STATE_FILE.exists():
         return []
     try:
@@ -120,7 +132,7 @@ def _enrich_run(run: dict) -> dict:
 def pipeline_status(
     pipeline: Optional[str] = Query(None),
     desk: Optional[str] = Query(None),
-    limit: int = Query(20, le=50),
+    limit: int = Query(DEFAULT_LIMIT, le=MAX_LIMIT),
 ):
     """Return recent pipeline runs, optionally filtered by pipeline name or desk."""
     runs = _load_runs(limit * 2)
@@ -134,7 +146,7 @@ def pipeline_status(
 @router.get("/status/latest")
 def pipeline_status_latest():
     """Return the most recent run for each pipeline type."""
-    runs    = _load_runs(100)
+    runs    = _load_runs(LATEST_LOAD_LIMIT)
     seen:   set[str] = set()
     latest: list[dict] = []
     for run in runs:
@@ -148,7 +160,7 @@ def pipeline_status_latest():
 @router.get("/status/{run_id}")
 def pipeline_run_detail(run_id: str):
     """Return full detail for a specific pipeline run."""
-    for run in _load_runs(100):
+    for run in _load_runs(LATEST_LOAD_LIMIT):
         if run.get("run_id") == run_id:
             return _enrich_run(run)
     raise HTTPException(status_code=404, detail=f"Run {run_id!r} not found")
