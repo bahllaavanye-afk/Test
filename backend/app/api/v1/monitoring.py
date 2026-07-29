@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+from collections import deque
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -25,17 +27,29 @@ QA_CYCLE_STARTED_MESSAGE = "QA cycle started — poll /monitoring/health for res
 
 router = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
 
+# Simple in‑memory cache for the health report to avoid repeated disk reads.
+_health_report_cache: Dict[str, Any] = {"mtime": None, "data": None}
+
 
 def _load_health_report() -> Dict[str, Any]:
-    """Load the health report JSON from disk.
+    """Load the health report JSON from disk with caching.
 
     Returns a dictionary with the report contents. Raises HTTPException if the
     file exists but cannot be parsed.
     """
     if not HEALTH_REPORT_PATH.exists():
         return {"status": DEFAULT_HEALTH_STATUS, "message": DEFAULT_HEALTH_MESSAGE}
+
     try:
-        return json.loads(HEALTH_REPORT_PATH.read_text())
+        mtime = os.path.getmtime(HEALTH_REPORT_PATH)
+        cache = _health_report_cache
+        if cache["mtime"] == mtime and cache["data"] is not None:
+            return cache["data"]
+
+        data = json.loads(HEALTH_REPORT_PATH.read_text())
+        cache["mtime"] = mtime
+        cache["data"] = data
+        return data
     except Exception as exc:
         raise HTTPException(status_code=500, detail=HEALTH_REPORT_CORRUPTED_DETAIL) from exc
 
@@ -46,15 +60,16 @@ def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
     The log is stored as newline‑delimited JSON. Empty or missing files result in
     an empty list. Any parsing error raises an HTTPException.
     """
+    if limit <= 0:
+        return []
     if not FIX_LOG_PATH.exists():
         return []
     try:
-        raw_text = FIX_LOG_PATH.read_text().strip()
-        if not raw_text:
+        with FIX_LOG_PATH.open("r", encoding="utf-8") as f:
+            recent_lines = deque(f, maxlen=limit)
+        if not recent_lines:
             return []
-        lines = raw_text.splitlines()
-        recent_lines = lines[-limit:]
-        return [json.loads(line) for line in recent_lines]
+        return [json.loads(line.rstrip("\n")) for line in recent_lines]
     except Exception as exc:
         raise HTTPException(status_code=500, detail=FIX_LOG_READ_ERROR_DETAIL.format(exc)) from exc
 
