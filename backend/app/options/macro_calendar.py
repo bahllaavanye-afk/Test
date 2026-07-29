@@ -60,69 +60,101 @@ MONTHLY_EVENTS_2025 = [
 ]
 
 
+def _first_friday(year: int, month: int) -> date:
+    """Return the date of the first Friday of a given month."""
+    first_day = date(year, month, 1)
+    days_to_friday = (4 - first_day.weekday()) % 7
+    return date(year, month, 1 + days_to_friday)
+
+
+def _add_event(events: list[MacroEvent], *, event_date: date, title: str,
+               category: Literal["fomc", "cpi", "ppi", "nfp", "gdp", "earnings", "other"],
+               importance: Literal["high", "medium", "low"], description: str,
+               today: date, cutoff: date) -> None:
+    """Append a MacroEvent to the list if it falls within the allowed window."""
+    if today <= event_date <= cutoff:
+        events.append(
+            MacroEvent(
+                date=event_date,
+                title=title,
+                category=category,
+                importance=importance,
+                description=description,
+            )
+        )
+
+
+def _generate_fomc_events(today: date, cutoff: date) -> list[MacroEvent]:
+    """Create FOMC events that lie between today and cutoff."""
+    events: list[MacroEvent] = []
+    for fomc_date in FOMC_2025 + FOMC_2026:
+        _add_event(
+            events,
+            event_date=fomc_date,
+            title="FOMC Rate Decision",
+            category="fomc",
+            importance="high",
+            description="Federal Reserve interest rate decision. Markets move ±1-2% on surprises.",
+            today=today,
+            cutoff=cutoff,
+        )
+    return events
+
+
+def _generate_monthly_events(today: date, cutoff: date) -> list[MacroEvent]:
+    """Generate approximate monthly macro events for the next four months."""
+    events: list[MacroEvent] = []
+    for month_offset in range(4):
+        month = ((today.month - 1 + month_offset) % 12) + 1
+        year = today.year + ((today.month - 1 + month_offset) // 12)
+
+        # CPI: approx. 10th day of month
+        _add_event(
+            events,
+            event_date=date(year, month, 10),
+            title="CPI Report",
+            category="cpi",
+            importance="high",
+            description="Consumer Price Index — key inflation gauge",
+            today=today,
+            cutoff=cutoff,
+        )
+
+        # NFP: first Friday of month
+        _add_event(
+            events,
+            event_date=_first_friday(year, month),
+            title="Non-Farm Payrolls",
+            category="nfp",
+            importance="high",
+            description="Monthly jobs report — key Fed policy driver",
+            today=today,
+            cutoff=cutoff,
+        )
+
+        # PPI: approx. 13th day of month
+        _add_event(
+            events,
+            event_date=date(year, month, 13),
+            title="PPI Report",
+            category="ppi",
+            importance="medium",
+            description="Producer Price Index",
+            today=today,
+            cutoff=cutoff,
+        )
+    return events
+
+
 def get_upcoming_events(days_ahead: int = 90) -> list[dict]:
+    """Return a list of upcoming macro events, limited to `days_ahead` entries."""
     today = date.today()
     cutoff = date(today.year + 1, today.month, today.day)
-    events: list[MacroEvent] = []
 
-    for fomc_date in FOMC_2025 + FOMC_2026:
-        if today <= fomc_date <= cutoff:
-            events.append(
-                MacroEvent(
-                    date=fomc_date,
-                    title="FOMC Rate Decision",
-                    category="fomc",
-                    importance="high",
-                    description="Federal Reserve interest rate decision. Markets move ±1-2% on surprises.",
-                )
-            )
+    # Collect events from both FOMC schedule and monthly approximations
+    events = _generate_fomc_events(today, cutoff) + _generate_monthly_events(today, cutoff)
 
-    # Add approximate monthly events for next 4 months
-    for month_offset in range(4):
-        m = ((today.month - 1 + month_offset) % 12) + 1
-        y = today.year + ((today.month - 1 + month_offset) // 12)
-
-        # CPI: ~2nd week
-        cpi_date = date(y, m, 10)
-        if today <= cpi_date <= cutoff:
-            events.append(
-                MacroEvent(
-                    date=cpi_date,
-                    title="CPI Report",
-                    category="cpi",
-                    importance="high",
-                    description="Consumer Price Index — key inflation gauge",
-                )
-            )
-
-        # NFP: first Friday
-        first_day = date(y, m, 1)
-        days_to_friday = (4 - first_day.weekday()) % 7
-        nfp_date = date(y, m, 1 + days_to_friday)
-        if today <= nfp_date <= cutoff:
-            events.append(
-                MacroEvent(
-                    date=nfp_date,
-                    title="Non-Farm Payrolls",
-                    category="nfp",
-                    importance="high",
-                    description="Monthly jobs report — key Fed policy driver",
-                )
-            )
-
-        # PPI: ~mid month
-        ppi_date = date(y, m, 13)
-        if today <= ppi_date <= cutoff:
-            events.append(
-                MacroEvent(
-                    date=ppi_date,
-                    title="PPI Report",
-                    category="ppi",
-                    importance="medium",
-                    description="Producer Price Index",
-                )
-            )
-
+    # Sort chronologically and slice to the requested number of events
     events.sort(key=lambda e: e.date)
     upcoming = [e for e in events if e.date >= today][:days_ahead]
     return [e.to_dict() for e in upcoming]
