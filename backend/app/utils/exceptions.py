@@ -41,3 +41,25 @@ class LiveTradingBlockedError(HTTPException):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is in paper mode. Switch to live mode to place real orders.",
         )
+
+
+# New exceptions to support tighter strategy signal validation
+class EntryConditionError(HTTPException):
+    """Raised when primary entry conditions are not satisfied."""
+
+    def __init__(self, detail: str = "Entry conditions not met"):
+        super().__init__(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
+
+
+class ConfirmationFilterError(HTTPException):
+    """Raised when secondary confirmation filters reject the signal."""
+
+    def __init__(self, detail: str = "Signal failed confirmation filters"):
+        super().__init__(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
+
+
+class ExitLogicError(HTTPException):
+    """Raised when exit logic cannot be applied or is inconsistent."""
+
+    def __init__(self, detail: str = "Invalid exit logic"):
+        super().__init__(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
