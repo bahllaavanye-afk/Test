@@ -1,8 +1,11 @@
 """Wheel strategy signal generator (cash-secured puts → covered calls)."""
 from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import date, timedelta
+from heapq import nlargest
 from typing import Literal
+
 import random
 
 
@@ -31,28 +34,52 @@ def find_wheel_opportunities(tickers: list[str] | None = None) -> list[WheelSign
     if tickers is None:
         tickers = ["AAPL", "MSFT", "NVDA", "AMD", "SPY"]
 
-    signals = []
     today = date.today()
-    base_prices = {"AAPL": 185, "MSFT": 415, "NVDA": 800, "AMD": 170, "SPY": 450,
-                   "TSLA": 250, "META": 500, "AMZN": 185}
+    base_prices = {
+        "AAPL": 185,
+        "MSFT": 415,
+        "NVDA": 800,
+        "AMD": 170,
+        "SPY": 450,
+        "TSLA": 250,
+        "META": 500,
+        "AMZN": 185,
+    }
+
+    # Local bindings for speed
+    rand_uniform = random.uniform
+    rand_choice = random.choice
+    signals: list[WheelSignal] = []
 
     for ticker in tickers:
         price = base_prices.get(ticker, 100)
-        iv_rank = random.uniform(40, 90)
+
+        iv_rank = rand_uniform(40, 90)
         if iv_rank < 45:
             continue  # skip low IV rank — bad premium
-        dte = random.choice([21, 28, 35, 42])
-        expiry = today + timedelta(days=dte)
-        delta = round(random.uniform(-0.30, -0.20), 2)
-        strike = round(price * (1 + delta * 0.5), 0)  # ~10-15% OTM
-        premium_per_share = round(price * random.uniform(0.008, 0.025), 2)
-        ann_yield = round(premium_per_share / strike * 365 / dte * 100, 1)
-        signals.append(WheelSignal(
-            ticker=ticker, phase="sell_csp", strike=strike, expiry=expiry,
-            premium=round(premium_per_share * 100, 2), annualized_yield=ann_yield,
-            iv_rank=round(iv_rank, 1), delta=delta,
-            rationale=f"IV rank {iv_rank:.0f}% > 45, {dte}d to expiry, delta {delta}",
-        ))
 
-    signals.sort(key=lambda s: -s.annualized_yield)
-    return signals[:10]
+        dte = rand_choice([21, 28, 35, 42])
+        expiry = today + timedelta(days=dte)
+
+        delta = round(rand_uniform(-0.30, -0.20), 2)
+        strike = round(price * (1 + delta * 0.5), 0)  # ~10-15% OTM
+
+        premium_per_share = round(price * rand_uniform(0.008, 0.025), 2)
+        ann_yield = round(premium_per_share / strike * 365 / dte * 100, 1)
+
+        signals.append(
+            WheelSignal(
+                ticker=ticker,
+                phase="sell_csp",
+                strike=strike,
+                expiry=expiry,
+                premium=round(premium_per_share * 100, 2),
+                annualized_yield=ann_yield,
+                iv_rank=round(iv_rank, 1),
+                delta=delta,
+                rationale=f"IV rank {iv_rank:.0f}% > 45, {dte}d to expiry, delta {delta}",
+            )
+        )
+
+    # Return top 10 signals by annualized_yield without full sort
+    return nlargest(10, signals, key=lambda s: s.annualized_yield)
