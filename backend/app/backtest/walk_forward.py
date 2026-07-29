@@ -34,6 +34,10 @@ KEY_TOTAL_RETURN = "total_return"
 KEY_NUM_TRADES = "num_trades"
 KEY_ERROR = "error"
 
+VERDICT_INSUFFICIENT = "insufficient_data"
+VERDICT_ROBUST = "robust"
+VERDICT_OVERFIT_PREFIX = "overfit_or_weak: "
+
 
 @dataclass
 class WalkForwardResult:
@@ -46,7 +50,7 @@ class WalkForwardResult:
     deflated_sharpe: float = 0.0   # DSR over the window Sharpes (multiple‑testing haircut)
     consistency: float = 0.0       # fraction of windows with Sharpe ≥ MIN_OOS_SHARPE
     is_robust: bool = False        # passes the full protocol → safe to promote
-    verdict: str = "insufficient_data"
+    verdict: str = VERDICT_INSUFFICIENT
 
     # ── Reported, NOT gated ───────────────────────────────────────────────────
     # probabilistic_sharpe_ratio() and monte_carlo_simulation() were implemented
@@ -87,7 +91,7 @@ def robustness_verdict(sharpes: list[float]) -> dict:
             "deflated_sharpe": 0.0,
             "consistency": 0.0,
             "is_robust": False,
-            "verdict": "insufficient_data",
+            "verdict": VERDICT_INSUFFICIENT,
         }
 
     avg = sum(sharpes) / n
@@ -105,7 +109,7 @@ def robustness_verdict(sharpes: list[float]) -> dict:
         reasons.append(f"DSR {dsr:.2f} (<{MIN_DSR} — within luck)")
 
     is_robust = not reasons
-    verdict = "robust" if is_robust else "overfit_or_weak: " + "; ".join(reasons)
+    verdict = VERDICT_ROBUST if is_robust else VERDICT_OVERFIT_PREFIX + "; ".join(reasons)
 
     return {
         "n_windows": n,

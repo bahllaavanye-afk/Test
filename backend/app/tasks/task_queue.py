@@ -23,16 +23,33 @@ from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
+# Priority levels
 PRIORITY_CRITICAL = 0
 PRIORITY_HIGH = 1
 PRIORITY_NORMAL = 2
 PRIORITY_LOW = 3
 
+# Queue configuration constants
 _QUEUE_PREFIX = "tasks:pending:"
 _PROCESSING_KEY = "tasks:processing"
 _DEAD_KEY = "tasks:dead"
-_LOCK_TTL = 300          # seconds — task lock expires after 5 min (worker crash recovery)
-_MAX_STREAM_LEN = 5000
+_LOCK_TTL_SECONDS = 300          # seconds — task lock expires after 5 min (worker crash recovery)
+_MAX_STREAM_LENGTH = 5000
+_DEAD_LETTER_MAXLEN = 1000
+
+# Default task settings
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_DELAY_SECONDS = 0.0
+_DEFAULT_PRIORITY = PRIORITY_NORMAL
+
+# Worker behavior constants
+_POLL_INTERVAL = 0.5
+_ERROR_SLEEP_SECONDS = 2.0
+_MAX_REQUEUE_SLEEP = 5.0
+
+# Priority processing order
+_PRIORITY_ORDER = (PRIORITY_CRITICAL, PRIORITY_HIGH, PRIORITY_NORMAL, PRIORITY_LOW)
+_PRIORITY_LEVEL_COUNT = 4
 
 TaskFn = Callable[..., Awaitable[None]]
 
@@ -42,8 +59,8 @@ class Task:
     task_id: str
     task_type: str
     payload: dict
-    priority: int = PRIORITY_NORMAL
-    max_retries: int = 3
+    priority: int = _DEFAULT_PRIORITY
+    max_retries: int = DEFAULT_MAX_RETRIES
     attempt: int = 0
     created_at: float = field(default_factory=time.time)
     scheduled_at: float = field(default_factory=time.time)
@@ -60,8 +77,8 @@ class Task:
                 d[k] = json.loads(v)
             except (json.JSONDecodeError, TypeError):
                 d[k] = v
-        d["priority"] = int(d.get("priority", PRIORITY_NORMAL))
-        d["max_retries"] = int(d.get("max_retries", 3))
+        d["priority"] = int(d.get("priority", _DEFAULT_PRIORITY))
+        d["max_retries"] = int(d.get("max_retries", DEFAULT_MAX_RETRIES))
         d["attempt"] = int(d.get("attempt", 0))
         d["created_at"] = float(d.get("created_at", 0))
         d["scheduled_at"] = float(d.get("scheduled_at", 0))
@@ -93,9 +110,9 @@ class TaskQueue:
         self,
         task_type: str,
         payload: dict,
-        priority: int = PRIORITY_NORMAL,
-        max_retries: int = 3,
-        delay_seconds: float = 0,
+        priority: int = _DEFAULT_PRIORITY,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        delay_seconds: float = DEFAULT_DELAY_SECONDS,
     ) -> str:
         task_id = str(uuid.uuid4())
         task = Task(
@@ -108,7 +125,7 @@ class TaskQueue:
         )
         key = f"{_QUEUE_PREFIX}{priority}"
         try:
-            await self._r.xadd(key, task.to_redis(), maxlen=_MAX_STREAM_LEN, approximate=True)
+            await self._r.xadd(key, task.to_redis(), maxlen=_MAX_STREAM_LENGTH, approximate=True)
             logger.debug("TaskQueue.enqueue type=%s id=%s priority=%d", task_type, task_id, priority)
         except Exception as e:
             logger.warning("TaskQueue.enqueue failed: %s", e)
@@ -118,7 +135,7 @@ class TaskQueue:
 
     async def process_once(self) -> bool:
         """Drain one task from the highest-priority non-empty queue. Returns True if a task ran."""
-        for priority in (PRIORITY_CRITICAL, PRIORITY_HIGH, PRIORITY_NORMAL, PRIORITY_LOW):
+        for priority in _PRIORITY_ORDER:
             key = f"{_QUEUE_PREFIX}{priority}"
             try:
                 results = await self._r.xread({key: "0"}, count=1)
@@ -135,7 +152,7 @@ class TaskQueue:
                 logger.debug("TaskQueue.process_once error priority=%d: %s", priority, e)
         return False
 
-    async def run_worker(self, poll_interval: float = 0.5) -> None:
+    async def run_worker(self, poll_interval: float = _POLL_INTERVAL) -> None:
         """Continuous worker loop. Run as background task."""
         logger.info("TaskQueue worker started")
         while True:
@@ -145,14 +162,14 @@ class TaskQueue:
                     await asyncio.sleep(poll_interval)
             except Exception as e:
                 logger.error("TaskQueue worker error: %s", e)
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(_ERROR_SLEEP_SECONDS)
 
     async def _dispatch(self, task: Task) -> None:
         now = time.time()
         if task.scheduled_at > now:
             # Re-enqueue with delay (use original priority)
             delay = task.scheduled_at - now
-            await asyncio.sleep(min(delay, 5.0))
+            await asyncio.sleep(min(delay, _MAX_REQUEUE_SLEEP))
             await self._requeue(task, delay=max(0, task.scheduled_at - time.time()))
             return
 
@@ -180,14 +197,19 @@ class TaskQueue:
         task.scheduled_at = time.time() + delay
         key = f"{_QUEUE_PREFIX}{task.priority}"
         try:
-            await self._r.xadd(key, task.to_redis(), maxlen=_MAX_STREAM_LEN, approximate=True)
+            await self._r.xadd(key, task.to_redis(), maxlen=_MAX_STREAM_LENGTH, approximate=True)
         except Exception as e:
             logger.debug("TaskQueue._requeue failed: %s", e)
 
     async def _dead_letter(self, task: Task) -> None:
-        logger.error("TaskQueue: task permanently failed type=%s id=%s error=%s", task.task_type, task.task_id, task.error)
+        logger.error(
+            "TaskQueue: task permanently failed type=%s id=%s error=%s",
+            task.task_type,
+            task.task_id,
+            task.error,
+        )
         try:
-            await self._r.xadd(_DEAD_KEY, task.to_redis(), maxlen=1000, approximate=True)
+            await self._r.xadd(_DEAD_KEY, task.to_redis(), maxlen=_DEAD_LETTER_MAXLEN, approximate=True)
         except Exception:
             pass
 
@@ -195,7 +217,7 @@ class TaskQueue:
 
     async def queue_depths(self) -> dict[str, int]:
         depths = {}
-        for priority in range(4):
+        for priority in range(_PRIORITY_LEVEL_COUNT):
             key = f"{_QUEUE_PREFIX}{priority}"
             try:
                 depths[f"priority_{priority}"] = await self._r.xlen(key)
