@@ -44,6 +44,20 @@ def test_invalid_inputs_raise():
         bs_price(0, 100, 0.1, 0.2, "call")
 
 
+def test_bs_price_none_inputs_raise():
+    """Ensure None values are rejected rather than silently processed."""
+    with pytest.raises(ValueError):
+        bs_price(None, 100, 0.1, 0.2, "call")
+    with pytest.raises(ValueError):
+        bs_price(100, None, 0.1, 0.2, "call")
+    with pytest.raises(ValueError):
+        bs_price(100, 100, None, 0.2, "call")
+    with pytest.raises(ValueError):
+        bs_price(100, 100, 0.1, None, "call")
+    with pytest.raises(ValueError):
+        bs_price(100, 100, 0.1, 0.2, None)  # type: ignore[arg-type]
+
+
 # ── Spread pricing ────────────────────────────────────────────────────────────
 
 def test_iron_condor_enters_at_net_credit():
@@ -61,14 +75,36 @@ def test_bull_put_spread_defined_risk():
     assert (crash - entry) == pytest.approx(-(96 - 92) - entry)
 
 
+def test_price_spread_empty_strikes_raise():
+    """Empty strike list should raise a clear error."""
+    with pytest.raises(ValueError):
+        price_spread(100.0, IRON_CONDOR, [], 35 / 252, 0.25)
+
+
+def test_price_spread_mismatched_strikes_raise():
+    """Providing an incorrect number of strikes for a spread should raise."""
+    # BULL_PUT_SPREAD expects exactly two strikes
+    with pytest.raises(ValueError):
+        price_spread(100.0, BULL_PUT_SPREAD, [95.0], 35 / 252, 0.25)
+    with pytest.raises(ValueError):
+        price_spread(100.0, BULL_PUT_SPREAD, [95.0, 90.0, 85.0], 35 / 252, 0.25)
+
+
 # ── Backtest behavior ─────────────────────────────────────────────────────────
 
 def _flat_df(n=250, price=100.0, noise=0.002, seed=3):
     rs = np.random.RandomState(seed)
     close = price * np.exp(np.cumsum(rs.normal(0, noise, n)))
-    return pd.DataFrame({"close": close, "open": close, "high": close * 1.001,
-                         "low": close * 0.999, "volume": [1e6] * n},
-                        index=pd.date_range("2025-01-01", periods=n, freq="B"))
+    return pd.DataFrame(
+        {
+            "close": close,
+            "open": close,
+            "high": close * 1.001,
+            "low": close * 0.999,
+            "volume": [1e6] * n,
+        },
+        index=pd.date_range("2025-01-01", periods=n, freq="B"),
+    )
 
 
 def test_short_premium_profits_in_flat_tape():
@@ -80,11 +116,22 @@ def test_short_premium_profits_in_flat_tape():
 
 def test_short_premium_bleeds_in_crash():
     n = 250
-    close = np.concatenate([np.full(n // 2, 100.0),
-                            100.0 * np.exp(np.linspace(0, -0.5, n - n // 2))])
-    df = pd.DataFrame({"close": close, "open": close, "high": close, "low": close,
-                       "volume": [1e6] * n},
-                      index=pd.date_range("2025-01-01", periods=n, freq="B"))
+    close = np.concatenate(
+        [
+            np.full(n // 2, 100.0),
+            100.0 * np.exp(np.linspace(0, -0.5, n - n // 2)),
+        ]
+    )
+    df = pd.DataFrame(
+        {
+            "close": close,
+            "open": close,
+            "high": close,
+            "low": close,
+            "volume": [1e6] * n,
+        },
+        index=pd.date_range("2025-01-01", periods=n, freq="B"),
+    )
     res = backtest_spread(df, BULL_PUT_SPREAD, dte=35, hold_days=21)
     assert res.max_loss < 0                         # crash regime hurts short puts
 
@@ -95,3 +142,16 @@ def test_realized_vol_shape_and_result_summary():
     assert rv.iloc[25] > 0
     res = backtest_spread(df, [SpreadLeg("call", "buy", 1.0)], dte=35, hold_days=21)
     assert "trades" in res.summary and res.trades > 0
+
+
+def test_realized_vol_empty_series_raise():
+    """An empty price series should raise an informative error."""
+    empty_series = pd.Series(dtype=float)
+    with pytest.raises(ValueError):
+        realized_vol(empty_series)
+
+
+def test_backtest_spread_none_dataframe_raise():
+    """Passing None as the price DataFrame must raise."""
+    with pytest.raises(ValueError):
+        backtest_spread(None, IRON_CONDOR, dte=35, hold_days=21)  # type: ignore[arg-type]

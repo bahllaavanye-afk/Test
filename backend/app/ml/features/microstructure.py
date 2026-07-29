@@ -42,14 +42,22 @@ class OrderBookFeatures:
         data: tuple[tuple[float, float], ...],
         levels: int,
     ) -> np.ndarray:
-        """Extract volumes up to `levels` and return as NumPy array."""
-        arr = np.fromiter((sz for _, sz in data[:levels]), dtype=float, count=levels)
+        """Extract volumes up to `levels` and return as NumPy array.
+
+        Handles cases where `levels` exceeds the length of `data` by truncating.
+        """
+        if not data or levels <= 0:
+            return np.array([], dtype=float)
+
+        effective_levels = min(levels, len(data))
+        # np.fromiter with count=None allows variable length iteration safely
+        arr = np.fromiter((sz for _, sz in data[:effective_levels]), dtype=float)
         return arr
 
     def compute_imbalance(
         self,
-        bids: list[tuple[float, float]],
-        asks: list[tuple[float, float]],
+        bids: list[tuple[float, float]] | None,
+        asks: list[tuple[float, float]] | None,
         levels: int = DEFAULT_LEVELS,
     ) -> float:
         """
@@ -61,7 +69,7 @@ class OrderBookFeatures:
             asks: list of (price, size) pairs, best ask first
             levels: how many price levels to include
         """
-        if not bids or not asks:
+        if not bids or not asks or levels <= 0:
             return 0.0
 
         bid_tuple = tuple(bids)
@@ -70,6 +78,9 @@ class OrderBookFeatures:
         bid_vols = self._slice_volumes(bid_tuple, levels)
         ask_vols = self._slice_volumes(ask_tuple, levels)
 
+        if bid_vols.size == 0 or ask_vols.size == 0:
+            return 0.0
+
         bid_vol = float(bid_vols.sum())
         ask_vol = float(ask_vols.sum())
         total = bid_vol + ask_vol
@@ -77,11 +88,13 @@ class OrderBookFeatures:
             return 0.0
         return float((bid_vol - ask_vol) / total)
 
-    def compute_spread_bps(self, best_bid: float, best_ask: float) -> float:
+    def compute_spread_bps(self, best_bid: float | None, best_ask: float | None) -> float:
         """
         Bid-ask spread in basis points: (ask - bid) / mid * BASIS_POINTS_MULTIPLIER.
         Returns 0.0 for invalid inputs.
         """
+        if best_bid is None or best_ask is None:
+            return 0.0
         if best_bid <= 0.0 or best_ask <= 0.0 or best_ask <= best_bid:
             return 0.0
         mid = (best_bid + best_ask) * 0.5
@@ -89,28 +102,33 @@ class OrderBookFeatures:
 
     def compute_depth_ratio(
         self,
-        bids: list[tuple[float, float]],
-        asks: list[tuple[float, float]],
+        bids: list[tuple[float, float]] | None,
+        asks: list[tuple[float, float]] | None,
     ) -> float:
         """
         Top-of-book depth ratio: best_bid_size / best_ask_size.
         Values > 1 indicate more liquidity on bid side.
-        Returns 1.0 if either side is empty.
+        Returns 1.0 if either side is empty or invalid.
         """
         if not bids or not asks:
             return 1.0
-        best_bid_size = float(bids[0][1])
-        best_ask_size = float(asks[0][1])
+        try:
+            best_bid_size = float(bids[0][1])
+            best_ask_size = float(asks[0][1])
+        except (IndexError, TypeError, ValueError):
+            return 1.0
         if best_ask_size <= 0.0:
             return 1.0
         return float(best_bid_size / best_ask_size)
 
-    def compute_pin_proxy(self, buy_volume: float, sell_volume: float) -> float:
+    def compute_pin_proxy(self, buy_volume: float | None, sell_volume: float | None) -> float:
         """
         Probability of Informed Trading proxy.
         PIN = |buy_vol - sell_vol| / (buy_vol + sell_vol)
         Returns value in [0, 1]. Near 1 = highly informed order flow.
         """
+        buy_volume = float(buy_volume) if buy_volume is not None else 0.0
+        sell_volume = float(sell_volume) if sell_volume is not None else 0.0
         total = buy_volume + sell_volume
         if total <= 0.0:
             return 0.0
@@ -118,21 +136,30 @@ class OrderBookFeatures:
 
     def compute_kyle_lambda(
         self,
-        price_changes: np.ndarray,
-        signed_volumes: np.ndarray,
+        price_changes: np.ndarray | None,
+        signed_volumes: np.ndarray | None,
     ) -> float:
         """
         Kyle's lambda (price impact coefficient).
         Estimated via OLS: delta_price = lambda * signed_volume + epsilon
 
         Returns lambda (bps per unit volume). Higher = less liquid.
-        Returns 0.0 if insufficient data.
+        Returns 0.0 if insufficient or invalid data.
         """
+        if price_changes is None or signed_volumes is None:
+            return 0.0
+
         if price_changes.size < MIN_SAMPLE_SIZE or signed_volumes.size < MIN_SAMPLE_SIZE:
             return 0.0
+
+        # Ensure both arrays have the same length; truncate to the shorter one.
+        min_len = min(price_changes.size, signed_volumes.size)
+        if min_len < MIN_SAMPLE_SIZE:
+            return 0.0
+
         try:
-            vol = np.asarray(signed_volumes, dtype=float)
-            dp = np.asarray(price_changes, dtype=float)
+            vol = np.asarray(signed_volumes[:min_len], dtype=float)
+            dp = np.asarray(price_changes[:min_len], dtype=float)
 
             var_vol = np.var(vol)
             if var_vol < VAR_VOLUME_EPS:
@@ -146,8 +173,8 @@ class OrderBookFeatures:
 
     def features_from_snapshot(
         self,
-        bids: list[tuple[float, float]],
-        asks: list[tuple[float, float]],
+        bids: list[tuple[float, float]] | None,
+        asks: list[tuple[float, float]] | None,
         buy_volume: float = 0.0,
         sell_volume: float = 0.0,
         levels: int = DEFAULT_LEVELS,
@@ -158,6 +185,9 @@ class OrderBookFeatures:
         Returns:
             dict with keys: imbalance, spread_bps, depth_ratio, pin_proxy
         """
+        bids = bids or []
+        asks = asks or []
+
         best_bid = float(bids[0][0]) if bids else 0.0
         best_ask = float(asks[0][0]) if asks else 0.0
 
@@ -183,6 +213,11 @@ def add_microstructure_features(
       - spread_bps_proxy: (high - low) / close * BASIS_POINTS_MULTIPLIER — proxy for intraday spread
     """
     df = df.copy()
+
+    # Ensure required columns exist; if missing, create with NaNs to avoid KeyError.
+    for col in (COL_HIGH, COL_LOW, COL_CLOSE, COL_OPEN):
+        if col not in df.columns:
+            df[col] = np.nan
 
     if imbalance_series is not None:
         df[COL_LOB_IMBALANCE] = imbalance_series.reindex(df.index).fillna(0.0)
