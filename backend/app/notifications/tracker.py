@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from itertools import islice
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ class TrackedEvent:
 
 
 class ActivityTracker:
-    """Bounded in-memory event log (last N events). Thread-safe via append."""
+    """Bounded in-memory event log (last N events). Thread‑safe via append."""
 
     def __init__(self, max_size: int = 5000):
         self._events: deque[TrackedEvent] = deque(maxlen=max_size)
@@ -57,7 +58,6 @@ class ActivityTracker:
             "category": category,
             "summary": summary,
         }
-        # Include optional metrics if present
         for metric in ("signal_count", "execution_time", "pnl"):
             if metric in metadata:
                 log_payload[metric] = metadata[metric]
@@ -66,13 +66,37 @@ class ActivityTracker:
 
         return event
 
-    def recent(self, limit: int = 100, category: str | None = None) -> list[dict]:
-        events = list(self._events)
-        if category:
-            events = [e for e in events if e.category == category]
-        return [e.to_dict() for e in reversed(events[-limit:])]
+    def recent(self, limit: int = 100, category: str | None = None) -> List[dict]:
+        """
+        Return the most recent events as dictionaries.
 
-    def stats(self) -> dict:
+        Args:
+            limit: Maximum number of events to return.
+            category: If provided, only events matching this category are returned.
+
+        Optimized to avoid materialising the entire deque when possible.
+        """
+        if limit <= 0:
+            return []
+
+        # When no category filter is applied and the requested limit
+        # exceeds the stored size, we can return all events directly.
+        if category is None and limit >= len(self._events):
+            return [e.to_dict() for e in reversed(self._events)]
+
+        # Use a generator to avoid copying the whole deque.
+        reversed_events = reversed(self._events)
+        if category is not None:
+            filtered = (e for e in reversed_events if e.category == category)
+        else:
+            filtered = reversed_events
+
+        # islice provides an efficient early‑exit after `limit` items.
+        limited = islice(filtered, limit)
+        return [e.to_dict() for e in limited]
+
+    def stats(self) -> Dict[str, Any]:
+        """Return simple statistics about the stored events."""
         return {"total_events": len(self._events), "by_type": dict(self._counts)}
 
 

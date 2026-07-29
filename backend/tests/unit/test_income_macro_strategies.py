@@ -5,8 +5,8 @@ QA flagged these three as missing unit tests:
   - central_bank_window    (#104)
   - breakeven_inflation    (#103)
 
-Each must register, expose the standard attrs, and return a well-formed
-BacktestSignals (bool entries/exits, aligned to the input, no bar-0 lookahead,
+Each must register, expose the standard attrs, and return a well‑formed
+BacktestSignals (bool entries/exits, aligned to the input, no bar‑0 lookahead,
 and no crash on insufficient data). Pure/offline — synthetic OHLCV only.
 """
 from __future__ import annotations
@@ -14,12 +14,17 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from functools import lru_cache
 
 from app.strategies import STRATEGY_REGISTRY
 from app.strategies.base import BacktestSignals
 
+# ----------------------------------------------------------------------
+# Fixtures
+# ----------------------------------------------------------------------
 
-@pytest.fixture
+
+@pytest.fixture(scope="session")
 def daily_ohlcv():
     """300 days of synthetic daily OHLCV."""
     rng = np.random.default_rng(42)
@@ -37,7 +42,11 @@ def daily_ohlcv():
     )
 
 
-# name -> expected risk_bucket
+# ----------------------------------------------------------------------
+# Helper utilities
+# ----------------------------------------------------------------------
+
+
 _STRATEGIES = {
     "credit_spread_income": "arbitrage",
     "central_bank_window": "directional",
@@ -45,11 +54,18 @@ _STRATEGIES = {
 }
 
 
-def _get(name):
+@lru_cache(maxsize=None)
+def _get(name: str):
+    """Retrieve a strategy instance from the registry, cached for speed."""
     cls = STRATEGY_REGISTRY.get(name)
     if cls is None:
         pytest.skip(f"{name} not in registry")
     return cls()
+
+
+# ----------------------------------------------------------------------
+# Tests
+# ----------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", list(_STRATEGIES))
@@ -90,8 +106,13 @@ def test_insufficient_data_no_crash(name):
     """Too few rows must return empty/aligned signals, never raise."""
     inst = _get(name)
     tiny = pd.DataFrame(
-        {"open": [100.0, 101.0], "high": [101.0, 102.0], "low": [99.0, 100.0],
-         "close": [100.5, 101.5], "volume": [1e6, 1e6]},
+        {
+            "open": [100.0, 101.0],
+            "high": [101.0, 102.0],
+            "low": [99.0, 100.0],
+            "close": [100.5, 101.5],
+            "volume": [1e6, 1e6],
+        },
         index=pd.date_range("2023-01-01", periods=2, freq="1D"),
     )
     sig = inst.backtest_signals(tiny)
