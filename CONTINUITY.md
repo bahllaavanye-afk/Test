@@ -329,6 +329,39 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 🔗 2026-07-29 01:20 — the trimmer chain had a FOURTH broken link: truncated attribution keys
+Verifying #1191 (commit the P&L file) turned up the next link. The tracker **does** produce real
+data — `✓ Saved performance data: 2 strategies, 18 new fills` — but the keys can never match.
+
+The desk tagged every order `qe-{strategy.name[:10]}-{sym}-{ts}`. **Truncated to 10 chars.** So:
+- `strategy_performance.json` is keyed `vol_of_vol`, `avellaneda`
+- `strategy_trims.json` inherits those keys
+- the desk checks `if sname in _trimmed` with the **full** registry name
+  (`vol_of_vol_timing`, `avellaneda_stoikov_mm`) → **never matches**
+
+And the truncation was **ambiguous**, not merely lossy. Two prefix groups collide across the
+116-strategy registry:
+```
+commodity_ -> commodity_momentum, commodity_reversion, commodity_trend
+supertrend -> supertrend, supertrend_rsi_tv
+```
+Three commodity strategies shared ONE P&L bucket, and every `supertrend_rsi_tv` fill was booked
+against plain `supertrend`. That attribution feeds the trimmer and the auto-tuner — **a strategy
+could be retired for another strategy's losses.**
+
+Fixed by emitting the full name. Longest desk name is 29 chars → a 48-char coid, exactly
+Alpaca's cap with zero margin, so the boundary is a hard test rather than a comment (`[:48]`
+would clip the *timestamp*, not the name, corrupting the id silently). `fill_tracker` now splits
+from the right, matching `desk_trade_sync.parse_strategy_from_coid`, which had the correct
+logic all along. No migration needed: `strategy_performance.json` has never existed, so there is
+no legacy data — only a 7-day tail of pre-change orders that ages out.
+
+**⚠️ My first version of the guard was worthless and passed against the bug.** It built the
+coid with its own helper instead of calling production, so 213/214 passed on the truncating
+code. Extracting `make_coid()` and pointing the test at it turned that into **97 failures**.
+*A guard that re-implements what it guards is not a guard* — same family as the dead `run_desk`
+one entry down: verify against the real path, never a copy of it.
+
 ## 🪤 2026-07-29 00:50 — `[skip ci]` ANYWHERE IN A COMMIT MESSAGE SKIPS EVERY PUSH WORKFLOW
 Cost ~15 minutes and it will recur, so it is written down. I pushed `09a01eee` and **no push
 workflow ran at all** — not `auto-pr`, not `security-scan`. PR #1191 sat with only a Vercel

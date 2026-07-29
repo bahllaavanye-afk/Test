@@ -70,12 +70,22 @@ def _post_chat(channel: str, text: str) -> None:
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _parse_strategy(client_order_id: str | None) -> str | None:
-    """Extract strategy name from qe-{strategy[:10]}-{sym[:4]}-{ts} format."""
+    """Extract the strategy name from a ``qe-{strategy}-{sym}-{ts}`` coid.
+
+    Splits from the RIGHT, matching backend/app/tasks/desk_trade_sync.py. The
+    old `split("-")[1]` only worked while the strategy token was truncated to
+    10 chars and contained no hyphen; now that the full name is emitted it
+    would return just the first segment of any hyphenated name. Strategy names
+    use underscores, never hyphens, so rsplit on the trailing symbol and
+    timestamp is unambiguous.
+    """
     if not client_order_id or not client_order_id.startswith("qe-"):
         return None
-    parts = client_order_id.split("-")
-    # parts: ["qe", strategy_name, symbol, timestamp]
-    return parts[1] if len(parts) >= 3 else None
+    rest = client_order_id[len("qe-"):]
+    parts = rest.rsplit("-", 2)          # [strategy, symbol, unix_ts]
+    if len(parts) < 3:
+        return None
+    return parts[0].strip() or None
 
 
 def _next_day_price(symbol: str, fill_dt: datetime) -> float | None:

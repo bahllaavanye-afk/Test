@@ -788,6 +788,36 @@ async def _alpaca_position_map() -> dict[str, float]:
         return {}
 
 
+ALPACA_COID_CAP = 48
+
+
+def make_coid(strategy_name: str, symbol: str, ts: int | None = None) -> str:
+    """Build the `qe-{strategy}-{sym}-{ts}` tag that carries attribution.
+
+    The strategy token used to be truncated to 10 chars, which was lossy AND
+    ambiguous: `commodity_` collapsed commodity_momentum, commodity_reversion
+    and commodity_trend into ONE P&L bucket, and every supertrend_rsi_tv fill
+    was booked against plain supertrend. That bad attribution feeds the trimmer
+    and the auto-tuner, so a strategy could be retired for another's losses.
+
+    It also broke the trimmer outright: trims end up keyed by whatever appears
+    in strategy_performance.json — the truncated token — while the desk checks
+    `sname in _trimmed` with the FULL registry name. They could never match.
+
+    Longest desk strategy name is 29 chars, giving exactly the 48-char cap with
+    zero margin. That boundary is enforced by test_coid_roundtrip.py rather
+    than trusted: `[:48]` would clip the TIMESTAMP, not the name, so an
+    overflow corrupts the id silently instead of failing.
+
+    Extracted as a function so the tests exercise the real construction — the
+    previous version of this guard built its own coid and therefore passed
+    against the truncating code it was meant to catch.
+    """
+    import time as _time
+    return (f"qe-{strategy_name}-{symbol[:4].replace('/', '')}"
+            f"-{ts if ts is not None else int(_time.time())}")
+
+
 def _order_origin(client_order_id: str | None) -> str:
     """Who placed an order, from its client_order_id.
 
@@ -2170,7 +2200,7 @@ async def main() -> None:
                           f"(< ${MIN_ORDER_USD:.0f}; frees as pending closes fill)", flush=True)
                     _drop("insufficient cash", desk.name)
                     continue
-                coid = f"qe-{strategy.name[:10]}-{symbol[:4].replace('/', '')}-{int(time.time())}"
+                coid = make_coid(strategy.name, symbol)
                 limit_price: float | None = None
                 _df = bars_cache.get(symbol)
                 if _df is not None and len(_df) > 0:
