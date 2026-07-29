@@ -21,19 +21,29 @@ class _FakeWS:
         self.sent.append(message)
 
 
+async def _connect_ws(manager: ConnectionManager, ws: _FakeWS, topic: str) -> None:
+    """Helper to connect a websocket to a topic."""
+    await manager.connect(ws, topic)
+
+
+async def _broadcast(manager: ConnectionManager, topic: str, payload: dict) -> None:
+    """Helper to broadcast a payload on a given topic."""
+    await manager.broadcast(topic, payload)
+
+
 @pytest.mark.asyncio
 async def test_wildcard_subscriber_receives_concrete_topic():
     m = ConnectionManager()
     all_sub, one_sub = _FakeWS(), _FakeWS()
-    await m.connect(all_sub, "prices:*")
-    await m.connect(one_sub, "prices:AAPL")
+    await _connect_ws(m, all_sub, "prices:*")
+    await _connect_ws(m, one_sub, "prices:AAPL")
 
-    await m.broadcast("prices:AAPL", {"symbol": "AAPL", "last": 1.0})
+    await _broadcast(m, "prices:AAPL", {"symbol": "AAPL", "last": 1.0})
     assert len(all_sub.sent) == 1, "wildcard subscriber must receive prices:AAPL"
     assert len(one_sub.sent) == 1, "exact-topic subscriber must still receive its symbol"
 
     # A different symbol reaches the wildcard, not the AAPL-only socket.
-    await m.broadcast("prices:TSLA", {"symbol": "TSLA", "last": 2.0})
+    await _broadcast(m, "prices:TSLA", {"symbol": "TSLA", "last": 2.0})
     assert len(all_sub.sent) == 2
     assert len(one_sub.sent) == 1
 
@@ -43,8 +53,8 @@ async def test_wildcard_is_prefix_scoped():
     """A ``prices:*`` subscriber must NOT receive a different prefix's broadcasts."""
     m = ConnectionManager()
     price_sub = _FakeWS()
-    await m.connect(price_sub, "prices:*")
-    await m.broadcast("alerts:risk", {"msg": "VaR breach"})
+    await _connect_ws(m, price_sub, "prices:*")
+    await _broadcast(m, "alerts:risk", {"msg": "VaR breach"})
     assert price_sub.sent == []
 
 
@@ -56,7 +66,7 @@ async def test_dead_socket_is_purged():
 
     m = ConnectionManager()
     dead = _Dead()
-    await m.connect(dead, "prices:*")
-    await m.broadcast("prices:AAPL", {"symbol": "AAPL"})
+    await _connect_ws(m, dead, "prices:*")
+    await _broadcast(m, "prices:AAPL", {"symbol": "AAPL"})
     # Purged from every topic set so it is not retried forever.
     assert all(dead not in s for s in m._connections.values())

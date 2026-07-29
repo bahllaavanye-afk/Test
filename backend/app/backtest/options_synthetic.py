@@ -117,6 +117,73 @@ def price_spread(
     return value
 
 
+def _default_entry_mask(df: pd.DataFrame, vol_window: int) -> pd.Series:
+    """Create a weekly entry mask starting after the volatility window."""
+    mask = pd.Series(False, index=df.index)
+    mask.iloc[vol_window::5] = True
+    return mask
+
+
+def _compute_strikes(legs: list[SpreadLeg], spot: float) -> list[float]:
+    """Calculate strikes for each leg based on moneyness and spot."""
+    return [leg.moneyness * spot for leg in legs]
+
+
+def _price_spread_at(
+    spot: float,
+    legs: list[SpreadLeg],
+    strikes: list[float],
+    t_years: float,
+    sigma: float,
+) -> float:
+    """Wrapper around ``price_spread`` for clarity."""
+    return price_spread(spot, legs, strikes, t_years, sigma)
+
+
+def _process_trade(
+    entry_idx: int,
+    hold_days: int,
+    close: pd.Series,
+    vol: pd.Series,
+    legs: list[SpreadLeg],
+    dte: int,
+) -> float | None:
+    """Calculate P&L for a single trade; returns ``None`` if trade is invalid."""
+    n = len(close)
+    exit_idx = entry_idx + hold_days
+    if exit_idx >= n:
+        return None
+
+    sigma_entry = float(vol.iloc[entry_idx]) if np.isfinite(vol.iloc[entry_idx]) else 0.0
+    if sigma_entry <= 0:
+        return None
+
+    spot_entry = float(close.iloc[entry_idx])
+    spot_exit = float(close.iloc[exit_idx])
+    sigma_exit = (
+        float(vol.iloc[exit_idx]) if np.isfinite(vol.iloc[exit_idx]) else sigma_entry
+    )
+
+    strikes = _compute_strikes(legs, spot_entry)
+
+    entry_value = _price_spread_at(
+        spot_entry,
+        legs,
+        strikes,
+        dte / TRADING_DAYS,
+        sigma_entry,
+    )
+    remaining_t = max(dte - hold_days, 0) / TRADING_DAYS
+    exit_value = _price_spread_at(
+        spot_exit,
+        legs,
+        strikes,
+        remaining_t,
+        sigma_exit,
+    )
+    return exit_value - entry_value
+
+
 def backtest_spread(
     df: pd.DataFrame,
     legs: list[SpreadLeg],
@@ -151,39 +218,13 @@ def backtest_spread(
     vol = realized_vol(close, vol_window)
 
     if entry_mask is None:
-        entry_mask = pd.Series(False, index=df.index)
-        entry_mask.iloc[vol_window::5] = True
+        entry_mask = _default_entry_mask(df, vol_window)
 
     pnls: list[float] = []
-    n = len(df)
-
-    for i in np.flatnonzero(entry_mask.to_numpy()):
-        j = i + hold_days
-        if j >= n:
-            break
-        sigma_in = float(vol.iloc[i]) if np.isfinite(vol.iloc[i]) else 0.0
-        if sigma_in <= 0:
-            continue
-
-        spot_in, spot_out = float(close.iloc[i]), float(close.iloc[j])
-        sigma_out = float(vol.iloc[j]) if np.isfinite(vol.iloc[j]) else sigma_in
-
-        strikes = [leg.moneyness * spot_in for leg in legs]
-        entry_v = price_spread(
-            spot_in,
-            legs,
-            strikes,
-            dte / TRADING_DAYS,
-            sigma_in,
-        )
-        exit_v = price_spread(
-            spot_out,
-            legs,
-            strikes,
-            max(dte - hold_days, 0) / TRADING_DAYS,
-            sigma_out,
-        )
-        pnls.append(exit_v - entry_v)
+    for entry_idx in np.flatnonzero(entry_mask.to_numpy()):
+        pnl = _process_trade(entry_idx, hold_days, close, vol, legs, dte)
+        if pnl is not None:
+            pnls.append(pnl)
 
     wins = sum(1 for p in pnls if p > 0)
     return SpreadBacktestResult(
