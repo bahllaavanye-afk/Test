@@ -83,7 +83,12 @@ class BinanceBroker(AbstractBroker):
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
@@ -159,3 +164,79 @@ class BinanceBroker(AbstractBroker):
             except Exception as e:
                 logger.error("Failed to fetch tickers from Binance", error=str(e))
                 raise BrokerError(f"Binance ticker fetch error: {e}")
+
+
+# --------------------------------------------------------------------------- #
+# Unit tests for edge cases
+# --------------------------------------------------------------------------- #
+import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+
+class TestBinanceBrokerEdgeCases(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        # Patch the ccxt.binance constructor to avoid real network calls
+        self.patcher = patch("ccxt.async_support.binance")
+        self.mock_binance_class = self.patcher.start()
+        self.addCleanup(self.patcher.stop)
+
+        # Create a mock exchange instance with async methods
+        self.mock_exchange = AsyncMock()
+        self.mock_binance_class.return_value = self.mock_exchange
+
+        self.broker = BinanceBroker(api_key="test", secret="test", testnet=True)
+
+    async def test_get_historical_invalid_interval_fallback(self):
+        """When an unknown interval is supplied, BinanceBroker should fall back to '1d'."""
+        sample_ohlcv = [
+            [1609459200000, 29000, 29500, 28500, 29200, 1234.5],
+        ]
+        self.mock_exchange.fetch_ohlcv.return_value = sample_ohlcv
+        self.mock_exchange.iso8601.side_effect = lambda ts: f"{ts}"
+        result = await self.broker.get_historical("BTC/USDT", interval="99m", limit=1)
+
+        # Verify fetch_ohlcv called with fallback timeframe '1d'
+        self.mock_exchange.fetch_ohlcv.assert_awaited_once_with(
+            "BTC/USDT", "1d", limit=1
+        )
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["open"], 29000)
+
+    async def test_get_quote_timeout_raises_broker_error(self):
+        """A timeout while fetching a ticker should raise BrokerError."""
+        # Simulate fetch_ticker hanging beyond the timeout
+        async def slow_fetch(*args, **kwargs):
+            await asyncio.sleep(0.2)  # longer than the test's wait_for timeout
+        self.mock_exchange.fetch_ticker.side_effect = asyncio.TimeoutError
+
+        with self.assertRaises(BrokerError) as cm:
+            await self.broker.get_quote("BTC/USDT")
+        self.assertIn("quote timed out", str(cm.exception))
+
+    async def test_get_all_tickers_caching_behavior(self):
+        """Cache should be used within TTL and refreshed after TTL expires."""
+        first_data = {"BTC/USDT": {"bid": 30000, "ask": 30010}}
+        second_data = {"BTC/USDT": {"bid": 31000, "ask": 31010}}
+        self.mock_exchange.fetch_tickers.side_effect = [first_data, second_data]
+
+        # First call fetches data
+        data1 = await self.broker.get_all_tickers(cache_ttl=1)
+        self.assertIs(data1, first_data)
+        self.assertEqual(self.mock_exchange.fetch_tickers.await_count, 1)
+
+        # Second call within TTL returns cached data, no new fetch
+        data2 = await self.broker.get_all_tickers(cache_ttl=1)
+        self.assertIs(data2, first_data)
+        self.assertEqual(self.mock_exchange.fetch_tickers.await_count, 1)
+
+        # Wait for TTL to expire
+        await asyncio.sleep(1.1)
+
+        # Third call after TTL should fetch new data
+        data3 = await self.broker.get_all_tickers(cache_ttl=1)
+        self.assertIs(data3, second_data)
+        self.assertEqual(self.mock_exchange.fetch_tickers.await_count, 2)
+
+
+if __name__ == "__main__":
+    unittest.main()
