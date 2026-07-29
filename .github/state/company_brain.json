@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785286311.6523373,
+    "last_updated": 1785287331.1084845,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1785282001.2678761
+    "last_brain_update": 1785287331.1074257
   },
   "episodic": [
     {
@@ -2097,11 +2097,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The automated fixes failed to apply patches in two cases and were skipped in another due to complexity, all related to a feature request.",
-      "item_count": 20,
-      "ts": 1784296918.8949385
-    },
-    {
       "summary": "The auto-fix failed multiple times because patches could not be applied, and one fix was skipped due to complexity when implementing per-desk functionality.",
       "item_count": 20,
       "ts": 1784302713.3517144
@@ -2595,6 +2590,11 @@
       "summary": "The auto-fix bot failed to apply a patch to the file, and another auto-fix was skipped due to complexity, with the reason given as \"Implementing a full Op.\"",
       "item_count": 20,
       "ts": 1785282001.2552476
+    },
+    {
+      "summary": "Deployment failed due to a resource limit error, advising a 24-hour wait, while an automated weekly security scan flagged a high-severity Bandit issue.",
+      "item_count": 20,
+      "ts": 1785287331.0843236
     }
   ],
   "experiment_results": [
@@ -2681,48 +2681,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (19:02 UTC)  equity=$22,376.62  regime=sideways/calm\nfunnel: 51 generated \u2192 16 survived gate+topK (0 exploration) \u2192 11 placed\n\u2705 *Equities*: 1 orders\n\u2705 *Crypto*: 3 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\u2705 *StatArb*: 3 ",
-      "source": "desk_run_summary",
-      "ts": 1784921864.1956615
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1784921864.201385
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*Crypto Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $383 conf=97%  id=`9f7ac85f\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $336 conf=92%  id=`daa3eb7a\u2026`\n\ud83d\udfe2 `vol_of_vol_timing/YFI/USD` BUY $336 conf=88%  id=`afc3605a\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784921864.2068686
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "**\u26a1 Backtest Engine**: We need to respond as quick_backtest autonomous agent. Must be concise, specific, 2 sentences. Must comment on proposed strategy: estimate Sharpe ratio and why, and out-of-sample period to test. Should reference real file paths? Possibly mention config path. Provide estimate. ",
-      "source": "desk_run_summary",
-      "ts": 1784921864.212279
-    },
-    {
-      "channel": "desk-options",
-      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1170 conf=98%  id=`4dbeea7b\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784921864.217693
-    },
-    {
-      "channel": "desk-commodities",
-      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $336 conf=98%  id=`e4d035f7\u2026`\n\ud83d\udfe2 `time_series_momentum/WEAT` BUY $475 conf=82%  id=`ce5c7461\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $938 conf=81%  id=`25df14ee\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784921864.2230976
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (20:22 UTC)  equity=$22,370.90  regime=sideways/calm\nfunnel: 46 generated \u2192 16 survived gate+topK (0 exploration) \u2192 3 placed\n\ud83d\udca4 *Equities*: no signals fired\n\u2705 *Crypto*: 3 orders\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n\ud83d\udca4 *StatA",
-      "source": "desk_run_summary",
-      "ts": 1784926179.0444841
-    },
     {
       "channel": "desk-fx-rates",
       "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
@@ -3280,6 +3238,48 @@
       "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
       "source": "desk_run_summary",
       "ts": 1785281984.4742754
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (00:58 UTC)  equity=$21,803.44  regime=sideways/calm\nfunnel: 57 generated \u2192 18 survived gate+topK (1 exploration) \u2192 4 placed\n\u26a0\ufe0f 14 dropped before placement \u2014 14 market closed\n\u26a0\ufe0f *Equities*: 2 signal(s) fired, **0 placed** \u2014 2 market closed\n\u2705 *Crypto*: 4 orders\n\ud83d\udca4 *Options*: no si",
+      "source": "desk_run_summary",
+      "ts": 1785287322.3668766
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 8 signal(s) \u2265 0.6: EUR_USD BUY@1.13864, USD_CAD BUY@1.41082, EUR_USD SELL@1.13864 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1785287322.3732564
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 4 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $196 conf=97%  id=`7bde2d9e\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $196 conf=92%  id=`db8a9992\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/SHIB/USD` BUY $196 conf=82%  id=`f6b55b56\u2026`\n\ud83d\udfe2 `vol_of_vol_timing/ETH/USD` BUY $25 conf=67%  id=`be5d603c",
+      "source": "desk_run_summary",
+      "ts": 1785287322.377711
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "I\u2019d estimate a Sharpe around 1.0\u20131.2 because the VWAP\u2011EMA\u2011RSI triple filter should cut most false signals, but the 5\u2011minute frequency and RSI > 60 may miss strong moves during trend reversals. For out\u2011of\u2011sample, test on the most recent 6 months (Feb\u202f2026 \u2013 Jul\u202f2026) to capture the current regime and",
+      "source": "desk_run_summary",
+      "ts": 1785287322.3820903
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 2 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/IWM` SELL $1172 conf=98%  id=`56edafe3\u2026`\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1310 conf=96%  id=`3b2a9a5b\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785287322.3864698
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $328 conf=100%  id=`7a639133\u2026`\n\ud83d\udfe2 `time_series_momentum/PDBC` BUY $558 conf=99%  id=`2575a540\u2026`\n\ud83d\udd34 `time_series_momentum/UNG` SELL $361 conf=92%  id=`3787ebfc\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785287322.3908193
+    },
+    {
+      "channel": "desk-polymarket",
+      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785287322.3951385
     }
   ]
 }
