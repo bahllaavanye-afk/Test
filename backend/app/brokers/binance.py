@@ -45,10 +45,14 @@ class BinanceBroker(AbstractBroker):
         self._ticker_cache = {"data": None, "timestamp": 0.0}
         self._ticker_lock = asyncio.Lock()
 
+        # Monitoring metrics
+        self._signal_counter = 0
+
     async def close(self):
         await self.exchange.close()
 
     async def place_order(self, request: OrderRequest) -> OrderResult:
+        start_time = time.time()
         try:
             if request.order_type == "market":
                 order = await self.exchange.create_market_order(
@@ -66,16 +70,42 @@ class BinanceBroker(AbstractBroker):
                     request.symbol, request.side, request.quantity
                 )
 
+            # Update monitoring metrics
+            self._signal_counter += 1
+            execution_time = time.time() - start_time
+            filled_qty = float(order.get("filled", 0))
+            avg_price = float(order["average"]) if order.get("average") else 0.0
+            pnl = filled_qty * avg_price
+
+            logger.info(
+                "Binance order placed",
+                signal_count=self._signal_counter,
+                execution_time=execution_time,
+                pnl=pnl,
+                order_id=str(order["id"]),
+                symbol=request.symbol,
+                side=request.side,
+                quantity=request.quantity,
+                order_type=request.order_type,
+            )
+
             return OrderResult(
                 broker_order_id=str(order["id"]),
                 status=order["status"],
-                filled_qty=float(order.get("filled", 0)),
-                avg_fill_price=float(order["average"])
-                if order.get("average")
-                else None,
+                filled_qty=filled_qty,
+                avg_fill_price=avg_price if avg_price else None,
                 raw_payload=order,
             )
         except Exception as e:
+            logger.error(
+                "Binance place_order failed",
+                signal_count=self._signal_counter,
+                error=str(e),
+                symbol=request.symbol,
+                side=request.side,
+                quantity=request.quantity,
+                order_type=request.order_type,
+            )
             raise BrokerError(f"Binance: {e}")
 
     async def cancel_order(self, broker_order_id: str, symbol: str = "") -> bool:
@@ -83,7 +113,12 @@ class BinanceBroker(AbstractBroker):
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
@@ -157,5 +192,7 @@ class BinanceBroker(AbstractBroker):
                 self._ticker_cache.update({"data": data, "timestamp": now})
                 return data
             except Exception as e:
-                logger.error("Failed to fetch tickers from Binance", error=str(e))
+                logger.error(
+                    "Failed to fetch tickers from Binance", error=str(e)
+                )
                 raise BrokerError(f"Binance ticker fetch error: {e}")

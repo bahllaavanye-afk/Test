@@ -5,7 +5,9 @@ Runs as a background asyncio task started from main.py lifespan.
 Uses yfinance for free OHLCV data — no broker keys required.
 """
 from __future__ import annotations
+
 import asyncio
+import time
 import uuid
 import pandas as pd
 from datetime import datetime, timezone
@@ -49,6 +51,16 @@ async def run_backtest_job(run_id: str | None) -> None:
         interval = run.interval
         strategy_name = run.strategy_name
         initial_equity = (run.params or {}).get("initial_equity", 100_000.0)
+
+    logger.info(
+        "Backtest started",
+        run_id=run_id,
+        symbol=symbol,
+        start_date=str(start_date),
+        end_date=str(end_date),
+        interval=interval,
+        strategy=strategy_name,
+    )
 
     try:
         df = await fetch_ohlcv(symbol=symbol, start=start_date, end=end_date, interval=interval)
@@ -94,6 +106,10 @@ async def run_backtest_job(run_id: str | None) -> None:
                 # Align index if needed
                 signals_series = raw_signals.reindex(df.index, fill_value=0).astype(int)
 
+        # Metric: count of non‑zero signals (i.e., trade actions)
+        signal_count = int((signals_series != 0).sum())
+
+        start_ts = time.perf_counter()
         metrics = run_backtest(
             signals=signals_series,
             prices=df["close"],
@@ -101,6 +117,7 @@ async def run_backtest_job(run_id: str | None) -> None:
             volume=df["volume"],
             initial_equity=initial_equity,
         )
+        exec_time = time.perf_counter() - start_ts
 
         async with AsyncSessionLocal() as db:
             run = await db.get(BacktestRun, run_id)
@@ -123,10 +140,13 @@ async def run_backtest_job(run_id: str | None) -> None:
                 )
                 db.add(result)
                 await db.commit()
+
         logger.info(
             f"Backtest {run_id} complete",
             sharpe=round(metrics.sharpe, 2),
-            ret=f"{metrics.total_return:.1%}",
+            total_return=round(metrics.total_return, 4),
+            signal_count=signal_count,
+            execution_time=round(exec_time, 3),
         )
 
     except Exception as exc:

@@ -3,15 +3,19 @@ Trade Archiver: writes every order, fill, and signal to JSON-lines files
 for long-term audit and replay. Files rotate daily.
 """
 from __future__ import annotations
+
 import json
 import asyncio
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from app.utils.logging import logger
 
 ARCHIVE_DIR = Path(__file__).parents[3] / "archive"
 ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+
 _lock = asyncio.Lock()
+_signal_count: int = 0  # cumulative count of archived signals for the current process
 
 
 def _today_file(category: str) -> Path:
@@ -28,7 +32,9 @@ async def archive_event(category: str, data: dict) -> None:
     """
     category: 'orders' | 'fills' | 'signals' | 'decisions' | 'risk'
     Appends a single JSON line to today's file. Atomic (lock-guarded).
+    Emits structured INFO logs with signal count, execution time, and P&L when available.
     """
+    start_time = time.perf_counter()
     record = {"ts": datetime.now(timezone.utc).isoformat(), **data}
     line = json.dumps(record, default=str) + "\n"
     file = _today_file(category)
@@ -36,6 +42,27 @@ async def archive_event(category: str, data: dict) -> None:
         loop = asyncio.get_running_loop()
         async with _lock:
             await loop.run_in_executor(None, _sync_append, str(file), line)
+
+        # Update metrics after successful write
+        exec_time_ms = (time.perf_counter() - start_time) * 1000
+        pnl = data.get("pnl")
+        if category == "signals":
+            global _signal_count
+            _signal_count += 1
+            logger.info(
+                "Archived signal event",
+                category=category,
+                signal_count=_signal_count,
+                exec_time_ms=exec_time_ms,
+                pnl=pnl,
+            )
+        else:
+            logger.info(
+                "Archived event",
+                category=category,
+                exec_time_ms=exec_time_ms,
+                pnl=pnl,
+            )
     except Exception as e:
         logger.warning("Archive failed", category=category, error=str(e))
 
