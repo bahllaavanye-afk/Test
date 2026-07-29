@@ -1,6 +1,6 @@
-"""Unit tests for the autonomous bot-lifecycle policy (pure, no DB).
+"""Unit tests for the autonomous bot‑lifecycle policy (pure, no DB).
 
-The 'employee using Options Alpha' loop: disable proven losers, re-enable
+The 'employee using Options Alpha' loop: disable proven losers, re‑enable
 recovered bots, grow the fleet from templates — with conservative evidence
 thresholds so bots aren't churned on noise.
 """
@@ -34,7 +34,16 @@ ARCHIVED = "archived"
 WINNER = "winner"
 
 
-def _s(name, enabled=True, archived=False, trades=0, pnl=0.0, wr=None):
+def make_bot_stats(
+    name: str,
+    *,
+    enabled: bool = True,
+    archived: bool = False,
+    trades: int = 0,
+    pnl: float = 0.0,
+    win_rate: float | None = None,
+) -> BotStats:
+    """Factory helper that builds a :class:`BotStats` instance for tests."""
     return BotStats(
         bot_id=name,
         name=name,
@@ -42,84 +51,94 @@ def _s(name, enabled=True, archived=False, trades=0, pnl=0.0, wr=None):
         is_archived=archived,
         trades=trades,
         total_pnl=pnl,
-        win_rate=wr,
+        win_rate=win_rate,
     )
 
 
-def test_losing_bot_with_evidence_is_disabled():
-    a = decide_bot_actions(
-        [_s(LOSER, trades=MIN_TRADES_TO_JUDGE, pnl=-300.0, wr=0.30)], []
+def test_losing_bot_with_evidence_is_disabled() -> None:
+    actions = decide_bot_actions(
+        [make_bot_stats(LOSER, trades=MIN_TRADES_TO_JUDGE, pnl=-300.0, win_rate=0.30)],
+        [],
     )
-    assert [b.name for b in a["disable"]] == [LOSER]
+    assert [b.name for b in actions["disable"]] == [LOSER]
 
 
-def test_losing_bot_without_evidence_is_left_alone():
+def test_losing_bot_without_evidence_is_left_alone() -> None:
     # NOISE_TRADES is noise, not evidence — never churn on it.
-    a = decide_bot_actions(
-        [_s(YOUNG, trades=NOISE_TRADES, pnl=-500.0, wr=0.0)], []
+    actions = decide_bot_actions(
+        [make_bot_stats(YOUNG, trades=NOISE_TRADES, pnl=-500.0, win_rate=0.0)],
+        [],
     )
-    assert a["disable"] == []
+    assert actions["disable"] == []
 
 
-def test_losing_pnl_but_decent_win_rate_survives():
+def test_losing_pnl_but_decent_win_rate_survives() -> None:
     # Positive expectancy profiles (few big wins) shouldn't die on win rate alone.
-    a = decide_bot_actions(
+    actions = decide_bot_actions(
         [
-            _s(
+            make_bot_stats(
                 LUMPY,
                 trades=MIN_TRADES_TO_JUDGE,
                 pnl=-50.0,
-                wr=DISABLE_WIN_RATE + 0.05,
+                win_rate=DISABLE_WIN_RATE + 0.05,
             )
         ],
         [],
     )
-    assert a["disable"] == []
+    assert actions["disable"] == []
 
 
-def test_recovered_disabled_bot_is_promoted():
-    a = decide_bot_actions(
+def test_recovered_disabled_bot_is_promoted() -> None:
+    actions = decide_bot_actions(
         [
-            _s(
+            make_bot_stats(
                 COMEBACK,
                 enabled=False,
                 trades=MIN_TRADES_TO_PROMOTE,
                 pnl=120.0,
-                wr=0.6,
+                win_rate=0.6,
             )
         ],
         [],
     )
-    assert [b.name for b in a["enable"]] == [COMEBACK]
+    assert [b.name for b in actions["enable"]] == [COMEBACK]
 
 
-def test_archived_bots_are_never_touched():
-    a = decide_bot_actions(
+def test_archived_bots_are_never_touched() -> None:
+    actions = decide_bot_actions(
         [
-            _s(
+            make_bot_stats(
                 ARCHIVED,
                 enabled=False,
                 archived=True,
                 trades=ARCHIVED_TRADES,
                 pnl=ARCHIVED_PNL,
-                wr=ARCHIVED_WR,
+                win_rate=ARCHIVED_WR,
             )
         ],
         [],
     )
-    assert a["enable"] == [] and a["disable"] == []
+    assert actions["enable"] == [] and actions["disable"] == []
 
 
-def test_template_creation_is_bounded():
-    a = decide_bot_actions(
-        [], [f"{TEMPLATE_PREFIX}{i}" for i in range(TEMPLATE_COUNT)]
+def test_template_creation_is_bounded() -> None:
+    actions = decide_bot_actions(
+        [],
+        [f"{TEMPLATE_PREFIX}{i}" for i in range(TEMPLATE_COUNT)],
     )
-    assert len(a["create"]) == MAX_CREATES_PER_RUN
+    assert len(actions["create"]) == MAX_CREATES_PER_RUN
 
 
-def test_profitable_enabled_bot_untouched():
-    a = decide_bot_actions(
-        [_s(WINNER, trades=PROFITABLE_TRADES, pnl=PROFITABLE_PNL, wr=PROFITABLE_WR)],
+def test_profitable_enabled_bot_untouched() -> None:
+    actions = decide_bot_actions(
+        [
+            make_bot_stats(
+                WINNER,
+                trades=PROFITABLE_TRADES,
+                pnl=PROFITABLE_PNL,
+                win_rate=PROFITABLE_WR,
+            )
+        ],
         [],
     )
-    assert a["disable"] == [] and a["enable"] == []
+    assert actions["disable"] == [] and actions["enable"] == []
