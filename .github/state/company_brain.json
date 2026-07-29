@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785358033.7394392,
+    "last_updated": 1785359522.078603,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -154,7 +154,7 @@
       "Gold/SPY ratio surging (+3.1% 20d) \u2014 safe-haven rotation"
     ],
     "risk_status": "normal",
-    "last_brain_update": 1785355256.0118628
+    "last_brain_update": 1785359522.077222
   },
   "episodic": [
     {
@@ -2158,11 +2158,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The discussion reports a deployment failure due to resource limits, with a suggestion to retry in 24 hours, and notes that an automated fix attempt failed to apply a patch to the file.",
-      "item_count": 20,
-      "ts": 1784336738.5803807
-    },
-    {
       "summary": "A bot attempted to auto-fix a file but was unable to apply the patch, reporting the failure twice.",
       "item_count": 20,
       "ts": 1784348058.2504044
@@ -2656,6 +2651,11 @@
       "summary": "A team lead revoked automerge on a PR modifying protected files, while an automated security scan flagged high-severity issues and deployment failed due to resource limits.",
       "item_count": 20,
       "ts": 1785355255.9994175
+    },
+    {
+      "summary": "The auto-fix attempts encountered three issues: a patch application failure, a validation error due to exceeding the 50-line limit, and a skip due to excessive complexity. The reason given is tied to the issue description.",
+      "item_count": 20,
+      "ts": 1785359522.064775
     }
   ],
   "experiment_results": [
@@ -2742,48 +2742,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "desk-crypto",
-      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Monday July 27, 2026*\n\n* We've got a clean slate today with 0 tasks completed by autonomous agents, let's push that number up!\n* Shoutout to our top agents: `cleanup`, `docstrings`, and `optimization` for completing 10 tasks each!\n* Our `Voyager` memory is packed with 200 lear",
-      "source": "desk_run_summary",
-      "ts": 1785220070.092847
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "I\u2019d estimate a Sharpe around\u202f1.15\u202f\u00b1\u202f0.15 for the \u201cQQQ Momentum\u2011Volume Weighted MACD Breakout (10\u2011min)\u201d because the VWAP\u2011price filter and RSI\u2011volume weighting should cut most false\u2011breakouts, but the 10\u2011minute MACD cross still adds some timing noise. I\u2019ll run the out\u2011of\u2011sample test on the most recent",
-      "source": "desk_run_summary",
-      "ts": 1785220070.0983765
-    },
-    {
-      "channel": "desk-options",
-      "summary": "*Options Desk* \u2014 3 order(s) placed\n\ud83d\udd34 `gamma_exposure/QQQ` SELL $559 conf=100%  id=`6ad253eb\u2026`\n\ud83d\udd34 `put_call_ratio_contrarian/SPY` SELL $1162 conf=97%  id=`94cfe1f6\u2026`\n\ud83d\udd34 `options_pcr_reversal/IWM` SELL $1181 conf=96%  id=`9bfa8d37\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785220070.1038597
-    },
-    {
-      "channel": "desk-commodities",
-      "summary": "*Commodities Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `time_series_momentum/WEAT` BUY $454 conf=81%  id=`d6a886d0\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785220070.1093323
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (11:17 UTC)  equity=$21,740.64  regime=sideways/calm\nfunnel: 49 generated \u2192 18 survived gate+topK (1 exploration) \u2192 2 placed\n\u26a0\ufe0f 15 dropped before placement \u2014 15 market closed\n\u26a0\ufe0f *Equities*: 1 signal(s) fired, **0 placed** \u2014 1 market closed\n\u2705 *Crypto*: 2 orders\n\u26a0\ufe0f *Options*: 3 si",
-      "source": "desk_run_summary",
-      "ts": 1785238468.7962852
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 1 order(s) placed of 9 signal(s) \u2265 0.6: EUR_USD BUY@1.13683, USD_CAD BUY@1.41241, EUR_USD SELL@1.13683 | 2 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1785238468.804299
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $326 conf=92%  id=`30bc12a2\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $326 conf=90%  id=`1996ea5e\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785238468.809841
-    },
     {
       "channel": "desk-equities",
       "summary": "I\u2019d estimate a Sharpe around\u202f1.15\u202f\u00b1\u202f0.15 for the \u201cQQQ Momentum\u2011Volume Weighted MACD Breakout (10\u2011min)\u201d because the VWAP\u2011price filter and RSI\u2011volume weighting should cut most false\u2011breakouts, but the 10\u2011minute MACD cross still adds some timing noise. I\u2019ll run the out\u2011of\u2011sample test on the most recent",
@@ -3341,6 +3299,48 @@
       "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
       "source": "desk_run_summary",
       "ts": 1785355251.0796657
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (21:07 UTC)  equity=$21,391.48  regime=sideways/calm\nfunnel: 15 generated \u2192 1 survived gate+topK (1 exploration) \u2192 0 placed\n\u26a0\ufe0f *Crypto*: 1 signal(s) fired, **0 placed** \u2014 no reason recorded\n\nTotal orders placed: *0*",
+      "source": "desk_run_summary",
+      "ts": 1785359511.6711137
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 quiet: 0 signal(s) \u2265 0.6, 0 orders",
+      "source": "desk_run_summary",
+      "ts": 1785359511.6772137
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Wednesday July 29, 2026*\n\n* We've got a strong foundation with 200 learned patterns in Voyager memory and our top agents - cleanup, docstrings, and optimization - completing 10 tasks each.\n* The team's been busy with recent commits, including distill skills and auto-heal state",
+      "source": "desk_run_summary",
+      "ts": 1785359511.6829414
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "I\u2019d expect a Sharpe around\u202f1.1\u202f\u00b1\u202f0.15 because the stochastic\u2011%D breakout filter on an 80+ over\u2011bought regime, combined with the VWAP\u2011BB alignment, should capture tight, high\u2011conviction moves while the 1\u2011minute horizon limits exposure to mean\u2011reversion drifts.\u202fTest out\u2011of\u2011sample on the most recent 6\u2011",
+      "source": "desk_run_summary",
+      "ts": 1785359511.6885004
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/QQQ` SELL $219 conf=100%  id=`1442cd9e\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785359511.6940656
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $208 conf=100%  id=`629fd7ca\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785359511.6995673
+    },
+    {
+      "channel": "desk-polymarket",
+      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785359511.7051399
     }
   ]
 }
