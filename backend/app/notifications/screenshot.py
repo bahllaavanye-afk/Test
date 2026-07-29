@@ -15,6 +15,14 @@ async def capture_dashboard(url: str = "https://quantedge.vercel.app", page: str
     Capture a screenshot of the dashboard. Returns the filepath or None on failure.
     Requires `playwright` installed: pip install playwright && playwright install chromium
     """
+    # Input validation
+    if not isinstance(url, str):
+        raise ValueError("url must be a string")
+    if not url.strip():
+        raise ValueError("url cannot be empty")
+    if not isinstance(page, str):
+        raise ValueError("page must be a string")
+
     try:
         from playwright.async_api import async_playwright
     except ImportError:
@@ -42,8 +50,14 @@ async def capture_dashboard(url: str = "https://quantedge.vercel.app", page: str
 
 async def capture_all_pages(base_url: str = "https://quantedge.vercel.app") -> list[str]:
     """Capture all main dashboard pages."""
+    # Input validation
+    if not isinstance(base_url, str):
+        raise ValueError("base_url must be a string")
+    if not base_url.strip():
+        raise ValueError("base_url cannot be empty")
+
     pages = ["", "equity", "crypto", "comparison", "backtest", "experiments", "analytics", "risk"]
-    results = []
+    results: list[str] = []
     for page in pages:
         path = await capture_dashboard(base_url, page)
         if path:

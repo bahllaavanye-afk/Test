@@ -5,6 +5,26 @@ import numpy as np
 from app.strategies import STRATEGY_REGISTRY
 
 
+def _validate_name(name: str) -> None:
+    """Validate that a strategy name is a non‑empty string."""
+    if not isinstance(name, str):
+        raise ValueError("Strategy name must be a string.")
+    if not name:
+        raise ValueError("Strategy name cannot be empty.")
+
+
+def _validate_ohlcv(df: pd.DataFrame) -> None:
+    """Validate that the OHLCV DataFrame has the required structure."""
+    if not isinstance(df, pd.DataFrame):
+        raise ValueError("ohlcv must be a pandas DataFrame.")
+    required_cols = {"open", "high", "low", "close", "volume"}
+    missing = required_cols - set(df.columns)
+    if missing:
+        raise ValueError(f"ohlcv is missing required columns: {missing}")
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("ohlcv index must be a pandas DatetimeIndex.")
+
+
 @pytest.fixture
 def ohlcv():
     n = 300
@@ -16,8 +36,10 @@ def ohlcv():
     open_ = close * (1 + rng.normal(0, 0.001, n))
     volume = rng.integers(100_000, 1_000_000, n)
     idx = pd.date_range("2024-01-01", periods=n, freq="1D")
-    return pd.DataFrame({"open": open_, "high": high, "low": low,
-                         "close": close, "volume": volume}, index=idx)
+    return pd.DataFrame(
+        {"open": open_, "high": high, "low": low, "close": close, "volume": volume},
+        index=idx,
+    )
 
 
 def test_registry_not_empty():
@@ -26,6 +48,7 @@ def test_registry_not_empty():
 
 @pytest.mark.parametrize("name", list(STRATEGY_REGISTRY.keys()))
 def test_strategy_has_required_attrs(name):
+    _validate_name(name)
     cls = STRATEGY_REGISTRY[name]
     inst = cls() if not getattr(cls, "__abstractmethods__", None) else None
     if inst is None:
@@ -35,10 +58,19 @@ def test_strategy_has_required_attrs(name):
     assert hasattr(inst, "risk_bucket")
 
 
-@pytest.mark.parametrize("name", [
-    "momentum", "mean_reversion", "rsi_macd", "breakout", "supertrend",
-])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "momentum",
+        "mean_reversion",
+        "rsi_macd",
+        "breakout",
+        "supertrend",
+    ],
+)
 def test_strategy_backtest_signals(name, ohlcv):
+    _validate_name(name)
+    _validate_ohlcv(ohlcv)
     cls = STRATEGY_REGISTRY.get(name)
     if cls is None:
         pytest.skip(f"{name} not in registry")

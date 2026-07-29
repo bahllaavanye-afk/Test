@@ -1,5 +1,6 @@
 """Portfolio positions endpoint."""
 import json
+import re
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -41,12 +42,35 @@ def _alpaca_position_to_out(p: dict) -> dict:
     }
 
 
+def _validate_account_id(account_id: str | None) -> None:
+    """Validate account_id if provided."""
+    if account_id is not None:
+        if not isinstance(account_id, str) or not account_id.strip():
+            raise ValueError("account_id must be a non‑empty string if provided")
+        # Optional: enforce UUID format (hex with hyphens)
+        uuid_regex = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
+        if not uuid_regex.fullmatch(account_id):
+            raise ValueError("account_id must be a valid UUID string")
+
+
+def _validate_symbol(symbol: str) -> None:
+    """Validate ticker symbol."""
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise ValueError("symbol must be a non‑empty string")
+    # Simple ticker validation: uppercase letters, numbers, dot, max length 10
+    if not re.fullmatch(r"[A-Z0-9\.]{1,10}", symbol.upper()):
+        raise ValueError(f"symbol '{symbol}' is not a valid ticker format")
+
+
 @router.get("/", response_model=list[PositionOut])
 async def list_positions(
     account_id: str | None = Query(None, description="Filter by account ID"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Input validation
+    _validate_account_id(account_id)
+
     # If account_id provided, try live Alpaca data for that account
     if account_id:
         acct_result = await db.execute(
@@ -55,6 +79,7 @@ async def list_positions(
         account = acct_result.scalar_one_or_none()
         if account and account.broker == "alpaca" and account.encrypted_key:
             from app.brokers.alpaca_orders import get_alpaca_positions
+
             try:
                 live_positions = await get_alpaca_positions(account)
                 return [_alpaca_position_to_out(p) for p in live_positions]
@@ -150,6 +175,9 @@ async def get_position_exit_config(
     Returns the entry price, stop loss, take profit, peak price, bars held,
     and current P&L percentage.
     """
+    # Input validation
+    _validate_symbol(symbol)
+
     from app.redis_client import get_redis
 
     redis_client = get_redis()
