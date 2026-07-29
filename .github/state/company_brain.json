@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785319582.6470358,
+    "last_updated": 1785327601.2139785,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,37 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1785319582.645672
+    "last_brain_update": 1785327601.2126205
   },
   "episodic": [
-    {
-      "lesson": "Auto-fix patches are consistently failing; investigate the patch generation logic and file write permissions.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784396402.9270163
-    },
-    {
-      "lesson": "Deployment is hitting Vercel's free-tier daily limit; upgrade to a paid plan or implement a deployment queue to avoid blocking.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784396402.9315484
-    },
-    {
-      "lesson": "Slack agent run is failing due to message quota exhaustion or token issues; review Slack API limits and rotate tokens.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784396402.9348207
-    },
-    {
-      "lesson": "Multiple CI/CD failures suggest brittle automation; add retry logic and better error handling for auto-fix and deployment steps.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784396402.9380555
-    },
     {
       "lesson": "Vercel free-tier deployment limit (100/day) exceeded, blocking deployments. Upgrade to Pro plan or implement deployment batching.",
       "category": "execution",
@@ -2093,14 +2065,37 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1785274207.987694
+    },
+    {
+      "lesson": "Bandit scan found high-severity CWE-327 (broken crypto) in .github/scripts/agent_team.py:229. Auto-fix failed; requires manual code review and remediation.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1785327596.5246925
+    },
+    {
+      "lesson": "Equities desk had 2 signals fired but 0 placed because both were market closed. Evaluate signal generation timing or add pre-market check to avoid wasted compute.",
+      "category": "execution",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1785327596.5321174
+    },
+    {
+      "lesson": "Multiple auto-fix attempts failed for GitHub issues, and one was skipped as 'too complex.' This signals accumulating technical debt; schedule a dedicated engineering session.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1785327596.5382593
+    },
+    {
+      "lesson": "All desks placed orders with high confidence (75\u2013100%) during sideways/calm regime. Monitor for overfitting or regime shift that could degrade performance.",
+      "category": "risk",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1785327596.5443292
     }
   ],
   "github_insights": [
-    {
-      "summary": "[LLM unavailable \u2014 all providers failed]",
-      "item_count": 20,
-      "ts": 1784320322.1402788
-    },
     {
       "summary": "An automated bot failed to apply a patch to a file, and the auto-fix was aborted because the proposed changes (58 lines) exceeded the 50-line limit.",
       "item_count": 20,
@@ -2595,6 +2590,11 @@
       "summary": "An automated weekly security scan detected high-severity issues, as flagged by Bandit.",
       "item_count": 20,
       "ts": 1785319582.6322265
+    },
+    {
+      "summary": "An automated weekly security scan detected a high-severity issue via Bandit, but the auto-fix attempt failed to apply the patch.",
+      "item_count": 20,
+      "ts": 1785327601.199881
     }
   ],
   "experiment_results": [
@@ -2681,48 +2681,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "desk-options",
-      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1170 conf=98%  id=`4dbeea7b\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784951238.409495
-    },
-    {
-      "channel": "desk-commodities",
-      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $336 conf=98%  id=`e4d035f7\u2026`\n\ud83d\udfe2 `time_series_momentum/WEAT` BUY $475 conf=82%  id=`ce5c7461\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $938 conf=81%  id=`25df14ee\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1784951238.4148035
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (10:11 UTC)  equity=$22,266.11  regime=sideways/calm\nfunnel: 32 generated \u2192 15 survived gate+topK (0 exploration) \u2192 0 placed\n\ud83d\udca4 *Equities*: no signals fired\n\ud83d\udca4 *Crypto*: no signals fired\n\ud83d\udca4 *Options*: no signals fired\n\ud83d\udca4 *Polymarket*: no signals fired\n\ud83d\udca4 *Macro/FX*: no signals fired\n",
-      "source": "desk_run_summary",
-      "ts": 1785148752.1292152
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 1 order(s) placed of 9 signal(s) \u2265 0.6: EUR_USD BUY@1.13706, USD_CAD BUY@1.40942, USD_JPY SELL@163.85000 | 2 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1785148752.136777
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*Crypto Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $334 conf=97%  id=`791eb3e9\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $334 conf=92%  id=`7ec3b971\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785148752.1421478
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "Given the 5\u2011minute supertrend\u202f+\u202fRSI\u2011divergence filter that isolates only strong trend\u2011aligned moves while allowing rapid exits, I\u2019d project a Sharpe around\u202f1.2\u202f\u00b1\u202f0.2 (slightly lower than the EMA\u2011Keltner\u2011RSI setups because the higher\u2011frequency noise adds modest volatility). Test the model out\u2011of\u2011samp",
-      "source": "desk_run_summary",
-      "ts": 1785148752.147708
-    },
-    {
-      "channel": "desk-options",
-      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1170 conf=98%  id=`4dbeea7b\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785148752.1530683
-    },
     {
       "channel": "desk-commodities",
       "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $336 conf=98%  id=`e4d035f7\u2026`\n\ud83d\udfe2 `time_series_momentum/WEAT` BUY $475 conf=82%  id=`ce5c7461\u2026`\n\ud83d\udfe2 `time_series_momentum/DBA` BUY $938 conf=81%  id=`25df14ee\u2026`",
@@ -3280,6 +3238,48 @@
       "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
       "source": "desk_run_summary",
       "ts": 1785319579.1616547
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (11:25 UTC)  equity=$21,876.86  regime=sideways/calm\nfunnel: 57 generated \u2192 20 survived gate+topK (0 exploration) \u2192 3 placed\n\u26a0\ufe0f 17 dropped before placement \u2014 17 market closed\n\u26a0\ufe0f *Equities*: 2 signal(s) fired, **0 placed** \u2014 2 market closed\n\u2705 *Crypto*: 3 orders\n\u26a0\ufe0f *Options*: 3 si",
+      "source": "desk_run_summary",
+      "ts": 1785327596.5502725
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 8 signal(s) \u2265 0.6: EUR_USD BUY@1.13864, USD_CAD BUY@1.41082, EUR_USD SELL@1.13864 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1785327596.5560591
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `avellaneda_stoikov_mm/UNI/USD` BUY $197 conf=96%  id=`16559e4e\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/AAVE/USD` BUY $197 conf=92%  id=`a4289a3f\u2026`\n\ud83d\udfe2 `avellaneda_stoikov_mm/SHIB/USD` BUY $197 conf=75%  id=`f4bedd90\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785327596.5619755
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "I\u2019d estimate a Sharpe around\u202f1.15\u202f\u00b1\u202f0.15 for the \u201cSPY EMA\u2011VWAP\u2011MACD\u2011ATR Momentum (5\u2011min)\u201d because the VWAP\u202f+\u202fEMA alignment plus a positive MACD histogram and ATR\u2011scaled position sizing should weed out most sideways noise while still catching the bulk of intraday trends.\u202fTest the model out\u2011of\u2011sample ",
+      "source": "desk_run_summary",
+      "ts": 1785327596.5682387
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 2 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/IWM` SELL $1172 conf=98%  id=`56edafe3\u2026`\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1310 conf=96%  id=`3b2a9a5b\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785327596.5741012
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $328 conf=100%  id=`7a639133\u2026`\n\ud83d\udfe2 `time_series_momentum/PDBC` BUY $558 conf=99%  id=`2575a540\u2026`\n\ud83d\udd34 `time_series_momentum/UNG` SELL $361 conf=92%  id=`3787ebfc\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785327596.5799356
+    },
+    {
+      "channel": "desk-polymarket",
+      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785327596.585815
     }
   ]
 }
