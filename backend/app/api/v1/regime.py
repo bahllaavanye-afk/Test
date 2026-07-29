@@ -4,6 +4,7 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.ml.regime.detector import regime_monitor
 from app.risk.correlation_monitor import correlation_monitor
+import re
 
 router = APIRouter(prefix="/regime", tags=["regime"])
 
@@ -60,6 +61,18 @@ async def get_regime_states(current_user: User = Depends(get_current_user)):
 
 @router.get("/states/{symbol}")
 async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_current_user)):
+    """Retrieve regime data for a specific symbol.
+
+    Raises:
+        ValueError: If `symbol` is not a non‑empty alphanumeric ticker.
+    """
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise ValueError("Symbol must be a non‑empty string.")
+    # Allow typical ticker characters: letters, numbers, period, and hyphen, up to 12 characters.
+    if not re.fullmatch(r"[A-Z0-9.\-]{1,12}", symbol.upper()):
+        raise ValueError(
+            f"Symbol '{symbol}' contains invalid characters or exceeds length limits."
+        )
     state = regime_monitor.get(symbol.upper())
     if not state:
         return {"error": f"No regime data for {symbol}. Feed price data first."}
@@ -68,7 +81,7 @@ async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_cu
 
 @router.get("/correlation")
 async def get_correlation_matrix(current_user: User = Depends(get_current_user)):
-    """Live cross-strategy correlation matrix."""
+    """Live cross‑strategy correlation matrix."""
     return {
         "matrix": correlation_monitor.matrix_as_list(),
         "reduced_strategies": list(correlation_monitor._reduced),
