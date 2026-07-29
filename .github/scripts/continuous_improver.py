@@ -4,7 +4,7 @@ SOTA self-improvement: RLVR test loop + Reflexion failure memory + skill library
 Drives CTO OKR: ≥ 50 commits/day across org.
 """
 from __future__ import annotations
-import os, sys, json, random, glob, subprocess
+import os, re, sys, json, random, glob, subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -215,13 +215,45 @@ Output the complete improved file:"""
     if not improved:
         return None
 
-    if improved.startswith("```"):
-        lines = improved.split("\n")
-        improved = "\n".join(lines[1:])
-        if improved.rstrip().endswith("```"):
-            improved = improved.rstrip()[:-3]
+    return _extract_code(improved)
 
-    return improved.strip()
+
+def _extract_code(text: str) -> str:
+    """Pull the Python out of a response that may be wrapped in prose.
+
+    The old logic only unwrapped a fence when the response STARTED with one:
+
+        if improved.startswith("```"):   # position 0, or nothing happens
+
+    The cascade's free providers do not oblige. `llm_common._extract()` falls
+    back to `reasoning_content` when `content` is empty, so a reasoning model's
+    chain-of-thought comes back as the response — and it is visible in live
+    state right now, from this same `llm()` helper:
+
+        "The user asks: \"Give a one-sentence status update: ...\" The developer…"
+        "We need to respond as algo_agent, one sentence status update, …"
+
+    Any such preamble makes `startswith("```")` False, so the fence and the
+    prose were handed straight to `compile()` and raised SyntaxError. That is
+    the mechanical cause of "syntax check failed" — **32 of the 41 recorded
+    failures, 78% of everything that went wrong**, and it was invisible because
+    the failure counter was never incremented (fixed separately).
+
+    Takes the LONGEST fenced block: a response often includes small illustrative
+    snippets alongside the full file, and the file is the long one. Falls back
+    to an unterminated fence (a truncated response) and finally to the raw text,
+    which then fails the syntax check honestly rather than being mangled.
+    """
+    blocks = re.findall(r"```(?:python|py)?[ \t]*\r?\n(.*?)```", text, re.S)
+    if blocks:
+        return max(blocks, key=len).strip()
+
+    # Opening fence with no close — the response was cut off mid-file.
+    truncated = re.search(r"```(?:python|py)?[ \t]*\r?\n(.*)", text, re.S)
+    if truncated:
+        return truncated.group(1).strip()
+
+    return text.strip()
 
 def syntax_check(code: str) -> bool:
     try:
