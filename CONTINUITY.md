@@ -378,6 +378,31 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 🔬 2026-07-29 15:10 — two open questions from the sweep, answered by measurement
+**`ml_models: ok=false, count=0` is NOT "training isn't running".** `lstm-training.yml` has run six
+times, weekly, all six green, 1.05 MB of artifacts each. Three independent breaks stop any of it
+reaching inference: the trainer writes `models_artifacts/lstm_spy_1d/model.pt` while
+`InferenceService` reads flat `models_artifacts/lstm_latest.pt`; `AbstractModel.load()` expects
+`{"state_dict", "metadata": {"init_kwargs"}}` while the trainer saves `{"model_state_dict",
+"n_features", …}` (a correctly-named file would still `KeyError`); and nothing commits, so the
+30-day artifact expires. **The manual promotion recipe in the workflow header is itself wrong** —
+following it exactly puts the file where nothing looks, in a format that would not load.
+Fix belongs in the trainer: `ml/inference.py` is on the AVOID list in `backend/app/ml/CLAUDE.md`.
+**Not shipped blind** — torch is absent here, so the `save → load → predict` round trip cannot be
+verified locally, and an unverified promotion path is the exact failure this file keeps recording.
+The check belongs in the training workflow, where torch exists. Details in IMPROVEMENTS.md.
+
+**`total_runs: 0, success_rate_pct: 0` across 18 agents was a metrics bug, now fixed.** Agents are
+running fine. `improvement_stats` has two writers sharing one dict with incompatible key spaces AND
+schemas: `continuous_improver.record_success()` keys by improvement type with
+`{successes, failures, test_pass}`; `SharedContext.record_success()` keys by agent name with
+`{runs, successes}`. The reporter read `runs` indexed by agent name — and
+`SharedContext.record_success()` has **zero call sites** outside its own docstring, so that
+dimension has never been written. Real figure: **61 recorded attempts**. Header now reads
+`61 recorded runs`. Deliberately does not publish the 100% rate: `failures` is never incremented, so
+that ratio is definitionally 100 and quoting it as measured would be fabricated — it says
+`no failures recorded` and ships `failures_recorded` alongside.
+
 ## ✂ 2026-07-29 14:50 — the trimmer produced the right answer and the workflow deleted it
 I went to *verify* the first live retirement rather than assume it, and found the run had already
 happened and already lost. Run `30457733119`, 13:48 UTC, three consecutive log lines:

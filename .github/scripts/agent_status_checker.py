@@ -78,7 +78,7 @@ def _make_agent_prompt(agent_name: str, role: str, stats: dict,
     if skills:
         skill_ctx = "Platform skills: " + "; ".join(skills[-5:])
 
-    runs = stats.get("runs", 0)
+    runs = _runs(stats)
     successes = stats.get("successes", 0)
     last_task = stats.get("last_summary", "starting up")[:100]
 
@@ -96,6 +96,51 @@ def _make_agent_prompt(agent_name: str, role: str, stats: dict,
         {"role": "system", "content": system},
         {"role": "user", "content": "Give a one-sentence status update: what are you actively working on RIGHT NOW?"},
     ]
+
+
+def _runs(stats) -> int:
+    """Attempts recorded for one `improvement_stats` entry.
+
+    This read used to be `stats.get("runs", 0)`, and it was 0 for every entry
+    ever written — which is how the roll call came to announce "18 agents
+    online · 0 total runs · 0% success rate" while eighteen agents were
+    demonstrably running and 61 improvements had been recorded.
+
+    `improvement_stats` has TWO writers with incompatible key spaces AND
+    incompatible schemas, sharing one dict:
+
+        continuous_improver.record_success()   key: improvement_type
+                                               schema: successes/failures/test_pass
+        SharedContext.record_success()         key: agent_name
+                                               schema: runs/successes/last_summary
+
+    The reporter read `runs` (the second schema) indexed by agent name (the
+    second key space) — and `SharedContext.record_success` has ZERO call sites
+    outside its own docstring example, so nothing has ever written that
+    dimension. Meanwhile the live file holds only the first writer's entries
+    (cleanup, docstrings, error_handling, …), none of which carries `runs`.
+
+    So: prefer an explicit `runs` if that dimension ever starts being written,
+    and otherwise derive the count from the counters that actually exist.
+    """
+    if not isinstance(stats, dict):
+        return 0
+    explicit = stats.get("runs")
+    if isinstance(explicit, int):
+        return explicit
+    try:
+        return int(stats.get("successes", 0)) + int(stats.get("failures", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _failures(stats_map: dict) -> int:
+    """Failures recorded across every entry."""
+    return sum(
+        int(v.get("failures", 0))
+        for v in stats_map.values()
+        if isinstance(v, dict) and isinstance(v.get("failures"), int)
+    )
 
 
 def main():
@@ -132,28 +177,38 @@ def main():
             "agent": agent_name,
             "emoji": emoji,
             "reply": reply,
-            "runs": stats.get("runs", 0),
+            "runs": _runs(stats),
             "successes": stats.get("successes", 0),
         })
         print(f"  {emoji} {agent_name}: {reply[:80]}")
 
     # Post to Discord as a threaded roll call
-    total_runs = sum(
-        v.get("runs", 0) for v in stats_map.values()
-    )
-    sr_all = sum(v.get("successes", 0) for v in stats_map.values())
+    total_runs = sum(_runs(v) for v in stats_map.values())
+    sr_all = sum(v.get("successes", 0) for v in stats_map.values() if isinstance(v, dict))
+    total_failures = _failures(stats_map)
     sr_pct = round(100 * sr_all / total_runs, 1) if total_runs else 0
     skill_count = len(_read_json(SKILL_FILE).get("skills", []))
 
+    # Only quote a success RATE when a failure has ever been recorded. The sole
+    # live writer calls record_success() and never increments `failures`, so the
+    # ratio is definitionally 100% — publishing that as a measured rate would be
+    # a fabricated metric, which is worse than publishing none.
+    rate_txt = (f"{sr_pct}% success rate" if total_failures
+                else "no failures recorded")
+
     header = (
         f"*Agent Roll Call — {now.strftime('%H:%M UTC')} · {now.strftime('%a %b %d')}*\n"
-        f"_{len(AGENTS)} agents online · {total_runs} total runs · {sr_pct}% success rate · {skill_count} shared skills_\n"
+        f"_{len(AGENTS)} agents online · {total_runs} recorded runs · {rate_txt} · {skill_count} shared skills_\n"
         f"_Showing {len(batch)} of {len(AGENTS)} agents (rotating batch)_"
     )
     thread_ts = post_chat("engineering", header, username="QuantEdge Status Bot", icon="white_check_mark")
 
     for s in agent_statuses:
-        line = f"{s['emoji']} *{s['agent']}* ({s['runs']} runs)\n_{s['reply']}_"
+        # Nothing writes the per-agent dimension yet, so "(0 runs)" on every
+        # single line read as "this agent has never run". Say nothing instead of
+        # saying something false.
+        suffix = f" ({s['runs']} runs)" if s["runs"] else ""
+        line = f"{s['emoji']} *{s['agent']}*{suffix}\n_{s['reply']}_"
         post_chat("engineering", line, username=f"Agent: {s['agent']}",
                    icon="robot_face", thread_ts=thread_ts)
 
@@ -164,6 +219,10 @@ def main():
         "batch_checked": len(batch),
         "total_runs": total_runs,
         "success_rate_pct": sr_pct,
+        # The denominator matters: with 0 failures ever recorded, the rate above
+        # can only be 100. Ship the raw counter so a consumer can tell a real
+        # 100% from an untracked one.
+        "failures_recorded": total_failures,
         "skill_count": skill_count,
         "agent_statuses": agent_statuses,
         "all_agents": [
@@ -171,7 +230,7 @@ def main():
                 "agent": a,
                 "emoji": e,
                 "role": r,
-                "runs": stats_map.get(a, {}).get("runs", 0),
+                "runs": _runs(stats_map.get(a, {})),
                 "successes": stats_map.get(a, {}).get("successes", 0),
                 "last_summary": stats_map.get(a, {}).get("last_summary", ""),
             }

@@ -1,5 +1,29 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔬 2026-07-29 15:10 — six trained models, zero reaching inference; and the roll call was counting the wrong dimension
+
+Two of the open questions from the 14:00 sweep, answered with measurements rather than inference.
+
+### `ml_models: ok=false, count=0` — three independent breaks between the trainer and inference
+
+The LSTM trainer is **not** broken. `lstm-training.yml` has run six times, weekly, **all six successful** (`30189512666`, `29674707432`, `29181196074`, `28731449600`, `28319490854`, `27903582392`), producing a 1.05 MB artifact each time. Nothing that it produces can ever be loaded:
+
+1. **Filename.** `ci_lstm_trainer.py` writes `models_artifacts/lstm_spy_1d/model.pt`. `InferenceService.load_models()` reads the flat, fixed paths `models_artifacts/lstm_latest.pt`, `xgboost_latest.ubj`, `lorentzian_latest.pkl`, `scaler_latest.pkl`. It never recurses and never looks for `model.pt`.
+2. **Checkpoint schema.** `AbstractModel.load()` does `checkpoint["state_dict"]` and `cls(**checkpoint["metadata"]["init_kwargs"])`. The CI trainer saves `{"model_state_dict", "n_features", "hidden", "n_layers", "dropout", "seq_len"}` — no `state_dict`, no `metadata`. A correctly-*named* file would still raise `KeyError`, swallowed by the `try/except` and logged as "Failed to load LSTM".
+3. **Persistence.** The workflow only calls `upload-artifact` (30-day retention). Nothing commits. The 2026-06-21 artifact has already expired. Render's disk is ephemeral regardless.
+
+The documented promotion path is a **comment** in the workflow header — "1. Download artifact from Actions tab 2. Commit to `backend/models_artifacts/<exp_name>/` 3. InferenceService auto-loads on next deploy". Step 3 is false: following steps 1 and 2 exactly would put the file where nothing reads it, in a format that would not load. The Discord post says "Models saved to `backend/models_artifacts/`", which is true only of the runner's disk. `/health/detailed` also globs `models_dir/*.pt` non-recursively, so it cannot see a subdirectory save either.
+
+- [ ] **[P1] Promote on the producer side, gated on the existing quality gate.** `ci_lstm_trainer.py` already computes `quality_gate_passed: sharpe >= 0.8 and test_acc >= 0.55`. It should additionally emit `lstm_latest.pt` **in `AbstractModel`'s schema** when that gate passes, and the workflow should commit `backend/models_artifacts/`. `backend/app/ml/CLAUDE.md` lists `ml/inference.py` under "Files to AVOID", so the fix belongs in the trainer, not the reader.
+- [ ] **[P1] Verify the round trip where torch exists.** Deliberately not shipped blind: torch is not installed in this environment, so a `save → AbstractModel.load → predict` round trip cannot be checked locally, and an unverified promotion path is exactly the green-looking absence this file keeps recording. The training workflow has torch — the check belongs there, as a step that fails the run.
+- [ ] **[P2] `/health/detailed` `ml_models` count should `rglob`.** Otherwise the metric stays 0 even once models land.
+
+### `total_runs: 0, success_rate_pct: 0` across 18 agents — a metrics bug, not idle agents
+
+- [x] **Fixed.** `improvement_stats` has **two writers with incompatible key spaces and incompatible schemas** sharing one dict: `continuous_improver.record_success()` keys by *improvement type* (`cleanup`, `docstrings`, …) with `{successes, failures, test_pass}`; `SharedContext.record_success()` keys by *agent name* with `{runs, successes, last_summary}`. The reporter read `runs` — the second schema — indexed by agent name — the second key space. `SharedContext.record_success()` has **zero call sites** outside its own docstring example, so that dimension has never been written by anything, and the live file holds only the first writer's entries, none of which carries `runs`. Every lookup returned 0; the `if total_runs else 0` guard then zeroed the percentage, so both numbers agreed and both were wrong. Real figure: **61 recorded attempts** across 8 improvement types. The roll call now reads `18 agents online · 61 recorded runs` instead of `0 total runs · 0% success rate`.
+- [x] **Did not publish a fabricated 100%.** The only live writer never increments `failures`, so the ratio is definitionally 100 — the header says `no failures recorded` until a failure actually is, and the status file ships `failures_recorded` so a consumer can tell a real 100% from an untracked one. Per-agent `(0 runs)` suffixes are omitted rather than printed, since nothing writes that dimension. 10 tests, all 10 fail against the old code; one asserts against the live `agent_memory.json` rather than a hand-made dict.
+- [ ] **[P2] `SharedContext.record_success()` is dead code.** Zero call sites. Either wire the agents to it — which is what would give genuine per-agent run counts — or delete it; leaving it is another live-looking decoy.
+
 ## ✂ 2026-07-29 14:50 — the trimmer worked, and the workflow threw the answer away
 
 Went to verify the trimmer's first live retirement instead of assuming it. It had run — and lost. Run `30457733119`, 13:48 UTC, three consecutive lines:
