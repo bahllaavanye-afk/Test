@@ -378,6 +378,36 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## ⚖️ 2026-07-29 19:30 — CORRECTION to the 18:45 entry, plus the improver's real current failure
+I claimed the fence-extraction bug caused "32 of 41 failures, 78% of everything that went wrong".
+**Not supported.** Those 32 `syntax check failed` traces are historical. Reading the last full
+pre-fix run end to end (`30476849972`, 17:46) shows **zero** syntax failures in it. The extraction
+fix is still correct — `startswith("```")` cannot handle a preamble and this `llm()` helper
+demonstrably returns preamble — but I have not shown it moved the syntax number, and I implied a
+measured result from a log I had not read.
+
+**The real current failure mode**, from that run: 10 attempts, 5 committed, and all 5 failures were
+oversized files:
+```
+· backend/app/backtest/cpcv.py is 13806 chars (> 8000) — skipped, whole-file rewrite unsafe
+  ✗ LLM returned nothing for backend/app/backtest/cpcv.py
+```
+`improve_file()` returns `None` for BOTH "too big to send" and "model gave me nothing", so the
+caller charged a deliberate policy skip to the LLM. **Half the run's attempts**, attributed to a
+model that never saw the input — corrupting the counter from 17:25 the moment it began working.
+
+Fixed: the caller checks `MAX_FILE_CHARS` itself and skips without recording a failure; the guard
+inside `improve_file()` stays as defence in depth (the PR #420 lesson); skips are counted and shown
+separately in the run summary. 5 tests, all 5 fail against the old code.
+
+**Two things left open, both deliberately not fixed blind:**
+- `pick_target_file()` picks files it can never act on — 5 of 10 attempts wasted against a budget of
+  10 for 5 wanted improvements. Size-filtering at selection would roughly double useful work, but it
+  changes which files the improver ever touches.
+- **The improver's CI dispatch has ALWAYS failed**: `HTTP 403: Resource not accessible by
+  integration` → `##[error]Process completed with exit code 1`, while the job still reports success.
+  That is the mechanical cause of "improver PRs bypass CI" noted in every monitor tick. Pre-existing.
+
 ## 📉 2026-07-29 17:25 — the improver's success rate was 100% because failures were never counted
 Second half of the 15:40 roll-call fix. There I stopped the header printing a fabricated 100%; here
 is why it was fabricated. `record_success()` initialises `improvement_stats[type]["failures"] = 0`

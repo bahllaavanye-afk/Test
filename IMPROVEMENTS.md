@@ -1,5 +1,25 @@
 # QuantEdge — Improvements & Task Tracker
 
+## ⚖️ 2026-07-29 19:30 — I over-attributed the improver's failures, and found the real current one
+
+Went to verify the 18:47 extraction fix on a live run instead of assuming it. Read the last full **pre-fix** run end to end (`30476849972`, 17:46) and it does not support what I claimed.
+
+**Correction.** I said the fence-extraction bug caused "32 of 41 failures, 78% of everything that went wrong". The 32 `syntax check failed` traces are real, but they are **historical**. That pre-fix run had **zero** syntax failures. All 5 of its failures were something else entirely, and the extraction fix does not touch them. The fix is still correct — `startswith("```")` demonstrably cannot handle a preamble, and this same `llm()` helper demonstrably returns preamble — but I have **not** shown it moved the syntax number, and I should not have implied a measured result from an unread log.
+
+**What that run actually shows** — 10 attempts, 5 committed, 5 failed, every failure identical in kind:
+
+```
+· backend/app/backtest/cpcv.py is 13806 chars (> 8000) — skipped, whole-file rewrite unsafe
+  ✗ LLM returned nothing for backend/app/backtest/cpcv.py
+· backend/app/comparison/report_builder.py is 9242 chars (> 8000) — skipped…
+· backend/tests/unit/test_all_employees.py is 21032 chars (> 8000) — skipped…
+· backend/app/api/v1/discord_interactions.py is 8609 chars (> 8000) — skipped…
+```
+
+- [x] **[P1] An oversized file was charged to the LLM as a failure. The LLM was never called.** `improve_file()` returns `None` both for "too big to send" and "the model gave me nothing", so the caller logged the deliberate policy skip as `"LLM returned empty"`. **Half of that run's attempts**, all attributed to a model that never saw the input — corrupting the failure counter from #1235 at the moment it started working, and guaranteeing the first thing it measured would be a rate dominated by non-failures. The caller now checks `MAX_FILE_CHARS` itself and skips without recording; the guard inside `improve_file()` stays as defence in depth (it is the PR #420 lesson). Skips are counted and reported separately in the run summary. 5 tests, all 5 fail against the old code.
+- [ ] **[P1] `pick_target_file()` selects files it can never act on.** 5 of 10 attempts in that run went to files above the 8000-char limit, and the attempt budget is capped at 10 for 5 wanted improvements. Filtering by size **at selection time** would roughly double the useful work per run. Not fixed blind — it changes which files the improver ever touches, which is worth a deliberate decision rather than a drive-by.
+- [ ] **[P2] `improver` CI dispatch has been failing with 403 the whole time.** Both runs end with `could not create workflow dispatch event: HTTP 403: Resource not accessible by integration` → `##[error]Process completed with exit code 1`, yet the job reports **success**. This is the mechanical cause of the "improver PRs bypass CI" problem noted in every monitor tick: the dispatch that would give those PRs a CI run has never worked. Pre-existing, not a regression.
+
 ## 📉 2026-07-29 17:25 — 41 failures were traced and none was counted, so the rate read 100%
 
 Follow-on from the roll-call fix at 15:40. I made the header print `no failures recorded` instead of a fabricated 100% success rate, because `improvement_stats[*]["failures"]` was never incremented. This is the other half: **why** it was never incremented, and the fix.
