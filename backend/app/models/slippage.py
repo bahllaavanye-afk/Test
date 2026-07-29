@@ -2,7 +2,7 @@ import uuid
 import logging
 from datetime import datetime
 from sqlalchemy import String, ForeignKey, Numeric, DateTime, Float, event
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from app.database import Base
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,26 @@ class SlippageRecord(Base):
 
     order: Mapped["Order"] = relationship("Order", back_populates="slippage")
 
+    @validates("signal_price", "expected_price", "fill_price", "arrival_price", "period_vwap")
+    def _validate_non_negative(self, key, value):
+        """Ensure price-like fields are non‑negative when provided."""
+        if value is not None and value < 0:
+            raise ValueError(f"{key} must be non‑negative, got {value}")
+        return value
+
+    def _compute_derived_metrics(self):
+        """Calculate slippage and short‑fall metrics if sufficient data is present."""
+        if self.fill_price is not None and self.expected_price:
+            self.slippage_bps = ((self.fill_price - self.expected_price) / self.expected_price) * 10000
+        if self.fill_price is not None and self.arrival_price:
+            self.is_cost_bps = ((self.fill_price - self.arrival_price) / self.arrival_price) * 10000
+        if self.fill_price is not None and self.period_vwap:
+            self.vwap_shortfall_bps = ((self.fill_price - self.period_vwap) / self.period_vwap) * 10000
+
+def _prepare_slippage_record(mapper, connection, target: SlippageRecord):
+    """Event hook to compute derived metrics before persisting."""
+    target._compute_derived_metrics()
+
 def _log_slippage_record(mapper, connection, target: SlippageRecord):
     """
     Structured logging for SlippageRecord creation.
@@ -49,4 +69,5 @@ def _log_slippage_record(mapper, connection, target: SlippageRecord):
         },
     )
 
+event.listen(SlippageRecord, "before_insert", _prepare_slippage_record)
 event.listen(SlippageRecord, "after_insert", _log_slippage_record)
