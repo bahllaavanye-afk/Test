@@ -378,6 +378,51 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## ✅ 2026-07-29 22:45 — the dispatch fix works, and it fixed a STALL, not a safety hole
+Verified on a live run rather than assumed. Improver run `30496380998` (22:30, head `fa4a99a2`,
+first run carrying the `actions: write` fix) dispatched successfully, and **PR #1246 has CI check
+runs — the first improver PR ever to get them**, starting 3 seconds after the dispatch.
+
+CI immediately earned its keep: **`test` FAILED** on #1246, so the gate is holding it.
+
+### CORRECTION to the 21:40 entry below
+I wrote that the missing permission was "the mechanical cause of the standing *improver PRs bypass
+CI so main can silently break* risk". **Half wrong, and the wrong half matters.**
+
+`auto-merge.yml` lines 91–103 **already refuse** to merge a PR whose required checks never ran, with
+a comment naming the exact incidents (`#876` strategy-router 400, `#929` PIPELINE_DEFS + boot
+crashes). That hole was closed before this session. So the 403 did **not** cause unvalidated merges.
+
+What it actually caused: **a completely stalled improvement pipeline.** 15 improver PRs are open,
+back to `#1187` at 2026-07-28 22:02 — roughly 24 hours of autonomous work. Every one has **zero**
+check runs, so the gate correctly refused all 15 and they simply rotted. Only `#1246`, the first
+post-fix one, has CI.
+
+So the fix unblocks a jam; it does not close a security gap. Worth being precise about — this is the
+second correction in two ticks on this same subject, both from claiming a mechanism before reading
+the thing that would confirm it.
+
+### What #1246 shows about the improver's output quality
+The gate is catching a genuinely bad change. In `backend/tests/unit/test_strategies.py` it rewrote a
+**shared** test with assertions that are false as general invariants:
+```python
+assert signs[i] != signs[i - 1], "Consecutive non-zero signals must alternate sign"
+```
+A trend-follower holds `+1` across consecutive bars; this fails for essentially any momentum
+strategy. Also `assert len(nonzero) >= 1` (a strategy may legitimately produce no signal on random
+data) and an `else: pytest.fail(...)` converting a deliberate skip into a hard failure.
+
+Two more from the same PR, not caught by pytest and worth knowing about:
+- `ml/features/normalization.py` — `position[idx - 1]` where `idx` comes from a `DatetimeIndex`.
+  `Timestamp - 1` is a `TypeError`; the function cannot run.
+- `archive/trade_archiver.py` — a new `_validate_signal()` **silently drops** signals with
+  confidence < 0.6 from the archive. That file's own docstring says it "writes every order, fill,
+  and signal ... for long-term audit and replay". An audit log that discards records is worse than
+  no filter.
+
+**Left for a human decision:** 15 stale improver PRs, all based on old `main`. Not mass-merged or
+mass-closed — that is 15 outward-facing actions on work this session did not author.
+
 ## 🔓 2026-07-29 21:40 — "improver PRs bypass CI" was ONE MISSING PERMISSION
 The risk restated at the top of every monitor tick — *"the improver PRs bypass CI so main can
 silently break (this has happened 3 sessions running)"* — was not GITHUB_TOKEN event suppression.

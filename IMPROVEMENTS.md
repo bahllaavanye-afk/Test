@@ -1,5 +1,18 @@
 # QuantEdge — Improvements & Task Tracker
 
+## ✅ 2026-07-29 22:45 — dispatch fix verified live; and it fixed a STALL, not a safety hole
+
+Verified on a live run instead of assuming. Improver run `30496380998` (22:30, head `fa4a99a2` — the first carrying `actions: write`) dispatched cleanly, and **PR #1246 has CI check runs, the first improver PR ever to get them**, starting 3 seconds after the dispatch. `test` then **FAILED**, so the gate is holding it.
+
+**Correction to the 21:40 entry.** I called the missing permission "the mechanical cause of the standing *improver PRs bypass CI so main can silently break* risk". Half wrong. `auto-merge.yml` lines 91–103 **already refuse** to merge a PR whose required checks never ran — with a comment naming `#876` (strategy-router 400) and `#929` (PIPELINE_DEFS + boot crashes). That hole was closed before this session, so the 403 never caused an unvalidated merge.
+
+What it actually caused: **a fully stalled improvement pipeline.** 15 improver PRs open, back to `#1187` at 2026-07-28 22:02 — ~24h of autonomous work, every one with **zero** check runs, all correctly refused by the gate, all left to rot. Second correction in two ticks on this subject, both from asserting a mechanism before reading what would confirm it.
+
+- [ ] **[USER] 15 stale improver PRs need a call.** All based on old `main`. Not mass-merged or mass-closed — that is 15 outward-facing actions on work this session did not author. Options: close them all and let the (now working) pipeline refill from current `main`; or rebase and let CI judge each. Closing is cleaner — they are stale by up to 24h and the improver re-picks targets every run.
+- [ ] **[P1] The improver rewrites SHARED tests with false invariants.** `#1246` edited `backend/tests/unit/test_strategies.py` to add `assert signs[i] != signs[i-1], "Consecutive non-zero signals must alternate sign"` — false for any trend-follower, which holds `+1` across consecutive bars. Plus `assert len(nonzero) >= 1` (a strategy may legitimately produce no signal on random data) and an `else: pytest.fail(...)` converting a deliberate skip into a failure. Letting it edit the test suite that grades it is a conflict of interest; consider excluding `backend/tests/**` from `pick_target_file()`.
+- [ ] **[P2] Two more defects in `#1246`, invisible to pytest.** `ml/features/normalization.py` does `position[idx - 1]` where `idx` comes from a `DatetimeIndex` (`Timestamp - 1` → `TypeError`, the function cannot run). `archive/trade_archiver.py` gained a `_validate_signal()` that **silently drops** signals with confidence < 0.6 — from a file whose docstring says it "writes every order, fill, and signal ... for long-term audit and replay". An audit log that discards records is worse than no filter.
+- [ ] **[USER, P2] Vercel free-tier deploy cap is exhausted.** `#1246` carries a bot comment: `Resource is limited - try again in 24 hours (more than 100, code: "api-deployments-free-per-day")`. Every bot PR triggers a preview deployment, and the improver alone opens ~1/hour. Directly relevant to the bandwidth question — preview builds also consume transfer. Capping preview deploys for `improver/**` branches would fix both.
+
 ## ⚖️ 2026-07-29 19:30 — I over-attributed the improver's failures, and found the real current one
 
 Went to verify the 18:47 extraction fix on a live run instead of assuming it. Read the last full **pre-fix** run end to end (`30476849972`, 17:46) and it does not support what I claimed.
