@@ -13,9 +13,15 @@ Features:
 """
 from __future__ import annotations
 
+import logging
+import time
+from functools import lru_cache
+
 import numpy as np
 import pandas as pd
-from functools import lru_cache
+
+# Logger setup
+_logger = logging.getLogger(__name__)
 
 # Constants
 DEFAULT_LEVELS: int = 5
@@ -158,15 +164,23 @@ class OrderBookFeatures:
         Returns:
             dict with keys: imbalance, spread_bps, depth_ratio, pin_proxy
         """
+        start_time = time.time()
         best_bid = float(bids[0][0]) if bids else 0.0
         best_ask = float(asks[0][0]) if asks else 0.0
 
-        return {
+        result = {
             "imbalance": self.compute_imbalance(bids, asks, levels),
             "spread_bps": self.compute_spread_bps(best_bid, best_ask),
             "depth_ratio": self.compute_depth_ratio(bids, asks),
             "pin_proxy": self.compute_pin_proxy(buy_volume, sell_volume),
         }
+
+        duration = time.time() - start_time
+        _logger.info(
+            "Computed snapshot microstructure features",
+            extra={"duration_sec": duration},
+        )
+        return result
 
 
 def add_microstructure_features(
@@ -182,6 +196,7 @@ def add_microstructure_features(
       - volume_imbalance_proxy: (close - open) / (high - low)  — approximates buy/sell pressure
       - spread_bps_proxy: (high - low) / close * BASIS_POINTS_MULTIPLIER — proxy for intraday spread
     """
+    start_time = time.time()
     df = df.copy()
 
     if imbalance_series is not None:
@@ -194,6 +209,19 @@ def add_microstructure_features(
         df[COL_SPREAD_BPS] = spread_bps_series.reindex(df.index).fillna(0.0)
     else:
         close_nonzero = df[COL_CLOSE].replace(0, np.nan)
-        df[COL_SPREAD_BPS] = ((df[COL_HIGH] - df[COL_LOW]) / close_nonzero * BASIS_POINTS_MULTIPLIER).fillna(0.0)
+        df[COL_SPREAD_BPS] = (
+            (df[COL_HIGH] - df[COL_LOW]) / close_nonzero * BASIS_POINTS_MULTIPLIER
+        ).fillna(0.0)
 
+    duration = time.time() - start_time
+    signal_count = len(df)
+    pnl = (df[COL_CLOSE] - df[COL_OPEN]).sum()
+    _logger.info(
+        "Added microstructure features to DataFrame",
+        extra={
+            "signal_count": signal_count,
+            "duration_sec": duration,
+            "pnl": pnl,
+        },
+    )
     return df
