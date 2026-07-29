@@ -779,14 +779,18 @@ def _map_crypto_symbol(symbol: str) -> str:
 async def _fetch_ohlcv(symbol: str, market_type: str) -> pd.DataFrame:
     """Fetch OHLCV data: try Redis cache first, then yfinance fallback."""
     try:
-        from app.redis_client import price_cache
-        raw = await price_cache.get(f"ohlcv:{symbol}:1d")
-        if raw:
-            rows = json.loads(raw)
-            if rows and len(rows) >= 20:
-                df = pd.DataFrame(rows)
-                if "close" in df.columns:
-                    return df
+        # Use the shared accessor, NOT a hand-built key. This read was
+        # `ohlcv:{symbol}:1d` while the writer uses
+        # `ohlcv:{exchange}:{symbol}:{interval}` — no exchange segment, so it
+        # missed on every symbol, every tick. Exactly the `prices:{symbol}`
+        # topic-vs-key class already documented in app/tasks/CLAUDE.md: a miss
+        # is indistinguishable from a cold cache, so it fell through silently.
+        from app.redis_client import exchange_for, price_cache
+        rows = await price_cache.get_ohlcv(exchange_for(symbol), symbol, "1d")
+        if rows and len(rows) >= 20:
+            df = pd.DataFrame(rows)
+            if "close" in df.columns:
+                return df
     except Exception as e:
         logger.debug("Redis OHLCV fetch failed", symbol=symbol, error=str(e))
 
@@ -798,7 +802,14 @@ async def _fetch_ohlcv(symbol: str, market_type: str) -> pd.DataFrame:
         df = yf.download(yf_symbol, period="3mo", interval="1d", progress=False, auto_adjust=True)
         if df.empty:
             return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
-        df.columns = [c.lower() for c in df.columns]
+        # yfinance >= 0.2.51 returns a MultiIndex even for a SINGLE ticker:
+        # ('Close', 'SPY'). `c.lower()` on a tuple raises
+        # "'tuple' object has no attribute 'lower'" — which is what the live
+        # Render logs showed several times a minute for SPY and QQQ, sending
+        # every bot to the empty-DataFrame branch.
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        df.columns = [str(c).lower() for c in df.columns]
         df = df.reset_index(drop=True)
         return df
     except Exception as e:
