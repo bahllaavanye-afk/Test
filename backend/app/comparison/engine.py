@@ -133,3 +133,106 @@ class StrategyComparisonEngine:
             is_significant=p_val < 0.05,
             winner=winner,
         )
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge/boundary conditions
+# ----------------------------------------------------------------------
+import asyncio
+import pytest
+from unittest.mock import Mock, patch
+
+
+@pytest.fixture
+def dummy_series():
+    """Create minimal overlapping series with a datetime index."""
+    idx = pd.date_range(start="2023-01-01", periods=5, freq="D")
+    manual = pd.Series([1, 0, 1, 0, 1], index=idx)
+    ml = pd.Series([0, 1, 0, 1, 0], index=idx)
+    prices = pd.Series([100, 101, 102, 103, 104], index=idx)
+    return manual, ml, prices
+
+
+def dummy_backtest_metrics(equity_start: float, sharpe: float) -> BacktestMetrics:
+    """Construct a lightweight BacktestMetrics-like object."""
+    mock = Mock(spec=BacktestMetrics)
+    # equity_curve mimics list of dicts with equity values
+    mock.equity_curve = [{"equity": equity_start + i * 1000} for i in range(5)]
+    mock.sharpe = sharpe
+    return mock
+
+
+@pytest.mark.asyncio
+async def test_start_date_after_end_date_raises(dummy_series):
+    manual, ml, prices = dummy_series
+    engine = StrategyComparisonEngine()
+    with pytest.raises(ValueError, match="start_date cannot be later than end_date"):
+        await engine.run_comparison(
+            manual,
+            ml,
+            prices,
+            strategy_name="TestStrat",
+            symbol="TEST",
+            interval="1D",
+            start_date=date(2023, 5, 1),
+            end_date=date(2023, 4, 30),  # start > end
+            initial_equity=100_000,
+        )
+
+
+@pytest.mark.asyncio
+async def test_non_overlapping_indices_raise(dummy_series):
+    manual, ml, prices = dummy_series
+    # Shift ml signals to a non‑overlapping period
+    ml_shifted = ml.shift(10)
+    engine = StrategyComparisonEngine()
+    with pytest.raises(ValueError, match="must share at least one common index"):
+        await engine.run_comparison(
+            manual,
+            ml_shifted,
+            prices,
+            strategy_name="TestStrat",
+            symbol="TEST",
+            interval="1D",
+            start_date=date(2023, 1, 1),
+            end_date=date(2023, 1, 5),
+            initial_equity=100_000,
+        )
+
+
+@pytest.mark.asyncio
+async def test_short_overlap_defaults_statistics(dummy_series):
+    """When overlapping series length <=10, t‑statistic and p‑value should default."""
+    manual, ml, prices = dummy_series
+    engine = StrategyComparisonEngine()
+
+    # Patch backtest and benchmark calls to return deterministic objects
+    with patch("app.backtest.engine.run_backtest") as mock_run_bt, \
+         patch("app.comparison.benchmarks.fetch_benchmark_curves") as mock_fetch, \
+         patch("app.comparison.benchmarks.get_benchmark_stats") as mock_stats:
+
+        mock_run_bt.side_effect = [
+            dummy_backtest_metrics(equity_start=100_000, sharpe=1.0),
+            dummy_backtest_metrics(equity_start=100_000, sharpe=1.05),
+        ]
+        mock_fetch.return_value = {}
+        mock_stats.return_value = {}
+
+        result = await engine.run_comparison(
+            manual,
+            ml,
+            prices,
+            strategy_name="TestStrat",
+            symbol="TEST",
+            interval="1D",
+            start_date=date(2023, 1, 1),
+            end_date=date(2023, 1, 5),
+            initial_equity=100_000,
+        )
+
+        assert result.t_statistic == 0.0
+        assert result.p_value == 1.0
+        # With a small Sharpe improvement (<0.1) the winner should be "neither"
+        assert result.winner == "neither"
+        # Significance flag must be False when p_value is 1.0
+        assert result.is_significant is False

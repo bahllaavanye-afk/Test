@@ -205,3 +205,99 @@ def stress_summary(results: list[StressResult]) -> dict:
                 "num_trades": r.metrics.num_trades,
             }
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Unit tests for edge cases
+# --------------------------------------------------------------------------- #
+
+import pytest
+from unittest.mock import patch
+
+
+def _dummy_metrics():
+    """Create a minimal BacktestMetrics instance for mocking."""
+    return BacktestMetrics(
+        total_return=0.05,
+        max_drawdown=-0.02,
+        sharpe=1.1,
+        win_rate=0.55,
+        num_trades=4,
+    )
+
+
+def test_slice_series_none_input():
+    """_slice_series should return None when the input series is None."""
+    result = _slice_series(None, pd.Timestamp("2020-01-01"), pd.Timestamp("2020-01-31"))
+    assert result is None
+
+
+def test_slice_series_non_datetime_index():
+    """_slice_series should correctly slice a Series with a non‑datetime index using a mask."""
+    data = pd.Series([1, 2, 3, 4, 5], index=[0, 1, 2, 3, 4])
+    # Provide timestamps that correspond to integer index values after conversion
+    start = pd.Timestamp("1970-01-01")  # maps to 0
+    end = pd.Timestamp("1970-01-05")    # maps to 4
+    result = _slice_series(data, start, end)
+    pd.testing.assert_series_equal(result, data)
+
+
+def test_run_stress_tests_boundary_min_points():
+    """
+    Scenario with exactly 5 data points should be evaluated (period_covered=True).
+    """
+    dates = pd.date_range(start="2022-01-01", periods=5, freq="D")
+    prices = pd.Series([100, 101, 102, 103, 104], index=dates)
+    signals = pd.Series([0, 1, 0, -1, 0], index=dates)
+
+    # Create a custom scenario that exactly matches the dates above
+    scenario = StressScenario(
+        name="boundary_test",
+        label="Boundary Test",
+        start=date(2022, 1, 1),
+        end=date(2022, 1, 5),
+        description="Exactly five data points",
+    )
+
+    with patch("app.backtest.engine.run_backtest", return_value=_dummy_metrics()) as mock_bt:
+        results = run_stress_tests(
+            signals=signals,
+            prices=prices,
+            scenarios=[scenario],
+        )
+    assert len(results) == 1
+    res = results[0]
+    assert res.period_covered is True
+    assert res.metrics is not None
+    assert res.data_points == 5
+    mock_bt.assert_called_once()
+
+
+def test_run_stress_tests_no_overlap():
+    """
+    When the price series does not intersect the scenario window,
+    period_covered should be False and metrics None.
+    """
+    dates = pd.date_range(start="2021-01-01", periods=10, freq="D")
+    prices = pd.Series([100 + i for i in range(10)], index=dates)
+    signals = pd.Series([0] * 10, index=dates)
+
+    # Scenario completely outside the price series range
+    scenario = StressScenario(
+        name="no_overlap",
+        label="No Overlap",
+        start=date(2020, 5, 1),
+        end=date(2020, 5, 10),
+        description="Window before any price data",
+    )
+
+    results = run_stress_tests(
+        signals=signals,
+        prices=prices,
+        scenarios=[scenario],
+    )
+    assert len(results) == 1
+    res = results[0]
+    assert res.period_covered is False
+    assert res.metrics is None
+    assert res.data_points == 0
