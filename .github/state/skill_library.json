@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Use retry backoff timers",
-    "Validate config files",
-    "* The current net-used exposure is approximately 2.8% NAV, which is below the 5% NAV gross-exposure cap defined in `./state/risk_limits.yaml`.",
     "Retry on timeout",
     "Verify DB connections",
     "Check RAM allocation",
@@ -199,8 +196,11 @@
     "Test thread safety",
     "Monitor data integrity",
     "Check disk space",
-    "Verify RAM usage"
+    "Verify RAM usage",
+    "Verify OS updates",
+    "Eliminate type leaks",
+    "Integrate real-time logic"
   ],
-  "last_updated": "2026-07-29T17:46:13.291943+00:00",
+  "last_updated": "2026-07-29T19:09:31.407076+00:00",
   "total": 200
 }
