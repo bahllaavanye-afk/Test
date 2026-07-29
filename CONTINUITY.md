@@ -392,9 +392,27 @@ backfilled** — traces are capped, so a backfill would be a known undercount pr
 Consequence: the rate reads optimistically at first (accumulated successes vs fresh failures). That
 is disclosed in the source and in IMPROVEMENTS.md, and a test pins the explanation.
 
-**Open and worth chasing:** 32 of the 41 failures are `syntax check failed` — the improver's LLM
-output does not parse, ~78% of all failures. `constants` shows 1 success against 9 traced failures
-and was reported as flawless. Now measurable for the first time.
+**RESOLVED 18:45 — and it was not an output-quality problem.** 32 of the 41 failures were
+`syntax check failed`, ~78% of everything that went wrong, and the cause was one line:
+```python
+if improved.startswith("```"):   # position 0, or nothing happens
+```
+`improve_file()` unwrapped the code fence only when the response *began* with one. The cascade's
+free providers don't oblige: `llm_common._extract()` falls back to `reasoning_content` when
+`content` is empty, so a reasoning model's chain-of-thought comes back AS the response. That is
+observable right now in `agent_status.json`, from this same `llm()` helper — *"The user asks: …"*,
+*"We need to respond as algo_agent, …"*. Any preamble makes `startswith` False, so the prose and
+the fence went straight into `compile()`.
+
+`_extract_code()` now finds a fenced block anywhere in the response and takes the longest one
+(responses carry small illustrative snippets beside the real file). 11 tests, all 11 fail against
+the old code. Deliberately does **not** salvage prose into code: a response with no fence and no
+valid Python still fails the syntax check. The goal is to stop discarding good output, not to start
+accepting bad output.
+
+**The two fixes compound**: the counter (17:25) is what made this measurable, and this is what the
+measurement pointed at. Expect the improver's real success rate to move sharply once the next runs
+land — the previous ~60% was mostly this.
 
 Also verified live this tick: the 15:40 roll-call fix works in production. The 17:14 run wrote
 `total_runs: 61, success_rate_pct: 100.0, failures_recorded: 0` — real numbers where it had written
