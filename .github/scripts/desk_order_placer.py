@@ -1680,6 +1680,27 @@ def _apply_denylist(symbols: list[str], denied: set) -> "tuple[list[str], list[s
     return kept, blocked
 
 
+def _expand_truncated(name: str, registry: "set[str]") -> str:
+    """Expand a legacy 10-char attribution key to its full registry name.
+
+    Orders placed before the full-name coid fix were tagged `qe-{name[:10]}-…`,
+    so attribution — and therefore the trims file derived from it — is keyed by
+    the TRUNCATED name (`avellaneda`), while the desk checks membership using
+    the full registry name (`avellaneda_stoikov_mm`). Without this they never
+    match and the trim is a phantom that retires nothing.
+
+    Mirrors backend/app/tasks/desk_trade_sync.parse_strategy_from_coid: expand
+    only when EXACTLY ONE registry entry shares the prefix. A key that is itself
+    a registry name is returned untouched — `supertrend` is both a real strategy
+    and the 10-char prefix of `supertrend_rsi_tv`, so expanding it would retire
+    the wrong one.
+    """
+    if not name or name in registry:
+        return name
+    matches = [n for n in registry if n[:len(name)] == name]
+    return matches[0] if len(matches) == 1 else name
+
+
 def _trimmed_strategies() -> set:
     """Names retired by strategy_trimmer.py — they must NOT trade until recovered."""
     import json
@@ -1688,9 +1709,16 @@ def _trimmed_strategies() -> set:
     if not f.exists():
         return set()
     try:
-        return set(json.loads(f.read_text()).keys())
-    except Exception:
+        keys = set(json.loads(f.read_text()).keys())
+    except Exception:  # noqa: BLE001
         return set()
+    try:
+        from app.strategies import STRATEGY_REGISTRY
+        registry = set(STRATEGY_REGISTRY)
+    except Exception:  # noqa: BLE001
+        return keys          # fail-soft: unexpanded is better than empty
+    # keep the original too — a trims file may legitimately hold either form
+    return keys | {_expand_truncated(k, registry) for k in keys}
 
 
 # ── Desk runner ───────────────────────────────────────────────────────────────

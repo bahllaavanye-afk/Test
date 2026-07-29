@@ -329,6 +329,42 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## ✅ 2026-07-29 10:37 — THE ATTRIBUTION ARTIFACT EXISTS. Five changes, verified end to end.
+`336afa69 chore(fills): update strategy P&L attribution` is on main, and
+`backend/performance_log/strategy_performance.json` is **in the repository** for the first time.
+Contents, read rather than assumed:
+```
+generated_at: 2026-07-29T10:19:16Z   period_days: 30   tracked_order_ids: 10
+avellaneda   trades=10  win_rate=0.60  total_return_pct=-7.9157
+```
+The chain that got here: commit step (#1191) → cadence (#1202) → chained trigger (#1209) →
+stage-before-compare (#1215, the actual blocker) → this.
+
+**`evaluate_trim` on that row returns `(True, "cumulative return -7.9% ≤ -5.0% over 10
+trades")`** — the trimmer will retire it on its next run (`41 */6`, so 12:41 UTC).
+
+### 🔑 …except the key is `avellaneda`, TRUNCATED — the trim would retire NOTHING
+Those ten fills predate the full-name coid fix, so attribution is keyed by the old 10-char form
+while the desk checks `sname in _trimmed` with the full registry name
+`avellaneda_stoikov_mm`. They never match: the trim gets written and is a **phantom**.
+
+This is the 7-day tail predicted in #1199, now concrete. It self-resolves as old fills age out —
+but that wastes a week of data on a strategy that is bleeding **-7.9% over 10 trades right now**.
+So `_trimmed_strategies()` now expands a truncated key against the registry, using the SAME rule
+as `desk_trade_sync.parse_strategy_from_coid`: expand only when **exactly one** registry entry
+shares the prefix, and never expand a key that is itself a registry name.
+
+That last clause is not hypothetical — **`supertrend` is simultaneously a real strategy and the
+10-char prefix of `supertrend_rsi_tv`**, so a naive expansion would retire the wrong one.
+`commodity_` matches three and is likewise left alone. Both forms are kept, so a trims file in
+either format matches. 10 tests, 9 fail pre-fix.
+
+**⚠️ This is a real behaviour change, not just plumbing.** On the next desk run after the
+trimmer fires, `avellaneda_stoikov_mm` will stop trading entirely. Today it trades at 0.60×
+under the *other* (live, leaderboard-driven) pruning path. That is the trimmer working as
+designed for the first time — but it is the first time, so the next tick should confirm a
+`✂ … retired by the trimmer` line and no orders from that name.
+
 ## 🪤 2026-07-29 09:45 — `git diff` DOES NOT SEE UNTRACKED FILES. That was the real blocker.
 The chain worked. **fill-tracking ran at 08:53:32, succeeded in 8 seconds — and the artifact is
 still not in the repo.** The log says:
