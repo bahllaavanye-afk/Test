@@ -14,7 +14,14 @@ PRICES_ALL_TOPIC = "prices:*"
 @router.websocket("/ws/prices")
 async def prices_ws_all(websocket: WebSocket):
     """Subscribe to all price updates across all symbols."""
-    await manager.connect(websocket, PRICES_ALL_TOPIC)
+    if websocket is None:
+        logger.error("prices_ws_all called with None websocket")
+        return
+    try:
+        await manager.connect(websocket, PRICES_ALL_TOPIC)
+    except Exception as exc:
+        logger.error("Failed to connect manager for all prices: %s", exc)
+        return
     try:
         while True:
             try:
@@ -25,13 +32,32 @@ async def prices_ws_all(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
-        manager.disconnect(websocket, PRICES_ALL_TOPIC)
+        try:
+            manager.disconnect(websocket, PRICES_ALL_TOPIC)
+        except Exception as exc:
+            logger.error("Error during disconnect for all prices: %s", exc)
 
 
 @router.websocket("/ws/prices/{symbol}")
 async def prices_ws(websocket: WebSocket, symbol: str):
+    """Subscribe to price updates for a specific symbol."""
+    if websocket is None:
+        logger.error("prices_ws called with None websocket")
+        return
+    if not symbol:
+        logger.warning("prices_ws called with empty or None symbol")
+        # Close the connection gracefully if possible
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+        return
     topic = f"prices:{symbol}"
-    await manager.connect(websocket, topic)
+    try:
+        await manager.connect(websocket, topic)
+    except Exception as exc:
+        logger.error("Failed to connect manager for symbol %s: %s", symbol, exc)
+        return
     try:
         while True:
             try:
@@ -42,4 +68,7 @@ async def prices_ws(websocket: WebSocket, symbol: str):
     except WebSocketDisconnect:
         pass
     finally:
-        manager.disconnect(websocket, topic)
+        try:
+            manager.disconnect(websocket, topic)
+        except Exception as exc:
+            logger.error("Error during disconnect for symbol %s: %s", symbol, exc)
