@@ -13,9 +13,34 @@ from app.models.user import User
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime, timezone
 
-logger = logging.getLogger(__name__)
-
+# Constants
 CONFIGS_DIR = Path(__file__).parents[4] / "experiments" / "configs"
+RUN_EXPERIMENT_SCRIPT = Path(__file__).parents[4] / "experiments" / "run_experiment.py"
+CONFIG_SUFFIX = ".yaml"
+LIST_EXPERIMENTS_LIMIT = 50
+STATUS_QUEUED = "queued"
+EXPERIMENT_NOT_FOUND_MSG = "Experiment not found"
+MAX_DISPLAYED_CONFIGS = 10
+CONFIG_NOT_FOUND_TEMPLATE = "Config '{config}' not found. Available: {available}"
+EXPERIMENT_RESPONSE_FIELDS = {
+    "experiment_id": "experiment_id",
+    "status": "status",
+    "config_name": "config_name",
+}
+METRICS_RESPONSE_FIELDS = {
+    "id": "id",
+    "name": "name",
+    "config": "config",
+    "status": "status",
+    "val_accuracy": "val_accuracy",
+    "val_sharpe": "val_sharpe",
+    "test_sharpe": "test_sharpe",
+    "metrics_history": "metrics_history",
+    "started_at": "started_at",
+    "completed_at": "completed_at",
+}
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/experiments", tags=["experiments"])
 
@@ -39,7 +64,7 @@ async def list_experiments(
     current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(Experiment).order_by(Experiment.started_at.desc()).limit(50)
+        select(Experiment).order_by(Experiment.started_at.desc()).limit(LIST_EXPERIMENTS_LIMIT)
     )
     return result.scalars().all()
 
@@ -53,12 +78,15 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
     import subprocess
     import sys
 
-    script = Path(__file__).parents[4] / "experiments" / "run_experiment.py"
-    config_path = CONFIGS_DIR / f"{config_name}.yaml"
+    config_path = CONFIGS_DIR / f"{config_name}{CONFIG_SUFFIX}"
     try:
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, str(script), "--config", str(config_path),
-            "--experiment-id", experiment_id,
+            sys.executable,
+            str(RUN_EXPERIMENT_SCRIPT),
+            "--config",
+            str(config_path),
+            "--experiment-id",
+            experiment_id,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -78,15 +106,20 @@ async def trigger_training(
     Returns immediately with experiment_id and status='queued'.
     The training runs as a background asyncio task.
     """
-    config_name = body.config_name.removesuffix(".yaml")
+    config_name = body.config_name.removesuffix(CONFIG_SUFFIX)
 
     # Validate config exists
-    config_path = CONFIGS_DIR / f"{config_name}.yaml"
+    config_path = CONFIGS_DIR / f"{config_name}{CONFIG_SUFFIX}"
     if not config_path.exists():
-        available = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
+        available = sorted(p.stem for p in CONFIGS_DIR.glob(f"*{CONFIG_SUFFIX}"))
+        displayed = available[:MAX_DISPLAYED_CONFIGS]
+        suffix = "..." if len(available) > MAX_DISPLAYED_CONFIGS else ""
         raise HTTPException(
             404,
-            f"Config '{config_name}' not found. Available: {available[:10]}{'...' if len(available) > 10 else ''}",
+            CONFIG_NOT_FOUND_TEMPLATE.format(
+                config=config_name,
+                available=f"{displayed}{suffix}"
+            ),
         )
 
     experiment_id = str(uuid.uuid4())
@@ -96,7 +129,7 @@ async def trigger_training(
         id=experiment_id,
         name=f"{config_name}-{now.strftime('%Y%m%d%H%M%S')}",
         config={"config_name": config_name},
-        status="queued",
+        status=STATUS_QUEUED,
         started_at=now,
         created_at=now,
     )
@@ -107,9 +140,9 @@ async def trigger_training(
     asyncio.create_task(_run_experiment_async(config_name, experiment_id))
 
     return {
-        "experiment_id": experiment_id,
-        "status": "queued",
-        "config_name": config_name,
+        EXPERIMENT_RESPONSE_FIELDS["experiment_id"]: experiment_id,
+        EXPERIMENT_RESPONSE_FIELDS["status"]: STATUS_QUEUED,
+        EXPERIMENT_RESPONSE_FIELDS["config_name"]: config_name,
     }
 
 
@@ -120,7 +153,7 @@ async def list_train_configs(
     """List available training config names."""
     if not CONFIGS_DIR.exists():
         return {"configs": []}
-    configs = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
+    configs = sorted(p.stem for p in CONFIGS_DIR.glob(f"*{CONFIG_SUFFIX}"))
     return {"configs": configs}
 
 
@@ -133,16 +166,16 @@ async def get_experiment(
     result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
     exp = result.scalar_one_or_none()
     if not exp:
-        raise HTTPException(404, "Experiment not found")
+        raise HTTPException(404, EXPERIMENT_NOT_FOUND_MSG)
     return {
-        "id": exp.id,
-        "name": exp.name,
-        "config": exp.config,
-        "status": exp.status,
-        "val_accuracy": exp.val_accuracy,
-        "val_sharpe": exp.val_sharpe,
-        "test_sharpe": exp.test_sharpe,
-        "metrics_history": exp.metrics_history,
-        "started_at": exp.started_at,
-        "completed_at": exp.completed_at,
+        METRICS_RESPONSE_FIELDS["id"]: exp.id,
+        METRICS_RESPONSE_FIELDS["name"]: exp.name,
+        METRICS_RESPONSE_FIELDS["config"]: exp.config,
+        METRICS_RESPONSE_FIELDS["status"]: exp.status,
+        METRICS_RESPONSE_FIELDS["val_accuracy"]: exp.val_accuracy,
+        METRICS_RESPONSE_FIELDS["val_sharpe"]: exp.val_sharpe,
+        METRICS_RESPONSE_FIELDS["test_sharpe"]: exp.test_sharpe,
+        METRICS_RESPONSE_FIELDS["metrics_history"]: exp.metrics_history,
+        METRICS_RESPONSE_FIELDS["started_at"]: exp.started_at,
+        METRICS_RESPONSE_FIELDS["completed_at"]: exp.completed_at,
     }
