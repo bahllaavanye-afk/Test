@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785346673.3358037,
+    "last_updated": 1785348572.8553917,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 2,
     "macro_score": 1,
-    "vix": 19.51,
-    "market_scan_ts": 1785345711.2571208,
+    "vix": 19.41,
+    "market_scan_ts": 1785348572.8240163,
     "sector_leaders": [
       "Energy",
       "Financials",
@@ -123,53 +123,38 @@
     ],
     "active_universe": [
       "GS",
-      "KO",
+      "XLK",
       "PG",
+      "KO",
       "V",
       "DIA",
-      "XLK",
       "QQQ",
+      "GLD",
       "MA",
       "XLV",
-      "GLD",
       "XLP",
       "TMO",
-      "MS",
       "SHY",
-      "XLI",
-      "XLF",
       "IWM",
-      "XLU",
+      "MS",
+      "XLI",
       "AAPL",
-      "ABT"
+      "XLF",
+      "XLU",
+      "MSFT"
     ],
     "top_momentum": [
       "ABT",
       "AAPL",
       "TMO",
-      "XOM",
-      "CVX"
+      "MPC",
+      "BLK"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785346673.3344374
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Healthcare",
-        "Energy",
-        "Financials"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784413136.310825
-    },
     {
       "lesson": "Auto-fix pipeline repeatedly fails to apply patches, indicating conflicts or incorrect patch generation that requires manual code review and fix.",
       "category": "code",
@@ -2122,6 +2107,21 @@
       "risk_flags": [],
       "lesson": "Regime=neutral (score=1). Leading: Energy, Financials. Gaps: 6, Breakouts: 0, Risk flags: 0.",
       "ts": 1785345711.2928603
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 1,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Healthcare"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=neutral (score=1). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785348572.8616638
     }
   ],
   "github_insights": [
