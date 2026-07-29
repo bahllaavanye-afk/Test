@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785356066.5369422,
+    "last_updated": 1785358033.7394392,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 2,
     "macro_score": 0,
-    "vix": 20.28,
-    "market_scan_ts": 1785356066.5135725,
+    "vix": 20.66,
+    "market_scan_ts": 1785358033.6105769,
     "sector_leaders": [
       "Energy",
       "Financials",
@@ -134,21 +134,21 @@
       "PG",
       "XLP",
       "XLV",
-      "TMO",
-      "XLI",
       "SPY",
-      "XLU",
+      "XLI",
       "XLF",
+      "XLU",
       "MS",
       "WMT",
-      "MA"
+      "MA",
+      "SHY"
     ],
     "top_momentum": [
-      "ABT",
-      "TMO",
       "MPC",
       "AAPL",
-      "XOM"
+      "XOM",
+      "CVX",
+      "KO"
     ],
     "risk_flags": [
       "Gold/SPY ratio surging (+3.1% 20d) \u2014 safe-haven rotation"
@@ -157,13 +157,6 @@
     "last_brain_update": 1785355256.0118628
   },
   "episodic": [
-    {
-      "lesson": "Continuous deployment strategy needs revision: either upgrade to a paid Vercel plan or implement deployment batching to avoid hitting the free-tier cap.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784417698.07674
-    },
     {
       "lesson": "Repeated auto-fix failures suggest insufficient automated testing or CI validation before patches are applied, increasing manual overhead.",
       "category": "execution",
@@ -2144,6 +2137,23 @@
       ],
       "lesson": "Regime=neutral (score=0). Leading: Energy, Financials. Gaps: 7, Breakouts: 0, Risk flags: 1.",
       "ts": 1785356066.5414748
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "neutral",
+      "score": 0,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Cons. Staples"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [
+        "Gold/SPY ratio surging (+3.1% 20d) \u2014 safe-haven rotation"
+      ],
+      "lesson": "Regime=neutral (score=0). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 1.",
+      "ts": 1785358033.7447126
     }
   ],
   "github_insights": [
