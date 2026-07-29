@@ -329,6 +329,46 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 📐 2026-07-29 05:55 — root principle #5 rests on ONE wire, and the record miscounted it
+`CLAUDE.md` #5 is *"Walk-forward only: no in-sample-only backtests are accepted as valid."*
+Re-audited it. There are **three** separately-written walk-forward implementations:
+
+| implementation | state |
+|---|---|
+| `app/backtest/walk_forward.walk_forward()` | **LIVE — exactly one call site**, `api/v1/backtests.py:236` |
+| `.github/scripts/ml_experiment.walk_forward()` | LIVE, but defined **locally at its own line 96** — unrelated code |
+| `app/ml/training/walk_forward_validate()` | **DEAD** — 125 lines, torch; its only textual reference is a string inside its own `ImportError` |
+
+**The IMPROVEMENTS entry was wrong:** it claimed the app function is called from *both*
+`api/v1/backtests.py:236` **and** `ml_experiment.py:152`. The latter calls the same-named local
+function, not the app one. So the principle rests on a **single wire**, not two — and nothing
+tested that wire existed.
+
+**What ML training does instead:** `ml_retrain.retrain_model` → `train_lstm.train` validates on
+a **single chronological holdout** (`val_frac=0.15`, `shuffle=False`, contiguous slices). That
+is an ordered split and *not* a leak — worth stating precisely, because "not walk-forward" is
+easy to misread as "unvalidated". But it is not what principle #5 says, and the function written
+to make it so is dead.
+
+Pinned by `backend/tests/unit/test_walk_forward_coverage.py` (6 tests): the one live call site
+must stay imported **and called**, DSR must stay applied, the ML gap stays visible, and the
+three implementations must stay distinct.
+
+**⚠️ I wrote a fake guard again, and only caught it by testing the negative case.** The first
+version asserted `"from app.backtest.walk_forward import walk_forward" in src`. Aliasing the
+import to `... as _wf_unwired` **still contains that substring**, so the guard passed against a
+fully unwired principle. Rewrote it to resolve the import binding via AST and check that the
+*bound name* is actually called. Now fails as intended.
+
+That is twice in one session (the other was `make_coid`). **Substring assertions about code are
+not guards.** Every guard needs its negative case exercised — write the bug, watch it fail, then
+revert.
+
+**Also a self-inflicted near-miss:** I first grepped `backend/app ... | grep -v test` and
+concluded `deflated_sharpe_ratio` was unused. Every path under `backtest/` contains the
+substring `test`, so the filter deleted the evidence. It **is** wired (`walk_forward.py:9,95`).
+Caught before reporting it. Beware `grep -v` on path fragments.
+
 ## 🔎 2026-07-29 04:45 — arb-bucket audit: 4 of 32 strategies can never place an order
 Answered half of a long-standing IMPROVEMENTS question (*"32 strategies in the arb bucket but
 near-zero desk fills"*). Of the 32 registry strategies with `risk_bucket == "arbitrage"`:
