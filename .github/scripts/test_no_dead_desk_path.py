@@ -143,8 +143,38 @@ def test_the_universe_is_trimmed_before_bars_are_fetched(tree):
     assert filt < fetch, "the universe must be trimmed BEFORE the bars batch request"
 
 
-def test_the_trimmer_runs_before_strategies_are_loaded(tree):
-    src = _SRC.read_text()
-    trim = src.index("_trimmed = _trimmed_strategies()")
-    load = src.index("s = _load_strategy(sname)")
-    assert trim < load, "retired strategies must be excluded before they are instantiated"
+def test_the_trim_set_reaches_the_strategy_selector(tree):
+    """The trims lookup must feed the selection — a DATA-FLOW assertion.
+
+    This previously compared SOURCE POSITIONS: that `_trimmed = ...` appeared
+    earlier in the file than `s = _load_strategy(sname)`. That was a proxy for
+    runtime ordering, and a poor one — extracting the selection into
+    `_desk_strategies()` (defined above main) inverted the byte offsets while
+    the behaviour got strictly better, so the test failed on a correct change.
+    Position in a file is not execution order.
+
+    What actually matters is that the set computed from the trims file is the
+    set the selector filters against. The exclusion's *effect* is covered
+    behaviourally in test_trimmed_exclusion.py.
+    """
+    main = _function(tree, "main")
+    assert main is not None
+
+    trim_vars = {
+        t.id
+        for n in ast.walk(main)
+        if isinstance(n, ast.Assign) and isinstance(n.value, ast.Call)
+        and getattr(n.value.func, "id", None) == "_trimmed_strategies"
+        for t in n.targets if isinstance(t, ast.Name)
+    }
+    assert trim_vars, "main() never assigns the result of _trimmed_strategies()"
+
+    passed = [
+        n for n in ast.walk(main)
+        if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "_desk_strategies"
+        and any(isinstance(a, ast.Name) and a.id in trim_vars for a in n.args)
+    ]
+    assert passed, (
+        f"_desk_strategies() is never called with the trim set {trim_vars} — "
+        f"retired strategies would be instantiated and would trade"
+    )
