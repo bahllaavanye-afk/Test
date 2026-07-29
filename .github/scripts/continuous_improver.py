@@ -50,6 +50,26 @@ def save_skill(skill: str):
         SKILLS_FILE.write_text(json.dumps(data, indent=2))
 
 def record_failure(mem: dict, file_path: str, reason: str, improvement_type: str):
+    """Record a failed improvement attempt — BOTH the trace and the counter.
+
+    This used to write only `failure_traces`. `record_success()` initialises
+    `improvement_stats[type]["failures"] = 0` and the roll call sums that key,
+    so the counter existed, was read, and was never once incremented — leaving
+    the reported success rate structurally pinned at 100%.
+
+    It is not a rounding error. At the time of this fix the live memory file
+    held 41 failure traces (the list is capped at 50, so the true total is
+    higher) against 61 recorded successes, and every `failures` counter read 0.
+    `constants` was the starkest: 1 success, 9 traced failures, reported as
+    flawless. 32 of the 41 were "syntax check failed" — the LLM's rewrite did
+    not parse.
+
+    Note the counter starts accumulating from HERE. The 41 historical failures
+    are not backfilled: traces are capped, so any backfill would be a known
+    undercount presented as a total. That means the rate reads optimistically
+    at first — accumulated successes against fresh failures — which is called
+    out in IMPROVEMENTS.md rather than papered over.
+    """
     traces = mem.setdefault("failure_traces", [])
     traces.append({
         "file": file_path,
@@ -58,6 +78,10 @@ def record_failure(mem: dict, file_path: str, reason: str, improvement_type: str
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
     mem["failure_traces"] = traces[-50:]  # keep last 50
+
+    stats = mem.setdefault("improvement_stats", {})
+    s = stats.setdefault(improvement_type, {"successes": 0, "failures": 0, "test_pass": 0})
+    s["failures"] = s.get("failures", 0) + 1
 
 def record_success(mem: dict, file_path: str, improvement_type: str, tests_passed: bool):
     stats = mem.setdefault("improvement_stats", {})

@@ -378,6 +378,28 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 📉 2026-07-29 17:25 — the improver's success rate was 100% because failures were never counted
+Second half of the 15:40 roll-call fix. There I stopped the header printing a fabricated 100%; here
+is why it was fabricated. `record_success()` initialises `improvement_stats[type]["failures"] = 0`
+and the reporter sums that key — but `record_failure()` only ever appended to `failure_traces`. The
+counter existed, was read, and was never written.
+
+Measured in the live memory file: **41 failure traces, every counter 0, 61 successes.** The trace
+list is capped at 50, so 41 is a floor. True rate ≈ **61/(61+41) ≈ 60%**, not 100%.
+
+`record_failure()` now increments the counter too. **The 41 historical failures are deliberately not
+backfilled** — traces are capped, so a backfill would be a known undercount presented as a total.
+Consequence: the rate reads optimistically at first (accumulated successes vs fresh failures). That
+is disclosed in the source and in IMPROVEMENTS.md, and a test pins the explanation.
+
+**Open and worth chasing:** 32 of the 41 failures are `syntax check failed` — the improver's LLM
+output does not parse, ~78% of all failures. `constants` shows 1 success against 9 traced failures
+and was reported as flawless. Now measurable for the first time.
+
+Also verified live this tick: the 15:40 roll-call fix works in production. The 17:14 run wrote
+`total_runs: 61, success_rate_pct: 100.0, failures_recorded: 0` — real numbers where it had written
+`0` and `0`, with the new `failures_recorded` field correctly exposing the gap this entry closes.
+
 ## ⚠️ 2026-07-29 15:55 — CORRECTION: the ML promotion fix I proposed at 15:10 cannot work
 The 15:10 entry below lists three breaks between the trainer and inference and proposes emitting
 `lstm_latest.pt` in `AbstractModel`'s schema. **There is a fourth break, and it invalidates that
