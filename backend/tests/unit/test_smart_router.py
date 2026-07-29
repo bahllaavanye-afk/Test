@@ -7,25 +7,45 @@ from app.execution.smart_router import SmartOrderRouter
 class DummyBroker:
     async def place_order(self, req):
         from app.brokers.base import OrderResult
-        return OrderResult(broker_order_id="d", status="filled",
-                            filled_qty=req.quantity, avg_fill_price=100.0)
+        return OrderResult(
+            broker_order_id="d",
+            status="filled",
+            filled_qty=req.quantity,
+            avg_fill_price=100.0,
+        )
 
     async def get_quote(self, symbol):
         from app.brokers.base import QuoteResult
-        return QuoteResult(symbol=symbol, bid=99.95, ask=100.05, last=100.0, volume=100)
+        return QuoteResult(
+            symbol=symbol,
+            bid=99.95,
+            ask=100.05,
+            last=100.0,
+            volume=100,
+        )
 
 
-def _req(quantity=10, limit_price=None, order_type="market", algo="auto"):
+def _req(
+    quantity: int = 10,
+    limit_price: float | None = None,
+    order_type: str = "market",
+    algo: str = "auto",
+):
     return OrderRequest(
-        account_id="a", symbol="AAPL", side="buy", order_type=order_type,
-        quantity=quantity, limit_price=limit_price, stop_price=None,
-        time_in_force="GTC", execution_algo=algo,
+        account_id="a",
+        symbol="AAPL",
+        side="buy",
+        order_type=order_type,
+        quantity=quantity,
+        limit_price=limit_price,
+        stop_price=None,
+        time_in_force="GTC",
+        execution_algo=algo,
     )
 
 
 def test_large_order_picks_rl_or_twap():
     """Large orders use rl_exec when available, twap as fallback."""
-    from app.execution import smart_router as sr
     router = SmartOrderRouter(DummyBroker())
     req = _req(quantity=200, limit_price=100)  # 200 * 100 = $20k > $10k
     algo = router._select_algorithm(req)
