@@ -8,7 +8,7 @@ import asyncio
 import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List, Optional
 
 import pandas as pd
 
@@ -22,7 +22,7 @@ MIN_HIST_LENGTH: int = 200
 MAX_EPOCHS: int = 30
 DEFAULT_TRAIN_DAYS: int = 730
 CONFIGS_DIR: Path = Path(__file__).parents[3] / "experiments" / "configs"
-DEFAULT_RETRAIN_CONFIGS: list[tuple[str, str, str]] = [
+DEFAULT_RETRAIN_CONFIGS: List[Tuple[str, str, str]] = [
     ("lstm", "BTC-USD", "1h"),
     ("lstm", "ETH-USD", "1h"),
     ("lstm", "SPY", "1d"),
@@ -45,11 +45,11 @@ _DATA_CACHE: Dict[Tuple[str, str], Tuple[datetime, pd.DataFrame]] = {}
 try:
     import yfinance as yf
 except Exception as exc:  # pragma: no cover
-    # Optional dependency: absent in CI and slim deploys. A hard raise here
-    # crashes the scheduler at import — degrade instead: retrain simply skips
-    # data downloads (matches how torch-backed models degrade elsewhere).
     yf = None
-    logger.error("yfinance unavailable — nightly retrain will skip downloads", error=str(exc))
+    logger.error(
+        "yfinance unavailable — nightly retrain will skip downloads",
+        error=str(exc),
+    )
 
 try:
     import yaml as _yaml
@@ -58,10 +58,44 @@ except Exception:  # pragma: no cover
     _load_yaml = None
 
 
-async def _download_hist(symbol: str, interval: str, start: datetime, end: datetime) -> pd.DataFrame | None:
+def _validate_hist(df: pd.DataFrame) -> bool:
+    """
+    Confirm that the historical DataFrame contains the required columns,
+    has no NaNs in price fields, and meets the minimum length requirement.
+
+    Returns True if the data passes all checks.
+    """
+    required_cols = {"open", "high", "low", "close", "volume"}
+    missing = required_cols.difference(set(df.columns.str.lower()))
+    if missing:
+        logger.warning("Missing required columns in downloaded data", missing=missing)
+        return False
+
+    if len(df) < MIN_HIST_LENGTH:
+        logger.warning(
+            "Insufficient history length",
+            length=len(df),
+            required=MIN_HIST_LENGTH,
+        )
+        return False
+
+    if df[["open", "high", "low", "close"]].isnull().any().any():
+        logger.warning("NaN values detected in price columns")
+        return False
+
+    return True
+
+
+async def _download_hist(
+    symbol: str,
+    interval: str,
+    start: datetime,
+    end: datetime,
+    retries: int = 2,
+) -> Optional[pd.DataFrame]:
     """
     Retrieve historical price data, using an in‑process cache to avoid duplicate
-    downloads within the same nightly run.
+    downloads within the same nightly run. Retries on transient failures.
 
     Returns a pandas DataFrame or ``None`` on failure.
     """
@@ -69,40 +103,56 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
     cached = _DATA_CACHE.get(cache_key)
     if cached:
         cache_ts, df = cached
-        # Cached data is considered fresh if it covers the requested date range.
         if cache_ts >= end and not df.empty:
             logger.debug("Using cached data for %s %s", symbol, interval)
             return df.copy()
 
     if yf is None:
-        return None  # yfinance not installed (CI / slim deploy) — skip download
+        return None  # yfinance not installed — skip download
 
     loop = asyncio.get_running_loop()
-    try:
-        hist = await loop.run_in_executor(
-            None,
-            lambda: yf.download(
-                symbol,
-                start=str(start.date()),
-                end=str(end.date()),
+    attempt = 0
+    while attempt <= retries:
+        try:
+            hist = await loop.run_in_executor(
+                None,
+                lambda: yf.download(
+                    symbol,
+                    start=str(start.date()),
+                    end=str(end.date()),
+                    interval=interval,
+                    auto_adjust=True,
+                    progress=False,
+                ),
+            )
+            if hist is None or len(hist) < MIN_HIST_LENGTH:
+                logger.debug(
+                    "Download returned insufficient data",
+                    attempt=attempt,
+                    symbol=symbol,
+                    interval=interval,
+                )
+                return None
+            # Normalise column names
+            hist.columns = [
+                c.lower() if isinstance(c, str) else c[0].lower()
+                for c in hist.columns
+            ]
+            if not _validate_hist(hist):
+                return None
+            _DATA_CACHE[cache_key] = (datetime.now(timezone.utc), hist.copy())
+            return hist
+        except Exception as exc:  # pragma: no cover
+            logger.error(
+                "Failed to download data",
+                symbol=symbol,
                 interval=interval,
-                auto_adjust=True,
-                progress=False,
-            ),
-        )
-    except Exception as exc:  # pragma: no cover
-        logger.error("Failed to download data", symbol=symbol, interval=interval, error=str(exc))
-        return None
-
-    if hist is None or len(hist) < MIN_HIST_LENGTH:
-        return None
-
-    # Normalize column names once.
-    hist.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in hist.columns]
-
-    # Store in cache for potential reuse.
-    _DATA_CACHE[cache_key] = (datetime.now(timezone.utc), hist.copy())
-    return hist
+                attempt=attempt,
+                error=str(exc),
+            )
+            attempt += 1
+            await asyncio.sleep(2 ** attempt)  # exponential back‑off
+    return None
 
 
 async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_INTERVAL) -> dict:
@@ -113,12 +163,28 @@ async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_IN
 
         hist = await _download_hist(symbol, interval, start, end)
         if hist is None:
-            return {"status": "skipped", "reason": "insufficient data"}
+            return {"status": "skipped", "reason": "insufficient or invalid data"}
 
         from app.ml.training.train_lstm import train
 
         experiment_name = f"{model_name}_{symbol.lower()}_{datetime.now(timezone.utc).strftime(DATE_FORMAT)}"
         result = await train(hist, experiment_name=experiment_name, max_epochs=MAX_EPOCHS)
+
+        # Confirmation filter: require a minimum Sharpe improvement before promotion
+        new_sharpe = result.get("sharpe")
+        old_sharpe = result.get("previous_sharpe")
+        if new_sharpe is not None and old_sharpe is not None:
+            if new_sharpe <= old_sharpe * 1.01:  # at least 1% improvement
+                result["status"] = "skipped"
+                result["reason"] = "sharpe_not_improved"
+                logger.info(
+                    "Model not promoted – Sharpe improvement insufficient",
+                    symbol=symbol,
+                    model=model_name,
+                    old_sharpe=old_sharpe,
+                    new_sharpe=new_sharpe,
+                )
+                return result
 
         result["symbol"] = symbol
         result["model"] = model_name
@@ -139,15 +205,15 @@ async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_IN
         return {"status": "error", "error": str(e)}
 
 
-def _load_retrain_configs() -> list[tuple[str, str, str]]:
+def _load_retrain_configs() -> List[Tuple[str, str, str]]:
     """
     Discover retrain targets dynamically from experiment configs (*.yaml).
     Falls back to a minimal default set if no configs exist or yaml is unavailable.
     Returns list of (model_name, symbol, interval).
     """
     configs_dir = CONFIGS_DIR
-    seen: set[tuple[str, str, str]] = set()
-    results: list[tuple[str, str, str]] = []
+    seen: set[Tuple[str, str, str]] = set()
+    results: List[Tuple[str, str, str]] = []
 
     for cfg_path in sorted(configs_dir.glob("*.yaml")):
         try:
@@ -155,7 +221,6 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
                 if _load_yaml:
                     cfg = _load_yaml(f)
                 else:
-                    # Minimal fallback: regex‑extract model/symbol/interval from YAML text
                     text = f.read()
                     cfg = {
                         "experiment": {
@@ -187,7 +252,6 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
 async def nightly_retrain() -> None:
     """Retrain all models discovered from experiment configs. Called by APScheduler at 02:00 UTC."""
     retrain_configs = _load_retrain_configs()
-    # Cap at 10 per night to avoid overwhelming free‑tier CPU
     retrain_configs = retrain_configs[:MAX_RETRAIN_PER_NIGHT]
 
     if not retrain_configs:
@@ -199,7 +263,11 @@ async def nightly_retrain() -> None:
         *(retrain_model(m, s, i) for m, s, i in retrain_configs),
         return_exceptions=True,
     )
-    successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
+    successes = sum(
+        1
+        for r in results
+        if isinstance(r, dict) and r.get("status") not in {"error", "skipped"}
+    )
     logger.info(
         "Nightly retrain complete",
         total=len(retrain_configs),
