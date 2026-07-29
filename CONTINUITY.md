@@ -329,6 +329,36 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 🔬 2026-07-29 11:45 — the trim expansion was only tested against a FAKE 8-name registry
+Closing a gap in my own work from an hour ago. `_expand_truncated()` expands a legacy truncated
+attribution key only when **exactly one** registry entry shares the prefix — but *whether a
+prefix is unambiguous is a property of the REAL registry*, and every test I wrote for it used a
+hand-made 8-name set. A prefix that resolves uniquely there can be ambiguous among the real 116,
+in which case the expansion silently stops, the trim reverts to a phantom, and **those unit
+tests stay green throughout**.
+
+Verified against the real registry, and it holds:
+```
+avellaneda -> avellaneda_stoikov_mm     supertrend -> supertrend      (correctly NOT expanded)
+vol_of_vol -> vol_of_vol_timing         commodity_ -> commodity_      (correctly NOT expanded)
+intraday_s -> intraday_seasonality      crypto_ada -> crypto_adaptive_trend
+```
+Now pinned by `backend/tests/unit/test_trim_expansion_real_registry.py` (7 tests), which lives
+under `backend/` specifically so `STRATEGY_REGISTRY` is guaranteed importable — a `skip` on
+import failure would make it vacuous, which is the exact thing it exists to prevent.
+
+The strongest test is the general property: **truncate every one of the 116 names to 10 chars
+and expand back — it must return the original or the untouched prefix, and NEVER a different
+strategy.** Exactly four names are unresolvable (`commodity_×3`, `supertrend_rsi_tv`), pinned so
+growth in that set is noticed rather than silently costing retirements.
+
+Verified the guard fires by loosening `len(matches) == 1` to `>= 1` (the over-eager direction,
+which would retire a strategy that was never judged): 3 tests fail, including the round-trip.
+
+**Reusable point, and it is the same one three times now:** a guard is only as good as the
+substrate it runs against. A fake registry, a locally-rebuilt coid, a substring instead of the
+real import — each time the test passed while the thing it guarded was broken.
+
 ## ✅ 2026-07-29 10:37 — THE ATTRIBUTION ARTIFACT EXISTS. Five changes, verified end to end.
 `336afa69 chore(fills): update strategy P&L attribution` is on main, and
 `backend/performance_log/strategy_performance.json` is **in the repository** for the first time.
