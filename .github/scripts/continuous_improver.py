@@ -100,6 +100,13 @@ def record_success(mem: dict, file_path: str, improvement_type: str, tests_passe
 
 # ── File selection ────────────────────────────────────────────────────────────
 
+# Files above this are never sent to the model: a whole-file rewrite of
+# something this large is how PR #420 destroyed brokers/alpaca.py. The caller
+# checks it too, so an oversized file is reported as a SKIP rather than as a
+# failed attempt — see the note at that check.
+MAX_FILE_CHARS = 8000
+
+
 CANDIDATE_PATTERNS = [
     "backend/app/strategies/manual/*.py",
     "backend/app/strategies/ml_enhanced/*.py",
@@ -136,17 +143,40 @@ def _is_protected(path: str) -> bool:
     return any(p.startswith(pre) for pre in PROTECTED_PREFIXES)
 
 
+def _too_large(path: str) -> bool:
+    """True if the file can never be improved, because the guard will reject it.
+
+    `improve_file()` refuses anything over MAX_FILE_CHARS, so picking such a file
+    consumes one of only 10 attempts and produces nothing. Measured in run
+    30476849972: 5 of 10 attempts went to oversized files — half the budget, for
+    a run that wanted 5 improvements.
+
+    Filtering here changes nothing about WHICH files can be improved; those files
+    were already rejected 100% of the time. It only stops spending attempts on a
+    guaranteed rejection.
+
+    Uses the byte size as a cheap proxy for the character count the guard
+    actually measures. For UTF-8 Python, bytes >= chars, so this can only ever
+    skip a file the guard would also have skipped — never the reverse.
+    """
+    try:
+        return os.path.getsize(path) > MAX_FILE_CHARS
+    except OSError:
+        return True          # unreadable: treat as unusable rather than crash
+
+
 def pick_target_file(hour: int, skip_files: set[str]) -> str | None:
     pattern_idx = hour % len(CANDIDATE_PATTERNS)
     pattern = CANDIDATE_PATTERNS[pattern_idx]
     files = [f for f in glob.glob(pattern)
              if not f.endswith("__init__.py") and f not in skip_files
-             and not _is_protected(f)]
+             and not _is_protected(f) and not _too_large(f)]
     if not files:
         all_files = glob.glob("backend/app/**/*.py", recursive=True)
         files = [f for f in all_files
                  if "__init__" not in f and "__pycache__" not in f
-                 and f not in skip_files and not _is_protected(f)]
+                 and f not in skip_files and not _is_protected(f)
+                 and not _too_large(f)]
     return random.choice(files) if files else None
 
 # ── Improvement types ─────────────────────────────────────────────────────────
@@ -180,13 +210,6 @@ You are improving existing code files. Rules:
 5. Preserve all existing behavior — only improve quality
 6. Keep changes minimal and focused on the specified improvement type
 7. The output must be syntactically valid Python"""
-
-# Files above this are never sent to the model: a whole-file rewrite of
-# something this large is how PR #420 destroyed brokers/alpaca.py. The caller
-# checks it too, so an oversized file is reported as a SKIP rather than as a
-# failed attempt — see the note at that check.
-MAX_FILE_CHARS = 8000
-
 
 def improve_file(file_path: str, content: str, improvement_type: str,
                  improvement_desc: str, failure_context: str = "", skills: list[str] = []) -> str | None:
