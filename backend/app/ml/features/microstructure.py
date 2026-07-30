@@ -13,9 +13,15 @@ Features:
 """
 from __future__ import annotations
 
+import logging
+import time
+from functools import lru_cache
+
 import numpy as np
 import pandas as pd
-from functools import lru_cache
+
+# Set up module logger
+_logger = logging.getLogger(__name__)
 
 # Constants
 DEFAULT_LEVELS: int = 5
@@ -61,31 +67,50 @@ class OrderBookFeatures:
             asks: list of (price, size) pairs, best ask first
             levels: how many price levels to include
         """
+        start = time.perf_counter()
         if not bids or not asks:
-            return 0.0
+            result = 0.0
+        else:
+            bid_tuple = tuple(bids)
+            ask_tuple = tuple(asks)
 
-        bid_tuple = tuple(bids)
-        ask_tuple = tuple(asks)
+            bid_vols = self._slice_volumes(bid_tuple, levels)
+            ask_vols = self._slice_volumes(ask_tuple, levels)
 
-        bid_vols = self._slice_volumes(bid_tuple, levels)
-        ask_vols = self._slice_volumes(ask_tuple, levels)
+            bid_vol = float(bid_vols.sum())
+            ask_vol = float(ask_vols.sum())
+            total = bid_vol + ask_vol
+            result = 0.0 if total <= 0.0 else float((bid_vol - ask_vol) / total)
 
-        bid_vol = float(bid_vols.sum())
-        ask_vol = float(ask_vols.sum())
-        total = bid_vol + ask_vol
-        if total <= 0.0:
-            return 0.0
-        return float((bid_vol - ask_vol) / total)
+        elapsed = time.perf_counter() - start
+        _logger.info(
+            "compute_imbalance",
+            signal_count=1,
+            execution_time_ms=elapsed * 1_000,
+            result=result,
+        )
+        return result
 
     def compute_spread_bps(self, best_bid: float, best_ask: float) -> float:
         """
         Bid-ask spread in basis points: (ask - bid) / mid * BASIS_POINTS_MULTIPLIER.
         Returns 0.0 for invalid inputs.
         """
+        start = time.perf_counter()
         if best_bid <= 0.0 or best_ask <= 0.0 or best_ask <= best_bid:
-            return 0.0
-        mid = (best_bid + best_ask) * 0.5
-        return float((best_ask - best_bid) / mid * BASIS_POINTS_MULTIPLIER)
+            result = 0.0
+        else:
+            mid = (best_bid + best_ask) * 0.5
+            result = float((best_ask - best_bid) / mid * BASIS_POINTS_MULTIPLIER)
+
+        elapsed = time.perf_counter() - start
+        _logger.info(
+            "compute_spread_bps",
+            signal_count=1,
+            execution_time_ms=elapsed * 1_000,
+            result=result,
+        )
+        return result
 
     def compute_depth_ratio(
         self,
@@ -97,13 +122,22 @@ class OrderBookFeatures:
         Values > 1 indicate more liquidity on bid side.
         Returns 1.0 if either side is empty.
         """
+        start = time.perf_counter()
         if not bids or not asks:
-            return 1.0
-        best_bid_size = float(bids[0][1])
-        best_ask_size = float(asks[0][1])
-        if best_ask_size <= 0.0:
-            return 1.0
-        return float(best_bid_size / best_ask_size)
+            result = 1.0
+        else:
+            best_bid_size = float(bids[0][1])
+            best_ask_size = float(asks[0][1])
+            result = 1.0 if best_ask_size <= 0.0 else float(best_bid_size / best_ask_size)
+
+        elapsed = time.perf_counter() - start
+        _logger.info(
+            "compute_depth_ratio",
+            signal_count=1,
+            execution_time_ms=elapsed * 1_000,
+            result=result,
+        )
+        return result
 
     def compute_pin_proxy(self, buy_volume: float, sell_volume: float) -> float:
         """
@@ -111,10 +145,18 @@ class OrderBookFeatures:
         PIN = |buy_vol - sell_vol| / (buy_vol + sell_vol)
         Returns value in [0, 1]. Near 1 = highly informed order flow.
         """
+        start = time.perf_counter()
         total = buy_volume + sell_volume
-        if total <= 0.0:
-            return 0.0
-        return float(abs(buy_volume - sell_volume) / total)
+        result = 0.0 if total <= 0.0 else float(abs(buy_volume - sell_volume) / total)
+
+        elapsed = time.perf_counter() - start
+        _logger.info(
+            "compute_pin_proxy",
+            signal_count=1,
+            execution_time_ms=elapsed * 1_000,
+            result=result,
+        )
+        return result
 
     def compute_kyle_lambda(
         self,
@@ -128,21 +170,31 @@ class OrderBookFeatures:
         Returns lambda (bps per unit volume). Higher = less liquid.
         Returns 0.0 if insufficient data.
         """
+        start = time.perf_counter()
         if price_changes.size < MIN_SAMPLE_SIZE or signed_volumes.size < MIN_SAMPLE_SIZE:
-            return 0.0
-        try:
-            vol = np.asarray(signed_volumes, dtype=float)
-            dp = np.asarray(price_changes, dtype=float)
+            result = 0.0
+        else:
+            try:
+                vol = np.asarray(signed_volumes, dtype=float)
+                dp = np.asarray(price_changes, dtype=float)
 
-            var_vol = np.var(vol)
-            if var_vol < VAR_VOLUME_EPS:
-                return 0.0
+                var_vol = np.var(vol)
+                if var_vol < VAR_VOLUME_EPS:
+                    result = 0.0
+                else:
+                    cov = np.mean(dp * vol) - np.mean(dp) * np.mean(vol)
+                    result = float(cov / var_vol)
+            except Exception:
+                result = 0.0
 
-            cov = np.mean(dp * vol) - np.mean(dp) * np.mean(vol)
-            lam = float(cov / var_vol)
-            return lam
-        except Exception:
-            return 0.0
+        elapsed = time.perf_counter() - start
+        _logger.info(
+            "compute_kyle_lambda",
+            signal_count=1,
+            execution_time_ms=elapsed * 1_000,
+            result=result,
+        )
+        return result
 
     def features_from_snapshot(
         self,
@@ -158,15 +210,25 @@ class OrderBookFeatures:
         Returns:
             dict with keys: imbalance, spread_bps, depth_ratio, pin_proxy
         """
+        start = time.perf_counter()
         best_bid = float(bids[0][0]) if bids else 0.0
         best_ask = float(asks[0][0]) if asks else 0.0
 
-        return {
+        features = {
             "imbalance": self.compute_imbalance(bids, asks, levels),
             "spread_bps": self.compute_spread_bps(best_bid, best_ask),
             "depth_ratio": self.compute_depth_ratio(bids, asks),
             "pin_proxy": self.compute_pin_proxy(buy_volume, sell_volume),
         }
+
+        elapsed = time.perf_counter() - start
+        _logger.info(
+            "features_from_snapshot",
+            signal_count=len(features),
+            execution_time_ms=elapsed * 1_000,
+            result=features,
+        )
+        return features
 
 
 def add_microstructure_features(
@@ -182,6 +244,7 @@ def add_microstructure_features(
       - volume_imbalance_proxy: (close - open) / (high - low)  — approximates buy/sell pressure
       - spread_bps_proxy: (high - low) / close * BASIS_POINTS_MULTIPLIER — proxy for intraday spread
     """
+    start = time.perf_counter()
     df = df.copy()
 
     if imbalance_series is not None:
@@ -196,4 +259,13 @@ def add_microstructure_features(
         close_nonzero = df[COL_CLOSE].replace(0, np.nan)
         df[COL_SPREAD_BPS] = ((df[COL_HIGH] - df[COL_LOW]) / close_nonzero * BASIS_POINTS_MULTIPLIER).fillna(0.0)
 
+    elapsed = time.perf_counter() - start
+    signal_count = df.shape[0]
+    pnl_sum = float(df["pnl"].sum()) if "pnl" in df.columns else None
+    _logger.info(
+        "add_microstructure_features",
+        signal_count=signal_count,
+        execution_time_ms=elapsed * 1_000,
+        pnl_sum=pnl_sum,
+    )
     return df
