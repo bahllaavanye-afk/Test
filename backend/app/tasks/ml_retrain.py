@@ -58,6 +58,23 @@ except Exception:  # pragma: no cover
     _load_yaml = None
 
 
+def _validate_str(param_name: str, value: str) -> None:
+    """Validate that a parameter is a non‑empty string."""
+    if not isinstance(value, str):
+        raise ValueError(f"{param_name} must be a string, got {type(value).__name__}")
+    if not value.strip():
+        raise ValueError(f"{param_name} cannot be empty or whitespace")
+
+
+def _validate_interval(interval: str) -> None:
+    """Validate that interval follows the expected pattern (e.g., '1h', '1d')."""
+    _validate_str("interval", interval)
+    if not re.fullmatch(r"\d+[smhdw]", interval):
+        raise ValueError(
+            f"interval '{interval}' is invalid; expected format like '1h', '30m', '1d', etc."
+        )
+
+
 async def _download_hist(symbol: str, interval: str, start: datetime, end: datetime) -> pd.DataFrame | None:
     """
     Retrieve historical price data, using an in‑process cache to avoid duplicate
@@ -107,6 +124,11 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
 
 async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_INTERVAL) -> dict:
     """Download 2 years of data and retrain a model. Returns result dict."""
+    # Input validation
+    _validate_str("model_name", model_name)
+    _validate_str("symbol", symbol)
+    _validate_interval(interval)
+
     try:
         end = datetime.now(timezone.utc)
         start = end - timedelta(days=DEFAULT_TRAIN_DAYS)
