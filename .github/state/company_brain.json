@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785441165.0275862,
+    "last_updated": 1785442539.1691022,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 2,
     "macro_score": 2,
-    "vix": 17.66,
-    "market_scan_ts": 1785438958.5159996,
+    "vix": 17.5,
+    "market_scan_ts": 1785442539.1388197,
     "sector_leaders": [
       "Energy",
       "Financials",
@@ -131,17 +131,17 @@
       "AMZN",
       "XLK",
       "QQQ",
-      "GS",
-      "XLV",
-      "NVDA",
       "NFLX",
-      "ORCL",
+      "NVDA",
       "GOOGL",
       "AAPL",
-      "V",
-      "LLY",
+      "ORCL",
+      "GS",
+      "XLV",
       "XLI",
-      "SPY"
+      "LLY",
+      "HD",
+      "V"
     ],
     "top_momentum": [
       "MSFT",
@@ -155,13 +155,6 @@
     "last_brain_update": 1785441165.0266378
   },
   "episodic": [
-    {
-      "lesson": "Evaluate upgrading to a paid Vercel plan or reducing deployment frequency to avoid hitting the limit.",
-      "category": "strategy",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784475459.956931
-    },
     {
       "lesson": "Monitor auto-fix success rates and deployment counts to catch limit issues before they block releases.",
       "category": "execution",
@@ -2197,6 +2190,21 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1785441164.5462918
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Healthcare"
+      ],
+      "gap_count": 8,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
+      "ts": 1785442539.174829
     }
   ],
   "github_insights": [
