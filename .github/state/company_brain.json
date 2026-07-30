@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785433337.893194,
+    "last_updated": 1785435516.8878767,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,16 +109,16 @@
     },
     "opinion_score": 2,
     "macro_score": 2,
-    "vix": 18.01,
-    "market_scan_ts": 1785433337.847278,
+    "vix": 17.9,
+    "market_scan_ts": 1785435516.8583708,
     "sector_leaders": [
       "Energy",
       "Financials",
       "Healthcare"
     ],
     "sector_laggards": [
-      "Industrials",
       "Cons. Disc.",
+      "Industrials",
       "Tech"
     ],
     "active_universe": [
@@ -133,8 +133,8 @@
       "QQQ",
       "GS",
       "NVDA",
-      "ORCL",
       "NFLX",
+      "ORCL",
       "XLV",
       "GOOGL",
       "AAPL",
@@ -155,13 +155,6 @@
     "last_brain_update": 1785409453.6299043
   },
   "episodic": [
-    {
-      "lesson": "Long threshold of 0.55 for GBC signals could increase false positives; perform sensitivity analysis and consider dynamic thresholding.",
-      "category": "risk",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1784445296.929353
-    },
     {
       "lesson": "Automated code fixes are repeatedly failing to apply patches, indicating fragility in the codebase or CI/CD pipeline that needs manual review.",
       "category": "code",
@@ -2181,6 +2174,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
       "ts": 1785433337.898564
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Healthcare"
+      ],
+      "gap_count": 8,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
+      "ts": 1785435516.893454
     }
   ],
   "github_insights": [
