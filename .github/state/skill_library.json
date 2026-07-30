@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Verify trade confirmations",
-    "Optimize model retraining",
     "Verify network",
     "Scan for circular deps",
     "Monitor drift metrics",
@@ -199,8 +197,10 @@
     "Test API rate limits",
     "Verify thread counts",
     "Ping external services",
-    "Monitor model performance"
+    "Monitor model performance",
+    "Validate input types",
+    "Check state file integrity"
   ],
-  "last_updated": "2026-07-29T23:33:39.389366+00:00",
+  "last_updated": "2026-07-30T02:02:29.145924+00:00",
   "total": 200
 }
