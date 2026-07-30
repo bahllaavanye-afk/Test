@@ -10,6 +10,7 @@ Usage:
 """
 from __future__ import annotations
 
+import unittest
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
@@ -136,3 +137,51 @@ class AlphaDecayTracker:
             -staleness_hours * np.log(2) / profile.half_life_hours
         )
         return float(base_confidence * max(float(decay), 0.0))
+
+
+class TestAlphaDecayTracker(unittest.TestCase):
+    def setUp(self):
+        self.tracker = AlphaDecayTracker()
+        # Simple time index for tests
+        self.dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+
+    def test_compute_ic_profile_missing_close_column_raises(self):
+        signals = pd.Series(np.random.choice([-1, 0, 1], size=100), index=self.dates)
+        prices = pd.DataFrame({"open": np.random.rand(100)}, index=self.dates)
+        with self.assertRaises(ValueError):
+            self.tracker.compute_ic_profile(signals, prices, "test_strategy")
+
+    def test_compute_ic_profile_insufficient_data_returns_inf_half_life(self):
+        # Signals and prices with very short overlap (<30 points)
+        dates_short = pd.date_range(start="2023-01-01", periods=20, freq="H")
+        signals = pd.Series(np.random.choice([-1, 0, 1], size=20), index=dates_short)
+        prices = pd.DataFrame({"close": np.random.rand(20)}, index=dates_short)
+        profile = self.tracker.compute_ic_profile(signals, prices, "short_data")
+        self.assertEqual(profile.ic_0, 0.0)
+        self.assertTrue(np.isinf(profile.half_life_hours))
+        self.assertEqual(profile.horizons, {})
+
+    def test_scale_confidence_infinite_half_life_returns_base(self):
+        profile = DecayProfile(strategy_name="inf_half", ic_0=0.5, half_life_hours=float("inf"))
+        base_conf = 0.73
+        scaled = self.tracker.scale_confidence(base_conf, profile, staleness_hours=10)
+        self.assertAlmostEqual(scaled, base_conf)
+
+    def test_scale_confidence_zero_half_life_returns_base(self):
+        profile = DecayProfile(strategy_name="zero_half", ic_0=0.5, half_life_hours=0.0)
+        base_conf = 0.45
+        scaled = self.tracker.scale_confidence(base_conf, profile, staleness_hours=5)
+        self.assertAlmostEqual(scaled, base_conf)
+
+    def test_scale_confidence_negative_staleness_behaves_as_expected(self):
+        # With a finite positive half-life, negative staleness yields decay > 1,
+        # but the function does not cap the result, so confidence can increase.
+        profile = DecayProfile(strategy_name="neg_stale", ic_0=0.5, half_life_hours=4.0)
+        base_conf = 0.6
+        scaled = self.tracker.scale_confidence(base_conf, profile, staleness_hours=-2)
+        expected_decay = np.exp(2 * np.log(2) / 4.0)  # = 2^(0.5) ≈ 1.4142
+        self.assertAlmostEqual(scaled, base_conf * expected_decay, places=6)
+
+
+if __name__ == "__main__":
+    unittest.main()
