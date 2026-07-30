@@ -123,3 +123,117 @@ async def get_db():
             raise
         finally:
             await session.close()
+
+
+# --------------------------------------------------------------------------- #
+# Unit tests for edge cases (run with pytest --asyncio)
+# --------------------------------------------------------------------------- #
+
+import pytest
+import asyncio
+from unittest import mock
+
+
+@pytest.mark.asyncio
+async def test_ensure_database_alive_immediate_timeout(monkeypatch):
+    """If the probe times out immediately, fallback should be triggered when allowed."""
+    # Force non‑sqlite URL and enable fallback.
+    monkeypatch.setattr(settings, "database_url", "postgresql+asyncpg://test")
+    monkeypatch.setattr(settings, "db_fallback_to_sqlite", True)
+
+    # Mock engine to raise on connect (simulating timeout).
+    mock_engine = mock.AsyncMock()
+    mock_conn_ctx = mock.AsyncMock()
+    mock_conn_ctx.__aenter__.return_value = mock_conn_ctx
+    mock_conn_ctx.execute.return_value = None
+    mock_engine.connect.return_value = mock_conn_ctx
+    # Make the probe raise a timeout.
+    async def raise_timeout(*args, **kwargs):
+        raise asyncio.TimeoutError()
+    mock_conn_ctx.__aenter__.side_effect = raise_timeout
+
+    monkeypatch.setattr(
+        "backend.app.database.engine", mock_engine, raising=False
+    )
+    # Preserve reference to original engine for later comparison.
+    original_engine = mock_engine
+
+    # Run with a tiny timeout to force immediate failure.
+    new_engine = await ensure_database_alive(probe_timeout=0.01)
+
+    # Verify fallback was performed.
+    assert new_engine != original_engine
+    assert db_fallback_active is True
+    assert db_primary_error is not None
+
+
+@pytest.mark.asyncio
+async def test_ensure_database_alive_sqlite_no_fallback(monkeypatch):
+    """When using SQLite, fallback should not be attempted even if enabled."""
+    # Force SQLite URL.
+    monkeypatch.setattr(settings, "database_url", "sqlite+aiosqlite:///test.db")
+    monkeypatch.setattr(settings, "db_fallback_to_sqlite", True)
+
+    # Re‑evaluate the _is_sqlite flag.
+    monkeypatch.setattr("backend.app.database._is_sqlite", True, raising=False)
+
+    # Mock engine that succeeds on probe.
+    mock_engine = mock.AsyncMock()
+    mock_conn_ctx = mock.AsyncMock()
+    mock_conn_ctx.__aenter__.return_value = mock_conn_ctx
+    mock_conn_ctx.execute.return_value = None
+    mock_engine.connect.return_value = mock_conn_ctx
+    monkeypatch.setattr(
+        "backend.app.database.engine", mock_engine, raising=False
+    )
+
+    result_engine = await ensure_database_alive(probe_timeout=0.1)
+
+    # Engine should remain unchanged and no fallback flag set.
+    assert result_engine is mock_engine
+    assert db_fallback_active is False
+    assert db_primary_error is None
+
+
+@pytest.mark.asyncio
+async def test_get_db_rollback_on_exception(monkeypatch):
+    """Ensure that a session rollback is called when an exception occurs inside get_db."""
+    # Create a mock session with rollback tracking.
+    mock_session = mock.AsyncMock()
+    mock_session.rollback = mock.AsyncMock()
+    mock_session.close = mock.AsyncMock()
+
+    # Mock AsyncSessionLocal to return a context manager yielding the mock session.
+    async def async_cm():
+        async with mock.AsyncMock() as _:
+            yield mock_session
+
+    class MockAsyncSessionLocal:
+        async def __aenter__(self):
+            return mock_session
+
+        async def __aexit__(self, exc_type, exc, tb):
+            await mock_session.close()
+            return False
+
+    monkeypatch.setattr(
+        "backend.app.database.AsyncSessionLocal",
+        MockAsyncSessionLocal(),
+        raising=False,
+    )
+
+    # Use the generator directly to simulate an exception inside the context.
+    gen = get_db()
+    session = await gen.__anext__()
+    assert session is mock_session
+
+    # Simulate an error occurring in the user code.
+    with pytest.raises(RuntimeError):
+        raise RuntimeError("test error")
+
+    # Close the generator to trigger finally block.
+    await gen.aclose()
+
+    # Verify rollback was called.
+    mock_session.rollback.assert_awaited_once()
+    mock_session.close.assert_awaited_once()
