@@ -1,13 +1,102 @@
 import uuid
-from datetime import datetime
-from datetime import date
+from datetime import datetime, date
+
 from sqlalchemy import String, ForeignKey, Numeric, DateTime, Date, Integer, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.database import Base
 from app.models.base import TimestampMixin
 
 
+"""SQLAlchemy ORM models for orders and fills.
+
+This module defines the :class:`Order` and :class:`Fill` models used throughout
+QuantEdge's trading platform. The models capture all necessary fields for order
+management, execution tracking, and post‑trade analysis across multiple asset
+classes.
+"""
+
+
 class Order(Base, TimestampMixin):
+    """Represents a trading order.
+
+    The model stores details about the order lifecycle, including its
+    relationship to the originating account, execution parameters, and any
+    advanced bracket‑order features. It also tracks raw broker payloads for
+    auditability.
+
+    Attributes
+    ----------
+    id: str
+        Primary key generated as a UUID string.
+    account_id: str
+        Foreign key linking to the owning account.
+    strategy_id: Optional[str]
+        Foreign key to the strategy that generated the order; may be ``None``.
+    broker_order_id: Optional[str]
+        Identifier assigned by the broker; indexed for fast lookup.
+    symbol: str
+        Ticker symbol of the instrument.
+    side: str
+        Order side, either ``"buy"`` or ``"sell"``.
+    order_type: str
+        Type of order, e.g., ``"market"``, ``"limit"``, or ``"stop"``.
+    quantity: Optional[float]
+        Quantity of the instrument to trade.
+    limit_price: Optional[float]
+        Limit price for limit orders.
+    stop_price: Optional[float]
+        Stop price for stop orders.
+    status: str
+        Current order status; defaults to ``"pending"``.
+    filled_qty: float
+        Cumulative quantity filled; defaults to ``0``.
+    avg_fill_price: Optional[float]
+        Volume‑weighted average fill price.
+    time_in_force: str
+        Time‑in‑force instruction; defaults to ``"GTC"``.
+    execution_algo: Optional[str]
+        Execution algorithm identifier (e.g., ``"twap"``, ``"vwap"``).
+    submitted_at: Optional[datetime]
+        Timestamp when the order was submitted to the broker.
+    filled_at: Optional[datetime]
+        Timestamp of the last fill.
+    cancelled_at: Optional[datetime]
+        Timestamp when the order was cancelled.
+    raw_payload: dict
+        Raw broker payload stored for debugging/audit purposes.
+    take_profit_price: Optional[float]
+        Price level for a take‑profit leg of a bracket order.
+    stop_loss_price: Optional[float]
+        Price level for a stop‑loss leg of a bracket order.
+    trailing_stop_pct: Optional[float]
+        Trailing stop percentage (e.g., ``2.0`` for 2 %).
+    notional: Optional[float]
+        Notional value for orders expressed in currency terms.
+    bracket_parent_id: Optional[str]
+        Reference to the parent order for bracket orders.
+    risk_reward_ratio: Optional[float]
+        Desired risk‑to‑reward ratio.
+    asset_class: str
+        Asset class of the order (e.g., ``"equity"``, ``"crypto"``).
+    underlying_symbol: Optional[str]
+        Underlying symbol for derivatives (options, futures).
+    expiry: Optional[date]
+        Expiration date for options or futures.
+    strike: Optional[float]
+        Strike price for options.
+    option_right: Optional[str]
+        Option right type, ``"call"`` or ``"put"``.
+    contract_multiplier: int
+        Contract multiplier; defaults to ``1``.
+    account: Account
+        ORM relationship to the owning account.
+    fills: List[Fill]
+        Collection of fills associated with the order.
+    slippage: List[SlippageRecord]
+        Collection of slippage records linked to the order.
+    """
+
     __tablename__ = "orders"
     __table_args__ = (
         # Composite indexes for the most common query patterns
@@ -58,6 +147,33 @@ class Order(Base, TimestampMixin):
 
 
 class Fill(Base):
+    """Represents a fill (execution) associated with an :class:`Order`.
+
+    Each fill records the executed quantity, price, fees, and timestamps. The raw
+    broker payload is retained for post‑trade diagnostics.
+
+    Attributes
+    ----------
+    id: str
+        Primary key generated as a UUID string.
+    order_id: str
+        Foreign key linking to the parent order.
+    quantity: float
+        Quantity filled.
+    price: float
+        Execution price.
+    fee: float
+        Fee charged for the fill.
+    fee_currency: Optional[str]
+        Currency in which the fee is denominated.
+    filled_at: datetime
+        Timestamp of the fill.
+    raw_payload: dict
+        Raw broker payload for the fill.
+    order: Order
+        ORM relationship back to the parent order.
+    """
+
     __tablename__ = "fills"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
