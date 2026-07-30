@@ -101,3 +101,43 @@ def monte_carlo_simulation(
         prob_positive_return=round(positive / n_simulations, 4),
         num_simulations=n_simulations,
     )
+
+
+# ==============================
+# Unit tests for edge conditions
+# ==============================
+import unittest
+
+
+class TestMonteCarloSimulationEdgeCases(unittest.TestCase):
+    def test_empty_series_raises(self):
+        empty_series = pd.Series([], dtype=float)
+        with self.assertRaises(ValueError) as cm:
+            monte_carlo_simulation(empty_series)
+        self.assertIn("cannot be empty", str(cm.exception))
+
+    def test_non_numeric_series_raises(self):
+        non_numeric_series = pd.Series(["a", "b", "c"])
+        with self.assertRaises(ValueError) as cm:
+            monte_carlo_simulation(non_numeric_series)
+        self.assertIn("must contain numeric values", str(cm.exception))
+
+    def test_single_simulation_small_years(self):
+        # Small deterministic series to keep output stable
+        returns = pd.Series([0.01, -0.02, 0.015, -0.005, 0.007])
+        result = monte_carlo_simulation(
+            daily_returns=returns,
+            n_simulations=1,
+            n_years=0.01,  # ~2.52 days, int cast to 2 days
+            risk_free_daily=0.0,
+        )
+        # Verify that result fields are numeric and within expected ranges
+        self.assertIsInstance(result.median_sharpe, float)
+        self.assertIsInstance(result.median_max_dd, float)
+        self.assertGreaterEqual(result.prob_positive_return, 0.0)
+        self.assertLessEqual(result.prob_positive_return, 1.0)
+        self.assertEqual(result.num_simulations, 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

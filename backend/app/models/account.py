@@ -1,9 +1,13 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Boolean, ForeignKey, Numeric, DateTime, JSON
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import String, Boolean, ForeignKey, Numeric, DateTime, JSON, create_engine
+from sqlalchemy.orm import Mapped, mapped_column, relationship, sessionmaker
 from app.database import Base
 from app.models.base import TimestampMixin
+
+# ----------------------------------------------------------------------
+# Models
+# ----------------------------------------------------------------------
 
 
 class Account(Base, TimestampMixin):
@@ -38,3 +42,115 @@ class AccountSnapshot(Base):
     raw_payload: Mapped[dict] = mapped_column(JSON, default=dict)
 
     account: Mapped["Account"] = relationship("Account", back_populates="snapshots")
+
+
+# ----------------------------------------------------------------------
+# Unit Tests (edge cases)
+# ----------------------------------------------------------------------
+import pytest
+
+# Create an in‑memory SQLite engine for isolated testing
+_TEST_ENGINE = create_engine("sqlite:///:memory:", echo=False)
+_TestSession = sessionmaker(bind=_TEST_ENGINE)
+
+
+@pytest.fixture(scope="function")
+def session():
+    """Provides a fresh SQLAlchemy session with tables created."""
+    Base.metadata.create_all(_TEST_ENGINE)
+    sess = _TestSession()
+    yield sess
+    sess.close()
+    Base.metadata.drop_all(_TEST_ENGINE)
+
+
+def test_account_defaults(session):
+    """Boundary test: verify default field values and that mutable defaults are independent."""
+    acct = Account(
+        user_id="test_user",
+        broker="alpaca",
+        label="Test Account",
+        encrypted_key=None,
+        encrypted_secret=None,
+    )
+    session.add(acct)
+    session.commit()
+
+    # Refresh to ensure defaults are persisted
+    session.refresh(acct)
+
+    assert acct.mode == "paper", "Default mode should be 'paper'"
+    assert acct.is_active is True, "Default is_active should be True"
+    assert acct.extra_config == {}, "Default extra_config should be an empty dict"
+    # Ensure each instance gets its own dict (no shared mutable default)
+    acct2 = Account(
+        user_id="test_user2",
+        broker="binance",
+        label="Second Account",
+        encrypted_key=None,
+        encrypted_secret=None,
+    )
+    session.add(acct2)
+    session.commit()
+    session.refresh(acct2)
+    acct2.extra_config["key"] = "value"
+    assert acct.extra_config == {}, "extra_config dict should be independent per instance"
+
+
+def test_account_id_uuid_format(session):
+    """Boundary test: ensure generated IDs conform to UUID4 string format (36 characters with hyphens)."""
+    acct = Account(
+        user_id="uuid_user",
+        broker="tradestation",
+        label="UUID Test",
+        encrypted_key=None,
+        encrypted_secret=None,
+    )
+    session.add(acct)
+    session.commit()
+    session.refresh(acct)
+
+    uuid_str = acct.id
+    # UUID4 format: 8-4-4-4-12 hex characters
+    parts = uuid_str.split("-")
+    assert len(parts) == 5, "UUID should contain 5 hyphen-separated parts"
+    assert all(len(p) == expected for p, expected in zip(parts, [8, 4, 4, 4, 12])), "Each part length must match UUID4 spec"
+    # Validate that the string can be parsed by uuid.UUID
+    try:
+        parsed = uuid.UUID(uuid_str, version=4)
+    except ValueError:
+        pytest.fail("Account.id is not a valid UUID4 string")
+    assert str(parsed) == uuid_str.lower(), "Parsed UUID should match original string (case‑insensitive)"
+
+
+def test_account_snapshot_creation(session):
+    """Boundary test: create a snapshot with extreme numeric values to ensure Numeric column handling."""
+    acct = Account(
+        user_id="snap_user",
+        broker="polymarket",
+        label="Snapshot Test",
+        encrypted_key=None,
+        encrypted_secret=None,
+    )
+    session.add(acct)
+    session.commit()
+    session.refresh(acct)
+
+    # Use values at the precision limit of Numeric(18,6)
+    max_value = 999999999999.999999  # 12 digits before decimal, 6 after
+    snap = AccountSnapshot(
+        account_id=acct.id,
+        ts=datetime.utcnow(),
+        total_equity=max_value,
+        cash=max_value,
+        unrealized_pnl=-max_value,
+        raw_payload={"detail": "extreme values"},
+    )
+    session.add(snap)
+    session.commit()
+    session.refresh(snap)
+
+    assert float(snap.total_equity) == max_value, "total_equity should retain the max allowed precision"
+    assert float(snap.cash) == max_value, "cash should retain the max allowed precision"
+    assert float(snap.unrealized_pnl) == -max_value, "unrealized_pnl should retain negative max precision"
+    assert snap.raw_payload == {"detail": "extreme values"}, "raw_payload should be stored unchanged"
