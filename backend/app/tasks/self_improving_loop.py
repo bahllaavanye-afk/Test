@@ -28,11 +28,18 @@ logger = logging.getLogger(__name__)
 
 class SelfImprovingLoop:
     def __init__(self, db_session_factory: Any, redis_client: Any):
+        if not callable(db_session_factory):
+            raise ValueError("db_session_factory must be a callable that returns an AsyncSession")
+        if redis_client is None or not hasattr(redis_client, "publish"):
+            raise ValueError("redis_client must provide a 'publish' method")
         self._factory = db_session_factory
         self._memory = AgentMemory(redis_client)
         self._redis = redis_client
 
     async def run_cycle(self) -> None:
+        """Execute a full self‑improvement cycle."""
+        if self._factory is None or self._redis is None:
+            raise ValueError("SelfImprovingLoop not properly initialized: missing factory or redis client")
         logger.info("SelfImprovingLoop: starting hourly cycle")
         try:
             metrics = await self._collect_strategy_metrics()
@@ -88,7 +95,9 @@ class SelfImprovingLoop:
 
     async def _auto_disable_underperformers(self, metrics: List[dict]) -> None:
         """Disable strategies with Sharpe < 0 and >= 10 trades in the last 30 days."""
-        underperformers = [m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10]
+        if not isinstance(metrics, list):
+            raise ValueError("metrics must be a list of strategy dictionaries")
+        underperformers = [m for m in metrics if m.get("sharpe", 0) < 0 and m.get("num_trades", 0) >= 10]
         if not underperformers:
             return
 
@@ -115,6 +124,8 @@ class SelfImprovingLoop:
     # ── LLM improvement pass ──────────────────────────────────────────────────
 
     async def _llm_improvement_pass(self, metrics: List[dict]) -> None:
+        if not isinstance(metrics, list):
+            raise ValueError("metrics must be a list of strategy dictionaries")
         if not metrics:
             return
 
@@ -131,12 +142,16 @@ class SelfImprovingLoop:
 
     def _select_top_bottom_strategies(self, metrics: List[dict]) -> Tuple[List[dict], List[dict]]:
         """Return the top 5 and bottom 3 strategies based on Sharpe."""
-        top = sorted(metrics, key=lambda m: m["sharpe"], reverse=True)[:5]
-        bottom = sorted(metrics, key=lambda m: m["sharpe"])[:3]
+        if not isinstance(metrics, list):
+            raise ValueError("metrics must be a list of strategy dictionaries")
+        top = sorted(metrics, key=lambda m: m.get("sharpe", 0), reverse=True)[:5]
+        bottom = sorted(metrics, key=lambda m: m.get("sharpe", 0))[:3]
         return top, bottom
 
     def _build_llm_prompt(self, top: List[dict], bottom: List[dict]) -> str:
         """Create the prompt sent to the LLM with formatted strategy data."""
+        if not isinstance(top, list) or not isinstance(bottom, list):
+            raise ValueError("top and bottom must be lists of strategy dictionaries")
         return f"""You are a quantitative trading researcher.
 
 Top performing strategies (last 30d):
@@ -154,6 +169,8 @@ Be concise. Each suggestion under 2 sentences."""
 
     async def _store_llm_suggestion(self, response: Any) -> None:
         """Persist LLM suggestion to AgentMemory and log the provider."""
+        if not hasattr(response, "provider") or not hasattr(response, "content"):
+            raise ValueError("LLM response must have 'provider' and 'content' attributes")
         await self._memory.write(
             "llm_suggestions",
             {
@@ -166,7 +183,9 @@ Be concise. Each suggestion under 2 sentences."""
     # ── Regime broadcast ──────────────────────────────────────────────────────
 
     async def _broadcast_regime(self, metrics: List[dict]) -> None:
-        profitable = sum(1 for m in metrics if m["sharpe"] > 0.5)
+        if not isinstance(metrics, list):
+            raise ValueError("metrics must be a list of strategy dictionaries")
+        profitable = sum(1 for m in metrics if m.get("sharpe", 0) > 0.5)
         total = len(metrics) or 1
         health = profitable / total
 
