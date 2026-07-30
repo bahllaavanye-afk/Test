@@ -11,6 +11,7 @@ Features:
   - PIN proxy (Probability of Informed Trading)
   - Kyle's lambda (price impact coefficient)
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -34,7 +35,7 @@ MICROSTRUCTURE_FEATURE_COLS = [COL_LOB_IMBALANCE, COL_SPREAD_BPS]
 
 
 class OrderBookFeatures:
-    """Compute LOB features from real-time bid/ask depth."""
+    """Utility class for computing limit order book (LOB) microstructure features."""
 
     @staticmethod
     @lru_cache(maxsize=1024)
@@ -42,7 +43,16 @@ class OrderBookFeatures:
         data: tuple[tuple[float, float], ...],
         levels: int,
     ) -> np.ndarray:
-        """Extract volumes up to `levels` and return as NumPy array."""
+        """
+        Extract volumes up to ``levels`` from a tuple of (price, size) pairs.
+
+        Args:
+            data: Tuple of (price, size) pairs representing a side of the order book.
+            levels: Number of price levels to include.
+
+        Returns:
+            NumPy array of the extracted sizes (float dtype).
+        """
         arr = np.fromiter((sz for _, sz in data[:levels]), dtype=float, count=levels)
         return arr
 
@@ -54,12 +64,16 @@ class OrderBookFeatures:
     ) -> float:
         """
         Order book imbalance: (bid_vol - ask_vol) / (bid_vol + ask_vol).
-        Returns value in [-1, 1]. Positive = bid-heavy (buying pressure).
+
+        Returns a value in [-1, 1]. Positive indicates bid‑heavy (buying pressure).
 
         Args:
-            bids: list of (price, size) pairs, best bid first
-            asks: list of (price, size) pairs, best ask first
-            levels: how many price levels to include
+            bids: List of (price, size) pairs, best bid first.
+            asks: List of (price, size) pairs, best ask first.
+            levels: Number of price levels to include in the calculation.
+
+        Returns:
+            Imbalance ratio as a float. Returns 0.0 when data is insufficient.
         """
         if not bids or not asks:
             return 0.0
@@ -79,8 +93,17 @@ class OrderBookFeatures:
 
     def compute_spread_bps(self, best_bid: float, best_ask: float) -> float:
         """
-        Bid-ask spread in basis points: (ask - bid) / mid * BASIS_POINTS_MULTIPLIER.
+        Compute the bid‑ask spread expressed in basis points.
+
+        The spread is calculated as ``(ask - bid) / mid * BASIS_POINTS_MULTIPLIER``.
         Returns 0.0 for invalid inputs.
+
+        Args:
+            best_bid: Best bid price.
+            best_ask: Best ask price.
+
+        Returns:
+            Spread in basis points as a float.
         """
         if best_bid <= 0.0 or best_ask <= 0.0 or best_ask <= best_bid:
             return 0.0
@@ -93,9 +116,17 @@ class OrderBookFeatures:
         asks: list[tuple[float, float]],
     ) -> float:
         """
-        Top-of-book depth ratio: best_bid_size / best_ask_size.
-        Values > 1 indicate more liquidity on bid side.
-        Returns 1.0 if either side is empty.
+        Top‑of‑book depth ratio: ``best_bid_size / best_ask_size``.
+
+        Values greater than 1 indicate more liquidity on the bid side.
+        Returns 1.0 if either side is empty or the ask size is non‑positive.
+
+        Args:
+            bids: List of (price, size) pairs for the bid side.
+            asks: List of (price, size) pairs for the ask side.
+
+        Returns:
+            Depth ratio as a float.
         """
         if not bids or not asks:
             return 1.0
@@ -107,9 +138,16 @@ class OrderBookFeatures:
 
     def compute_pin_proxy(self, buy_volume: float, sell_volume: float) -> float:
         """
-        Probability of Informed Trading proxy.
-        PIN = |buy_vol - sell_vol| / (buy_vol + sell_vol)
-        Returns value in [0, 1]. Near 1 = highly informed order flow.
+        Probability of Informed Trading (PIN) proxy.
+
+        PIN = |buy_vol - sell_vol| / (buy_vol + sell_vol).
+
+        Args:
+            buy_volume: Total buy volume.
+            sell_volume: Total sell volume.
+
+        Returns:
+            PIN proxy in the range [0, 1]. Returns 0.0 when total volume is zero.
         """
         total = buy_volume + sell_volume
         if total <= 0.0:
@@ -122,11 +160,18 @@ class OrderBookFeatures:
         signed_volumes: np.ndarray,
     ) -> float:
         """
-        Kyle's lambda (price impact coefficient).
-        Estimated via OLS: delta_price = lambda * signed_volume + epsilon
+        Estimate Kyle's lambda (price impact coefficient) via ordinary least squares.
 
-        Returns lambda (bps per unit volume). Higher = less liquid.
-        Returns 0.0 if insufficient data.
+        The regression model is ``delta_price = lambda * signed_volume + epsilon``.
+        The function returns lambda measured in basis points per unit volume.
+
+        Args:
+            price_changes: Array of price differences (Δprice).
+            signed_volumes: Array of signed trade volumes.
+
+        Returns:
+            Estimated lambda as a float. Returns 0.0 if data is insufficient or
+            variance of volumes is too low.
         """
         if price_changes.size < MIN_SAMPLE_SIZE or signed_volumes.size < MIN_SAMPLE_SIZE:
             return 0.0
@@ -155,8 +200,16 @@ class OrderBookFeatures:
         """
         Compute all microstructure features from a single LOB snapshot.
 
+        Args:
+            bids: List of (price, size) pairs for the bid side.
+            asks: List of (price, size) pairs for the ask side.
+            buy_volume: Aggregated buy volume for the PIN proxy.
+            sell_volume: Aggregated sell volume for the PIN proxy.
+            levels: Number of order‑book levels to include in the imbalance metric.
+
         Returns:
-            dict with keys: imbalance, spread_bps, depth_ratio, pin_proxy
+            Dictionary with keys ``imbalance``, ``spread_bps``, ``depth_ratio``,
+            and ``pin_proxy`` mapping to their respective float values.
         """
         best_bid = float(bids[0][0]) if bids else 0.0
         best_ask = float(asks[0][0]) if asks else 0.0
@@ -175,12 +228,24 @@ def add_microstructure_features(
     spread_bps_series: pd.Series | None = None,
 ) -> pd.DataFrame:
     """
-    Add microstructure feature columns to an OHLCV DataFrame.
+    Enrich an OHLCV DataFrame with microstructure feature columns.
 
-    If real-time LOB series are provided they are aligned and added.
-    Otherwise, proxy features are computed from OHLCV:
-      - volume_imbalance_proxy: (close - open) / (high - low)  — approximates buy/sell pressure
-      - spread_bps_proxy: (high - low) / close * BASIS_POINTS_MULTIPLIER — proxy for intraday spread
+    If real‑time LOB series are supplied they are aligned to the DataFrame's index
+    and used directly. Otherwise, proxy features are derived from the OHLCV data:
+
+    * ``volume_imbalance_proxy`` – approximates buy/sell pressure:
+      ``(close - open) / (high - low)`` clipped to ``[-1, 1]``.
+    * ``spread_bps_proxy`` – approximates intraday spread:
+      ``(high - low) / close * BASIS_POINTS_MULTIPLIER``.
+
+    Args:
+        df: Input DataFrame containing at least ``high``, ``low``, ``open``,
+            ``close`` columns.
+        imbalance_series: Optional Series of pre‑computed LOB imbalance values.
+        spread_bps_series: Optional Series of pre‑computed spread in basis points.
+
+    Returns:
+        A new DataFrame copy with ``lob_imbalance`` and ``spread_bps`` columns added.
     """
     df = df.copy()
 
