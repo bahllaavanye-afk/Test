@@ -4,7 +4,7 @@ from __future__ import annotations
 import random
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
@@ -21,18 +21,20 @@ def _first_run_time() -> datetime:
     """
     return datetime.now(timezone.utc) + timedelta(seconds=random.uniform(30, 150))
 
+
 if TYPE_CHECKING:
     from app.models.bot import Bot
 
+
 # Map interval strings to APScheduler kwargs
 _INTERVAL_MAP: dict[str, dict] = {
-    "1m":  {"minutes": 1},
-    "5m":  {"minutes": 5},
+    "1m": {"minutes": 1},
+    "5m": {"minutes": 5},
     "15m": {"minutes": 15},
     "30m": {"minutes": 30},
-    "1h":  {"hours": 1},
-    "4h":  {"hours": 4},
-    "1d":  {"hours": 24},
+    "1h": {"hours": 1},
+    "4h": {"hours": 4},
+    "1d": {"hours": 24},
 }
 
 
@@ -42,7 +44,10 @@ class BotRunner:
     def __init__(self, scheduler: AsyncIOScheduler):
         self._scheduler = scheduler
 
-    def _has_job(self, bot_id: str) -> bool:
+    def _has_job(self, bot_id: str | None) -> bool:
+        """Return True if a job for the given bot_id exists."""
+        if not bot_id:
+            return False
         return self._scheduler.get_job(f"bot_{bot_id}") is not None
 
     async def start(self, only_missing: bool = False) -> int:
@@ -73,12 +78,25 @@ class BotRunner:
                         Bot.is_archived == False,  # noqa: E712
                     )
                 )
-                bots = result.scalars().all()
+                bots = result.scalars().all() or []
 
-            pending = [b for b in bots if not (only_missing and self._has_job(b.id))]
+            if not bots:
+                logger.info("BotRunner: no enabled bots found")
+                return 0
+
+            pending = [
+                b
+                for b in bots
+                if b
+                and b.id
+                and not (only_missing and self._has_job(b.id))
+            ]
+
             logger.info(
                 "BotRunner: scheduling bots",
-                enabled=len(bots), scheduling=len(pending), only_missing=only_missing,
+                enabled=len(bots),
+                scheduling=len(pending),
+                only_missing=only_missing,
             )
             for bot in pending:
                 await self.reschedule(bot)
@@ -86,21 +104,26 @@ class BotRunner:
             # Enabled bots that ended up with no job are the whole failure mode:
             # the fleet looks healthy in the API (is_enabled=True) while nothing
             # can ever fire. Never let that be quiet.
-            unscheduled = [b.id for b in bots if not self._has_job(b.id)]
+            unscheduled = [
+                b.id for b in bots if b and b.id and not self._has_job(b.id)
+            ]
             if unscheduled:
                 logger.error(
-                    "BotRunner: %d enabled bot(s) have NO scheduler job — they "
-                    "cannot fire and no orders will be placed",
+                    "BotRunner: %d enabled bot(s) have NO scheduler job — they cannot fire and no orders will be placed",
                     len(unscheduled),
-                    enabled=len(bots), unscheduled=len(unscheduled),
+                    enabled=len(bots),
+                    unscheduled=len(unscheduled),
                 )
             return len(pending)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.error("BotRunner.start failed", error=str(exc), exc_info=exc)
             return 0
 
-    async def _run_bot(self, bot_id: str) -> None:
+    async def _run_bot(self, bot_id: str | None) -> None:
         """Called by scheduler — fetch bot from DB, evaluate, update."""
+        if not bot_id:
+            logger.debug("BotRunner._run_bot called with empty bot_id")
+            return
         try:
             from app.database import AsyncSessionLocal
             from app.models.bot import Bot
@@ -121,13 +144,16 @@ class BotRunner:
                     signal=bot_result.signal,
                     reason=bot_result.reason,
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.error("Bot run failed", bot_id=bot_id, error=str(exc))
 
-    async def reschedule(self, bot: "Bot") -> None:
+    async def reschedule(self, bot: "Bot" | None) -> None:
         """Add or update a bot job in the scheduler."""
+        if not bot or not bot.id:
+            logger.debug("BotRunner.reschedule called with invalid bot")
+            return
         try:
-            trigger_cfg: dict = bot.trigger or {}
+            trigger_cfg: dict[str, Any] = bot.trigger or {}
             trigger_type = trigger_cfg.get("type", "schedule")
 
             job_id = f"bot_{bot.id}"
@@ -159,16 +185,22 @@ class BotRunner:
                     next_run_time=_first_run_time(),
                     minutes=5,
                 )
-                logger.debug("Bot scheduled (poll)", bot_id=bot.id, trigger=trigger_type)
-
-        except Exception as exc:
+                logger.debug(
+                    "Bot scheduled (poll)", bot_id=bot.id, trigger=trigger_type
+                )
+        except Exception as exc:  # noqa: BLE001
             logger.error("BotRunner.reschedule failed", bot_id=bot.id, error=str(exc))
 
-    async def unschedule(self, bot_id: str) -> None:
+    async def unschedule(self, bot_id: str | None) -> None:
         """Remove a bot job from the scheduler."""
+        if not bot_id:
+            logger.debug("BotRunner.unschedule called with empty bot_id")
+            return
         job_id = f"bot_{bot_id}"
         try:
             self._scheduler.remove_job(job_id)
             logger.debug("Bot unscheduled", bot_id=bot_id)
         except Exception as exc:  # noqa: BLE001 — job may simply not exist
-            logger.debug("Bot unschedule skipped", bot_id=bot_id, error=str(exc))
+            logger.debug(
+                "Bot unschedule skipped", bot_id=bot_id, error=str(exc)
+            )
