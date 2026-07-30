@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Check thread limits",
-    "Validate strategy variants",
-    "Verify RAM allocation",
-    "Monitor network latency",
     "Scan log files",
     "Validate API keys",
     "Monitor thread counts",
@@ -199,8 +195,12 @@
     "Track API timeouts",
     "Test retry mechanisms",
     "Verify clock sync",
-    "Monitor retraining pipelines"
+    "Monitor retraining pipelines",
+    "Check data feed latency",
+    "Verify trade id uniqueness",
+    "Analyze TFT models",
+    "Optimize hybrid predictors"
   ],
-  "last_updated": "2026-07-30T19:22:08.442823+00:00",
+  "last_updated": "2026-07-30T20:41:17.854758+00:00",
   "total": 200
 }
