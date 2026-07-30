@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785428607.2230127,
+    "last_updated": 1785433337.893194,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,59 +109,52 @@
     },
     "opinion_score": 2,
     "macro_score": 2,
-    "vix": 18.34,
-    "market_scan_ts": 1785428607.192725,
+    "vix": 18.01,
+    "market_scan_ts": 1785433337.847278,
     "sector_leaders": [
       "Energy",
       "Financials",
       "Healthcare"
     ],
     "sector_laggards": [
-      "Cons. Disc.",
       "Industrials",
+      "Cons. Disc.",
       "Tech"
     ],
     "active_universe": [
       "MSFT",
       "META",
-      "MO",
       "NOW",
       "ADBE",
       "MA",
+      "INTU",
       "AMZN",
       "XLK",
-      "INTU",
       "QQQ",
       "GS",
       "NVDA",
       "ORCL",
+      "NFLX",
       "XLV",
-      "KO",
       "GOOGL",
       "AAPL",
-      "NFLX",
-      "TSLA",
-      "XLI"
+      "LLY",
+      "XLI",
+      "V",
+      "TSLA"
     ],
     "top_momentum": [
       "MSFT",
       "ADBE",
       "INTU",
       "MPC",
-      "BLK"
+      "ABT"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785409453.6299043
   },
   "episodic": [
-    {
-      "lesson": "Walk-forward parameters (min_train=252, refit_every=21) may not adapt to recent market volatility; validate with out-of-sample testing.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784445296.925246
-    },
     {
       "lesson": "Long threshold of 0.55 for GBC signals could increase false positives; perform sensitivity analysis and consider dynamic thresholding.",
       "category": "risk",
@@ -2173,6 +2166,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785428607.2286897
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Healthcare"
+      ],
+      "gap_count": 8,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
+      "ts": 1785433337.898564
     }
   ],
   "github_insights": [
