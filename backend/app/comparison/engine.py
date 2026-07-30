@@ -3,10 +3,12 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
-from dataclasses import dataclass, field
+
 from datetime import date
+from typing import Any, Dict
 
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 from scipy import stats
 
 from app.backtest.engine import run_backtest, BacktestMetrics
@@ -14,22 +16,88 @@ from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stat
 from app.utils.logging import logger
 
 
-@dataclass
-class ComparisonResult:
-    strategy_name: str
-    symbol: str
-    interval: str
-    start_date: date
-    end_date: date
-    manual: BacktestMetrics | None = None
-    ml_enhanced: BacktestMetrics | None = None
-    benchmark_curves: dict = field(default_factory=dict)
-    benchmark_stats: dict = field(default_factory=dict)
-    ml_improvement_sharpe: float = 0.0
-    t_statistic: float = 0.0
-    p_value: float = 1.0
-    is_significant: bool = False
-    winner: str = "neither"
+class ComparisonResult(BaseModel):
+    """
+    Result container for a strategy comparison run.
+    """
+
+    strategy_name: str = Field(
+        ...,
+        description="Human‑readable name of the strategy being evaluated.",
+        example="mean_rev_20_2",
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol of the asset under test.",
+        example="AAPL",
+    )
+    interval: str = Field(
+        ...,
+        description="Timeframe of the price data (e.g., '15m', '1h').",
+        example="15m",
+    )
+    start_date: date = Field(
+        ...,
+        description="Inclusive start date for the backtest period.",
+        example="2023-01-01",
+    )
+    end_date: date = Field(
+        ...,
+        description="Inclusive end date for the backtest period.",
+        example="2023-03-31",
+    )
+    manual: BacktestMetrics | None = Field(
+        default=None,
+        description="Backtest metrics for the manual signal set.",
+    )
+    ml_enhanced: BacktestMetrics | None = Field(
+        default=None,
+        description="Backtest metrics for the ML‑enhanced signal set.",
+    )
+    benchmark_curves: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Benchmark equity curves fetched for the period.",
+    )
+    benchmark_stats: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Statistical summary of the benchmark curves.",
+    )
+    ml_improvement_sharpe: float = Field(
+        default=0.0,
+        description="Difference in Sharpe ratio (ML – manual).",
+        example=0.12,
+    )
+    t_statistic: float = Field(
+        default=0.0,
+        description="t‑statistic from the two‑sample t‑test on returns.",
+        example=1.85,
+    )
+    p_value: float = Field(
+        default=1.0,
+        description="Two‑tailed p‑value from the t‑test.",
+        example=0.067,
+    )
+    is_significant: bool = Field(
+        default=False,
+        description="Whether the p‑value indicates statistical significance (< 0.05).",
+    )
+    winner: str = Field(
+        default="neither",
+        description="Identifier of the winning approach: 'ml', 'manual', or 'neither'.",
+        example="ml",
+    )
+
+    @validator("end_date")
+    def check_dates(cls, v: date, values: dict) -> date:
+        """Ensure end_date is not earlier than start_date."""
+        start = values.get("start_date")
+        if start and v < start:
+            raise ValueError("end_date cannot be earlier than start_date.")
+        return v
+
+    class Config:
+        arbitrary_types_allowed = True
+        json_encoders = {date: lambda d: d.isoformat()}
 
 
 class StrategyComparisonEngine:
@@ -61,11 +129,11 @@ class StrategyComparisonEngine:
             raise ValueError("prices series cannot be empty.")
 
         if not isinstance(strategy_name, str) or not strategy_name.strip():
-            raise ValueError("strategy_name must be a non-empty string.")
+            raise ValueError("strategy_name must be a non‑empty string.")
         if not isinstance(symbol, str) or not symbol.strip():
-            raise ValueError("symbol must be a non-empty string.")
+            raise ValueError("symbol must be a non‑empty string.")
         if not isinstance(interval, str) or not interval.strip():
-            raise ValueError("interval must be a non-empty string.")
+            raise ValueError("interval must be a non‑empty string.")
 
         if not isinstance(start_date, date):
             raise ValueError("start_date must be a datetime.date instance.")
@@ -79,10 +147,12 @@ class StrategyComparisonEngine:
         if initial_equity <= 0:
             raise ValueError("initial_equity must be a positive number.")
 
-        # Ensure series are aligned on the same index (optional but helps consistency)
+        # Align series on a common index
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
-            raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
+            raise ValueError(
+                "manual_signals, ml_signals, and prices must share at least one common index."
+            )
         manual_signals = manual_signals.loc[common_index]
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
