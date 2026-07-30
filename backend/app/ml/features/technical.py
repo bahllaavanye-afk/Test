@@ -12,6 +12,9 @@ The implementation mirrors the original code base and adds no new
 behaviour; it merely enriches the DataFrame with a collection of common
 technical features such as returns, volatility, EMA distance, RSI, MACD,
 Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
+Additional signal columns are provided to tighten entry conditions,
+add confirmation filters, and improve exit logic for mean‑reversion
+strategies.
 """
 
 from __future__ import annotations
@@ -179,5 +182,62 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             df["adx"] = adx_df["ADX_14"] / 100.0
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute ADX feature", exc_info=exc)
+
+    # ------------------------------------------------------------------
+    # Signal generation – tightened entry/exit logic for mean‑reversion.
+    # ------------------------------------------------------------------
+    try:
+        # Ensure required columns exist before constructing signals.
+        required = ["rsi_14", "macd_hist", "ema_21_diff", "adx", "stoch_k", "stoch_d"]
+        missing = [c for c in required if c not in df.columns]
+        if not missing:
+            # Long entry:
+            #   - RSI deep oversold (<0.30)
+            #   - MACD histogram positive (bullish momentum)
+            #   - Price above EMA 21 (trend filter)
+            #   - ADX indicating a strong trend (>0.25)
+            #   - Stochastic K crossing above D (momentum confirmation)
+            long_cond = (
+                (df["rsi_14"] < 0.30)
+                & (df["macd_hist"] > 0)
+                & (df["ema_21_diff"] > 0)
+                & (df["adx"] > 0.25)
+                & (df["stoch_k"] > df["stoch_d"])
+            )
+            df["signal_long"] = long_cond.astype(int)
+
+            # Short entry:
+            #   - RSI deep overbought (>0.70)
+            #   - MACD histogram negative
+            #   - Price below EMA 21
+            #   - ADX strong (>0.25)
+            #   - Stochastic K crossing below D
+            short_cond = (
+                (df["rsi_14"] > 0.70)
+                & (df["macd_hist"] < 0)
+                & (df["ema_21_diff"] < 0)
+                & (df["adx"] > 0.25)
+                & (df["stoch_k"] < df["stoch_d"])
+            )
+            df["signal_short"] = short_cond.astype(int)
+
+            # Exit logic:
+            #   - For an open long, exit when MACD histogram turns negative
+            #     or price falls below EMA 9.
+            #   - For an open short, exit when MACD histogram turns positive
+            #     or price rises above EMA 9.
+            df["exit_long"] = (
+                (df["macd_hist"] < 0) | (df["ema_9_diff"] < 0)
+            ).astype(int)
+            df["exit_short"] = (
+                (df["macd_hist"] > 0) | (df["ema_9_diff"] > 0)
+            ).astype(int)
+        else:
+            _logger.warning(
+                "Signal columns not generated due to missing technical features: %s",
+                missing,
+            )
+    except Exception as exc:  # pragma: no cover
+        _logger.error("Failed to generate trading signals", exc_info=exc)
 
     return df
