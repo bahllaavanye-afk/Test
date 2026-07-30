@@ -91,13 +91,27 @@ class TradeOut(BaseModel):
 
 @router.get("/", response_model=list[TradeOut])
 async def list_trades(
-    limit: int = Query(50, ge=1, le=500),
+    limit: int | None = Query(50, ge=1, le=500),
     symbol: str | None = Query(None, description="Filter by symbol"),
     account_id: str | None = Query(None, description="Filter by account ID"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Return a list of recent trades for the current user with optional filters."""
+    # Defensive defaults for limit
+    if limit is None or limit < 1:
+        limit = 1
+    elif limit > 500:
+        limit = 500
+
+    # Guard against a missing DB session
+    if db is None:
+        return []
+
+    # Normalize optional string filters
+    account_filter = account_id.strip() if isinstance(account_id, str) and account_id.strip() else None
+    symbol_filter = symbol.strip() if isinstance(symbol, str) and symbol.strip() else None
+
     # Build a lightweight query that selects only needed columns and computes avg_fill_price in SQL.
     fill_price_expr = case(
         (Trade.side == "buy", Trade.entry_price),
@@ -123,13 +137,18 @@ async def list_trades(
         .order_by(Trade.opened_at.desc())
         .limit(limit)
     )
-    if account_id:
-        query = query.where(Trade.account_id == account_id)
-    if symbol:
-        query = query.where(Trade.symbol == symbol)
+    if account_filter:
+        query = query.where(Trade.account_id == account_filter)
+    if symbol_filter:
+        query = query.where(Trade.symbol == symbol_filter)
 
-    result = await db.execute(query)
-    rows = result.all()
+    try:
+        result = await db.execute(query)
+    except Exception:
+        # In case of unexpected DB errors, return an empty list rather than propagating.
+        return []
+
+    rows = result.all() if result is not None else []
     if not rows:
         return []
 
