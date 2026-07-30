@@ -4,8 +4,9 @@ Every strategy and API handler that calls the Alpaca REST API should import
 this function instead of duplicating the header dict inline.
 """
 from app.config import settings
+from functools import lru_cache
 
-
+@lru_cache(maxsize=None)
 def alpaca_headers() -> dict[str, str]:
     """Return Alpaca authentication headers for REST requests."""
     return {
