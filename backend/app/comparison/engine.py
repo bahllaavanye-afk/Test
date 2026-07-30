@@ -3,9 +3,12 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Tuple, Dict
 
+import numpy as np
 import pandas as pd
 from scipy import stats
 
@@ -33,6 +36,15 @@ class ComparisonResult:
 
 
 class StrategyComparisonEngine:
+    # Simple in‑memory cache for benchmark curves to avoid repeated async fetches
+    _benchmark_cache: Dict[Tuple[date, date], dict] = {}
+
+    async def _get_benchmark_curves(self, start_date: date, end_date: date) -> dict:
+        cache_key = (start_date, end_date)
+        if cache_key not in self._benchmark_cache:
+            self._benchmark_cache[cache_key] = await fetch_benchmark_curves(start_date, end_date)
+        return self._benchmark_cache[cache_key]
+
     async def run_comparison(
         self,
         manual_signals: pd.Series,
@@ -52,34 +64,30 @@ class StrategyComparisonEngine:
             raise ValueError("ml_signals must be a pandas Series.")
         if not isinstance(prices, pd.Series):
             raise ValueError("prices must be a pandas Series.")
-
         if manual_signals.empty:
             raise ValueError("manual_signals series cannot be empty.")
         if ml_signals.empty:
             raise ValueError("ml_signals series cannot be empty.")
         if prices.empty:
             raise ValueError("prices series cannot be empty.")
-
         if not isinstance(strategy_name, str) or not strategy_name.strip():
             raise ValueError("strategy_name must be a non-empty string.")
         if not isinstance(symbol, str) or not symbol.strip():
             raise ValueError("symbol must be a non-empty string.")
         if not isinstance(interval, str) or not interval.strip():
             raise ValueError("interval must be a non-empty string.")
-
         if not isinstance(start_date, date):
             raise ValueError("start_date must be a datetime.date instance.")
         if not isinstance(end_date, date):
             raise ValueError("end_date must be a datetime.date instance.")
         if start_date > end_date:
             raise ValueError("start_date cannot be later than end_date.")
-
         if not isinstance(initial_equity, (int, float)):
             raise ValueError("initial_equity must be a numeric type.")
         if initial_equity <= 0:
             raise ValueError("initial_equity must be a positive number.")
 
-        # Ensure series are aligned on the same index (optional but helps consistency)
+        # Align series on common index
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
             raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
@@ -87,22 +95,28 @@ class StrategyComparisonEngine:
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
 
+        # Run backtests
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 
-        benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
+        # Fetch benchmark data with caching
+        benchmark_curves = await self._get_benchmark_curves(start_date, end_date)
         benchmark_stats = get_benchmark_stats()
 
+        # Extract equity curves efficiently
         manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
         ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
-        manual_ret = manual_eq.pct_change().dropna()
-        ml_ret = ml_eq.pct_change().dropna()
 
-        min_len = min(len(manual_ret), len(ml_ret))
-        if min_len > 10:
-            t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
-        else:
+        # Compute returns as NumPy arrays for faster statistical test
+        manual_ret = manual_eq.pct_change().dropna().to_numpy()
+        ml_ret = ml_eq.pct_change().dropna().to_numpy()
+
+        # Early exit for insufficient data
+        if len(manual_ret) < 10 or len(ml_ret) < 10:
             t_stat, p_val = 0.0, 1.0
+        else:
+            min_len = min(len(manual_ret), len(ml_ret))
+            t_stat, p_val = stats.ttest_ind(ml_ret[:min_len], manual_ret[:min_len])
 
         improvement = ml_metrics.sharpe - manual_metrics.sharpe
         winner = "ml" if ml_metrics.sharpe > manual_metrics.sharpe else "manual"
