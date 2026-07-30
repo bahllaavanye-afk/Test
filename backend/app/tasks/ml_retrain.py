@@ -5,6 +5,7 @@ compares new vs old Sharpe, promotes if improved.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -30,6 +31,7 @@ DEFAULT_RETRAIN_CONFIGS: list[tuple[str, str, str]] = [
 MAX_RETRAIN_PER_NIGHT: int = 10
 DATE_FORMAT: str = "%Y%m%d"
 REGEX_EXTRACT_PATTERN: str = r"^\s{2}(model|symbol|interval):\s*['\"]?([^\s'\"#]+)"
+PERF_DIR: Path = Path(__file__).parents[3] / "model_performance"
 
 # --------------------------------------------------------------------------- #
 # Global in‑process cache for downloaded price data.
@@ -95,6 +97,12 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
         return None
 
     if hist is None or len(hist) < MIN_HIST_LENGTH:
+        logger.warning(
+            "Insufficient historical rows",
+            symbol=symbol,
+            interval=interval,
+            rows=len(hist) if hist is not None else 0,
+        )
         return None
 
     # Normalize column names once.
@@ -105,8 +113,38 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
     return hist
 
 
+def _perf_path(model: str, symbol: str) -> Path:
+    """Return the file path where performance metrics are stored."""
+    PERF_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"{model}_{symbol}.json"
+    return PERF_DIR / filename
+
+
+def _load_previous_perf(model: str, symbol: str) -> dict | None:
+    """Load previously saved performance metrics, if any."""
+    path = _perf_path(model, symbol)
+    if not path.is_file():
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as exc:  # pragma: no cover
+        logger.error("Failed to read previous performance", model=model, symbol=symbol, error=str(exc))
+        return None
+
+
+def _save_current_perf(model: str, symbol: str, perf: dict) -> None:
+    """Persist current performance metrics for future comparisons."""
+    path = _perf_path(model, symbol)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(perf, f, ensure_ascii=False, indent=2)
+    except Exception as exc:  # pragma: no cover
+        logger.error("Failed to write performance file", model=model, symbol=symbol, error=str(exc))
+
+
 async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_INTERVAL) -> dict:
-    """Download 2 years of data and retrain a model. Returns result dict."""
+    """Download 2 years of data and retrain a model. Returns result dict with promotion status."""
     try:
         end = datetime.now(timezone.utc)
         start = end - timedelta(days=DEFAULT_TRAIN_DAYS)
@@ -115,10 +153,30 @@ async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_IN
         if hist is None:
             return {"status": "skipped", "reason": "insufficient data"}
 
+        # Additional data sanity check – ensure volatility is present.
+        if hist["close"].std() == 0:
+            return {"status": "skipped", "reason": "zero volatility"}
+
         from app.ml.training.train_lstm import train
 
         experiment_name = f"{model_name}_{symbol.lower()}_{datetime.now(timezone.utc).strftime(DATE_FORMAT)}"
         result = await train(hist, experiment_name=experiment_name, max_epochs=MAX_EPOCHS)
+
+        # Expected training output should contain a Sharpe metric.
+        new_sharpe = result.get("sharpe")
+        if new_sharpe is None:
+            # If Sharpe is missing, treat as non‑promotable.
+            result.update({"status": "not_promoted", "reason": "missing sharpe metric"})
+        else:
+            prev = _load_previous_perf(model_name, symbol)
+            prev_sharpe = prev.get("sharpe") if prev else None
+
+            # Confirmation filter: require Sharpe > 0.5 and improvement > 0.05.
+            if new_sharpe > 0.5 and (prev_sharpe is None or new_sharpe - prev_sharpe > 0.05):
+                result.update({"status": "promoted", "reason": "sharpe improved"})
+                _save_current_perf(model_name, symbol, {"sharpe": new_sharpe, "timestamp": datetime.now(timezone.utc).isoformat()})
+            else:
+                result.update({"status": "not_promoted", "reason": "sharpe not sufficient"})
 
         result["symbol"] = symbol
         result["model"] = model_name
@@ -199,7 +257,11 @@ async def nightly_retrain() -> None:
         *(retrain_model(m, s, i) for m, s, i in retrain_configs),
         return_exceptions=True,
     )
-    successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
+    successes = sum(
+        1
+        for r in results
+        if isinstance(r, dict) and r.get("status") in {"promoted", "not_promoted", "skipped"}
+    )
     logger.info(
         "Nightly retrain complete",
         total=len(retrain_configs),
