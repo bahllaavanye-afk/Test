@@ -17,6 +17,7 @@ LIMIT_DESCRIPTION: str = "Maximum number of records to return (1-5000)"
 
 ERR_LIMIT_POSITIVE: str = "Limit must be a positive integer."
 ERR_RETRIEVE_ARCHIVE: str = "Failed to retrieve archive: {exc}"
+ERR_CATEGORY_REQUIRED: str = "Category must be a non‑empty string."
 
 router = APIRouter(prefix=ARCHIVE_PREFIX, tags=[ARCHIVE_TAG])
 
@@ -25,11 +26,12 @@ router = APIRouter(prefix=ARCHIVE_PREFIX, tags=[ARCHIVE_TAG])
 async def get_index(current_user: User = Depends(get_current_user)):
     """
     Return a list of available archives.
-    Handles the case where the underlying function returns None.
+    Handles the case where the underlying function returns None or a non‑iterable.
     """
     archives = list_archives()
-    # Ensure a list is always returned
-    return archives if archives else []
+    if not isinstance(archives, (list, tuple, set)):
+        return []
+    return list(archives)
 
 
 @router.get("/{category}")
@@ -38,7 +40,7 @@ async def get_archive(
     date: str | None = Query(
         None, description=DATE_DESCRIPTION
     ),
-    limit: int = Query(
+    limit: int | None = Query(
         DEFAULT_LIMIT,
         ge=MIN_LIMIT,
         le=MAX_LIMIT,
@@ -49,20 +51,24 @@ async def get_archive(
     """
     Replay trades for a given category and optional date.
     Edge‑case handling:
-    * `date` empty string is treated as None.
-    * `limit` is validated to be at least 1.
-    * Returns an empty list if the replay yields no data.
+    * `category` must be a non‑empty string.
+    * Empty `date` strings are treated as None.
+    * `limit` defaults to DEFAULT_LIMIT if None and is validated to be within bounds.
+    * Returns an empty list if the replay yields no data or a non‑iterable result.
     """
+    # Validate category
+    if not category or not isinstance(category, str):
+        raise HTTPException(status_code=400, detail=ERR_CATEGORY_REQUIRED)
+
     # Normalize empty date strings
-    if date == "":
+    if isinstance(date, str) and date.strip() == "":
         date = None
 
-    # Defensive check for limit (should already be enforced by Query)
+    # Defensive handling for limit
+    if limit is None:
+        limit = DEFAULT_LIMIT
     if limit < MIN_LIMIT:
-        raise HTTPException(
-            status_code=400,
-            detail=ERR_LIMIT_POSITIVE,
-        )
+        raise HTTPException(status_code=400, detail=ERR_LIMIT_POSITIVE)
 
     try:
         result = replay(category, date, limit)
@@ -74,4 +80,6 @@ async def get_archive(
         ) from exc
 
     # Ensure the endpoint always returns a list
-    return result if result else []
+    if not isinstance(result, (list, tuple, set)):
+        return []
+    return list(result)
