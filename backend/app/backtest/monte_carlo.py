@@ -71,30 +71,37 @@ def monte_carlo_simulation(
         raise ValueError("risk_free_daily must be a real number.")
 
     n_days = int(n_years * 252)
-    returns_array = daily_returns.dropna().values
-    sharpes = []
-    max_dds = []
-    positive = 0
+    returns_array = daily_returns.dropna().values.astype(float)
 
     rng = np.random.default_rng(42)
-    for _ in range(n_simulations):
-        sampled = rng.choice(returns_array, size=n_days, replace=True)
-        equity = np.cumprod(1 + sampled) * 100_000
-        peak = np.maximum.accumulate(equity)
-        dd = (equity - peak) / peak
-        max_dd = dd.min()
+    # Vectorized sampling: shape (n_simulations, n_days)
+    sampled = rng.choice(returns_array, size=(n_simulations, n_days), replace=True)
 
-        excess = sampled - risk_free_daily
-        sharpe = (excess.mean() / excess.std() * np.sqrt(252)) if excess.std() > 0 else 0.0
-        sharpes.append(sharpe)
-        max_dds.append(max_dd)
-        if equity[-1] > 100_000:
-            positive += 1
+    # Equity curve for each simulation
+    equity = np.cumprod(1 + sampled, axis=1) * 100_000
+
+    # Maximum drawdown per simulation
+    peak = np.maximum.accumulate(equity, axis=1)
+    dd = (equity - peak) / peak
+    max_dds = dd.min(axis=1)
+
+    # Sharpe ratio per simulation
+    excess = sampled - risk_free_daily
+    excess_mean = excess.mean(axis=1)
+    excess_std = excess.std(axis=1, ddof=0)
+    sharpe_vals = np.where(
+        excess_std > 0,
+        excess_mean / excess_std * np.sqrt(252),
+        0.0,
+    )
+
+    # Probability of positive return at the end of the horizon
+    positive = np.sum(equity[:, -1] > 100_000)
 
     return MonteCarloResult(
-        median_sharpe=round(float(np.median(sharpes)), 4),
-        p5_sharpe=round(float(np.percentile(sharpes, 5)), 4),
-        p95_sharpe=round(float(np.percentile(sharpes, 95)), 4),
+        median_sharpe=round(float(np.median(sharpe_vals)), 4),
+        p5_sharpe=round(float(np.percentile(sharpe_vals, 5)), 4),
+        p95_sharpe=round(float(np.percentile(sharpe_vals, 95)), 4),
         median_max_dd=round(float(np.median(max_dds)), 4),
         p95_max_dd=round(float(np.percentile(max_dds, 95)), 4),
         p5_max_dd=round(float(np.percentile(max_dds, 5)), 4),
