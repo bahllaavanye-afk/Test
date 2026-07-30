@@ -4,11 +4,13 @@ Runs every hour. Tracks LOC, test coverage, lint warnings.
 Does NOT modify source — just reports.
 """
 from __future__ import annotations
+
 import asyncio
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
+
+from pydantic import BaseModel, Field, validator
 
 from app.utils.logging import logger
 
@@ -71,7 +73,91 @@ def _count_tests(root: Path) -> dict:
     }
 
 
+class CodeQualitySnapshot(BaseModel):
+    """Schema representing a single code‑quality snapshot."""
+
+    timestamp: str = Field(
+        ...,
+        description="ISO8601 UTC timestamp of when the snapshot was taken",
+        example="2026-07-30T12:34:56Z",
+    )
+    files: int = Field(
+        ...,
+        ge=0,
+        description="Total number of Python files scanned",
+        example=123,
+    )
+    total_lines: int = Field(
+        ...,
+        ge=0,
+        description="Total number of lines across all scanned files",
+        example=4567,
+    )
+    code_lines: int = Field(
+        ...,
+        ge=0,
+        description="Lines containing executable code (non‑blank, non‑comment)",
+        example=3400,
+    )
+    comment_lines: int = Field(
+        ...,
+        ge=0,
+        description="Lines that are comments",
+        example=800,
+    )
+    blank_lines: int = Field(
+        ...,
+        ge=0,
+        description="Blank (empty) lines",
+        example=500,
+    )
+    comment_ratio: float = Field(
+        ...,
+        ge=0,
+        le=1,
+        description="Ratio of comment lines to code lines",
+        example=0.235,
+    )
+    manual_strategies: int = Field(
+        ...,
+        ge=0,
+        description="Number of manual strategy files",
+        example=5,
+    )
+    ml_strategies: int = Field(
+        ...,
+        ge=0,
+        description="Number of ML‑enhanced strategy files",
+        example=3,
+    )
+    unit_test_files: int = Field(
+        ...,
+        ge=0,
+        description="Number of unit‑test files",
+        example=20,
+    )
+    integration_test_files: int = Field(
+        ...,
+        ge=0,
+        description="Number of integration‑test files",
+        example=8,
+    )
+
+    @validator("timestamp")
+    def validate_timestamp(cls, v: str) -> str:
+        """Ensure the timestamp is a valid ISO8601 UTC string."""
+        try:
+            dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                raise ValueError
+        except Exception as exc:
+            raise ValueError("timestamp must be a valid ISO8601 UTC string") from exc
+        return v
+
+
 class CodeQualityLoop:
+    """Periodic task that records code‑base metrics."""
+
     def __init__(self, interval_seconds: int = 3600):
         self.interval_seconds = interval_seconds
         self._running = False
@@ -81,12 +167,17 @@ class CodeQualityLoop:
         loc = await loop.run_in_executor(None, _count_loc, BACKEND_ROOT)
         strat = await loop.run_in_executor(None, _count_strategies, BACKEND_ROOT)
         tests = await loop.run_in_executor(None, _count_tests, BACKEND_ROOT)
-        return {
+
+        raw_snapshot = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             **loc,
             **strat,
             **tests,
         }
+
+        # Validate and normalise using the Pydantic schema
+        snapshot_model = CodeQualitySnapshot(**raw_snapshot)
+        return snapshot_model.dict()
 
     def _persist(self, snapshot: dict) -> None:
         try:
@@ -115,6 +206,7 @@ class CodeQualityLoop:
         self._running = False
 
     def latest(self) -> dict | None:
+        """Return the most recent snapshot, if any."""
         if not QUALITY_FILE.exists():
             return None
         try:
