@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-07-30T03:39:32.701022+00:00",
+  "thresholds": {
+    "vol_of_vol": 0.68
+  },
+  "rationale": {
+    "vol_of_vol_timing": "only 1 trades \u2014 need >= 5 to tune",
+    "avellaneda": "win_rate 50% in [40%, 65%] \u2014 no change",
+    "vol_of_vol": "win_rate 20% < 40% \u2192 raised +0.03",
+    "avellaneda_stoikov_mm": "only 1 trades \u2014 need >= 5 to tune"
+  },
+  "strategies_evaluated": 4,
+  "strategies_changed": 1
+}
