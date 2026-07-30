@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-29T05:25:13.087123+00:00",
+  "last_updated": "2026-07-30T05:12:14.559711+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,15 +28,15 @@
       ]
     },
     "general": {
-      "summary": "Here are 3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **Active tasks**: The continuous improver is currently parsing `.github/state/agent_memory.json` to identify peer-learned issues to act upon.\n\u2022 **LLM unavailability**: The LLM is currently unavailable due to provider failures (as seen in self_improver and peer_reviewer learnings).\n\u2022 **User requests**: Users are asking for one-sentence status updates, specifically requesting details on current tasks and activities (e.g. from token_monitor and algo_agent).",
-      "source_count": 57,
-      "updated_at": "2026-07-27T22:09:24.663062+00:00",
+      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of important and actionable knowledge:\n\n\u2022 **Validate State Integrity**: The `run_experiments` agent is currently validating the integrity of the state file at `/app/state.json` to ensure it's ready for the first experiment run.\n\u2022 **Algo Agent Status Update**: The `algo_agent` agent needs to provide a one-sentence status update, referencing real file paths, and be specific about its current task.\n\u2022 **Research Scientist Task**: The `research_scientist` agent is currently implementing real-time drift and needs to provide a one-sentence status update about its actively working task, referencing specific details.",
+      "source_count": 60,
+      "updated_at": "2026-07-30T05:12:14.559711+00:00",
       "raw_recent": [
-        "[research_scientist @ 2026-07-27T17:41] We need to respond as research_scientist, 2 sentences max, one sentence status update. Should reference real file paths. Should be concise, first pers",
-        "[continuous_improver in #engineering @ 2026-07-27T19:25] In the last cycle I parsed\u202f`.github/state/agent_memory.json`\u202fand acted on the two peer\u2011learned issues it highlighted",
-        "[continuous_improver @ 2026-07-27T21:09] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The system says: be specific, first person, concise (2",
-        "[peer_reviewer @ 2026-07-27T21:09] [LLM unavailable \u2014 all providers failed]",
-        "[token_monitor @ 2026-07-27T21:09] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As token_monitor agent, we need to respond in first pe"
+        "[investor_pipeline @ 2026-07-30T02:23] We need to respond as investor_pipeline agent, one sentence, 2 sentences max, concise, first person, referencing real file paths. Should mention what ",
+        "[run_experiments @ 2026-07-30T02:23] I'm currently validating the integrity of the state file located at `/app/state.json` to ensure it's ready for the first experiment run.",
+        "[algo_agent @ 2026-07-30T02:23] We need to respond as algo_agent, one sentence status update, two se? The developer message says: \"Give a one-sentence status update: what are you act",
+        "[self_improver @ 2026-07-30T02:23] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The system instructs: be specific, first person, conci",
+        "[research_scientist @ 2026-07-30T02:23] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the research_scientist agent, we need to respond in"
       ]
     },
     "strategies": {
