@@ -1,9 +1,5 @@
 {
   "skills": [
-    "* Given the current market conditions and risk status, we recommend using position sizing guidelines based on the 70/30 arbitrage/directional allocation ratio, as discussed in the #risk channel.",
-    "Based on the agent learnings, the following are the most important and actionable takeaways:",
-    "Run static type checkers",
-    "* Refactoring of Bloomberg-dark theme UI components is in progress: `src/components/` (`src/ui/theme/DarkTheme.tsx` and `src/components/UI/DarkMode.tsx` for specific files).",
     "Check config files",
     "**Actionable Knowledge Synthesis**",
     "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
@@ -199,8 +195,12 @@
     "Check RAM usage",
     "Refactor Python modules",
     "Lint optimize code",
-    "Verify network connectivity"
+    "Verify network connectivity",
+    "Monitor CPU usage",
+    "Test API payloads",
+    "Run quick backtests",
+    "Check API health"
   ],
-  "last_updated": "2026-07-30T07:53:18.327355+00:00",
+  "last_updated": "2026-07-30T10:21:13.873584+00:00",
   "total": 200
 }
