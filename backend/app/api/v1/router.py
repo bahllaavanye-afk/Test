@@ -1,5 +1,7 @@
 """API v1 router — mounts all sub-routers."""
 from fastapi import APIRouter
+from pydantic import BaseModel, Field, validator
+from typing import Optional, Dict, Any
 
 from app.api.v1 import (
     auth,
@@ -33,6 +35,33 @@ from app.api.v1.audit_log import router as audit_log_router
 from app.api.v1.bots import router as bots_router
 from app.api.v1.discord_interactions import router as discord_router
 from app.api.v1.webhooks import router as webhooks_router
+
+
+class ErrorResponse(BaseModel):
+    """Standard error response model for API endpoints."""
+    code: int = Field(
+        ...,
+        description="HTTP status code of the error.",
+        example=400,
+    )
+    message: str = Field(
+        ...,
+        description="Human‑readable error message.",
+        example="Invalid request payload.",
+    )
+    details: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Additional context about the error, such as validation issues.",
+        example={"field": "value", "error": "must be positive"},
+    )
+
+    @validator("code")
+    def code_must_be_valid(cls, v: int) -> int:
+        """Ensure the HTTP status code is within the standard range."""
+        if not (100 <= v <= 599):
+            raise ValueError("code must be a valid HTTP status code between 100 and 599")
+        return v
+
 
 api_router = APIRouter()
 
