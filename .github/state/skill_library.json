@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Parse issues logs for improvements",
-    "Configure bandit modules",
-    "Check API keys",
-    "Handle null responses",
     "* Given the current market conditions and risk status, we recommend using position sizing guidelines based on the 70/30 arbitrage/directional allocation ratio, as discussed in the #risk channel.",
     "Based on the agent learnings, the following are the most important and actionable takeaways:",
     "Run static type checkers",
@@ -199,8 +195,12 @@
     "Test dependency versions",
     "Flush log buffers",
     "Validate state files",
-    "Check API availability"
+    "Check API availability",
+    "Check RAM usage",
+    "Refactor Python modules",
+    "Lint optimize code",
+    "Verify network connectivity"
   ],
-  "last_updated": "2026-07-30T05:22:44.692350+00:00",
+  "last_updated": "2026-07-30T07:53:18.327355+00:00",
   "total": 200
 }
