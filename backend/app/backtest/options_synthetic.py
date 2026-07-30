@@ -21,6 +21,11 @@ def _norm_cdf(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
+def _norm_cdf_vec(x: np.ndarray) -> np.ndarray:
+    """Vectorized standard normal CDF using NumPy."""
+    return 0.5 * (1.0 + np.erf(x / np.sqrt(2.0)))
+
+
 def bs_price(
     spot: float,
     strike: float,
@@ -69,6 +74,37 @@ def bs_price(
     return strike * math.exp(-rate * t_years) * _norm_cdf(-d2) - spot * _norm_cdf(-d1)
 
 
+def _bs_price_vec(
+    spot: float,
+    strikes: np.ndarray,
+    t_years: float,
+    sigma: float,
+    is_call: np.ndarray,
+    rate: float = 0.04,
+) -> np.ndarray:
+    """Vectorized Black‑Scholes price for multiple strikes."""
+    if t_years <= 0 or sigma <= 0:
+        intrinsic = np.where(is_call,
+                             np.maximum(spot - strikes, 0.0),
+                             np.maximum(strikes - spot, 0.0))
+        return intrinsic
+
+    spot_arr = np.full_like(strikes, spot, dtype=float)
+    sqrt_t = math.sqrt(t_years)
+    d1 = (np.log(spot_arr / strikes) + (rate + 0.5 * sigma**2) * t_years) / (sigma * sqrt_t)
+    d2 = d1 - sigma * sqrt_t
+
+    cdf_d1 = _norm_cdf_vec(d1)
+    cdf_d2 = _norm_cdf_vec(d2)
+    cdf_minus_d1 = _norm_cdf_vec(-d1)
+    cdf_minus_d2 = _norm_cdf_vec(-d2)
+
+    call_price = spot_arr * cdf_d1 - strikes * np.exp(-rate * t_years) * cdf_d2
+    put_price = strikes * np.exp(-rate * t_years) * cdf_minus_d2 - spot_arr * cdf_minus_d1
+
+    return np.where(is_call, call_price, put_price)
+
+
 def realized_vol(close: pd.Series, window: int = 20) -> pd.Series:
     """Annualized close‑to‑close realized vol — the IV proxy."""
     rets = np.log(close / close.shift(1))
@@ -110,11 +146,11 @@ def price_spread(
     sigma: float,
 ) -> float:
     """Signed value of the spread to its HOLDER (long premium positive)."""
-    value = 0.0
-    for leg, strike in zip(legs, strikes):
-        p = bs_price(spot, strike, t_years, sigma, leg.kind)
-        value += p if leg.side == "buy" else -p
-    return value
+    # Vectorized evaluation of all legs
+    is_call = np.array([leg.kind.lower() == "call" for leg in legs], dtype=bool)
+    side_sign = np.array([1 if leg.side == "buy" else -1 for leg in legs], dtype=int)
+    prices = _bs_price_vec(spot, np.array(strikes, dtype=float), t_years, sigma, is_call)
+    return float(np.dot(prices, side_sign))
 
 
 def backtest_spread(
