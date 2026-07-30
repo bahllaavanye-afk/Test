@@ -189,3 +189,63 @@ For each strategy, provide:
         path.write_text(code)
         logger.info("AIStrategyGenerator: staged %s", path.name)
         return path
+
+
+# --------------------------------------------------------------------------- #
+# Unit tests for edge‑case handling
+# --------------------------------------------------------------------------- #
+
+import asyncio
+import unittest
+from unittest import mock
+import tempfile
+import shutil
+
+
+class TestAIStrategyGenerator(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        # Create a temporary staging directory and patch the module-level constant
+        self.temp_dir = Path(tempfile.mkdtemp())
+        self._original_staging_dir = STAGING_DIR
+        self.patcher = mock.patch(__name__ + ".STAGING_DIR", self.temp_dir)
+        self.patcher.start()
+        # Ensure the temporary directory exists
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+
+    def tearDown(self):
+        self.patcher.stop()
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    async def test_write_staging_file_rejects_invalid_name(self):
+        """Invalid strategy names should cause the method to return None and not create a file."""
+        gen = AIStrategyGenerator()
+        invalid_proposal = {"name": "Invalid-Name", "class_name": "Bad", "entry_conditions": [], "exit_conditions": []}
+        result = gen._write_staging_file(invalid_proposal)
+        self.assertIsNone(result)
+        self.assertFalse((self.temp_dir / "Invalid-Name.py").exists())
+
+    async def test_write_staging_file_skips_existing_file(self):
+        """If a file with the same name already exists, the method must not overwrite it."""
+        gen = AIStrategyGenerator()
+        proposal = {"name": "duplicate_name", "class_name": "Dup", "entry_conditions": [], "exit_conditions": []}
+        # Pre‑create a file to simulate an existing strategy
+        existing_path = self.temp_dir / "duplicate_name.py"
+        existing_path.write_text("# existing strategy")
+        result = gen._write_staging_file(proposal)
+        self.assertIsNone(result)
+        # Verify the original content is unchanged
+        self.assertEqual(existing_path.read_text(), "# existing strategy")
+
+    async def test_generate_proposals_handles_malformed_json(self):
+        """Malformed JSON (e.g., missing brackets) should be ignored without raising."""
+        malformed_response = mock.Mock()
+        malformed_response.content = "Here is some text but no JSON array."
+        with mock.patch(__name__ + ".call_consensus", return_value=[malformed_response]):
+            gen = AIStrategyGenerator()
+            proposals = await gen._generate_proposals()
+            self.assertIsInstance(proposals, list)
+            self.assertEqual(len(proposals), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
