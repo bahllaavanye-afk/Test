@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Check dependency updates",
-    "Check data types",
-    "* The current net-used exposure is approximately 2.8% NAV, which is below the 5% NAV gross-exposure cap defined in `./state/risk_limits.yaml`.",
-    "Verify DLL versions",
-    "Detect circular deps",
     "Parse issues logs for improvements",
     "Configure bandit modules",
     "Check API keys",
@@ -199,8 +194,13 @@
     "Use timeout retries",
     "Monitor disk space",
     "* **Documentation standards set**: Docstrings have been standardized across the codebase, as seen in recent learnings on `docstrings` in `ml/features/technical.py` and `execution/limit_first.py`.",
-    "Verify JSON schema"
+    "Verify JSON schema",
+    "Verify network conn",
+    "Test dependency versions",
+    "Flush log buffers",
+    "Validate state files",
+    "Check API availability"
   ],
-  "last_updated": "2026-07-30T05:12:14.559711+00:00",
+  "last_updated": "2026-07-30T05:22:44.692350+00:00",
   "total": 200
 }
