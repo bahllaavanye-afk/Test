@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import functools
 from pathlib import Path
 from typing import Optional
 
@@ -75,16 +76,26 @@ PIPELINE_DEFS = {
 }
 
 
-def _load_runs(limit: int = 50) -> list[dict]:
-    if not _STATE_FILE.exists():
-        return []
+@functools.lru_cache(maxsize=1)
+def _cached_load_all_runs(mtime: float) -> list[dict]:
+    """Load and sort all runs; cached based on file modification time."""
     try:
-        data = json.loads(_STATE_FILE.read_text())
-        if not isinstance(data, list):
-            return []
-        return sorted(data, key=lambda r: r.get("started_at", ""), reverse=True)[:limit]
+        raw = json.loads(_STATE_FILE.read_text())
     except Exception:
         return []
+    if not isinstance(raw, list):
+        return []
+    # Sort once, newest first
+    return sorted(raw, key=lambda r: r.get("started_at", ""), reverse=True)
+
+
+def _load_runs(limit: int = 50) -> list[dict]:
+    """Return up to ``limit`` recent runs, using a cache keyed by file mtime."""
+    if not _STATE_FILE.exists():
+        return []
+    mtime = _STATE_FILE.stat().st_mtime
+    all_runs = _cached_load_all_runs(mtime)
+    return all_runs[:limit]
 
 
 def _enrich_run(run: dict) -> dict:
@@ -123,6 +134,7 @@ def pipeline_status(
     limit: int = Query(20, le=50),
 ):
     """Return recent pipeline runs, optionally filtered by pipeline name or desk."""
+    # Load a bit more than needed to allow filtering before final slicing
     runs = _load_runs(limit * 2)
     if pipeline:
         runs = [r for r in runs if r.get("pipeline") == pipeline]
@@ -134,8 +146,8 @@ def pipeline_status(
 @router.get("/status/latest")
 def pipeline_status_latest():
     """Return the most recent run for each pipeline type."""
-    runs    = _load_runs(100)
-    seen:   set[str] = set()
+    runs = _load_runs(100)
+    seen: set[str] = set()
     latest: list[dict] = []
     for run in runs:
         key = f"{run.get('pipeline')}:{run.get('desk', '')}"
