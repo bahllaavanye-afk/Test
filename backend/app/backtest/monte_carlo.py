@@ -28,7 +28,7 @@ class MonteCarloResult:
 def monte_carlo_simulation(
     daily_returns: pd.Series,
     n_simulations: int = 1000,
-    n_years: int = 3,
+    n_years: int | float = 3,
     risk_free_daily: float = 0.05 / 252,
 ) -> MonteCarloResult:
     """Bootstrap daily returns to simulate N years of paths.
@@ -36,11 +36,11 @@ def monte_carlo_simulation(
     Parameters
     ----------
     daily_returns : pd.Series
-        Series of daily returns. Must be non‑empty, numeric, and contain finite values.
+        Series of daily returns. Must be non‑empty, numeric, one‑dimensional, and contain finite values.
     n_simulations : int
         Number of Monte‑Carlo paths to generate. Must be a positive integer.
-    n_years : int
-        Number of years to simulate. Must be a positive integer.
+    n_years : int or float
+        Number of years to simulate. Must be a positive number.
     risk_free_daily : float
         Daily risk‑free rate. Must be a real number.
 
@@ -59,21 +59,24 @@ def monte_carlo_simulation(
         raise ValueError("daily_returns must be a pandas Series.")
     if daily_returns.empty:
         raise ValueError("daily_returns series cannot be empty.")
+    if daily_returns.ndim != 1:
+        raise ValueError("daily_returns must be one‑dimensional.")
     if not np.issubdtype(daily_returns.dtype, np.number):
         raise ValueError("daily_returns must contain numeric values.")
+    # Ensure no NaN or infinite values
     if not np.isfinite(daily_returns.dropna()).all():
         raise ValueError("daily_returns contains non‑finite values (NaN or Inf).")
-    if not isinstance(n_simulations, int) or n_simulations <= 0:
+    if isinstance(n_simulations, bool) or not isinstance(n_simulations, int) or n_simulations <= 0:
         raise ValueError("n_simulations must be a positive integer.")
-    if not isinstance(n_years, (int, float)) or n_years <= 0:
+    if isinstance(n_years, bool) or not isinstance(n_years, (int, float)) or n_years <= 0:
         raise ValueError("n_years must be a positive number.")
-    if not isinstance(risk_free_daily, numbers.Real):
-        raise ValueError("risk_free_daily must be a real number.")
+    if not isinstance(risk_free_daily, numbers.Real) or not np.isfinite(risk_free_daily):
+        raise ValueError("risk_free_daily must be a finite real number.")
 
     n_days = int(n_years * 252)
     returns_array = daily_returns.dropna().values
-    sharpes = []
-    max_dds = []
+    sharpes: list[float] = []
+    max_dds: list[float] = []
     positive = 0
 
     rng = np.random.default_rng(42)
