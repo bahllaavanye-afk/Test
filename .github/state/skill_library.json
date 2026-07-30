@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Log trade sizing",
-    "Backtest strategies",
-    "Here are 3 concise bullet points of the most important, actionable knowledge extracted from the recent agent learnings:",
-    "Verify health checks",
     "Implement timeout retries",
     "Check network latency",
     "Based on the collective knowledge, here are 3 concise bullet points of the most important, actionable knowledge:",
@@ -199,8 +195,12 @@
     "Check API health",
     "Log trade exceptions",
     "Flush cache regularly",
-    "Validate signal confidence"
+    "Validate signal confidence",
+    "Track memory leaks",
+    "Refactor duplicated logic",
+    "Optimize model predictors",
+    "Analyze strategy variants"
   ],
-  "last_updated": "2026-07-30T12:11:15.339916+00:00",
+  "last_updated": "2026-07-30T14:40:37.317827+00:00",
   "total": 200
 }
