@@ -23,13 +23,14 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Iterable
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
 # ── Provider definitions ──────────────────────────────────────────────────────
+
 
 @dataclass
 class LLMProvider:
@@ -105,15 +106,28 @@ class LLMResponse:
 
 # ── Core caller ───────────────────────────────────────────────────────────────
 
+
 async def _call_provider(
     provider: LLMProvider,
-    messages: list[dict],
-    temperature: float = 0.3,
+    messages: list[dict] | None,
+    temperature: float | None = 0.3,
     max_tokens: int | None = None,
 ) -> LLMResponse | None:
+    """Call a single provider, returning a response or None on failure.
+
+    Handles edge cases where ``messages`` is None or empty, and ensures
+    ``temperature`` defaults safely.
+    """
+    if not messages:
+        logger.debug("Provider %s called with empty or None messages; skipping.", provider.name)
+        return None
+
     api_key = os.getenv(provider.env_key, "")
     if not api_key or api_key in ("disabled", ""):
         return None
+
+    # Guard against None temperature
+    temperature = temperature if temperature is not None else 0.3
 
     payload = {
         "model": provider.model,
@@ -132,10 +146,20 @@ async def _call_provider(
             )
             resp.raise_for_status()
             data = resp.json()
-            content = data["choices"][0]["message"]["content"]
+            # Defensive access to avoid off‑by‑one errors if choices list is empty
+            choices = data.get("choices", [])
+            if not choices:
+                logger.debug("Provider %s returned no choices.", provider.name)
+                return None
+            content = choices[0].get("message", {}).get("content", "")
             tokens = data.get("usage", {}).get("total_tokens", 0)
             latency = (time.monotonic() - t0) * 1000
-            return LLMResponse(provider=provider.name, content=content, latency_ms=latency, tokens_used=tokens)
+            return LLMResponse(
+                provider=provider.name,
+                content=content,
+                latency_ms=latency,
+                tokens_used=tokens,
+            )
     except Exception as e:
         logger.debug("Provider %s failed: %s", provider.name, e)
         return None
@@ -143,13 +167,21 @@ async def _call_provider(
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
+
 async def call_race(
-    messages: list[dict],
+    messages: list[dict] | None,
     temperature: float = 0.3,
     max_tokens: int = 2048,
     timeout: float = 30.0,
 ) -> LLMResponse | None:
-    """Call all available providers in parallel; return the first successful response."""
+    """Call all available providers in parallel; return the first successful response.
+
+    Returns ``None`` if ``messages`` is empty/None or if no providers are configured.
+    """
+    if not messages:
+        logger.warning("call_race invoked with empty or None messages.")
+        return None
+
     tasks = {
         asyncio.create_task(_call_provider(p, messages, temperature, max_tokens)): p
         for p in PROVIDERS
@@ -176,12 +208,19 @@ async def call_race(
 
 
 async def call_consensus(
-    messages: list[dict],
+    messages: list[dict] | None,
     temperature: float = 0.3,
     max_tokens: int = 512,
     timeout: float = 40.0,
 ) -> list[LLMResponse]:
-    """Call all providers and return all successful responses for consensus analysis."""
+    """Call all providers and return all successful responses for consensus analysis.
+
+    Returns an empty list if ``messages`` is empty/None or if no providers are configured.
+    """
+    if not messages:
+        logger.warning("call_consensus invoked with empty or None messages.")
+        return []
+
     tasks = [
         _call_provider(p, messages, temperature, max_tokens)
         for p in PROVIDERS
@@ -189,6 +228,7 @@ async def call_consensus(
     ]
     if not tasks:
         return []
+
     results = await asyncio.gather(*tasks, return_exceptions=True)
     return [r for r in results if isinstance(r, LLMResponse)]
 
