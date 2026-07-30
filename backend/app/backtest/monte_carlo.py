@@ -101,3 +101,43 @@ def monte_carlo_simulation(
         prob_positive_return=round(positive / n_simulations, 4),
         num_simulations=n_simulations,
     )
+
+
+# -------------------------------------------------------------------------
+# Unit tests for edge‑case handling
+# -------------------------------------------------------------------------
+import unittest
+
+
+class TestMonteCarloSimulationEdgeCases(unittest.TestCase):
+    def test_empty_series_raises(self):
+        empty_series = pd.Series([], dtype=float)
+        with self.assertRaises(ValueError) as cm:
+            monte_carlo_simulation(empty_series)
+        self.assertIn("cannot be empty", str(cm.exception))
+
+    def test_non_numeric_series_raises(self):
+        non_numeric = pd.Series(["a", "b", "c"])
+        with self.assertRaises(ValueError) as cm:
+            monte_carlo_simulation(non_numeric)
+        self.assertIn("must contain numeric values", str(cm.exception))
+
+    def test_single_simulation_minimal_input(self):
+        # One day, one simulation, constant positive return
+        daily_ret = pd.Series([0.01])  # 1% daily return
+        result = monte_carlo_simulation(
+            daily_returns=daily_ret,
+            n_simulations=1,
+            n_years=1 / 252,  # exactly one trading day
+        )
+        # With deterministic RNG, the sampled return equals the only value
+        self.assertEqual(result.num_simulations, 1)
+        self.assertAlmostEqual(result.prob_positive_return, 1.0, places=4)
+        # Sharpe is zero because std deviation is zero
+        self.assertAlmostEqual(result.median_sharpe, 0.0, places=4)
+        # No drawdown can occur with a single positive step
+        self.assertAlmostEqual(result.median_max_dd, 0.0, places=4)
+
+
+if __name__ == "__main__":
+    unittest.main()
