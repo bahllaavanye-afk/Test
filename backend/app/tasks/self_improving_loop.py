@@ -31,6 +31,8 @@ class SelfImprovingLoop:
         self._factory = db_session_factory
         self._memory = AgentMemory(redis_client)
         self._redis = redis_client
+        self._metrics_cache: List[dict] | None = None
+        self._cache_timestamp: datetime | None = None
 
     async def run_cycle(self) -> None:
         logger.info("SelfImprovingLoop: starting hourly cycle")
@@ -39,15 +41,29 @@ class SelfImprovingLoop:
             await self._auto_disable_underperformers(metrics)
             await self._llm_improvement_pass(metrics)
             await self._broadcast_regime(metrics)
-            logger.info("SelfImprovingLoop: cycle complete (%d strategies evaluated)", len(metrics))
+            logger.info(
+                "SelfImprovingLoop: cycle complete (%d strategies evaluated)", len(metrics)
+            )
         except Exception as e:
             logger.exception("SelfImprovingLoop cycle error: %s", e)
 
     # ── Metric collection ─────────────────────────────────────────────────────
 
     async def _collect_strategy_metrics(self) -> List[dict]:
-        """Pull per-strategy Sharpe + win-rate from trade history (last 30d)."""
-        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        """Pull per‑strategy Sharpe + win‑rate from trade history (last 30 d).
+
+        Results are cached for up to 5 minutes to avoid redundant DB work if the
+        method is called multiple times within the same cycle.
+        """
+        now = datetime.now(timezone.utc)
+        if (
+            self._metrics_cache is not None
+            and self._cache_timestamp is not None
+            and (now - self._cache_timestamp) < timedelta(minutes=5)
+        ):
+            return self._metrics_cache
+
+        cutoff = now - timedelta(days=30)
         async with self._factory() as session:
             result = await session.execute(
                 text(
@@ -82,33 +98,42 @@ class SelfImprovingLoop:
                     "sharpe": round(sharpe, 3),
                 }
             )
+
+        self._metrics_cache = metrics
+        self._cache_timestamp = now
         return metrics
 
     # ── Auto-disable ──────────────────────────────────────────────────────────
 
     async def _auto_disable_underperformers(self, metrics: List[dict]) -> None:
-        """Disable strategies with Sharpe < 0 and >= 10 trades in the last 30 days."""
-        underperformers = [m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10]
+        """Disable strategies with Sharpe < 0 and >= 10 trades in the last 30 d."""
+        underperformers = [
+            m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10
+        ]
         if not underperformers:
             return
 
+        names = [m["strategy"] for m in underperformers]
+        reasons = {
+            name: f"auto-disabled: Sharpe={next(m['sharpe'] for m in underperformers if m['strategy'] == name):.2f} (30d)"
+            for name in names
+        }
+
         async with self._factory() as session:
-            for m in underperformers:
-                await session.execute(
-                    text(
-                        """
-                    UPDATE strategies SET is_active = false, disabled_reason = :reason
-                    WHERE name = :name AND is_active = true
+            # Single UPDATE using ANY (PostgreSQL) to reduce round‑trips.
+            await session.execute(
+                text(
                     """
-                    ),
-                    {
-                        "name": m["strategy"],
-                        "reason": f"auto-disabled: Sharpe={m['sharpe']:.2f} (30d)",
-                    },
-                )
+                UPDATE strategies
+                SET is_active = false,
+                    disabled_reason = :reason
+                WHERE name = ANY(:names) AND is_active = true
+                """
+                ),
+                {"names": names, "reason": json.dumps(reasons)},
+            )
             await session.commit()
 
-        names = [m["strategy"] for m in underperformers]
         logger.info("SelfImprovingLoop: auto-disabled %s", names)
         await self._memory.write("auto_disabled", {"strategies": names})
 
@@ -129,10 +154,16 @@ class SelfImprovingLoop:
         if response:
             await self._store_llm_suggestion(response)
 
-    def _select_top_bottom_strategies(self, metrics: List[dict]) -> Tuple[List[dict], List[dict]]:
+    def _select_top_bottom_strategies(
+        self, metrics: List[dict]
+    ) -> Tuple[List[dict], List[dict]]:
         """Return the top 5 and bottom 3 strategies based on Sharpe."""
-        top = sorted(metrics, key=lambda m: m["sharpe"], reverse=True)[:5]
-        bottom = sorted(metrics, key=lambda m: m["sharpe"])[:3]
+        # Single sort operation – then slice.
+        sorted_metrics = sorted(metrics, key=lambda m: m["sharpe"], reverse=True)
+        top = sorted_metrics[:5]
+        bottom = sorted_metrics[-3:] if len(sorted_metrics) >= 3 else sorted_metrics[:3]
+        # Bottom slice must be the lowest Sharpe values.
+        bottom = sorted(bottom, key=lambda m: m["sharpe"])
         return top, bottom
 
     def _build_llm_prompt(self, top: List[dict], bottom: List[dict]) -> str:
@@ -161,7 +192,9 @@ Be concise. Each suggestion under 2 sentences."""
                 "suggestion": response.content,
             },
         )
-        logger.info("SelfImprovingLoop: LLM suggestion from %s stored", response.provider)
+        logger.info(
+            "SelfImprovingLoop: LLM suggestion from %s stored", response.provider
+        )
 
     # ── Regime broadcast ──────────────────────────────────────────────────────
 
@@ -182,6 +215,8 @@ Be concise. Each suggestion under 2 sentences."""
         )
 
         try:
-            await self._redis.publish("platform:regime", json.dumps({"regime": regime, "health": health}))
+            await self._redis.publish(
+                "platform:regime", json.dumps({"regime": regime, "health": health})
+            )
         except Exception as exc:  # noqa: BLE001 — subscribers just miss one regime tick
             logger.debug("self-improving loop: regime publish failed: %s", exc)
