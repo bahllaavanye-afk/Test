@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785421347.1879725,
+    "last_updated": 1785426333.1828966,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -60,27 +60,27 @@
     "autopilot_best_oos_sharpe": 1.123,
     "autopilot_best_blended": 0.3984,
     "autopilot_overfit_count": 1,
-    "market_regime": "neutral",
+    "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-07-29T15:43:23.960904+00:00",
+      "generated_at": "2026-07-30T15:44:56.964547+00:00",
       "signals": {
         "vix": {
-          "value": 19.86,
+          "value": 19.14,
           "trend": "flat"
         },
         "spy": {
-          "price": 733.93,
-          "sma50": 743.84,
-          "sma200": 696.14,
+          "price": 736.67,
+          "sma50": 743.82,
+          "sma200": 696.94,
           "trend": "above_200sma"
         },
         "yield_curve": {
-          "ratio": 1.0244,
-          "median": 1.0521,
+          "ratio": 1.0085,
+          "median": 1.0517,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 2.097,
+          "hyg_lqd_momentum_20d": 1.707,
           "signal": "tightening"
         },
         "breadth": {
@@ -89,8 +89,8 @@
           "breadth_pct": 54.5
         },
         "btc": {
-          "price": 63949,
-          "24h_pct": 0.25
+          "price": 64661,
+          "24h_pct": 1.13
         }
       },
       "score": 2,
@@ -157,13 +157,6 @@
     "last_brain_update": 1785409453.6299043
   },
   "episodic": [
-    {
-      "lesson": "Rate limit and auto-fix failures together indicate systemic capacity and automation gaps that could erode developer velocity if unaddressed.",
-      "category": "strategy",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784435639.0571227
-    },
     {
       "lesson": "Repeated auto-fix failures suggest a systemic issue with the patch application pipeline; investigate and fix immediately to unblock deployments.",
       "category": "code",
@@ -2154,6 +2147,18 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1785363145.9636662
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 2,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1785426333.1886961
     }
   ],
   "github_insights": [
