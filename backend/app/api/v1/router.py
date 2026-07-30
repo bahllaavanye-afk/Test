@@ -1,4 +1,5 @@
 """API v1 router — mounts all sub-routers."""
+import logging
 from fastapi import APIRouter
 
 from app.api.v1 import (
@@ -34,38 +35,53 @@ from app.api.v1.bots import router as bots_router
 from app.api.v1.discord_interactions import router as discord_router
 from app.api.v1.webhooks import router as webhooks_router
 
+logger = logging.getLogger(__name__)
+
 api_router = APIRouter()
 
-api_router.include_router(auth.router)
-api_router.include_router(accounts.router)
-api_router.include_router(orders.router)
-api_router.include_router(positions.router)
-api_router.include_router(trades.router)
+def _include(router_obj, name: str):
+    """Safely include a sub‑router, handling None or invalid inputs."""
+    if router_obj is None:
+        logger.warning("Router %s is None and will be skipped.", name)
+        return
+    try:
+        api_router.include_router(router_obj)
+    except Exception as exc:  # pragma: no cover
+        logger.error("Failed to include router %s: %s", name, exc)
 
-api_router.include_router(strategies.router)
+# List of (router, name) tuples for systematic inclusion
+_routers = [
+    (auth.router, "auth"),
+    (accounts.router, "accounts"),
+    (orders.router, "orders"),
+    (positions.router, "positions"),
+    (trades.router, "trades"),
+    (strategies.router, "strategies"),
+    (backtests.router, "backtests"),
+    (comparison.router, "comparison"),
+    (experiments.router, "experiments"),
+    (ml.router, "ml"),
+    (risk.router, "risk"),
+    (market_data.router, "market_data"),
+    (getattr(market_data, "router_underscore", None), "market_data_underscore"),
+    (analytics.router, "analytics"),
+    (agents.router, "agents"),
+    (notifications.router, "notifications"),
+    (archive.router, "archive"),
+    (improvements.router, "improvements"),
+    (monitoring.router, "monitoring"),
+    (options_router, "options"),
+    (regime_router, "regime"),
+    (audit_log_router, "audit_log"),
+    (integrations.router, "integrations"),
+    (pipeline.router, "pipeline"),
+    (leaderboard.router, "leaderboard"),
+    (releases.router, "releases"),
+    (bots_router, "bots"),
+    (scanners_router, "scanners"),
+    (discord_router, "discord"),
+    (webhooks_router, "webhooks"),
+]
 
-api_router.include_router(backtests.router)
-api_router.include_router(comparison.router)
-api_router.include_router(experiments.router)
-api_router.include_router(ml.router)
-api_router.include_router(risk.router)
-api_router.include_router(market_data.router)
-# Underscore-prefix alias so /market_data/* and /market-data/* both resolve
-api_router.include_router(market_data.router_underscore)
-api_router.include_router(analytics.router)
-api_router.include_router(agents.router)
-api_router.include_router(notifications.router)
-api_router.include_router(archive.router)
-api_router.include_router(improvements.router)
-api_router.include_router(monitoring.router)
-api_router.include_router(options_router)
-api_router.include_router(regime_router)
-api_router.include_router(audit_log_router)
-api_router.include_router(integrations.router)
-api_router.include_router(pipeline.router)
-api_router.include_router(leaderboard.router)
-api_router.include_router(releases.router)
-api_router.include_router(bots_router)
-api_router.include_router(scanners_router)
-api_router.include_router(discord_router)
-api_router.include_router(webhooks_router)
+for r, n in _routers:
+    _include(r, n)
