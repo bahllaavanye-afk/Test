@@ -10,9 +10,9 @@ class MLModel(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name: Mapped[str] = mapped_column(String(128), nullable=False)
-    model_type: Mapped[str] = mapped_column(String(32), nullable=False)   # lstm|xgboost|lorentzian|tft|ensemble
+    model_type: Mapped[str] = mapped_column(String(32), nullable=False)  # lstm|xgboost|lorentzian|tft|ensemble
     market_type: Mapped[str] = mapped_column(String(16), nullable=False)  # equity|crypto|polymarket
-    symbol: Mapped[str | None] = mapped_column(String(32))               # None = multi-symbol
+    symbol: Mapped[str | None] = mapped_column(String(32))  # None = multi-symbol
     version: Mapped[int] = mapped_column(Integer, default=1)
     artifact_path: Mapped[str] = mapped_column(String(512), nullable=False)
     hyperparams: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -35,10 +35,10 @@ class MLPrediction(Base):
     model_id: Mapped[str] = mapped_column(String, ForeignKey("ml_models.id", ondelete="CASCADE"), nullable=False, index=True)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    prediction: Mapped[str] = mapped_column(String(8), nullable=False)   # up|down|neutral
+    prediction: Mapped[str] = mapped_column(String(8), nullable=False)  # up|down|neutral
     confidence: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False)
     feature_values: Mapped[dict] = mapped_column(JSON, default=dict)
-    actual_outcome: Mapped[str | None] = mapped_column(String(8))        # filled in ex-post
+    actual_outcome: Mapped[str | None] = mapped_column(String(8))  # filled in ex-post
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     model: Mapped["MLModel"] = relationship("MLModel", back_populates="predictions")
