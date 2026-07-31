@@ -7,11 +7,12 @@ Used to scale Kelly position sizing:
   HIGH_VOL    → 0.5x (half size — protect capital)
 """
 from __future__ import annotations
+
 import numpy as np
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import Iterable, List, Optional
 
 
 class Regime(str, Enum):
@@ -52,9 +53,9 @@ class RegimeState:
     def _describe(self) -> str:
         if self.regime == Regime.TRENDING:
             return f"Trending market (Hurst={self.hurst:.2f}). Full position sizing."
-        elif self.regime == Regime.MEAN_REVERTING:
+        if self.regime == Regime.MEAN_REVERTING:
             return f"Mean-reverting market (Hurst={self.hurst:.2f}). Reduce size 15%."
-        elif self.regime == Regime.HIGH_VOL:
+        if self.regime == Regime.HIGH_VOL:
             return f"High-volatility regime (vol={self.vol_20d*100:.1f}%). Halve position size."
         return "Unknown regime. Using conservative sizing."
 
@@ -66,16 +67,26 @@ def _hurst_exponent(prices: np.ndarray, max_lag: int = 20) -> float:
     H < 0.45 → mean-reverting (reversion works)
     H ≈ 0.5 → random walk
     """
-    if len(prices) < 30:
+    if prices is None or len(prices) < 30:
         return 0.5
+
     returns = np.diff(np.log(prices + 1e-10))
-    lags = range(2, min(max_lag, len(returns) // 2))
-    rs_values = []
+    # Ensure we have at least one lag to evaluate
+    max_possible_lag = len(returns) // 2
+    if max_possible_lag < 2:
+        return 0.5
+
+    # +1 to include the upper bound (off‑by‑one fix)
+    lags = range(2, min(max_lag, max_possible_lag) + 1)
+    rs_values: List[tuple[int, float]] = []
+
     for lag in lags:
-        chunks = [returns[i:i+lag] for i in range(0, len(returns) - lag, lag)]
+        # Create non‑overlapping chunks; ensure at least one chunk
+        chunks = [returns[i : i + lag] for i in range(0, len(returns) - lag + 1, lag)]
         if not chunks:
             continue
-        rs_per_chunk = []
+
+        rs_per_chunk: List[float] = []
         for chunk in chunks:
             if len(chunk) < 2:
                 continue
@@ -85,38 +96,56 @@ def _hurst_exponent(prices: np.ndarray, max_lag: int = 20) -> float:
             s = np.std(chunk, ddof=1)
             if s > 0:
                 rs_per_chunk.append(r / s)
+
         if rs_per_chunk:
             rs_values.append((lag, np.mean(rs_per_chunk)))
+
     if len(rs_values) < 3:
         return 0.5
+
     lags_log = np.log([x[0] for x in rs_values])
     rs_log = np.log([x[1] for x in rs_values])
     hurst = np.polyfit(lags_log, rs_log, 1)[0]
     return float(np.clip(hurst, 0.1, 0.9))
 
 
-def detect_regime(prices: list[float], high_vol_threshold: float = 0.25) -> RegimeState:
+def detect_regime(prices: Optional[Iterable[float]], high_vol_threshold: float = 0.25) -> RegimeState:
     """
     Classify market regime from a list of close prices (min 30 required).
 
     Args:
-        prices: List of close prices, most recent last.
+        prices: Iterable of close prices, most recent last. Handles None / empty gracefully.
         high_vol_threshold: Annualized vol above this → HIGH_VOL regime.
     """
-    arr = np.array(prices, dtype=float)
-    if len(arr) < 30:
+    if not prices:
+        # Handles None, empty list, or any falsy iterable
         return RegimeState(
-            regime=Regime.UNKNOWN, confidence=0.0, vol_20d=0.0,
-            hurst=0.5, sizing_multiplier=REGIME_SIZING_MULTIPLIER[Regime.UNKNOWN],
+            regime=Regime.UNKNOWN,
+            confidence=0.0,
+            vol_20d=0.0,
+            hurst=0.5,
+            sizing_multiplier=REGIME_SIZING_MULTIPLIER[Regime.UNKNOWN],
+            updated_at=datetime.now(timezone.utc),
+        )
+
+    arr = np.array(list(prices), dtype=float)
+    if arr.size < 30:
+        return RegimeState(
+            regime=Regime.UNKNOWN,
+            confidence=0.0,
+            vol_20d=0.0,
+            hurst=0.5,
+            sizing_multiplier=REGIME_SIZING_MULTIPLIER[Regime.UNKNOWN],
             updated_at=datetime.now(timezone.utc),
         )
 
     # 20-day realized volatility (annualized)
-    rets = np.diff(np.log(arr[-21:] + 1e-10))
+    recent = arr[-21:] if arr.size >= 21 else arr
+    rets = np.diff(np.log(recent + 1e-10))
     vol_20d = float(np.std(rets) * np.sqrt(252))
 
-    # Hurst exponent on last 60+ bars
-    hurst = _hurst_exponent(arr[-min(100, len(arr)):])
+    # Hurst exponent on last up to 100 bars
+    hurst = _hurst_exponent(arr[-min(100, arr.size) :])
 
     # Classify
     if vol_20d > high_vol_threshold:
@@ -148,10 +177,11 @@ class RegimeMonitor:
     Caches per-symbol regime states. Updated by PriceFeed task.
     Consumed by RiskManager to scale Kelly sizing.
     """
+
     def __init__(self):
         self._states: dict[str, RegimeState] = {}
 
-    def update(self, symbol: str, prices: list[float]) -> RegimeState:
+    def update(self, symbol: str, prices: Optional[Iterable[float]]) -> RegimeState:
         state = detect_regime(prices)
         self._states[symbol] = state
         return state
@@ -161,7 +191,7 @@ class RegimeMonitor:
 
     def get_multiplier(self, symbol: str) -> float:
         state = self._states.get(symbol)
-        return state.sizing_multiplier if state else 0.75
+        return state.sizing_multiplier if state else REGIME_SIZING_MULTIPLIER[Regime.UNKNOWN]
 
     def all_states(self) -> dict[str, dict]:
         return {sym: state.to_dict() for sym, state in self._states.items()}
