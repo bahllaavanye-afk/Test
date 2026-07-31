@@ -6,12 +6,15 @@ Does NOT modify source — just reports.
 from __future__ import annotations
 import asyncio
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 from app.utils.logging import logger
 
+# Constants
+DEFAULT_INTERVAL_SECONDS = 3600
+HISTORY_MAX_LENGTH = 200
+SKIP_PATH_SUBSTRINGS = ("__pycache__", ".pytest_cache", "test.db")
 QUALITY_FILE = Path(__file__).parents[3] / "experiments" / "results" / "code_quality.json"
 QUALITY_FILE.parent.mkdir(parents=True, exist_ok=True)
 
@@ -26,7 +29,7 @@ def _count_loc(root: Path) -> dict:
     comment_lines = 0
 
     for py_file in root.rglob("*.py"):
-        if any(skip in str(py_file) for skip in ("__pycache__", ".pytest_cache", "test.db")):
+        if any(skip in str(py_file) for skip in SKIP_PATH_SUBSTRINGS):
             continue
         total_files += 1
         try:
@@ -72,7 +75,7 @@ def _count_tests(root: Path) -> dict:
 
 
 class CodeQualityLoop:
-    def __init__(self, interval_seconds: int = 3600):
+    def __init__(self, interval_seconds: int = DEFAULT_INTERVAL_SECONDS):
         self.interval_seconds = interval_seconds
         self._running = False
 
@@ -92,7 +95,7 @@ class CodeQualityLoop:
         try:
             history = json.loads(QUALITY_FILE.read_text()) if QUALITY_FILE.exists() else []
             history.append(snapshot)
-            history = history[-200:]
+            history = history[-HISTORY_MAX_LENGTH:]
             QUALITY_FILE.write_text(json.dumps(history, indent=2))
         except Exception as e:
             logger.warning("code_quality: failed to persist snapshot", error=str(e))

@@ -3,6 +3,7 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -13,6 +14,36 @@ from app.backtest.engine import run_backtest, BacktestMetrics
 from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stats
 from app.utils.logging import logger
 
+# Constants
+DEFAULT_INITIAL_EQUITY: float = 100_000
+MIN_SAMPLE_SIZE: int = 10
+IMPROVEMENT_THRESHOLD: float = 0.1
+SIGNIFICANCE_LEVEL: float = 0.05
+ROUND_SHARPE: int = 4
+ROUND_PVALUE_LOG: int = 4
+ROUND_TSTAT: int = 4
+ROUND_PVALUE_FINAL: int = 6
+WINNER_ML: str = "ml"
+WINNER_MANUAL: str = "manual"
+WINNER_NEITHER: str = "neither"
+LOG_MESSAGE: str = "Comparison complete"
+
+# Validation error messages
+ERR_MANUAL_SIGNALS_TYPE = "manual_signals must be a pandas Series."
+ERR_ML_SIGNALS_TYPE = "ml_signals must be a pandas Series."
+ERR_PRICES_TYPE = "prices must be a pandas Series."
+ERR_MANUAL_SIGNALS_EMPTY = "manual_signals series cannot be empty."
+ERR_ML_SIGNALS_EMPTY = "ml_signals series cannot be empty."
+ERR_PRICES_EMPTY = "prices series cannot be empty."
+ERR_STRATEGY_NAME = "strategy_name must be a non-empty string."
+ERR_SYMBOL = "symbol must be a non-empty string."
+ERR_INTERVAL = "interval must be a non-empty string."
+ERR_START_DATE_TYPE = "start_date must be a datetime.date instance."
+ERR_END_DATE_TYPE = "end_date must be a datetime.date instance."
+ERR_DATE_ORDER = "start_date cannot be later than end_date."
+ERR_INITIAL_EQUITY_TYPE = "initial_equity must be a numeric type."
+ERR_INITIAL_EQUITY_POSITIVE = "initial_equity must be a positive number."
+ERR_COMMON_INDEX = "manual_signals, ml_signals, and prices must share at least one common index."
 
 @dataclass
 class ComparisonResult:
@@ -29,7 +60,7 @@ class ComparisonResult:
     t_statistic: float = 0.0
     p_value: float = 1.0
     is_significant: bool = False
-    winner: str = "neither"
+    winner: str = WINNER_NEITHER
 
 
 class StrategyComparisonEngine:
@@ -43,46 +74,46 @@ class StrategyComparisonEngine:
         interval: str,
         start_date: date,
         end_date: date,
-        initial_equity: float = 100_000,
+        initial_equity: float = DEFAULT_INITIAL_EQUITY,
     ) -> ComparisonResult:
         # Input validation
         if not isinstance(manual_signals, pd.Series):
-            raise ValueError("manual_signals must be a pandas Series.")
+            raise ValueError(ERR_MANUAL_SIGNALS_TYPE)
         if not isinstance(ml_signals, pd.Series):
-            raise ValueError("ml_signals must be a pandas Series.")
+            raise ValueError(ERR_ML_SIGNALS_TYPE)
         if not isinstance(prices, pd.Series):
-            raise ValueError("prices must be a pandas Series.")
+            raise ValueError(ERR_PRICES_TYPE)
 
         if manual_signals.empty:
-            raise ValueError("manual_signals series cannot be empty.")
+            raise ValueError(ERR_MANUAL_SIGNALS_EMPTY)
         if ml_signals.empty:
-            raise ValueError("ml_signals series cannot be empty.")
+            raise ValueError(ERR_ML_SIGNALS_EMPTY)
         if prices.empty:
-            raise ValueError("prices series cannot be empty.")
+            raise ValueError(ERR_PRICES_EMPTY)
 
         if not isinstance(strategy_name, str) or not strategy_name.strip():
-            raise ValueError("strategy_name must be a non-empty string.")
+            raise ValueError(ERR_STRATEGY_NAME)
         if not isinstance(symbol, str) or not symbol.strip():
-            raise ValueError("symbol must be a non-empty string.")
+            raise ValueError(ERR_SYMBOL)
         if not isinstance(interval, str) or not interval.strip():
-            raise ValueError("interval must be a non-empty string.")
+            raise ValueError(ERR_INTERVAL)
 
         if not isinstance(start_date, date):
-            raise ValueError("start_date must be a datetime.date instance.")
+            raise ValueError(ERR_START_DATE_TYPE)
         if not isinstance(end_date, date):
-            raise ValueError("end_date must be a datetime.date instance.")
+            raise ValueError(ERR_END_DATE_TYPE)
         if start_date > end_date:
-            raise ValueError("start_date cannot be later than end_date.")
+            raise ValueError(ERR_DATE_ORDER)
 
         if not isinstance(initial_equity, (int, float)):
-            raise ValueError("initial_equity must be a numeric type.")
+            raise ValueError(ERR_INITIAL_EQUITY_TYPE)
         if initial_equity <= 0:
-            raise ValueError("initial_equity must be a positive number.")
+            raise ValueError(ERR_INITIAL_EQUITY_POSITIVE)
 
-        # Ensure series are aligned on the same index (optional but helps consistency)
+        # Align series on common index
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
-            raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
+            raise ValueError(ERR_COMMON_INDEX)
         manual_signals = manual_signals.loc[common_index]
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
@@ -99,22 +130,22 @@ class StrategyComparisonEngine:
         ml_ret = ml_eq.pct_change().dropna()
 
         min_len = min(len(manual_ret), len(ml_ret))
-        if min_len > 10:
+        if min_len > MIN_SAMPLE_SIZE:
             t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
         else:
             t_stat, p_val = 0.0, 1.0
 
         improvement = ml_metrics.sharpe - manual_metrics.sharpe
-        winner = "ml" if ml_metrics.sharpe > manual_metrics.sharpe else "manual"
-        if abs(improvement) < 0.1:
-            winner = "neither"
+        winner = WINNER_ML if ml_metrics.sharpe > manual_metrics.sharpe else WINNER_MANUAL
+        if abs(improvement) < IMPROVEMENT_THRESHOLD:
+            winner = WINNER_NEITHER
 
         logger.info(
-            "Comparison complete",
+            LOG_MESSAGE,
             strategy=strategy_name,
             manual_sharpe=manual_metrics.sharpe,
             ml_sharpe=ml_metrics.sharpe,
-            p_value=round(p_val, 4),
+            p_value=round(p_val, ROUND_PVALUE_LOG),
         )
 
         return ComparisonResult(
@@ -127,9 +158,9 @@ class StrategyComparisonEngine:
             ml_enhanced=ml_metrics,
             benchmark_curves=benchmark_curves,
             benchmark_stats=benchmark_stats,
-            ml_improvement_sharpe=round(improvement, 4),
-            t_statistic=round(float(t_stat), 4),
-            p_value=round(float(p_val), 6),
-            is_significant=p_val < 0.05,
+            ml_improvement_sharpe=round(improvement, ROUND_SHARPE),
+            t_statistic=round(float(t_stat), ROUND_TSTAT),
+            p_value=round(float(p_val), ROUND_PVALUE_FINAL),
+            is_significant=p_val < SIGNIFICANCE_LEVEL,
             winner=winner,
         )
