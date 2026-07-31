@@ -1,11 +1,5 @@
 {
   "skills": [
-    "Validate user input",
-    "Here are 2-3 concise bullet points of the most important, actionable knowledge:",
-    "Test network stability",
-    "Test dependency updates",
-    "Enable strict mypy",
-    "Check disk space usage",
     "Log trade timeouts",
     "Track execution time",
     "Log API response codes",
@@ -199,8 +193,14 @@
     "Validate trade sizes",
     "Ping external feeds",
     "Monitor API usage",
-    "Track latency metrics"
+    "Track latency metrics",
+    "Log heartbeat signals",
+    "Validate timestamp",
+    "Test DNS resolve",
+    "Verify queue depths",
+    "Parse JSON logs",
+    "Apply peer-learned fixes"
   ],
-  "last_updated": "2026-07-31T05:50:19.926132+00:00",
+  "last_updated": "2026-07-31T08:43:53.639612+00:00",
   "total": 200
 }
