@@ -2,6 +2,9 @@
 import sys
 from pathlib import Path
 
+# Constants
+BACKEND_ROOT_PARENT_LEVEL = 2
+
 def _validate_backend_root(root: Path) -> None:
     """Validate that the provided backend root path exists and is a directory.
 
@@ -33,7 +36,7 @@ def _validate_sys_path(path_list) -> None:
         if not isinstance(entry, str):
             raise ValueError(f"sys.path entry at index {idx} is not a string: {type(entry).__name__}")
 
-BACKEND_ROOT = Path(__file__).parents[2]
+BACKEND_ROOT = Path(__file__).parents[BACKEND_ROOT_PARENT_LEVEL]
 _validate_backend_root(BACKEND_ROOT)
 
 _validate_sys_path(sys.path)
