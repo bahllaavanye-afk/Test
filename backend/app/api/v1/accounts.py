@@ -1,7 +1,10 @@
 """Account management endpoints."""
+from typing import Optional, List
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.account import Account
@@ -24,11 +27,13 @@ async def latest_total_equity(db: AsyncSession) -> float:
     """
     from app.models.account import AccountSnapshot
 
-    account_ids = (
-        (await db.execute(select(Account.id).where(Account.is_active == True)))  # noqa: E712
-        .scalars()
-        .all()
+    account_ids_result = await db.execute(
+        select(Account.id).where(Account.is_active == True)  # noqa: E712
     )
+    account_ids: List[int] = account_ids_result.scalars().all() or []
+    if not account_ids:
+        return 0.0
+
     total = 0.0
     for acc_id in account_ids:
         snap = (
@@ -85,7 +90,7 @@ async def create_account(
     body: AccountCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    request: Request = None,
+    request: Optional[Request] = None,
 ):
     account = Account(
         user_id=current_user.id,
@@ -104,7 +109,7 @@ async def create_account(
         action="key_add",
         resource_type="account",
         resource_id=None,  # will be set after commit
-        ip_address=request.client.host if (request and request.client) else None,
+        ip_address=request.client.host if request and request.client else None,
         user_agent=(request.headers.get("user-agent", "")[:256] if request else None),
         extra_data={"broker": body.broker, "mode": body.mode},
     )
@@ -126,7 +131,10 @@ async def get_account_equity(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return live equity, buying power, and day-trade count from Alpaca."""
+    """Return live equity, buying power, and day‑trade count from Alpaca."""
+    if not account_id:
+        raise HTTPException(422, "Account ID must be provided")
+
     result = await db.execute(
         select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
     )
@@ -134,8 +142,11 @@ async def get_account_equity(
     if not account:
         raise HTTPException(404, "Account not found")
 
-    if account.broker != "alpaca" or not account.encrypted_key:
-        raise HTTPException(400, "Live equity is only available for Alpaca accounts with stored credentials")
+    if not account.broker or account.broker != "alpaca" or not account.encrypted_key:
+        raise HTTPException(
+            400,
+            "Live equity is only available for Alpaca accounts with stored credentials",
+        )
 
     from app.brokers.alpaca_orders import get_alpaca_account
 
@@ -145,13 +156,20 @@ async def get_account_equity(
         logger.warning(f"Alpaca account fetch failed for account {account_id}: {e}")
         raise HTTPException(502, "Unable to fetch live account data from Alpaca")
 
+    if not isinstance(data, dict):
+        raise HTTPException(502, "Invalid data received from Alpaca")
+
     return AccountEquityOut(
-        equity=float(data.get("equity", 0)),
-        cash=float(data.get("cash", 0)),
-        buying_power=float(data.get("buying_power", 0)),
-        portfolio_value=float(data.get("portfolio_value", 0)),
-        day_trade_count=int(data["daytrade_count"]) if data.get("daytrade_count") is not None else None,
-        pattern_day_trader=bool(data.get("pattern_day_trader")) if data.get("pattern_day_trader") is not None else None,
+        equity=float(data.get("equity", 0) or 0),
+        cash=float(data.get("cash", 0) or 0),
+        buying_power=float(data.get("buying_power", 0) or 0),
+        portfolio_value=float(data.get("portfolio_value", 0) or 0),
+        day_trade_count=int(data["daytrade_count"])
+        if data.get("daytrade_count") is not None
+        else None,
+        pattern_day_trader=bool(data.get("pattern_day_trader"))
+        if data.get("pattern_day_trader") is not None
+        else None,
     )
 
 
@@ -161,7 +179,12 @@ async def delete_account(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Account).where(Account.id == account_id, Account.user_id == current_user.id))
+    if not account_id:
+        raise HTTPException(422, "Account ID must be provided")
+
+    result = await db.execute(
+        select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
+    )
     account = result.scalar_one_or_none()
     if not account:
         raise HTTPException(404, "Account not found")
