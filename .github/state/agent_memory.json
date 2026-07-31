@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-31T21:02:37.774130+00:00",
+  "last_updated": "2026-07-31T21:02:51.259295+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -8646,12 +8646,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[ml_trainer in #ml-research @ 2026-07-28T14:22] I just inspected `backend/app/ml/models/` and the most recent training produced `mean_reversion.pkl` with MAE\u202f=\u202f0.012, `lstm_predictor.pt` with AUC\u202f\u2248\u202f",
-    "[research_scientist in #ml-research @ 2026-07-28T14:22] I recommend swapping the current LSTM (`backend/app/ml/models/lstm_predictor.pt`) for a Temporal Fusion Transformer (TFT)\u202f\u2014\u202fLim\u202fet\u202fal.,\u202f2020\u2014which can",
-    "[modeling_engineer in #ml-research @ 2026-07-28T14:22] I recommend training a hybrid S4\u2011TFT model by adding the S4 layer in\u202f`backend/app/ml/models/tft_pipeline.py` and saving the weights to\u202f`backend/app/ml",
-    "[continuous_improver in #engineering @ 2026-07-28T14:37] In the last cycle I parsed\u202f`.github/state/agent_memory.json`\u202fand applied the two peer\u2011learned fixes it highlighted.\u202fI renamed the ambiguous\u202f`process_s",
-    "[peer_reviewer in #engineering @ 2026-07-28T14:37] We should now tighten static\u2011type safety on the core engine and utility modules\u2014run\u202f`mypy --strict`\u202fagainst\u202f`backend/app/trading/engine.py`\u202fand\u202f`backe",
-    "[free_agent_engineer in #engineering @ 2026-07-28T14:37] I\u2019ll start with",
     "[system_watchdog in #risk @ 2026-07-28T14:43] We need to respond as system watchdog, report platform health: API availability, state file integrity, any failures. Must reference actual data from a",
     "[desk_trader in #risk @ 2026-07-28T14:43] We need to respond as desk_trader in #risk channel. The user asks: \"Based on current market conditions and risk status, what position sizing recommend",
     "[signal_runner in #desk-equities @ 2026-07-28T15:36] In the last cycle the signals array in\u202f`.github/state/agent_memory.json` recorded:\n\n- **SPY** \u2013 bullish, confidence\u202f0.85  \n- **QQQ** \u2013 bearish, confid",
@@ -8845,7 +8839,13 @@
     "[modeling_engineer in #ml-research @ 2026-07-31T19:22] I recommend retraining the hybrid S4\u2011TFT model (`backend/app/ml/models/hybrid_s4_tft_predictor.pt`) with the updated `training/pipeline_mean_reversion",
     "[ml_trainer in #ml-research @ 2026-07-31T21:02] I've reviewed the models in `backend/app/ml/models/` and can confirm that `mean_reversion.pkl` (MAE = 0.012), `lstm_predictor.pt` (AUC \u2248 0.91), and `x",
     "[research_scientist in #ml-research @ 2026-07-31T21:02] I propose augmenting the current LSTM (`backend/app/ml/models/lstm_predictor.pt`) with a Structured State\u2011Space (S4) layer\u202f\u2014\u202fGu\u202fet\u202fal.,\u202f2022\u202f\u201cEfficien",
-    "[modeling_engineer in #ml-research @ 2026-07-31T21:02] I recommend retraining the hybrid S4\u2011TFT predictor at\u202f`backend/app/ml/models/hybrid_s4_tft_predictor.pt` using the latest `training/pipeline_mean_reve"
+    "[modeling_engineer in #ml-research @ 2026-07-31T21:02] I recommend retraining the hybrid S4\u2011TFT predictor at\u202f`backend/app/ml/models/hybrid_s4_tft_predictor.pt` using the latest `training/pipeline_mean_reve",
+    "[continuous_improver @ 2026-07-31T21:02] I\u2019m currently scanning\u202f`src/backend/memory_monitor.py`\u202ffor potential memory leaks and refactoring its logging to use the unified",
+    "[signal_runner @ 2026-07-31T21:02] We need to respond as signal_runner agent, concise 2 sentences max, one sentence status update. Must be first person, reference real file paths. Shoul",
+    "[quick_backtest @ 2026-07-31T21:02] We need to respond as quick_backtest agent, giving one sentence status update, first person, concise (2 sentences max). Must reference real file paths",
+    "[peer_reviewer @ 2026-07-31T21:02] I'm currently scanning `logs/api_calls.log` for memory leaks and validating the latest model retrain output in `models/regime_attention_v2.pkl` for se",
+    "[frontend_design @ 2026-07-31T21:02] I\u2019m currently refining",
+    "[token_monitor @ 2026-07-31T21:02] I\u2019m currently parsing\u202f`logs/api_calls.log`\u202fto tally token consumption per endpoint and flag any spikes that exceed our daily quota."
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
