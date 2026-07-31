@@ -8,5 +8,15 @@
       "avg_return_pct": -0.7916,
       "total_return_pct": -7.9157
     }
+  },
+  "vol_of_vol": {
+    "trimmed_at": "2026-07-31T15:04:57.426224+00:00",
+    "reason": "no edge: win_rate 20% < 35% and avg_return -0.23% < 0",
+    "stats_at_trim": {
+      "trades": 10,
+      "win_rate": 0.2,
+      "avg_return_pct": -0.2286,
+      "total_return_pct": -2.2857
+    }
   }
 }
