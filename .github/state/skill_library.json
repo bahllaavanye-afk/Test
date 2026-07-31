@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Validate trade IDs",
-    "Verify CPU usage",
-    "Test strategy variants",
-    "Refine trading signals",
     "Implement fail-safes",
     "Validate signal confidence",
     "Improve model accuracy",
@@ -199,8 +195,12 @@
     "Log trade sequences",
     "Limit open files",
     "Ping external services",
-    "Detect deadlock conditions"
+    "Detect deadlock conditions",
+    "Validate user input",
+    "Bind CPU cores",
+    "Refactor logging code",
+    "Implement attention mechanism"
   ],
-  "last_updated": "2026-07-31T21:36:20.389380+00:00",
+  "last_updated": "2026-07-31T22:56:31.298200+00:00",
   "total": 200
 }
