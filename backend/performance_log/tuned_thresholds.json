@@ -1,14 +1,15 @@
 {
-  "generated_at": "2026-07-30T03:39:32.701022+00:00",
+  "generated_at": "2026-07-31T03:58:09.269822+00:00",
   "thresholds": {
-    "vol_of_vol": 0.68
+    "vol_of_vol": 0.71,
+    "avellaneda_stoikov_mm": 0.63
   },
   "rationale": {
-    "vol_of_vol_timing": "only 1 trades \u2014 need >= 5 to tune",
-    "avellaneda": "win_rate 50% in [40%, 65%] \u2014 no change",
-    "vol_of_vol": "win_rate 20% < 40% \u2192 raised +0.03",
-    "avellaneda_stoikov_mm": "only 1 trades \u2014 need >= 5 to tune"
+    "vol_of_vol": "win_rate 11% < 40% \u2192 raised +0.03",
+    "avellaneda_stoikov_mm": "win_rate 88% > 65% \u2192 lowered -0.02",
+    "vol_of_vol_timing": "only 4 trades \u2014 need >= 5 to tune",
+    "avellaneda": "win_rate 52% in [40%, 65%] \u2014 no change"
   },
   "strategies_evaluated": 4,
-  "strategies_changed": 1
+  "strategies_changed": 2
 }
