@@ -3,15 +3,22 @@ Trade Archiver: writes every order, fill, and signal to JSON-lines files
 for long-term audit and replay. Files rotate daily.
 """
 from __future__ import annotations
+
 import json
 import asyncio
+import time
 from datetime import datetime, timezone
 from pathlib import Path
+from collections import defaultdict
+
 from app.utils.logging import logger
 
 ARCHIVE_DIR = Path(__file__).parents[3] / "archive"
 ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
 _lock = asyncio.Lock()
+
+# In‑memory counters for monitoring
+_stats: dict[str, dict[str, float]] = defaultdict(lambda: {"count": 0, "pnl": 0.0})
 
 
 def _today_file(category: str) -> Path:
@@ -27,8 +34,9 @@ def _sync_append(path: str, line: str) -> None:
 async def archive_event(category: str, data: dict) -> None:
     """
     category: 'orders' | 'fills' | 'signals' | 'decisions' | 'risk'
-    Appends a single JSON line to today's file. Atomic (lock-guarded).
+    Appends a single JSON line to today's file. Atomic (lock‑guarded).
     """
+    start = time.monotonic()
     record = {"ts": datetime.now(timezone.utc).isoformat(), **data}
     line = json.dumps(record, default=str) + "\n"
     file = _today_file(category)
@@ -36,6 +44,22 @@ async def archive_event(category: str, data: dict) -> None:
         loop = asyncio.get_running_loop()
         async with _lock:
             await loop.run_in_executor(None, _sync_append, str(file), line)
+
+            # Update monitoring metrics
+            stats = _stats[category]
+            stats["count"] += 1
+            pnl = data.get("pnl")
+            if isinstance(pnl, (int, float)):
+                stats["pnl"] += float(pnl)
+
+        duration = time.monotonic() - start
+        logger.info(
+            "Archived event",
+            category=category,
+            count=_stats[category]["count"],
+            duration=duration,
+            pnl=_stats[category]["pnl"],
+        )
     except Exception as e:
         logger.warning("Archive failed", category=category, error=str(e))
 
