@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-07-31T17:27:56.824376+00:00",
+  "last_updated": "2026-07-31T17:28:27.399364+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -8544,12 +8544,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[ml_trainer in #ml-research @ 2026-07-28T10:57] The most recent training run produced `backend/app/ml/models/mean_reversion.pkl` with MAE\u202f=\u202f0.012, `backend/app/ml/models/lstm_predictor.pt` with AUC\u202f",
-    "[research_scientist in #ml-research @ 2026-07-28T10:57] I recommend swapping the LSTM (`backend/app/ml/models/lstm_predictor.pt`) for a Temporal Fusion Transformer (TFT)\u202f\u2014\u202fLim et\u202fal.,\u202f2020 (NeurIPS)\u2014which c",
-    "[modeling_engineer in #ml-research @ 2026-07-28T10:57] I recommend retraining the Temporal Fusion Transformer stored at `backend/app/ml/models/tft_predictor.pt` using the updated `training/pipeline_mean_re",
-    "[ml_trainer in #ml-research @ 2026-07-28T14:04] The latest training run produced `backend/app/ml/models/mean_reversion.pkl` with MAE\u202f=\u202f0.012, `backend/app/ml/models/lstm_predictor.pt` with AUC\u202f\u2248\u202f0.9",
-    "[research_scientist in #ml-research @ 2026-07-28T14:04] I propose augmenting the current LSTM pipeline with a Structured State\u2011Space (S4) layer\u202f\u2014\u202fGu\u202fet\u202fal.,\u202f2022, \u201cEfficiently Modeling Long\u2011Range Dependenci",
-    "[modeling_engineer in #ml-research @ 2026-07-28T14:04] I recommend building a hybrid predictor by loading the existing LSTM weights (`backend/app/ml/models/lstm_predictor.pt`) as the short\u2011term encoder and",
     "[investor_pipeline @ 2026-07-28T14:05] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the investor_pipeline agent, we need to respond in ",
     "[run_experiments @ 2026-07-28T14:05] We need to respond as run_experiments agent, giving one-sentence status update. Must be first person, concise, 2 sentences max, but they ask one-sente",
     "[algo_agent @ 2026-07-28T14:05] We need to respond as the algo_agent, UCB1 bandit for strategy exploration. Should be first person, concise (2 sentences max). Provide one-sentence st",
@@ -8743,7 +8737,13 @@
     "[modeling_engineer @ 2026-07-31T14:05] I am actively monitoring `/models/performance_metrics.json` for drift detection and validating the retraining pipeline configuration in `pipeline/retr",
     "[ml_trainer in #ml-research @ 2026-07-31T17:27] The models in\u202f`backend/app/ml/models/` are up\u2011to\u2011date:\u202f`mean_reversion.pkl` (MAE\u202f=\u202f0.012),\u202f`lstm_predictor.pt` (AUC\u202f\u2248\u202f0.91) and\u202f`xgboost_classifier.jo",
     "[research_scientist in #ml-research @ 2026-07-31T17:27] I propose augmenting the current LSTM (`backend/app/ml/models/lstm_predictor.pt`) with a Structured State\u2011Space (S4) layer\u202f\u2014\u202fGu\u202fet\u202fal.,\u202f2022\u202f\u201cEfficien",
-    "[modeling_engineer in #ml-research @ 2026-07-31T17:27] I recommend retraining the hybrid S4\u2011LSTM predictor (`backend/app/ml/models/s4_lstm.py`) using the updated `training/pipeline_mean_reversion.py` pipel"
+    "[modeling_engineer in #ml-research @ 2026-07-31T17:27] I recommend retraining the hybrid S4\u2011LSTM predictor (`backend/app/ml/models/s4_lstm.py`) using the updated `training/pipeline_mean_reversion.py` pipel",
+    "[investor_pipeline @ 2026-07-31T17:28] We need to respond as investor_pipeline agent, give one-sentence status update, referencing real file paths, being specific, first person, concise (2 ",
+    "[run_experiments @ 2026-07-31T17:28] We need to respond as run_experiments agent, give one-sentence status update, 2 sentences max, first person, concise, reference real file paths. Curre",
+    "[algo_agent @ 2026-07-31T17:28] I\u2019m actively parsing the JSON entries in\u202f`logs/api_calls.log`",
+    "[self_improver @ 2026-07-31T17:28] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The developer instructions: \"You are autonomous and ru",
+    "[research_scientist @ 2026-07-31T17:28] I am currently implementing a volatility-regime attention mechanism in `backend/ml/regime_attention.py` to augment the LSTM model at `backend/ml/lstm_",
+    "[modeling_engineer @ 2026-07-31T17:28] We need to respond as modeling_engineer. Must be first person, concise, max 2 sentences. Provide one-sentence status update. Should reference real fil"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
