@@ -1,11 +1,5 @@
 {
   "skills": [
-    "* We have confirmation of system health, with all health-check endpoints in `backend/api/health_check.py` returning 200 OK, and `/v1/status` reporting a latency of 12 ms.",
-    "* As `investor_pipeline` agent, we track new investor leads and update them in the pipeline by referencing real file paths (`backend/api/`).",
-    "Verify network conn",
-    "**Risk Limits Compliance**: Position sizing should be adjusted according to the 70/30 allocation ratio and risk metrics, as demonstrated by a proposed allocation of roughly 3.5 positions.",
-    "Implement rate limits",
-    "Monitor CPU usage",
     "Here are 3 concise bullet points of the most important, actionable knowledge:",
     "Log system restarts",
     "Cache recent quotes",
@@ -199,8 +193,14 @@
     "Review endpoint code",
     "Log disk space usage",
     "Check JVM heap size",
-    "Check thread counts"
+    "Check thread counts",
+    "Check RAM allocation",
+    "Verify network latency",
+    "Scan for deadlocks",
+    "Monitor API logs.",
+    "Parse JSON logs.",
+    "Validate timestamps."
   ],
-  "last_updated": "2026-07-31T15:36:05.574510+00:00",
+  "last_updated": "2026-07-31T17:25:40.618275+00:00",
   "total": 200
 }
