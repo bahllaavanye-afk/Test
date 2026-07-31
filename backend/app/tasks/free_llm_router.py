@@ -131,14 +131,51 @@ async def _call_provider(
                 json=payload,
             )
             resp.raise_for_status()
-            data = resp.json()
-            content = data["choices"][0]["message"]["content"]
-            tokens = data.get("usage", {}).get("total_tokens", 0)
-            latency = (time.monotonic() - t0) * 1000
-            return LLMResponse(provider=provider.name, content=content, latency_ms=latency, tokens_used=tokens)
-    except Exception as e:
-        logger.debug("Provider %s failed: %s", provider.name, e)
+    except httpx.HTTPStatusError as e:
+        logger.error(
+            "Provider %s returned HTTP error %s",
+            provider.name,
+            e.response.status_code,
+            exc_info=True,
+        )
         return None
+    except httpx.RequestError as e:
+        logger.error(
+            "Network error when calling provider %s: %s",
+            provider.name,
+            str(e),
+            exc_info=True,
+        )
+        return None
+    except Exception as e:
+        logger.error(
+            "Unexpected error during request to provider %s: %s",
+            provider.name,
+            str(e),
+            exc_info=True,
+        )
+        return None
+
+    try:
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+        tokens = data.get("usage", {}).get("total_tokens", 0)
+    except (ValueError, KeyError) as e:
+        logger.error(
+            "Failed to parse response from provider %s: %s",
+            provider.name,
+            str(e),
+            exc_info=True,
+        )
+        return None
+
+    latency = (time.monotonic() - t0) * 1000
+    return LLMResponse(
+        provider=provider.name,
+        content=content,
+        latency_ms=latency,
+        tokens_used=tokens,
+    )
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
@@ -168,7 +205,13 @@ async def call_race(
         t.cancel()
 
     for t in done:
-        result = t.result()
+        try:
+            result = t.result()
+        except Exception as e:
+            provider = tasks.get(t, None)
+            name = provider.name if provider else "unknown"
+            logger.error("Task for provider %s raised an exception: %s", name, str(e), exc_info=True)
+            continue
         if result:
             logger.info("LLM race winner: %s (%.0fms)", result.provider, result.latency_ms)
             return result
@@ -190,7 +233,20 @@ async def call_consensus(
     if not tasks:
         return []
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    return [r for r in results if isinstance(r, LLMResponse)]
+    successful: list[LLMResponse] = []
+    for idx, r in enumerate(results):
+        if isinstance(r, Exception):
+            provider_name = PROVIDERS[idx].name
+            logger.error(
+                "Provider %s raised an exception during consensus call: %s",
+                provider_name,
+                str(r),
+                exc_info=True,
+            )
+            continue
+        if isinstance(r, LLMResponse):
+            successful.append(r)
+    return successful
 
 
 def available_providers() -> list[str]:
