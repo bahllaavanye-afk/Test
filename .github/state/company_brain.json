@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785513201.249607,
+    "last_updated": 1785513370.4361954,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,67 +109,52 @@
     },
     "opinion_score": 2,
     "macro_score": 2,
-    "vix": 17.09,
-    "market_scan_ts": 1785445259.431932,
+    "vix": 17.29,
+    "market_scan_ts": 1785513370.4060516,
     "sector_leaders": [
       "Energy",
       "Financials",
-      "Healthcare"
+      "Cons. Staples"
     ],
     "sector_laggards": [
-      "Industrials",
+      "Comm.",
       "Cons. Disc.",
       "Tech"
     ],
     "active_universe": [
+      "AMZN",
+      "AAPL",
       "MSFT",
+      "GOOGL",
       "META",
+      "MA",
+      "ORCL",
       "NOW",
       "ADBE",
-      "MA",
-      "INTU",
-      "AMZN",
-      "QQQ",
-      "XLK",
-      "NFLX",
       "LLY",
+      "QQQ",
+      "IWM",
       "NVDA",
-      "GOOGL",
-      "AAPL",
-      "ORCL",
-      "SPY",
-      "V",
-      "GS",
+      "TSLA",
       "XLV",
-      "XLI"
+      "XLK",
+      "SLB",
+      "SPY",
+      "XOM",
+      "ABBV"
     ],
     "top_momentum": [
       "MSFT",
-      "ADBE",
+      "AMZN",
       "INTU",
-      "MPC",
-      "MA"
+      "ADBE",
+      "MPC"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785500786.2540894
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Healthcare",
-        "Energy",
-        "Financials"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784524766.2340834
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -2210,6 +2195,21 @@
       },
       "lesson": "**Morning Brief:** Equities maintain bullish momentum with SPY above the 200-SMA and credit spreads tightening, though low VIX at 17.44 and flat breadth (6/11 sectors above 20-SMA) suggest a controlled uptrend rather than exuberance. **Tactical implication:** Favor short-volatility premium strategies (e.g., put credit spreads) to capitalize on the benign VIX trend and bullish regime while avoiding directional gamma risk.",
       "ts": 1785513201.255331
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Cons. Staples"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785513370.4418926
     }
   ],
   "github_insights": [
