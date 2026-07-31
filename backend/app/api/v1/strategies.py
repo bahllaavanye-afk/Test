@@ -1,9 +1,10 @@
 """Strategy management endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.database import get_db, AsyncSessionLocal
-from app.api.deps import get_current_user, get_current_active_superuser
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_active_superuser, get_current_user
+from app.database import AsyncSessionLocal, get_db
 from app.models.strategy import Strategy
 from app.models.user import User
 from app.strategies import STRATEGY_REGISTRY, list_desks, strategies_by_desk
@@ -76,12 +77,10 @@ async def list_active(
     Reads from app.state.active_strategies (populated at startup by main.py).
     Falls back to querying the DB when app state is not yet populated.
     """
-    # Try in-process state first (populated by lifespan at startup)
     active = getattr(request.app.state, "active_strategies", None)
     if active is not None:
         return active
 
-    # Fallback: query DB directly with a lightweight column selection
     try:
         async with AsyncSessionLocal() as db:
             stmt = select(
@@ -103,7 +102,6 @@ async def list_active(
                 for row in rows
             ]
     except Exception:
-        # Return empty list rather than crashing — frontend must handle this gracefully
         return []
 
 

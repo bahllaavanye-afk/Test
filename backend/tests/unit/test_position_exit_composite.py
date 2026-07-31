@@ -12,8 +12,9 @@ from app.execution.position_exit import CompositeExit
 
 
 class _Ok:
-    def __init__(self, triggered=False, reason="tp"):
-        self._t, self._r = triggered, reason
+    def __init__(self, triggered: bool = False, reason: str = "tp"):
+        self._t = triggered
+        self._r = reason
 
     def should_exit(self, position, current_price, context):
         return self._t, self._r
@@ -42,10 +43,6 @@ def test_no_trigger_is_a_clean_false():
     c = CompositeExit([_Ok(False), _Ok(False)])
     assert c.should_exit(POS, 100.0, {}) == (False, None)
 
-
-# NOTE: the app logs through structlog, which writes straight to stdout and does
-# not propagate to stdlib logging — so caplog sees nothing here and capsys is the
-# correct probe. (Asserting via caplog silently passes/fails for the wrong reason.)
 
 def test_all_strategies_failing_is_logged_as_an_error_not_a_warning(capsys):
     """Every rule raised => the position has NO exit protection at all."""
