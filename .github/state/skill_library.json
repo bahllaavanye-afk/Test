@@ -1,12 +1,5 @@
 {
   "skills": [
-    "Implement Temporal Fusion",
-    "Parse error logs",
-    "Check API timeouts",
-    "Test RAM usage",
-    "* A trading strategy with a potential Sharpe ratio of 1.15 \u00b1 0.15 is implemented in `/strategies/equities.py` and uses a VWAP-EMA-RSI triple filter.",
-    "Use Temporal Fusion",
-    "Log system resources",
     "Verify config files",
     "Verify thread counts",
     "Here are 2-3 concise bullet points of the most important, actionable knowledge:",
@@ -199,8 +192,15 @@
     "Optimize hybrid predictors",
     "Check config files",
     "Validate user input",
-    "Test network stability"
+    "Test network stability",
+    "Log API calls",
+    "Validate schema",
+    "Test SSL certificates",
+    "Verify dependency updates",
+    "Monitor latency metrics",
+    "Analyze signal confidence",
+    "Refactor UI themes"
   ],
-  "last_updated": "2026-07-30T22:02:40.983219+00:00",
+  "last_updated": "2026-07-31T02:28:32.503601+00:00",
   "total": 200
 }
