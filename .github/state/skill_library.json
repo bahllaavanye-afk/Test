@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Optimize retraining",
-    "Debug type leaks",
     "Check state file integrity",
     "* We have confirmation of system health, with all health-check endpoints in `backend/api/health_check.py` returning 200 OK, and `/v1/status` reporting a latency of 12 ms.",
     "* As `investor_pipeline` agent, we track new investor leads and update them in the pipeline by referencing real file paths (`backend/api/`).",
@@ -199,8 +197,10 @@
     "Test API keys",
     "Validate config",
     "Detect abnormal calls",
-    "Review endpoint code"
+    "Review endpoint code",
+    "Log disk space usage",
+    "Check JVM heap size"
   ],
-  "last_updated": "2026-07-31T11:26:55.189430+00:00",
+  "last_updated": "2026-07-31T13:14:18.769486+00:00",
   "total": 200
 }
