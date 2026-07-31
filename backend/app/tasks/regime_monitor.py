@@ -19,6 +19,44 @@ import pandas as pd
 
 from app.utils.logging import logger
 
+# --------------------------------------------------------------------------- #
+# Constants
+# --------------------------------------------------------------------------- #
+
+# HMM configuration
+HMM_COMPONENTS: int = 3
+HMM_COVARIANCE_TYPE: str = "diag"
+HMM_ITERATIONS: int = 200
+HMM_RANDOM_STATE: int = 42
+
+# Data fetch parameters
+SPY_TICKER: str = "SPY"
+FETCH_DAYS: int = 400
+MIN_REQUIRED_DAYS: int = 60  # Minimum returns length to consider regime
+MIN_DF_LENGTH: int = 60
+
+# Heuristic thresholds
+RECENT_WINDOW_DAYS: int = 20
+LONG_WINDOW_DAYS: int = 252
+VOL_RANK_BEAR_THRESHOLD: float = 1.5
+VOL_RANK_BULL_THRESHOLD: float = 0.9
+RETURN_BEAR_THRESHOLD: float = -0.002
+RETURN_BULL_THRESHOLD: float = 0.001
+
+# Synthetic returns generation
+SYNTH_RETURNS_DEFAULT_N: int = 300
+DAILY_MU: float = 0.0003
+DAILY_SIGMA: float = 0.01
+
+# Redis settings
+REDIS_REGIME_KEY: str = "market:regime"
+REDIS_TTL_SECONDS: int = 600  # 10 minutes
+
+# Regime label mapping
+REGIME_LABELS: dict[int, str] = {0: "bear", 1: "sideways", 2: "bull"}
+
+# --------------------------------------------------------------------------- #
+
 try:
     from hmmlearn.hmm import GaussianHMM
     _HMM_AVAILABLE = True
@@ -40,7 +78,7 @@ def _compute_features(returns: np.ndarray) -> np.ndarray:
     np.ndarray
         2‑column feature array.
     """
-    vol_20 = pd.Series(returns).rolling(20).std().bfill().values
+    vol_20 = pd.Series(returns).rolling(RECENT_WINDOW_DAYS).std().bfill().values
     return np.column_stack([returns, vol_20])
 
 
@@ -63,10 +101,10 @@ def _fit_hmm(features: np.ndarray) -> np.ndarray | None:
         return None
     try:
         model = GaussianHMM(
-            n_components=3,
-            covariance_type="diag",
-            n_iter=200,
-            random_state=42,
+            n_components=HMM_COMPONENTS,
+            covariance_type=HMM_COVARIANCE_TYPE,
+            n_iter=HMM_ITERATIONS,
+            random_state=HMM_RANDOM_STATE,
         )
         model.fit(features)
         return model.predict(features)
@@ -93,7 +131,7 @@ def _label_states(states: np.ndarray, features: np.ndarray) -> int:
         Regime label for the most recent observation.
     """
     # Compute mean return per state
-    means = [features[states == s, 0].mean() for s in range(3)]
+    means = [features[states == s, 0].mean() for s in range(HMM_COMPONENTS)]
     # Order states by ascending mean return
     order = np.argsort(means)
     # Create mapping: lowest mean → bear (0), middle → sideways (1), highest → bull (2)
@@ -115,14 +153,14 @@ def _heuristic_regime(returns: np.ndarray) -> int:
     int
         Regime label (0, 1, or 2).
     """
-    recent_vol = float(np.std(returns[-20:]))
-    long_vol = float(np.std(returns[-252:]))
+    recent_vol = float(np.std(returns[-RECENT_WINDOW_DAYS:]))
+    long_vol = float(np.std(returns[-LONG_WINDOW_DAYS:]))
     vol_rank = recent_vol / max(long_vol, 1e-8)
-    recent_return = float(np.mean(returns[-20:]))
+    recent_return = float(np.mean(returns[-RECENT_WINDOW_DAYS:]))
 
-    if vol_rank > 1.5 or recent_return < -0.002:
+    if vol_rank > VOL_RANK_BEAR_THRESHOLD or recent_return < RETURN_BEAR_THRESHOLD:
         return 0  # bear / crisis
-    if recent_return > 0.001 and vol_rank < 0.9:
+    if recent_return > RETURN_BULL_THRESHOLD and vol_rank < VOL_RANK_BULL_THRESHOLD:
         return 2  # bull
     return 1  # sideways
 
@@ -144,7 +182,7 @@ def _fit_regime(returns: np.ndarray) -> int:
     int
         Regime label (0 = bear, 1 = sideways, 2 = bull).
     """
-    if len(returns) < 60:
+    if len(returns) < MIN_REQUIRED_DAYS:
         return 1  # insufficient data → sideways
 
     features = _compute_features(returns)
@@ -161,15 +199,15 @@ def _fetch_spy_returns_sync() -> np.ndarray | None:
     try:
         import yfinance as yf  # type: ignore
         end = datetime.now(timezone.utc).date()
-        start = end - timedelta(days=400)
+        start = end - timedelta(days=FETCH_DAYS)
         df = yf.download(
-            "SPY",
+            SPY_TICKER,
             start=str(start),
             end=str(end),
             progress=False,
             auto_adjust=True,
         )
-        if df is None or len(df) < 60:
+        if df is None or len(df) < MIN_DF_LENGTH:
             return None
         closes = df["Close"].dropna()
         return closes.pct_change().dropna().values.astype(float)
@@ -178,14 +216,14 @@ def _fetch_spy_returns_sync() -> np.ndarray | None:
         return None
 
 
-def _synthetic_spy_returns(n: int = 300) -> np.ndarray:
+def _synthetic_spy_returns(n: int = SYNTH_RETURNS_DEFAULT_N) -> np.ndarray:
     """
     Generate deterministic synthetic SPY returns using a geometric Brownian
     motion model. Useful when live data cannot be fetched.
 
     Parameters
     ----------
-    n: int, default 300
+    n: int, default SYNTH_RETURNS_DEFAULT_N
         Number of synthetic daily returns to produce.
 
     Returns
@@ -195,9 +233,7 @@ def _synthetic_spy_returns(n: int = 300) -> np.ndarray:
     """
     seed = int(datetime.now(timezone.utc).strftime("%Y%m%d"))
     rng = np.random.default_rng(seed)
-    daily_mu = 0.0003
-    daily_sigma = 0.01
-    return rng.normal(daily_mu, daily_sigma, n).astype(float)
+    return rng.normal(DAILY_MU, DAILY_SIGMA, n).astype(float)
 
 
 async def _fetch_spy_returns() -> np.ndarray | None:
@@ -216,11 +252,10 @@ async def run_once(redis_client) -> int | None:
         returns = _synthetic_spy_returns()
 
     regime = _fit_regime(returns)
-    labels = {0: "bear", 1: "sideways", 2: "bull"}
 
     try:
-        await redis_client.set("market:regime", str(regime), ex=600)  # TTL 10 min
-        logger.info("Regime updated", regime=regime, label=labels[regime])
+        await redis_client.set(REDIS_REGIME_KEY, str(regime), ex=REDIS_TTL_SECONDS)
+        logger.info("Regime updated", regime=regime, label=REGIME_LABELS[regime])
     except Exception as exc:
         logger.warning("Regime monitor: Redis write failed", error=str(exc))
         return None
