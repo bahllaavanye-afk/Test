@@ -42,7 +42,7 @@ def monte_carlo_simulation(
     n_years : int
         Number of years to simulate. Must be a positive integer.
     risk_free_daily : float
-        Daily risk‑free rate. Must be a real number.
+        Daily risk‑free rate. Must be a real, finite number.
 
     Returns
     -------
@@ -59,21 +59,28 @@ def monte_carlo_simulation(
         raise ValueError("daily_returns must be a pandas Series.")
     if daily_returns.empty:
         raise ValueError("daily_returns series cannot be empty.")
+    # Ensure series contains numeric dtype
     if not np.issubdtype(daily_returns.dtype, np.number):
         raise ValueError("daily_returns must contain numeric values.")
-    if not np.isfinite(daily_returns.dropna()).all():
+    # Drop NaNs for validation; after drop, must have at least one value
+    clean_returns = daily_returns.dropna()
+    if clean_returns.empty:
+        raise ValueError("daily_returns series cannot contain only NaN values.")
+    if not np.isfinite(clean_returns.values).all():
         raise ValueError("daily_returns contains non‑finite values (NaN or Inf).")
     if not isinstance(n_simulations, int) or n_simulations <= 0:
         raise ValueError("n_simulations must be a positive integer.")
-    if not isinstance(n_years, (int, float)) or n_years <= 0:
-        raise ValueError("n_years must be a positive number.")
+    if not isinstance(n_years, int) or n_years <= 0:
+        raise ValueError("n_years must be a positive integer.")
     if not isinstance(risk_free_daily, numbers.Real):
         raise ValueError("risk_free_daily must be a real number.")
+    if not np.isfinite(risk_free_daily):
+        raise ValueError("risk_free_daily must be finite (not NaN or Inf).")
 
     n_days = int(n_years * 252)
-    returns_array = daily_returns.dropna().values
-    sharpes = []
-    max_dds = []
+    returns_array = clean_returns.values
+    sharpes: list[float] = []
+    max_dds: list[float] = []
     positive = 0
 
     rng = np.random.default_rng(42)
@@ -85,7 +92,11 @@ def monte_carlo_simulation(
         max_dd = dd.min()
 
         excess = sampled - risk_free_daily
-        sharpe = (excess.mean() / excess.std() * np.sqrt(252)) if excess.std() > 0 else 0.0
+        sharpe = (
+            (excess.mean() / excess.std() * np.sqrt(252))
+            if excess.std() > 0
+            else 0.0
+        )
         sharpes.append(sharpe)
         max_dds.append(max_dd)
         if equity[-1] > 100_000:
