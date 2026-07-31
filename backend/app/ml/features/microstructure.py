@@ -10,6 +10,11 @@ Features:
   - Top-of-book depth ratio
   - PIN proxy (Probability of Informed Trading)
   - Kyle's lambda (price impact coefficient)
+
+Signal logic:
+  - Tightened entry conditions based on imbalance, spread and PIN proxy.
+  - Confirmation filter requiring conditions to persist for a configurable window.
+  - Exit logic triggered by reversal of imbalance or deterioration of spread/PIN.
 """
 from __future__ import annotations
 
@@ -23,14 +28,28 @@ BASIS_POINTS_MULTIPLIER: float = 10_000.0
 MIN_SAMPLE_SIZE: int = 5
 VAR_VOLUME_EPS: float = 1e-12
 
+# Feature column names
 COL_HIGH: str = "high"
 COL_LOW: str = "low"
 COL_CLOSE: str = "close"
 COL_OPEN: str = "open"
 COL_LOB_IMBALANCE: str = "lob_imbalance"
 COL_SPREAD_BPS: str = "spread_bps"
+COL_DEPTH_RATIO: str = "depth_ratio"
+COL_PIN_PROXY: str = "pin_proxy"
 
-MICROSTRUCTURE_FEATURE_COLS = [COL_LOB_IMBALANCE, COL_SPREAD_BPS]
+MICROSTRUCTURE_FEATURE_COLS = [
+    COL_LOB_IMBALANCE,
+    COL_SPREAD_BPS,
+    COL_DEPTH_RATIO,
+    COL_PIN_PROXY,
+]
+
+# Default signal thresholds
+IMBALANCE_ENTRY_THRESHOLD: float = 0.20   # absolute imbalance needed for entry
+SPREAD_BPS_MAX: float = 5.0               # max spread in bps for entry
+PIN_PROXY_MAX: float = 0.50               # max PIN proxy for entry
+CONFIRMATION_WINDOW: int = 3              # number of consecutive bars to confirm entry
 
 
 class OrderBookFeatures:
@@ -43,7 +62,12 @@ class OrderBookFeatures:
         levels: int,
     ) -> np.ndarray:
         """Extract volumes up to `levels` and return as NumPy array."""
-        arr = np.fromiter((sz for _, sz in data[:levels]), dtype=float, count=levels)
+        # Guard against requesting more levels than available
+        effective_levels = min(levels, len(data))
+        arr = np.fromiter((sz for _, sz in data[:effective_levels]), dtype=float, count=effective_levels)
+        # Pad with zeros if fewer levels than requested (maintains shape)
+        if effective_levels < levels:
+            arr = np.pad(arr, (0, levels - effective_levels), constant_values=0.0)
         return arr
 
     def compute_imbalance(
@@ -63,6 +87,9 @@ class OrderBookFeatures:
         """
         if not bids or not asks:
             return 0.0
+
+        # Ensure a sensible level count
+        levels = max(1, int(levels))
 
         bid_tuple = tuple(bids)
         ask_tuple = tuple(asks)
@@ -195,5 +222,73 @@ def add_microstructure_features(
     else:
         close_nonzero = df[COL_CLOSE].replace(0, np.nan)
         df[COL_SPREAD_BPS] = ((df[COL_HIGH] - df[COL_LOW]) / close_nonzero * BASIS_POINTS_MULTIPLIER).fillna(0.0)
+
+    # Depth ratio and PIN proxy are optional; compute simple proxies if missing
+    if COL_DEPTH_RATIO not in df.columns:
+        df[COL_DEPTH_RATIO] = 1.0  # placeholder – real depth ratio requires LOB data
+    if COL_PIN_PROXY not in df.columns:
+        df[COL_PIN_PROXY] = 0.0   # placeholder – real PIN proxy requires order flow data
+
+    return df
+
+
+def generate_microstructure_signals(
+    df: pd.DataFrame,
+    imbalance_thresh: float = IMBALANCE_ENTRY_THRESHOLD,
+    spread_bps_max: float = SPREAD_BPS_MAX,
+    pin_proxy_max: float = PIN_PROXY_MAX,
+    confirmation_window: int = CONFIRMATION_WINDOW,
+) -> pd.DataFrame:
+    """
+    Derive entry/exit signals from microstructure features.
+
+    Entry (long) is signaled when:
+      * Imbalance >= `imbalance_thresh`
+      * Spread_bps <= `spread_bps_max`
+      * Pin_proxy <= `pin_proxy_max`
+    The three conditions must hold for `confirmation_window` consecutive rows.
+
+    Exit (flat) is triggered when any of the entry conditions is violated
+    after a position has been opened.
+
+    Returns a copy of ``df`` with an additional column ``signal``:
+        1  → long entry,
+        0  → flat / exit,
+       -1  → short entry (currently not used, but kept for symmetry).
+    """
+    df = df.copy()
+
+    # Ensure required columns exist
+    required = [COL_LOB_IMBALANCE, COL_SPREAD_BPS, COL_PIN_PROXY]
+    for col in required:
+        if col not in df.columns:
+            raise ValueError(f"Column '{col}' is required for signal generation.")
+
+    # Boolean masks for entry criteria
+    imbalance_ok = df[COL_LOB_IMBALANCE] >= imbalance_thresh
+    spread_ok = df[COL_SPREAD_BPS] <= spread_bps_max
+    pin_ok = df[COL_PIN_PROXY] <= pin_proxy_max
+
+    entry_condition = imbalance_ok & spread_ok & pin_ok
+
+    # Confirmation filter: require condition to be true for N consecutive rows
+    confirmed_entry = entry_condition.rolling(window=confirmation_window, min_periods=confirmation_window).apply(
+        lambda x: 1.0 if x.all() else 0.0, raw=True
+    ).astype(bool)
+
+    # Initialise signal column
+    df["signal"] = 0
+
+    # Long entry where confirmation is met and we are currently flat
+    df.loc[confirmed_entry & (df["signal"].shift(fill_value=0) == 0), "signal"] = 1
+
+    # Propagate existing long position until exit condition occurs
+    df["signal"] = df["signal"].replace(to_replace=0, method="ffill")
+    # Exit when any entry condition fails
+    exit_condition = ~entry_condition
+    df.loc[exit_condition & (df["signal"] == 1), "signal"] = 0
+
+    # Ensure flat after exit
+    df["signal"] = df["signal"].replace(to_replace=0, method="ffill").where(df["signal"] != 0, 0)
 
     return df
