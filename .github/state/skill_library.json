@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Log trade timeouts",
-    "Track execution time",
-    "Log API response codes",
-    "Scan for memory leaks",
-    "Restart on crashes",
     "Optimize retraining",
     "Debug type leaks",
     "Check state file integrity",
@@ -199,8 +194,13 @@
     "Test DNS resolve",
     "Verify queue depths",
     "Parse JSON logs",
-    "Apply peer-learned fixes"
+    "Apply peer-learned fixes",
+    "Verify DB connections",
+    "Test API keys",
+    "Validate config",
+    "Detect abnormal calls",
+    "Review endpoint code"
   ],
-  "last_updated": "2026-07-31T08:43:53.639612+00:00",
+  "last_updated": "2026-07-31T11:26:55.189430+00:00",
   "total": 200
 }
