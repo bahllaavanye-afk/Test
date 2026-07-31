@@ -5,20 +5,34 @@ Runs as a background asyncio task started from main.py lifespan.
 Uses yfinance for free OHLCV data — no broker keys required.
 """
 from __future__ import annotations
+
 import asyncio
 import uuid
-import pandas as pd
 from datetime import datetime, timezone
 
+import pandas as pd
 from sqlalchemy import select
+
 from app.utils.logging import logger
 
 
 async def run_backtest_job(run_id: str | None) -> None:
-    """Fetch one queued BacktestRun, execute it, write results back to DB."""
+    """Fetch one queued BacktestRun, execute it, write results back to DB.
+
+    Args:
+        run_id: Identifier of the BacktestRun to process. Must be a non‑empty
+            string representing a valid UUID.
+
+    Raises:
+        ValueError: If ``run_id`` is missing, empty, or not a valid UUID.
+    """
+    # Input validation
     if not run_id:
-        logger.warning("run_backtest_job called with None or empty run_id")
-        return
+        raise ValueError("run_id must be a non‑empty string")
+    try:
+        uuid.UUID(run_id)
+    except (ValueError, AttributeError) as exc:
+        raise ValueError(f"run_id '{run_id}' is not a valid UUID") from exc
 
     from app.database import AsyncSessionLocal
     from app.models.backtest import BacktestRun, BacktestResult
@@ -30,6 +44,7 @@ async def run_backtest_job(run_id: str | None) -> None:
         run = await db.get(BacktestRun, run_id)
         if not run or run.status != "queued":
             return
+
         # Validate essential fields
         if not all([run.symbol, run.start_date, run.end_date, run.interval, run.strategy_name]):
             logger.error(f"BacktestRun {run_id} missing required fields")
@@ -42,7 +57,8 @@ async def run_backtest_job(run_id: str | None) -> None:
         run.status = "running"
         run.started_at = datetime.now(timezone.utc)
         await db.commit()
-        # capture fields before session closes
+
+        # Capture fields before session closes
         symbol = run.symbol
         start_date = run.start_date
         end_date = run.end_date
@@ -71,7 +87,6 @@ async def run_backtest_job(run_id: str | None) -> None:
         if isinstance(raw_signals, _BSig):
             import numpy as np
 
-            # Ensure entries/exits are not None and have matching index
             entries = raw_signals.entries
             exits = raw_signals.exits
             if entries is None or exits is None:
@@ -84,14 +99,11 @@ async def run_backtest_job(run_id: str | None) -> None:
                 sig[raw_signals.short_entries.astype(bool)] = -1
             signals_series = sig
         else:
-            # Expect a pandas Series; guard against empty or mismatched index
             if not isinstance(raw_signals, pd.Series):
                 raise TypeError("Strategy signals must be a pandas Series")
             if raw_signals.empty:
-                # An empty signal series is treated as no trades
                 signals_series = pd.Series(0, index=df.index, dtype=int)
             else:
-                # Align index if needed
                 signals_series = raw_signals.reindex(df.index, fill_value=0).astype(int)
 
         metrics = run_backtest(
@@ -141,7 +153,7 @@ async def run_backtest_job(run_id: str | None) -> None:
 
 
 async def backtest_worker_loop() -> None:
-    """Poll for queued BacktestRun rows every 30 s and run them concurrently."""
+    """Poll for queued BacktestRun rows every 30 s and run them concurrently."""
     from app.database import AsyncSessionLocal
     from app.models.backtest import BacktestRun
 
