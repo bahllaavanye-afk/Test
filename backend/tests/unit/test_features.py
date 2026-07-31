@@ -28,7 +28,7 @@ def _feature_columns(df: pd.DataFrame) -> list:
     return [c for c in df.columns if c not in base_cols]
 
 
-def _assert_nan_bounded(df: pd.DataFrame, max_fraction: float = 0.5) -> None:
+def _assert_nan_bounded(df: pd.DataFrame, max_fraction: float = 0.1) -> None:
     """Assert that NaNs in feature columns are below a given fraction."""
     feature_cols = _feature_columns(df)
     if not feature_cols:
@@ -71,3 +71,29 @@ def test_labels_are_binary(ohlcv_df):
     assert "label" in df.columns
     unique = set(df["label"].dropna().unique())
     assert unique.issubset({0, 1})
+
+
+def test_label_alignment_no_lookahead(ohlcv_df):
+    """Ensure label is based on future price movement, not current."""
+    df = engineer_features(ohlcv_df).dropna()
+    df = add_labels(df, threshold=0.002)
+    # Compute manual label using next period return
+    close = df["close"]
+    future_return = close.shift(-1) / close - 1
+    manual_label = (future_return > 0.002).astype(int)
+    # Align with original label (ignore NaNs at the end)
+    aligned = df["label"].fillna(0).astype(int)
+    # The last row cannot have a label due to lack of future data
+    assert aligned.iloc[:-1].equals(manual_label.iloc[:-1])
+
+
+def test_label_distribution_presence(ohlcv_df):
+    """Check that both classes appear after labeling."""
+    df = engineer_features(ohlcv_df).dropna()
+    df = add_labels(df, threshold=0.002)
+    labels = df["label"].dropna()
+    assert not labels.empty
+    assert labels.nunique() == 2
+    # Ensure each class has at least one sample
+    counts = labels.value_counts()
+    assert all(counts > 0)

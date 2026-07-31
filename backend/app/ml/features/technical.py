@@ -12,6 +12,8 @@ The implementation mirrors the original code base and adds no new
 behaviour; it merely enriches the DataFrame with a collection of common
 technical features such as returns, volatility, EMA distance, RSI, MACD,
 Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
+Additional signal columns are added to tighten entry conditions,
+provide confirmation filters, and improve exit logic.
 """
 
 from __future__ import annotations
@@ -56,10 +58,35 @@ def _safe_apply(func, *args, **kwargs) -> Optional[pd.DataFrame]:
         return None
 
 
+def _crossover(series: pd.Series, direction: str = "up") -> pd.Series:
+    """
+    Detect simple crossovers without look‑ahead.
+
+    Parameters
+    ----------
+    series : pd.Series
+        The series to evaluate.
+    direction : {"up", "down"}
+        ``up`` returns True when the series crosses from <=0 to >0.
+        ``down`` returns True when the series crosses from >=0 to <0.
+
+    Returns
+    -------
+    pd.Series
+        Boolean series where True indicates a crossover at that row.
+    """
+    if direction == "up":
+        return (series > 0) & (series.shift(1) <= 0)
+    else:
+        return (series < 0) & (series.shift(1) >= 0)
+
+
 def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Compute a suite of technical indicators and append them as new columns
-    to a copy of the input DataFrame.
+    to a copy of the input DataFrame. Additional signal columns are added
+    to tighten entry conditions, add confirmation filters, and improve
+    exit logic.
 
     Parameters
     ----------
@@ -73,8 +100,8 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     -------
     pd.DataFrame
         A new DataFrame containing the original columns plus the technical
-        feature columns. If a particular indicator cannot be computed,
-        its column is omitted and the error is logged.
+        feature columns and signal columns. If a particular indicator cannot
+        be computed, its column is omitted and the error is logged.
     """
     if "close" not in df.columns:
         raise ValueError("Input DataFrame must contain a 'close' column.")
@@ -103,7 +130,7 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     # --- EMA distance (normalized) ---
     for span in [9, 21, 50]:
         try:
-            ema = close.ewm(span=span).mean()
+            ema = close.ewm(span=span, adjust=False).mean()
             df[f"ema_{span}_diff"] = (close - ema) / (ema + 1e-9)
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute EMA distance for span %d", span, exc_info=exc)
@@ -179,5 +206,70 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             df["adx"] = adx_df["ADX_14"] / 100.0
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute ADX feature", exc_info=exc)
+
+    # ------------------------------------------------------------------
+    # Signal generation – tightened entry conditions & exit logic
+    # ------------------------------------------------------------------
+    try:
+        # EMA crossovers (short‑term EMA 9 vs price)
+        ema9_diff = df.get("ema_9_diff")
+        ema21_diff = df.get("ema_21_diff")
+        if ema9_diff is not None:
+            df["ema9_up"] = _crossover(ema9_diff, "up").astype(int)
+            df["ema9_down"] = _crossover(ema9_diff, "down").astype(int)
+
+        # Stochastic crossover (k crossing above d)
+        stoch_k = df.get("stoch_k")
+        stoch_d = df.get("stoch_d")
+        if stoch_k is not None and stoch_d is not None:
+            stoch_cross_up = (stoch_k > stoch_d) & (stoch_k.shift(1) <= stoch_d.shift(1))
+            stoch_cross_down = (stoch_k < stoch_d) & (stoch_k.shift(1) >= stoch_d.shift(1))
+            df["stoch_up"] = stoch_cross_up.astype(int)
+            df["stoch_down"] = stoch_cross_down.astype(int)
+
+        # Long entry: EMA9 up, RSI low, MACD histogram positive, stochastic up
+        conditions_long = [
+            df.get("ema9_up") == 1,
+            df.get("rsi_14") < 0.30,
+            df.get("macd_hist") > 0,
+            df.get("stoch_up") == 1,
+        ]
+        # Short entry: EMA9 down, RSI high, MACD histogram negative, stochastic down
+        conditions_short = [
+            df.get("ema9_down") == 1,
+            df.get("rsi_14") > 0.70,
+            df.get("macd_hist") < 0,
+            df.get("stoch_down") == 1,
+        ]
+
+        # Combine conditions safely – ignore missing columns
+        df["long_entry"] = (
+            (conditions_long[0] if conditions_long[0] is not None else False) &
+            (conditions_long[1] if conditions_long[1] is not None else False) &
+            (conditions_long[2] if conditions_long[2] is not None else False) &
+            (conditions_long[3] if conditions_long[3] is not None else False)
+        ).astype(int)
+
+        df["short_entry"] = (
+            (conditions_short[0] if conditions_short[0] is not None else False) &
+            (conditions_short[1] if conditions_short[1] is not None else False) &
+            (conditions_short[2] if conditions_short[2] is not None else False) &
+            (conditions_short[3] if conditions_short[3] is not None else False)
+        ).astype(int)
+
+        # Exit logic – opposite EMA crossover or extreme RSI
+        exit_long = (
+            (df.get("ema9_down") == 1) |
+            (df.get("rsi_14") > 0.60)
+        )
+        exit_short = (
+            (df.get("ema9_up") == 1) |
+            (df.get("rsi_14") < 0.40)
+        )
+        df["long_exit"] = exit_long.astype(int)
+        df["short_exit"] = exit_short.astype(int)
+
+    except Exception as exc:  # pragma: no cover
+        _logger.error("Failed to generate signal columns", exc_info=exc)
 
     return df
