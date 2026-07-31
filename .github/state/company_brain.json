@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785454336.562357,
+    "last_updated": 1785460406.834888,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1785454336.5609777
+    "last_brain_update": 1785460406.8334794
   },
   "episodic": [
     {
@@ -2217,11 +2217,6 @@
   ],
   "github_insights": [
     {
-      "summary": "A deployment failed due to resource limits, and automated attempts to fix the issue were both skipped (too complex) and later failed (unable to apply patch).",
-      "item_count": 20,
-      "ts": 1784407323.2822273
-    },
-    {
       "summary": "Deployment failed due to a resource limit error, and subsequent auto-fix attempts were aborted because the changes exceeded the 50-line limit and the patch could not be applied.",
       "item_count": 20,
       "ts": 1784410442.6412568
@@ -2715,6 +2710,11 @@
       "summary": "[LLM unavailable \u2014 all providers failed]",
       "item_count": 20,
       "ts": 1785454336.5471694
+    },
+    {
+      "summary": "The deployment failed due to resource limitations, with an instruction to retry after 24 hours, and automated attempts to fix the issue were unsuccessful.",
+      "item_count": 20,
+      "ts": 1785460406.820869
     }
   ],
   "experiment_results": [
@@ -2801,48 +2801,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "desk-commodities",
-      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $328 conf=100%  id=`7a639133\u2026`\n\ud83d\udfe2 `time_series_momentum/PDBC` BUY $558 conf=99%  id=`2575a540\u2026`\n\ud83d\udd34 `time_series_momentum/UNG` SELL $361 conf=92%  id=`3787ebfc\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785327596.5799356
-    },
-    {
-      "channel": "desk-polymarket",
-      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785327596.585815
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (16:53 UTC)  equity=$21,854.44  regime=sideways/calm\nfunnel: 59 generated \u2192 20 survived gate+topK (2 exploration) \u2192 6 placed\n\u26a0\ufe0f 1 dropped before placement \u2014 1 insufficient cash\n\u2705 *Equities*: 2 orders\n\u26a0\ufe0f *Crypto*: 1 signal(s) fired, **0 placed** \u2014 1 insufficient cash\n\u2705 *Options*:",
-      "source": "desk_run_summary",
-      "ts": 1785346660.9676816
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 1 order(s) placed of 8 signal(s) \u2265 0.6: EUR_USD BUY@1.13864, USD_CAD BUY@1.41082, EUR_USD SELL@1.13864 | 2 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1785346660.975575
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Wednesday July 29, 2026*\n\n* We're seeing 0 tasks completed by autonomous agents today, let's dive into the `fix(agents)` commit in #1231 to understand the issue.\n* Our top agents are crushing it with 10 tasks each: cleanup, docstrings, and optimization.\n* We have 200 learned p",
-      "source": "desk_run_summary",
-      "ts": 1785346660.9811742
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "I\u2019d estimate a Sharpe around\u202f1.12\u202f\u00b1\u202f0.1 for the 2\u2011minute EMA\u2011VWAP\u2011RSI version in `backend/strategies/spy_ema_vwap_rsi_2min.py` because the tighter EMA cross\u2011under exit and higher RSI threshold should cut most false breakouts while still catching fast intraday trends. I\u2019ll run out\u2011of\u2011sample validatio",
-      "source": "desk_run_summary",
-      "ts": 1785346660.9866285
-    },
-    {
-      "channel": "desk-options",
-      "summary": "*Options Desk* \u2014 2 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/QQQ` SELL $657 conf=100%  id=`96d30eb4\u2026`\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1064 conf=99%  id=`ab70c119\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785346661.0572267
-    },
     {
       "channel": "desk-commodities",
       "summary": "*Commodities Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $354 conf=100%  id=`19b5c829\u2026`",
@@ -3400,6 +3358,48 @@
       "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
       "source": "desk_run_summary",
       "ts": 1785454304.5399067
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (23:44 UTC)  equity=$21,444.02  regime=sideways/calm\nfunnel: 16 generated \u2192 1 survived gate+topK (1 exploration) \u2192 0 placed\n\u26a0\ufe0f *Crypto*: 1 signal(s) fired, **0 placed** \u2014 no reason recorded\n\nTotal orders placed: *0*",
+      "source": "desk_run_summary",
+      "ts": 1785460399.0876477
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 9 signal(s) \u2265 0.6: USD_JPY BUY@159.54700, USD_CAD BUY@1.40108, EUR_USD SELL@1.15280 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1785460399.093825
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Thursday July 30, 2026*\n\n- \ud83d\udea8 Autonomous agents are stuck: 0 tasks completed, 0% success \u2013 immediate debugging of automation scripts is top priority.  \n- \ud83d\udcc8 Today's productive bots: cleanup, docstrings, and optimization each ran 10 tasks; we\u2019ll leverage their patterns to boost t",
+      "source": "desk_run_summary",
+      "ts": 1785460399.0995703
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Thursday July 30, 2026*\n\n- \ud83d\udea8 Autonomous agents are stuck: 0 tasks completed, 0% success \u2013 immediate debugging of automation scripts is top priority.  \n- \ud83d\udcc8 Today's productive bots: cleanup, docstrings, and optimization each ran 10 tasks; we\u2019ll leverage their patterns to boost t",
+      "source": "desk_run_summary",
+      "ts": 1785460399.105319
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 2 order(s) placed\n\ud83d\udd34 `wheel/SPY` SELL $1045 conf=96%  id=`4e471044\u2026`\n\ud83d\udd34 `options_pcr_reversal/IWM` SELL $961 conf=94%  id=`1af377a0\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785460399.1109676
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $321 conf=99%  id=`65e6cc0a\u2026`\n\ud83d\udfe2 `time_series_momentum/GDX` BUY $321 conf=99%  id=`f4af64dc\u2026`\n\ud83d\udfe2 `time_series_momentum/PDBC` BUY $512 conf=98%  id=`c11335ca\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785460399.116599
+    },
+    {
+      "channel": "desk-polymarket",
+      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785460399.122355
     }
   ]
 }
