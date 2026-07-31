@@ -1,11 +1,5 @@
 {
   "skills": [
-    "Here are 3 concise bullet points of the most important, actionable knowledge:",
-    "Log system restarts",
-    "Cache recent quotes",
-    "Verify config hash",
-    "Verify config sync",
-    "Rotate log files",
     "Track API timeouts",
     "Check API health",
     "**Algo Agent Status Update**: The `algo_agent` agent needs to provide a one-sentence status update, referencing real file paths, and be specific about its current task.",
@@ -199,8 +193,14 @@
     "Scan for deadlocks",
     "Monitor API logs.",
     "Parse JSON logs.",
-    "Validate timestamps."
+    "Validate timestamps.",
+    "Check CPU usage",
+    "Test API timeouts",
+    "Monitor queue lengths",
+    "Scan for memory leaks",
+    "Implement regime attention",
+    "Retrain models periodically"
   ],
-  "last_updated": "2026-07-31T17:25:40.618275+00:00",
+  "last_updated": "2026-07-31T18:52:24.313743+00:00",
   "total": 200
 }
