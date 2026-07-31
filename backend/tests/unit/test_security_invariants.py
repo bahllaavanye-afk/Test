@@ -8,20 +8,36 @@ so they catch regressions even when the brain is down.
 """
 from pathlib import Path
 
-API = Path(__file__).resolve().parents[2] / "app" / "api" / "v1"
-CONFIG = Path(__file__).resolve().parents[2] / "app" / "config.py"
+# ----------------------------------------------------------------------
+# Constants
+# ----------------------------------------------------------------------
+API_ROOT = Path(__file__).resolve().parents[2] / "app" / "api" / "v1"
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "app" / "config.py"
+
+RISK_MANAGER_REF = "risk_manager"
+CHECK_ORDER_FUNC = "check_order"
+SUBMIT_ALPACA_ORDER_FUNC = "submit_alpaca_order"
+
+ROUTER_DECORATOR_PREFIX = "@router."
+DEPENDENCY_AUTH = "Depends(get_current_user)"
+
+SLACK_API_DOMAIN = "slack.com/api"
+SLACK_TOKEN_VAR = "SLACK_BOT_TOKEN"
+
+MIN_CHECK_ORDER_COUNT = 2
+# ----------------------------------------------------------------------
 
 
 def test_rest_order_submission_is_risk_gated():
-    src = (API / "orders.py").read_text()
-    assert "risk_manager" in src, "risk manager reference missing from orders.py"
+    src = (API_ROOT / "orders.py").read_text()
+    assert RISK_MANAGER_REF in src, "risk manager reference missing from orders.py"
     # submit_order AND submit_bracket must each gate through check_order before the broker.
-    assert src.count("check_order") >= 2, (
+    assert src.count(CHECK_ORDER_FUNC) >= MIN_CHECK_ORDER_COUNT, (
         "REST order submission must call risk_manager.check_order() in BOTH submit_order "
         "and submit_bracket before reaching the broker (regression guard)"
     )
     # The gate must precede the broker call in the file.
-    assert src.index("check_order") < src.rindex("submit_alpaca_order"), (
+    assert src.index(CHECK_ORDER_FUNC) < src.rindex(SUBMIT_ALPACA_ORDER_FUNC), (
         "risk check must come before the Alpaca submission"
     )
 
@@ -36,12 +52,12 @@ def test_every_notifications_route_requires_auth():
     behind `get_current_user`, so there is no unauthenticated entry point at all.
     If someone re-adds a public webhook, this fails and they must add verification.
     """
-    src = (API / "notifications.py").read_text()
-    routes = [ln for ln in src.splitlines() if ln.strip().startswith("@router.")]
+    src = (API_ROOT / "notifications.py").read_text()
+    routes = [ln for ln in src.splitlines() if ln.strip().startswith(ROUTER_DECORATOR_PREFIX)]
     assert routes, "expected at least one route in notifications.py"
     # Count the auth dependency once per route handler.
-    assert src.count("Depends(get_current_user)") >= len(routes), (
-        f"{len(routes)} routes but only {src.count('Depends(get_current_user)')} "
+    assert src.count(DEPENDENCY_AUTH) >= len(routes), (
+        f"{len(routes)} routes but only {src.count(DEPENDENCY_AUTH)} "
         "auth dependencies — every notifications route must require auth, or carry "
         "its own request-signature verification if it is a public webhook"
     )
@@ -54,12 +70,12 @@ def test_slack_integration_stays_removed():
     it can reintroduce a Slack path — which would silently swallow notifications
     again (the dead SLACK_BOT_TOKEN made `slack_post` a no-op for weeks).
     """
-    backend_app = CONFIG.parent
+    backend_app = CONFIG_PATH.parent
     offenders = []
     for path in backend_app.rglob("*.py"):
         if "__pycache__" in str(path):
             continue
         text = path.read_text(errors="ignore")
-        if "slack.com/api" in text or "SLACK_BOT_TOKEN" in text:
+        if SLACK_API_DOMAIN in text or SLACK_TOKEN_VAR in text:
             offenders.append(str(path.relative_to(backend_app)))
     assert not offenders, f"Slack must stay removed from the backend; found in: {offenders}"
