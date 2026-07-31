@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Track API timeouts",
-    "Check API health",
     "**Algo Agent Status Update**: The `algo_agent` agent needs to provide a one-sentence status update, referencing real file paths, and be specific about its current task.",
     "Check DB schema",
     "Refactor error handling",
@@ -199,8 +197,10 @@
     "Monitor queue lengths",
     "Scan for memory leaks",
     "Implement regime attention",
-    "Retrain models periodically"
+    "Retrain models periodically",
+    "Track disk usage",
+    "Log trade sequences"
   ],
-  "last_updated": "2026-07-31T18:52:24.313743+00:00",
+  "last_updated": "2026-07-31T20:16:59.545174+00:00",
   "total": 200
 }
