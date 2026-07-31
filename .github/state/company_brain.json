@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785520019.3704998,
+    "last_updated": 1785521781.3295195,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,44 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1785500786.2540894
+    "last_brain_update": 1785521781.328149
   },
   "episodic": [
-    {
-      "lesson": "Deployment failed due to Vercel's free-tier rate limit (100 deploys/day). Upgrade to a paid plan or throttle deployment frequency to avoid blocking critical releases.",
-      "category": "execution",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784547515.8447745
-    },
-    {
-      "lesson": "Two auto-fix attempts were skipped for being too complex (LLM-brain personas and process improvement). Establish a clear escalation path for non-trivial tasks and allocate manual engineering time to prevent feature stagnation.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784547515.8489077
-    },
-    {
-      "lesson": "CI debug reveals Python 3.11.15 and package versions (aiohttp, aiosqlite). Ensure lock files and dependency updates are reviewed to avoid compatibility surprises in production.",
-      "category": "code",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1784547515.8530524
-    },
-    {
-      "lesson": "Autonomous PRs modifying protected model files (`inference_log.py`, `account.py`) are being revoked due to past breakage. Enforce stricter pre-merge checks and require explicit human review for all changes to protected paths.",
-      "category": "code",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784560836.069452
-    },
-    {
-      "lesson": "Auto-fix skipped for complex feature requests (debate gate for desk orders, LLM-brain Discord personas) indicates insufficient automated capability. Assign these to senior engineers for manual design and implementation.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784560836.0749087
-    },
     {
       "lesson": "A patch application failure occurred during auto-fix. Investigate the root cause (e.g., file state mismatch, syntax errors) and improve the patch generation pipeline to handle edge cases.",
       "category": "ml",
@@ -2218,14 +2183,44 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
       "ts": 1785520019.3762324
+    },
+    {
+      "lesson": "Polymarket desk signals firing but 0 orders placed with no reason recorded \u2014 likely a placement failure that needs immediate investigation",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1785521779.722361
+    },
+    {
+      "lesson": "Autonomous agents stalled at 0% success across all desks \u2014 41 failure traces indicate a systemic script reliability issue requiring urgent debugging",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1785521779.728579
+    },
+    {
+      "lesson": "Vercel deployment blocked by daily free-tier limit \u2014 this will prevent any code fixes from reaching production for 24 hours",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1785521779.7344224
+    },
+    {
+      "lesson": "Equities desk only placed 3 orders from 18 surviving signals \u2014 investigate funnel drop-off from generation to placement for optimization",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1785521779.7403119
+    },
+    {
+      "lesson": "Crypto desk has no signals fired while other desks are active \u2014 check if the signal generation pipeline or market conditions are the cause",
+      "category": "strategy",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1785521779.7459962
     }
   ],
   "github_insights": [
-    {
-      "summary": "Deployment failed due to resource limitations with a 24-hour retry suggestion, and two automatic fix attempts also failed to apply patches.",
-      "item_count": 20,
-      "ts": 1784435640.9579551
-    },
     {
       "summary": "A workflow run on 2026-07-19 attempted an auto-fix but failed because the patch could not be applied to the file.",
       "item_count": 20,
@@ -2720,6 +2715,11 @@
       "summary": "The GitHub PR/issue discussions consist of repeated automated messages indicating that an auto-fix attempt failed because the system could not apply a patch to the file.",
       "item_count": 20,
       "ts": 1785500786.241505
+    },
+    {
+      "summary": "The GitHub PR/issue discussions indicate that an automated bot attempted to apply a patch but failed twice, with the error message \"could not apply patch to file.\"",
+      "item_count": 20,
+      "ts": 1785521781.3153956
     }
   ],
   "experiment_results": [
@@ -2806,48 +2806,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "desk-commodities",
-      "summary": "*Commodities Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $208 conf=100%  id=`629fd7ca\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785363145.9974134
-    },
-    {
-      "channel": "desk-polymarket",
-      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785363146.0030103
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (22:43 UTC)  equity=$21,435.46  regime=sideways/calm\nfunnel: 65 generated \u2192 22 survived gate+topK (1 exploration) \u2192 0 placed\n\u26a0\ufe0f 19 dropped before placement \u2014 19 market closed\n\u26a0\ufe0f *Equities*: 4 signal(s) fired, **0 placed** \u2014 4 market closed\n\u26a0\ufe0f *Crypto*: 3 signal(s) fired, **0 pla",
-      "source": "desk_run_summary",
-      "ts": 1785366854.0665905
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 quiet: 8 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1785366854.0728896
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Wednesday July 29, 2026*\n\n- \ud83e\udd16 **Agent activity:** 0 tasks completed today (0% success). Our top agents (cleanup, docstrings, optimization) each logged 10 tasks\u202f\u2014\u202ffocus on boosting success rates.  \n- \ud83d\udcda **Skill library:** 200 learned patterns now in Voyager memory; leverage thes",
-      "source": "desk_run_summary",
-      "ts": 1785366854.078684
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Wednesday July 29, 2026*\n\n- \ud83e\udd16 **Agent activity:** 0 tasks completed today (0% success). Our top agents (cleanup, docstrings, optimization) each logged 10 tasks\u202f\u2014\u202ffocus on boosting success rates.  \n- \ud83d\udcda **Skill library:** 200 learned patterns now in Voyager memory; leverage thes",
-      "source": "desk_run_summary",
-      "ts": 1785366854.084636
-    },
-    {
-      "channel": "desk-options",
-      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/QQQ` SELL $219 conf=100%  id=`1442cd9e\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785366854.0903246
-    },
     {
       "channel": "desk-commodities",
       "summary": "*Commodities Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $208 conf=100%  id=`629fd7ca\u2026`",
@@ -3405,6 +3363,48 @@
       "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
       "source": "desk_run_summary",
       "ts": 1785500768.5814338
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (17:13 UTC)  equity=$21,389.33  regime=sideways/calm\nfunnel: 63 generated \u2192 18 survived gate+topK (1 exploration) \u2192 14 placed\n\u2705 *Equities*: 3 orders\n\ud83d\udca4 *Crypto*: no signals fired\n\u2705 *Options*: 2 orders\n\u26a0\ufe0f *Polymarket*: 3 signal(s) fired, **0 placed** \u2014 no reason recorded\n\ud83d\udca4 *Macro/",
+      "source": "desk_run_summary",
+      "ts": 1785521779.7517729
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 7 signal(s) \u2265 0.6: USD_JPY BUY@159.54700, EUR_USD SELL@1.15280, GBP_USD SELL@1.34644 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1785521779.757481
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Friday July 31, 2026*\n\n- Autonomous agents stalled: 0 tasks completed, 0% success \u2013 urgent debugging needed; 41 failure traces highlight script reliability gaps.  \n- Today's top agent activity: cleanup, docstrings, optimization \u2013 each ran 10 tasks, showing strong internal hous",
+      "source": "desk_run_summary",
+      "ts": 1785521779.7634997
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Friday July 31, 2026*\n\n- Autonomous agents stalled: 0 tasks completed, 0% success \u2013 urgent debugging needed; 41 failure traces highlight script reliability gaps.  \n- Today's top agent activity: cleanup, docstrings, optimization \u2013 each ran 10 tasks, showing strong internal hous",
+      "source": "desk_run_summary",
+      "ts": 1785521779.7692752
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 2 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/IWM` SELL $1019 conf=87%  id=`fdea1870\u2026`\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1085 conf=82%  id=`704aa1c7\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785521779.7749243
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $197 conf=100%  id=`5424aedd\u2026`\n\ud83d\udfe2 `time_series_momentum/CPER` BUY $347 conf=98%  id=`c75bdad3\u2026`\n\ud83d\udd34 `time_series_momentum/UNG` SELL $220 conf=91%  id=`26b74b53\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785521779.7805784
+    },
+    {
+      "channel": "desk-polymarket",
+      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785521779.7863052
     }
   ]
 }
