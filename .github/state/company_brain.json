@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785489124.4903555,
+    "last_updated": 1785492998.7236054,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,44 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1785483345.1947863
+    "last_brain_update": 1785492998.7226498
   },
   "episodic": [
-    {
-      "lesson": "Autonomous PRs modifying protected broker base files are blocked after a prior break; human review is now mandatory.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784523217.5869308
-    },
-    {
-      "lesson": "Three consecutive auto-fix failures suggest a broken CI patch pipeline or incompatible changes.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784523217.5907967
-    },
-    {
-      "lesson": "Base64 token or webhook secret exposed in issue comments poses a security breach risk.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784523217.5936034
-    },
-    {
-      "lesson": "Policy gap: no automated guardrails to prevent risky autonomous edits on critical paths like broker bases.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784523217.5963469
-    },
-    {
-      "lesson": "Auto-fix reliability is low; consider manual intervention or rollback for repeated patch failures.",
-      "category": "execution",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1784523217.599022
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -2213,14 +2178,44 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1785472942.177224
+    },
+    {
+      "lesson": "Crypto desk had 1 signal but 0 placed with no reason recorded \u2014 missing logging or execution failure; must investigate immediately.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1785492973.8913925
+    },
+    {
+      "lesson": "Autonomous agents stuck at 0% success across multiple desks \u2014 automation scripts require urgent debugging to restore productivity.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1785492973.8957984
+    },
+    {
+      "lesson": "Equity desk generated 16 signals but only 1 survived gate+topK and 0 placed \u2014 funnel efficiency is near zero; review signal quality or gate thresholds.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1785492973.8998466
+    },
+    {
+      "lesson": "Options and Commodities desks placed profitable orders with high confidence \u2014 replicate their signal generation patterns to other desks.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1785492973.9037805
+    },
+    {
+      "lesson": "GitHub auto-fix failed repeatedly \u2014 CI/CD pipeline is broken; needs manual patch intervention to unblock deployment.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1785492973.907639
     }
   ],
   "github_insights": [
-    {
-      "summary": "The auto-fix bot failed to apply a patch to a file, and this error was reported twice.",
-      "item_count": 20,
-      "ts": 1784417707.6494691
-    },
     {
       "summary": "The discussions indicate that an automated fix attempt failed because the patch could not be applied to the file.",
       "item_count": 20,
@@ -2715,6 +2710,11 @@
       "summary": "The auto-fix bot repeatedly failed to apply patches to the file, as indicated by three identical error messages.",
       "item_count": 20,
       "ts": 1785483345.1728265
+    },
+    {
+      "summary": "The auto-fix bot attempted to apply a patch to a file but failed, as indicated by two identical error messages stating the patch could not be applied.",
+      "item_count": 20,
+      "ts": 1785492998.7136335
     }
   ],
   "experiment_results": [
@@ -2801,48 +2801,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "desk-commodities",
-      "summary": "*Commodities Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $208 conf=100%  id=`629fd7ca\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785355251.0739892
-    },
-    {
-      "channel": "desk-polymarket",
-      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785355251.0796657
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (21:07 UTC)  equity=$21,391.48  regime=sideways/calm\nfunnel: 15 generated \u2192 1 survived gate+topK (1 exploration) \u2192 0 placed\n\u26a0\ufe0f *Crypto*: 1 signal(s) fired, **0 placed** \u2014 no reason recorded\n\nTotal orders placed: *0*",
-      "source": "desk_run_summary",
-      "ts": 1785359511.6711137
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 quiet: 0 signal(s) \u2265 0.6, 0 orders",
-      "source": "desk_run_summary",
-      "ts": 1785359511.6772137
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Wednesday July 29, 2026*\n\n* We've got a strong foundation with 200 learned patterns in Voyager memory and our top agents - cleanup, docstrings, and optimization - completing 10 tasks each.\n* The team's been busy with recent commits, including distill skills and auto-heal state",
-      "source": "desk_run_summary",
-      "ts": 1785359511.6829414
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "I\u2019d expect a Sharpe around\u202f1.1\u202f\u00b1\u202f0.15 because the stochastic\u2011%D breakout filter on an 80+ over\u2011bought regime, combined with the VWAP\u2011BB alignment, should capture tight, high\u2011conviction moves while the 1\u2011minute horizon limits exposure to mean\u2011reversion drifts.\u202fTest out\u2011of\u2011sample on the most recent 6\u2011",
-      "source": "desk_run_summary",
-      "ts": 1785359511.6885004
-    },
-    {
-      "channel": "desk-options",
-      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/QQQ` SELL $219 conf=100%  id=`1442cd9e\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785359511.6940656
-    },
     {
       "channel": "desk-commodities",
       "summary": "*Commodities Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $208 conf=100%  id=`629fd7ca\u2026`",
@@ -3400,6 +3358,48 @@
       "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
       "source": "desk_run_summary",
       "ts": 1785483330.825096
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (08:04 UTC)  equity=$21,437.52  regime=sideways/calm\nfunnel: 16 generated \u2192 1 survived gate+topK (1 exploration) \u2192 0 placed\n\u26a0\ufe0f *Crypto*: 1 signal(s) fired, **0 placed** \u2014 no reason recorded\n\nTotal orders placed: *0*",
+      "source": "desk_run_summary",
+      "ts": 1785492973.9114468
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 quiet: 7 signal(s) \u2265 0.6, 0 orders | 3 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1785492973.915326
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Thursday July 30, 2026*\n\n- \ud83d\udea8 Autonomous agents are stuck: 0 tasks completed, 0% success \u2013 immediate debugging of automation scripts is top priority.  \n- \ud83d\udcc8 Today's productive bots: cleanup, docstrings, and optimization each ran 10 tasks; we\u2019ll leverage their patterns to boost t",
+      "source": "desk_run_summary",
+      "ts": 1785492973.919469
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Thursday July 30, 2026*\n\n- \ud83d\udea8 Autonomous agents are stuck: 0 tasks completed, 0% success \u2013 immediate debugging of automation scripts is top priority.  \n- \ud83d\udcc8 Today's productive bots: cleanup, docstrings, and optimization each ran 10 tasks; we\u2019ll leverage their patterns to boost t",
+      "source": "desk_run_summary",
+      "ts": 1785492973.923249
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 2 order(s) placed\n\ud83d\udd34 `wheel/SPY` SELL $1045 conf=96%  id=`4e471044\u2026`\n\ud83d\udd34 `options_pcr_reversal/IWM` SELL $961 conf=94%  id=`1af377a0\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785492973.9270365
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/USO` BUY $321 conf=99%  id=`65e6cc0a\u2026`\n\ud83d\udfe2 `time_series_momentum/GDX` BUY $321 conf=99%  id=`f4af64dc\u2026`\n\ud83d\udfe2 `time_series_momentum/PDBC` BUY $512 conf=98%  id=`c11335ca\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785492973.9308681
+    },
+    {
+      "channel": "desk-polymarket",
+      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785492973.9346569
     }
   ]
 }
