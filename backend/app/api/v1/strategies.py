@@ -9,6 +9,25 @@ from app.models.user import User
 from app.strategies import STRATEGY_REGISTRY, list_desks, strategies_by_desk
 from pydantic import BaseModel, ConfigDict
 
+# Constants
+DEFAULT_TICK_INTERVAL_SECONDS = 3600
+DEFAULT_CONFIDENCE_THRESHOLD = 0.6
+
+KEY_NAME = "name"
+KEY_SYMBOLS = "symbols"
+KEY_TICK_INTERVAL = "tick_interval_seconds"
+KEY_CONFIDENCE = "confidence_threshold"
+KEY_IS_RUNNING = "is_running"
+
+KEY_STRATEGY_NOT_FOUND = "Strategy not found"
+
+ACTIVE_STRATEGIES_ATTR = "active_strategies"
+
+KEY_DESKS = "desks"
+KEY_BY_DESK = "by_desk"
+KEY_COUNTS = "counts"
+KEY_TOTAL = "total"
+
 router = APIRouter(prefix="/strategies", tags=["strategies"])
 
 
@@ -59,10 +78,10 @@ async def list_strategy_desks(current_user: User = Depends(get_current_user)):
     """
     grouped = strategies_by_desk()
     return {
-        "desks": list_desks(),
-        "by_desk": grouped,
-        "counts": {desk: len(members) for desk, members in grouped.items()},
-        "total": sum(len(m) for m in grouped.values()),
+        KEY_DESKS: list_desks(),
+        KEY_BY_DESK: grouped,
+        KEY_COUNTS: {desk: len(members) for desk, members in grouped.items()},
+        KEY_TOTAL: sum(len(m) for m in grouped.values()),
     }
 
 
@@ -77,7 +96,7 @@ async def list_active(
     Falls back to querying the DB when app state is not yet populated.
     """
     # Try in-process state first (populated by lifespan at startup)
-    active = getattr(request.app.state, "active_strategies", None)
+    active = getattr(request.app.state, ACTIVE_STRATEGIES_ATTR, None)
     if active is not None:
         return active
 
@@ -94,11 +113,11 @@ async def list_active(
             rows = result.mappings().all()
             return [
                 {
-                    "name": row["name"],
-                    "symbols": row["symbols"] if isinstance(row["symbols"], list) else [],
-                    "tick_interval_seconds": int(row.get("tick_interval_seconds", 3600)),
-                    "confidence_threshold": float(row.get("confidence_threshold", 0.6)),
-                    "is_running": True,
+                    KEY_NAME: row[KEY_NAME],
+                    KEY_SYMBOLS: row[KEY_SYMBOLS] if isinstance(row[KEY_SYMBOLS], list) else [],
+                    KEY_TICK_INTERVAL: int(row.get(KEY_TICK_INTERVAL, DEFAULT_TICK_INTERVAL_SECONDS)),
+                    KEY_CONFIDENCE: float(row.get(KEY_CONFIDENCE, DEFAULT_CONFIDENCE_THRESHOLD)),
+                    KEY_IS_RUNNING: True,
                 }
                 for row in rows
             ]
@@ -126,7 +145,7 @@ async def toggle_strategy(
     result = await db.execute(select(Strategy).where(Strategy.id == strategy_id))
     strategy = result.scalar_one_or_none()
     if not strategy:
-        raise HTTPException(404, "Strategy not found")
+        raise HTTPException(404, KEY_STRATEGY_NOT_FOUND)
     strategy.is_enabled = body.is_enabled
     await db.commit()
     return {"id": strategy_id, "is_enabled": body.is_enabled}
