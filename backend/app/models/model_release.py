@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import String, Float, Integer, Text, DateTime, JSON, Index
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, validates
 from app.database import Base
 from app.models.base import TimestampMixin
 
@@ -54,3 +54,60 @@ class ModelRelease(Base, TimestampMixin):
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Who registered this release (email or "system")
     created_by: Mapped[str] = mapped_column(String(128), nullable=False, default="system")
+
+    @validates("model_name")
+    def validate_model_name(self, key: str, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("model_name must be a non-empty string.")
+        if len(value) > 64:
+            raise ValueError("model_name exceeds maximum length of 64 characters.")
+        return value
+
+    @validates("version")
+    def validate_version(self, key: str, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("version must be a non-empty string.")
+        if len(value) > 32:
+            raise ValueError("version exceeds maximum length of 32 characters.")
+        return value
+
+    @validates("artifact_path")
+    def validate_artifact_path(self, key: str, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("artifact_path must be a non-empty string.")
+        if len(value) > 512:
+            raise ValueError("artifact_path exceeds maximum length of 512 characters.")
+        return value
+
+    @validates("framework")
+    def validate_framework(self, key: str, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("framework must be a non-empty string.")
+        if len(value) > 32:
+            raise ValueError("framework exceeds maximum length of 32 characters.")
+        return value
+
+    @validates("n_features", "seq_len")
+    def validate_positive_int(self, key: str, value: int | None) -> int | None:
+        if value is not None:
+            if not isinstance(value, int):
+                raise ValueError(f"{key} must be an integer if provided.")
+            if value <= 0:
+                raise ValueError(f"{key} must be a positive integer.")
+        return value
+
+    @validates("traffic_pct")
+    def validate_traffic_pct(self, key: str, value: float) -> float:
+        if not isinstance(value, (int, float)):
+            raise ValueError("traffic_pct must be a numeric type.")
+        if not (0.0 <= float(value) <= 100.0):
+            raise ValueError("traffic_pct must be between 0 and 100 inclusive.")
+        return float(value)
+
+    @validates("created_by")
+    def validate_created_by(self, key: str, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("created_by must be a non-empty string.")
+        if len(value) > 128:
+            raise ValueError("created_by exceeds maximum length of 128 characters.")
+        return value
