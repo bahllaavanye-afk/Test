@@ -1,11 +1,5 @@
 {
   "skills": [
-    "Analyze model drift metrics",
-    "Lint optimize code",
-    "Audit React components",
-    "Check data feeds",
-    "Refactor ambiguous code",
-    "Test retry mechanisms",
     "Validate user input",
     "Here are 2-3 concise bullet points of the most important, actionable knowledge:",
     "Test network stability",
@@ -199,8 +193,14 @@
     "Check SSL certs",
     "Monitor data drift",
     "Implement S4 layers",
-    "Validate config files"
+    "Validate config files",
+    "Verify API keys",
+    "Test DB connections",
+    "Validate trade sizes",
+    "Ping external feeds",
+    "Monitor API usage",
+    "Track latency metrics"
   ],
-  "last_updated": "2026-07-31T05:38:51.300155+00:00",
+  "last_updated": "2026-07-31T05:50:19.926132+00:00",
   "total": 200
 }
