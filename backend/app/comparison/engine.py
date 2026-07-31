@@ -3,10 +3,12 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date
 
 import pandas as pd
+from pandas.api.types import is_numeric_dtype, is_datetime64_any_dtype
 from scipy import stats
 
 from app.backtest.engine import run_backtest, BacktestMetrics
@@ -45,7 +47,7 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = 100_000,
     ) -> ComparisonResult:
-        # Input validation
+        # --- Input type validation ---
         if not isinstance(manual_signals, pd.Series):
             raise ValueError("manual_signals must be a pandas Series.")
         if not isinstance(ml_signals, pd.Series):
@@ -53,19 +55,12 @@ class StrategyComparisonEngine:
         if not isinstance(prices, pd.Series):
             raise ValueError("prices must be a pandas Series.")
 
-        if manual_signals.empty:
-            raise ValueError("manual_signals series cannot be empty.")
-        if ml_signals.empty:
-            raise ValueError("ml_signals series cannot be empty.")
-        if prices.empty:
-            raise ValueError("prices series cannot be empty.")
-
         if not isinstance(strategy_name, str) or not strategy_name.strip():
-            raise ValueError("strategy_name must be a non-empty string.")
+            raise ValueError("strategy_name must be a non‑empty string.")
         if not isinstance(symbol, str) or not symbol.strip():
-            raise ValueError("symbol must be a non-empty string.")
+            raise ValueError("symbol must be a non‑empty string.")
         if not isinstance(interval, str) or not interval.strip():
-            raise ValueError("interval must be a non-empty string.")
+            raise ValueError("interval must be a non‑empty string.")
 
         if not isinstance(start_date, date):
             raise ValueError("start_date must be a datetime.date instance.")
@@ -79,31 +74,69 @@ class StrategyComparisonEngine:
         if initial_equity <= 0:
             raise ValueError("initial_equity must be a positive number.")
 
-        # Ensure series are aligned on the same index (optional but helps consistency)
+        # --- Content validation ---
+        if manual_signals.empty:
+            raise ValueError("manual_signals series cannot be empty.")
+        if ml_signals.empty:
+            raise ValueError("ml_signals series cannot be empty.")
+        if prices.empty:
+            raise ValueError("prices series cannot be empty.")
+
+        if not is_numeric_dtype(manual_signals):
+            raise ValueError("manual_signals must contain numeric values.")
+        if not is_numeric_dtype(ml_signals):
+            raise ValueError("ml_signals must contain numeric values.")
+        if not is_numeric_dtype(prices):
+            raise ValueError("prices must contain numeric values.")
+
+        if not is_datetime64_any_dtype(manual_signals.index):
+            raise ValueError("manual_signals index must be datetime-like.")
+        if not is_datetime64_any_dtype(ml_signals.index):
+            raise ValueError("ml_signals index must be datetime-like.")
+        if not is_datetime64_any_dtype(prices.index):
+            raise ValueError("prices index must be datetime-like.")
+
+        if manual_signals.isnull().any():
+            raise ValueError("manual_signals contains NaN values.")
+        if ml_signals.isnull().any():
+            raise ValueError("ml_signals contains NaN values.")
+        if prices.isnull().any():
+            raise ValueError("prices contains NaN values.")
+        if (prices <= 0).any():
+            raise ValueError("prices must contain positive values only.")
+
+        # Align series on a common datetime index
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
-            raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
+            raise ValueError(
+                "manual_signals, ml_signals, and prices must share at least one common datetime index."
+            )
         manual_signals = manual_signals.loc[common_index]
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
 
+        # Run backtests
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 
+        # Fetch benchmark data
         benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
         benchmark_stats = get_benchmark_stats()
 
+        # Compute equity returns
         manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
         ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
         manual_ret = manual_eq.pct_change().dropna()
         ml_ret = ml_eq.pct_change().dropna()
 
+        # Statistical test (only if enough data points)
         min_len = min(len(manual_ret), len(ml_ret))
         if min_len > 10:
             t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
         else:
             t_stat, p_val = 0.0, 1.0
 
+        # Determine improvement and winner
         improvement = ml_metrics.sharpe - manual_metrics.sharpe
         winner = "ml" if ml_metrics.sharpe > manual_metrics.sharpe else "manual"
         if abs(improvement) < 0.1:
