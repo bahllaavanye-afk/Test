@@ -93,6 +93,7 @@ class InferenceService:
         if not self.models:
             return None
 
+        logger.info("Inference started", symbol=symbol, data_points=len(data))
         start_time = time.perf_counter()
         try:
             # Feature engineering
@@ -162,12 +163,15 @@ class InferenceService:
             }
 
             exec_time = time.perf_counter() - start_time
+            # Estimate P&L as a simple function of ensemble probability deviation from neutrality
+            estimated_pnl = (ensemble_prob - 0.5) * 2
+
             logger.info(
                 "Inference completed",
                 symbol=symbol,
                 signal_count=len(predictions),
                 execution_time=exec_time,
-                pnl=None,
+                pnl=estimated_pnl,
                 result=result,
             )
             return result
