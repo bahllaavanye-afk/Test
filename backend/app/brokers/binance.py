@@ -62,6 +62,7 @@ class BinanceBroker(AbstractBroker):
                     request.limit_price,
                 )
             else:
+                # Fallback to market order for unsupported types
                 order = await self.exchange.create_market_order(
                     request.symbol, request.side, request.quantity
                 )
@@ -83,7 +84,12 @@ class BinanceBroker(AbstractBroker):
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
@@ -159,3 +165,65 @@ class BinanceBroker(AbstractBroker):
             except Exception as e:
                 logger.error("Failed to fetch tickers from Binance", error=str(e))
                 raise BrokerError(f"Binance ticker fetch error: {e}")
+
+
+# ==================== Unit Tests ====================
+
+import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+
+class TestBinanceBrokerEdgeCases(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        # Mock the ccxt.binance class to avoid real network calls
+        self.mock_exchange = MagicMock()
+        self.mock_exchange.create_market_order = AsyncMock(
+            return_value={"id": "123", "status": "open", "filled": 0, "average": None}
+        )
+        self.mock_exchange.create_limit_order = AsyncMock(
+            return_value={"id": "124", "status": "open", "filled": 0, "average": None}
+        )
+        self.mock_exchange.fetch_ohlcv = AsyncMock(return_value=[[1609459200000, 1, 2, 0.5, 1.5, 1000]])
+        self.mock_exchange.iso8601 = MagicMock(return_value="2021-01-01T00:00:00Z")
+        self.mock_exchange.fetch_tickers = AsyncMock(return_value={"BTC/USDT": {"bid": 50000}})
+        # Patch the ccxt.binance constructor to return our mock
+        patcher = patch("ccxt.async_support.binance", return_value=self.mock_exchange)
+        self.addCleanup(patcher.stop)
+        self.mock_binance_ctor = patcher.start()
+        self.broker = BinanceBroker(api_key="key", secret="secret", testnet=True)
+
+    async def test_get_historical_invalid_interval_defaults_to_1d(self):
+        """When an unsupported interval is supplied, BinanceBroker should default to '1d'."""
+        result = await self.broker.get_historical("BTC/USDT", interval="99m")
+        # Verify that fetch_ohlcv was called with the default interval '1d'
+        self.mock_exchange.fetch_ohlcv.assert_awaited_once_with("BTC/USDT", "1d", limit=500)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["open"], 1)
+
+    async def test_get_all_tickers_caching_behavior(self):
+        """Second call within TTL should return cached data without invoking fetch_tickers again."""
+        first = await self.broker.get_all_tickers(cache_ttl=5)
+        second = await self.broker.get_all_tickers(cache_ttl=5)
+        # fetch_tickers should have been called only once
+        self.mock_exchange.fetch_tickers.assert_awaited_once()
+        self.assertIs(first, second)  # same dict object from cache
+
+    async def test_place_order_unknown_type_falls_back_to_market(self):
+        """If an unknown order_type is provided, place_order should fallback to a market order."""
+        request = OrderRequest(
+            symbol="BTC/USDT",
+            side="buy",
+            quantity=0.001,
+            order_type="unknown_type",
+            limit_price=None,
+        )
+        result = await self.broker.place_order(request)
+        self.mock_exchange.create_market_order.assert_awaited_once_with(
+            "BTC/USDT", "buy", 0.001
+        )
+        self.assertIsInstance(result, OrderResult)
+        self.assertEqual(result.broker_order_id, "123")
+
+
+if __name__ == "__main__":
+    unittest.main()

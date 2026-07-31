@@ -122,3 +122,59 @@ class CodeQualityLoop:
             return history[-1] if history else None
         except Exception:
             return None
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge cases
+# ----------------------------------------------------------------------
+if __name__ == "__main__":
+    import unittest
+    import tempfile
+    import shutil
+
+    class TestCodeQualityHelpers(unittest.TestCase):
+        def setUp(self):
+            # Create a temporary directory to act as a fake repo root
+            self.temp_dir = Path(tempfile.mkdtemp())
+            # Ensure required subdirectories exist
+            (self.temp_dir / "app" / "strategies" / "manual").mkdir(parents=True, exist_ok=True)
+            (self.temp_dir / "app" / "strategies" / "ml_enhanced").mkdir(parents=True, exist_ok=True)
+            (self.temp_dir / "tests" / "unit").mkdir(parents=True, exist_ok=True)
+            (self.temp_dir / "tests" / "integration").mkdir(parents=True, exist_ok=True)
+
+        def tearDown(self):
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+        def test_count_loc_no_python_files(self):
+            """Edge case: directory contains no .py files; all counts should be zero."""
+            result = _count_loc(self.temp_dir)
+            self.assertEqual(result["files"], 0)
+            self.assertEqual(result["total_lines"], 0)
+            self.assertEqual(result["code_lines"], 0)
+            self.assertEqual(result["comment_lines"], 0)
+            self.assertEqual(result["blank_lines"], 0)
+            # comment_ratio uses max(code_lines, 1) => denominator 1
+            self.assertEqual(result["comment_ratio"], 0.0)
+
+        def test_count_loc_comment_only_file(self):
+            """Edge case: file with only comments and blank lines; comment_ratio should handle zero code lines."""
+            file_path = self.temp_dir / "sample.py"
+            file_path.write_text("# Comment line 1\n\n# Comment line 2\n", encoding="utf-8")
+            result = _count_loc(self.temp_dir)
+            self.assertEqual(result["files"], 1)
+            self.assertEqual(result["total_lines"], 4)
+            self.assertEqual(result["code_lines"], 0)
+            self.assertEqual(result["comment_lines"], 2)
+            self.assertEqual(result["blank_lines"], 1)
+            # comment_ratio = comment_lines / 1 (since code_lines is 0)
+            self.assertEqual(result["comment_ratio"], round(2 / 1, 3))
+
+        def test_count_strategies_missing_directories(self):
+            """Edge case: strategy directories missing; counts should be zero without raising."""
+            # Remove one of the strategy directories to simulate missing path
+            shutil.rmtree(self.temp_dir / "app" / "strategies" / "ml_enhanced")
+            result = _count_strategies(self.temp_dir)
+            self.assertEqual(result["manual_strategies"], 0)
+            self.assertEqual(result["ml_strategies"], 0)
+
+    unittest.main(argv=["first-arg-is-ignored"], exit=False)

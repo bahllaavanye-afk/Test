@@ -10,6 +10,7 @@ Or import and call directly:
 """
 import asyncio
 import logging
+import unittest
 from pathlib import Path
 
 import numpy as np
@@ -192,11 +193,7 @@ async def train_rl_agent(
     return agent
 
 
-# ------------------------------------------------------------------
-# CLI entry point — runs a quick smoke-test with synthetic data
-# ------------------------------------------------------------------
-
-if __name__ == "__main__":
+def _run_smoke_test() -> None:
     logging.basicConfig(level=logging.INFO)
 
     rng = np.random.default_rng(42)
@@ -213,3 +210,49 @@ if __name__ == "__main__":
 
     trained = asyncio.run(train_rl_agent(demo_df, n_episodes=50, checkpoint_every=25))
     print(f"Trained agent: {trained}")
+
+
+class TestTrainRL(unittest.TestCase):
+    def test_rsi_constant_series(self):
+        series = pd.Series([100] * 10)
+        rsi = _rsi(series, period=14)
+        # After filling NaNs with 50 in _build_features, constant series should yield 50
+        self.assertTrue(rsi.fillna(50).eq(50).all())
+
+    def test_build_features_shape_and_no_nan(self):
+        df = pd.DataFrame(
+            {
+                "close": pd.Series([100, 101, 102]),
+                "volume": pd.Series([1000, 2000, 1500]),
+            }
+        )
+        feats = _build_features(df)
+        self.assertEqual(feats.shape, (3, 3))
+        self.assertFalse(np.isnan(feats).any())
+
+    def test_step_reward_last_index(self):
+        df = pd.DataFrame({"close": [100, 101, 102]})
+        reward = _step_reward(df, action=0, t=2)  # last index
+        self.assertEqual(reward, 0.0)
+
+    def test_train_rl_agent_short_data_raises(self):
+        df = pd.DataFrame(
+            {
+                "open": [1, 2],
+                "high": [1, 2],
+                "low": [1, 2],
+                "close": [1, 2],
+                "volume": [100, 200],
+            }
+        )
+        with self.assertRaises(ValueError):
+            asyncio.run(train_rl_agent(df, n_episodes=1))
+
+
+if __name__ == "__main__":
+    import sys
+
+    if "test" in sys.argv:
+        unittest.main(argv=[sys.argv[0]])
+    else:
+        _run_smoke_test()
