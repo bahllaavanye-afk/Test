@@ -1,22 +1,22 @@
 {
-  "generated_at": "2026-07-31T08:05:38.779806+00:00",
+  "generated_at": "2026-07-31T14:30:58.764777+00:00",
   "period_days": 30,
   "strategies": {
-    "vol_of_vol_timing": {
-      "trades": 4,
-      "wins": 3,
-      "win_rate": 0.75,
-      "avg_return_pct": 0.2392,
-      "total_return_pct": 0.9566,
-      "last_updated": "2026-07-31T08:05:38.779806+00:00"
+    "avellaneda_stoikov_mm": {
+      "trades": 9,
+      "wins": 8,
+      "win_rate": 0.8889,
+      "avg_return_pct": 5.7747,
+      "total_return_pct": 51.9724,
+      "last_updated": "2026-07-31T14:30:58.764777+00:00"
     },
     "vol_of_vol": {
-      "trades": 9,
-      "wins": 1,
-      "win_rate": 0.1111,
-      "avg_return_pct": -0.3478,
-      "total_return_pct": -3.1299,
-      "last_updated": "2026-07-31T08:05:38.779806+00:00"
+      "trades": 10,
+      "wins": 2,
+      "win_rate": 0.2,
+      "avg_return_pct": -0.2286,
+      "total_return_pct": -2.2857,
+      "last_updated": "2026-07-31T14:30:58.764777+00:00"
     },
     "avellaneda": {
       "trades": 33,
@@ -24,20 +24,21 @@
       "win_rate": 0.5152,
       "avg_return_pct": -0.8894,
       "total_return_pct": -29.3492,
-      "last_updated": "2026-07-31T08:05:38.779806+00:00"
+      "last_updated": "2026-07-31T14:30:58.764777+00:00"
     },
-    "avellaneda_stoikov_mm": {
-      "trades": 9,
-      "wins": 8,
-      "win_rate": 0.8889,
-      "avg_return_pct": 5.7747,
-      "total_return_pct": 51.9724,
-      "last_updated": "2026-07-31T08:05:38.779806+00:00"
+    "vol_of_vol_timing": {
+      "trades": 4,
+      "wins": 3,
+      "win_rate": 0.75,
+      "avg_return_pct": 0.2392,
+      "total_return_pct": 0.9566,
+      "last_updated": "2026-07-31T14:30:58.764777+00:00"
     }
   },
   "tracked_order_ids": [
     "13f3e24e-b0c3-4b92-a206-29705729cd0f",
     "15f283ff-d0ef-470e-b230-aaff6651ffb6",
+    "16ccb54a-38df-4976-90e7-4bf96968ac0a",
     "328e9aa8-609e-4496-ae2a-0ef255b66dfa",
     "4464a1d7-1fea-41e1-b0e2-295e2a5a1b06",
     "470bf544-7914-4d8b-91df-9bc4d5137c2b",
