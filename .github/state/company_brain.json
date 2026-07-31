@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785507910.5335088,
+    "last_updated": 1785513201.249607,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -62,25 +62,25 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-07-30T15:44:56.964547+00:00",
+      "generated_at": "2026-07-31T15:52:55.412583+00:00",
       "signals": {
         "vix": {
-          "value": 19.14,
+          "value": 17.44,
           "trend": "flat"
         },
         "spy": {
-          "price": 736.67,
-          "sma50": 743.82,
-          "sma200": 696.94,
+          "price": 742.7,
+          "sma50": 744.14,
+          "sma200": 697.39,
           "trend": "above_200sma"
         },
         "yield_curve": {
-          "ratio": 1.0085,
+          "ratio": 1.002,
           "median": 1.0517,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 1.707,
+          "hyg_lqd_momentum_20d": 1.94,
           "signal": "tightening"
         },
         "breadth": {
@@ -89,8 +89,8 @@
           "breadth_pct": 54.5
         },
         "btc": {
-          "price": 64661,
-          "24h_pct": 1.13
+          "price": 62608,
+          "24h_pct": -3.19
         }
       },
       "score": 2,
@@ -100,7 +100,7 @@
         "min_confidence": 0.6,
         "size_multiplier": 1.0
       },
-      "summary": "[LLM unavailable \u2014 all providers failed]"
+      "summary": "**Morning Brief:** Equities maintain bullish momentum with SPY above the 200-SMA and credit spreads tightening, though low VIX at 17.44 and flat breadth (6/11 sectors above 20-SMA) suggest a controlled uptrend rather than exuberance. **Tactical implication:** Favor short-volatility premium strategies (e.g., put credit spreads) to capitalize on the benign VIX trend and bullish regime while avoiding directional gamma risk."
     },
     "strategy_gates": {
       "directional": true,
@@ -155,21 +155,6 @@
     "last_brain_update": 1785500786.2540894
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Healthcare",
-        "Energy",
-        "Financials"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Healthcare, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784524646.2892735
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -2213,6 +2198,18 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1785492973.907639
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 2,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "**Morning Brief:** Equities maintain bullish momentum with SPY above the 200-SMA and credit spreads tightening, though low VIX at 17.44 and flat breadth (6/11 sectors above 20-SMA) suggest a controlled uptrend rather than exuberance. **Tactical implication:** Favor short-volatility premium strategies (e.g., put credit spreads) to capitalize on the benign VIX trend and bullish regime while avoiding directional gamma risk.",
+      "ts": 1785513201.255331
     }
   ],
   "github_insights": [
