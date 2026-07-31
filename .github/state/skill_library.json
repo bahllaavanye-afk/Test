@@ -1,8 +1,5 @@
 {
   "skills": [
-    "**Algo Agent Status Update**: The `algo_agent` agent needs to provide a one-sentence status update, referencing real file paths, and be specific about its current task.",
-    "Check DB schema",
-    "Refactor error handling",
     "Validate trade IDs",
     "Verify CPU usage",
     "Test strategy variants",
@@ -199,8 +196,11 @@
     "Implement regime attention",
     "Retrain models periodically",
     "Track disk usage",
-    "Log trade sequences"
+    "Log trade sequences",
+    "Limit open files",
+    "Ping external services",
+    "Detect deadlock conditions"
   ],
-  "last_updated": "2026-07-31T20:16:59.545174+00:00",
+  "last_updated": "2026-07-31T21:36:20.389380+00:00",
   "total": 200
 }
