@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785522170.2885985,
+    "last_updated": 1785525304.2106466,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,15 +109,15 @@
     },
     "opinion_score": 2,
     "macro_score": 3,
-    "vix": 16.58,
-    "market_scan_ts": 1785522170.257367,
+    "vix": 16.47,
+    "market_scan_ts": 1785525304.1802976,
     "sector_leaders": [
       "Energy",
       "Financials",
       "Cons. Staples"
     ],
     "sector_laggards": [
-      "Comm.",
+      "Cons. Disc.",
       "Industrials",
       "Tech"
     ],
@@ -137,11 +137,11 @@
       "QQQ",
       "SLB",
       "NVDA",
-      "KO",
       "SPY",
+      "KO",
       "CVX",
-      "CRWD",
-      "CL"
+      "CL",
+      "CRWD"
     ],
     "top_momentum": [
       "MSFT",
@@ -155,13 +155,6 @@
     "last_brain_update": 1785521781.328149
   },
   "episodic": [
-    {
-      "lesson": "Recurring automerge revocation for model changes suggests a gap in automated regression testing. Add integration tests that simulate past breakage scenarios (#298) to catch regressions before merge.",
-      "category": "risk",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1784560836.0831735
-    },
     {
       "source": "market_opinion",
       "regime": "bull",
@@ -2226,6 +2219,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
       "ts": 1785522170.2945487
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Cons. Staples"
+      ],
+      "gap_count": 8,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
+      "ts": 1785525304.2164478
     }
   ],
   "github_insights": [
