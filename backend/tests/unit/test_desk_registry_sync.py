@@ -30,6 +30,18 @@ def _load_desks():
     return m
 
 
+def _strategy_has_required_attrs(strategy):
+    """Return (bool, missing_attribute_name) indicating required callables."""
+    required = ["should_enter", "should_exit"]
+    for attr in required:
+        if not hasattr(strategy, attr) or not callable(getattr(strategy, attr)):
+            return False, attr
+    # Optional confirmation filter – if present it must be callable
+    if hasattr(strategy, "confirm_entry") and not callable(getattr(strategy, "confirm_entry")):
+        return False, "confirm_entry"
+    return True, None
+
+
 def test_every_desk_strategy_exists_in_registry():
     from app.strategies import STRATEGY_REGISTRY
 
@@ -54,3 +66,15 @@ def test_fx_desk_strategies_exist_in_registry():
     spec.loader.exec_module(m)  # type: ignore[union-attr]
     missing = [s for s in m.STRATEGIES if STRATEGY_REGISTRY.get(s) is None]
     assert not missing, f"FX desk references unknown strategies: {missing}"
+
+
+def test_strategies_have_entry_exit_methods():
+    """Ensure each registered strategy defines required entry/exit callables."""
+    from app.strategies import STRATEGY_REGISTRY
+
+    missing = {}
+    for name, strat in STRATEGY_REGISTRY.items():
+        ok, attr = _strategy_has_required_attrs(strat)
+        if not ok:
+            missing[name] = attr
+    assert not missing, f"Strategies missing required callable '{attr}': {missing}"
