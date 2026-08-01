@@ -4,20 +4,37 @@ Runs every hour. Tracks LOC, test coverage, lint warnings.
 Does NOT modify source — just reports.
 """
 from __future__ import annotations
+
 import asyncio
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 from app.utils.logging import logger
 
-QUALITY_FILE = Path(__file__).parents[3] / "experiments" / "results" / "code_quality.json"
+# ----------------------------------------------------------------------
+# Constants
+# ----------------------------------------------------------------------
+DEFAULT_INTERVAL_SECONDS: int = 3600
+HISTORY_MAX_LENGTH: int = 200
+
+SKIP_SUBSTRINGS: tuple[str, ...] = ("__pycache__", ".pytest_cache", "test.db")
+
+QUALITY_FILENAME: str = "code_quality.json"
+QUALITY_FILE: Path = Path(__file__).parents[3] / "experiments" / "results" / QUALITY_FILENAME
 QUALITY_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-BACKEND_ROOT = Path(__file__).parents[2]
+BACKEND_ROOT: Path = Path(__file__).parents[2]
 
+MANUAL_STRATEGY_GLOB: str = "app/strategies/manual/*.py"
+ML_STRATEGY_GLOB: str = "app/strategies/ml_enhanced/*.py"
 
+UNIT_TEST_GLOB: str = "tests/unit/test_*.py"
+INTEGRATION_TEST_GLOB: str = "tests/integration/test_*.py"
+
+# ----------------------------------------------------------------------
+# Helper functions
+# ----------------------------------------------------------------------
 def _count_loc(root: Path) -> dict:
     total_files = 0
     total_lines = 0
@@ -26,7 +43,7 @@ def _count_loc(root: Path) -> dict:
     comment_lines = 0
 
     for py_file in root.rglob("*.py"):
-        if any(skip in str(py_file) for skip in ("__pycache__", ".pytest_cache", "test.db")):
+        if any(skip in str(py_file) for skip in SKIP_SUBSTRINGS):
             continue
         total_files += 1
         try:
@@ -54,8 +71,8 @@ def _count_loc(root: Path) -> dict:
 
 
 def _count_strategies(root: Path) -> dict:
-    manual = list((root / "app" / "strategies" / "manual").glob("*.py"))
-    ml = list((root / "app" / "strategies" / "ml_enhanced").glob("*.py"))
+    manual = list((root / MANUAL_STRATEGY_GLOB).parent.glob(MANUAL_STRATEGY_GLOB.split("/")[-1]))
+    ml = list((root / ML_STRATEGY_GLOB).parent.glob(ML_STRATEGY_GLOB.split("/")[-1]))
     return {
         "manual_strategies": len([f for f in manual if not f.name.startswith("__")]),
         "ml_strategies": len([f for f in ml if not f.name.startswith("__")]),
@@ -63,16 +80,19 @@ def _count_strategies(root: Path) -> dict:
 
 
 def _count_tests(root: Path) -> dict:
-    unit = list((root / "tests" / "unit").glob("test_*.py"))
-    integration = list((root / "tests" / "integration").glob("test_*.py"))
+    unit = list((root / UNIT_TEST_GLOB).parent.glob(UNIT_TEST_GLOB.split("/")[-1]))
+    integration = list((root / INTEGRATION_TEST_GLOB).parent.glob(INTEGRATION_TEST_GLOB.split("/")[-1]))
     return {
         "unit_test_files": len(unit),
         "integration_test_files": len(integration),
     }
 
 
+# ----------------------------------------------------------------------
+# Core loop implementation
+# ----------------------------------------------------------------------
 class CodeQualityLoop:
-    def __init__(self, interval_seconds: int = 3600):
+    def __init__(self, interval_seconds: int = DEFAULT_INTERVAL_SECONDS):
         self.interval_seconds = interval_seconds
         self._running = False
 
@@ -92,7 +112,7 @@ class CodeQualityLoop:
         try:
             history = json.loads(QUALITY_FILE.read_text()) if QUALITY_FILE.exists() else []
             history.append(snapshot)
-            history = history[-200:]
+            history = history[-HISTORY_MAX_LENGTH:]
             QUALITY_FILE.write_text(json.dumps(history, indent=2))
         except Exception as e:
             logger.warning("code_quality: failed to persist snapshot", error=str(e))
