@@ -11,12 +11,26 @@ NOT in the CI dependency list, so a test gated on `ALPACA_AVAILABLE` would skip
 in CI and never actually run — and the logic under test here is ours, not the
 SDK's.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from app.brokers import alpaca as mod
 from app.brokers.base import OrderRequest
+
+# -------------------------------------------------------------------------
+# Constants
+# -------------------------------------------------------------------------
+
+DEFAULT_ORDER_ID = "ord-1"
+DEFAULT_ORDER_STATUS = "accepted"
+CALL_TYPE_BRACKET = "bracket"
+CALL_TYPE_PLAIN = "plain"
+
+BRACKET_DEGRADED_KEY = "bracket_degraded"
+UNAPPLIED_STOP_LOSS_KEY = "unapplied_stop_loss"
+UNAPPLIED_TAKE_PROFIT_KEY = "unapplied_take_profit"
 
 
 class _Req:
@@ -28,8 +42,8 @@ class _Req:
 
 
 class _Order:
-    id = "ord-1"
-    status = "accepted"
+    id = DEFAULT_ORDER_ID
+    status = DEFAULT_ORDER_STATUS
     filled_qty = 0
     filled_avg_price = None
 
@@ -58,7 +72,7 @@ def broker(monkeypatch):
         async def fake_call(fn, *a, **kw):
             data = kw.get("order_data")
             is_bracket = getattr(data, "order_class", None) is not None
-            b._calls.append("bracket" if is_bracket else "plain")
+            b._calls.append(CALL_TYPE_BRACKET if is_bracket else CALL_TYPE_PLAIN)
             if is_bracket and bracket_raises:
                 raise RuntimeError("bracket rejected by Alpaca")
             return _Order()
@@ -76,13 +90,13 @@ async def test_failed_bracket_is_flagged_as_unprotected(broker, monkeypatch):
         stop_loss=90.0, take_profit=110.0,
     ))
 
-    assert broker._calls == ["bracket", "plain"], "the entry must still fill"
+    assert broker._calls == [CALL_TYPE_BRACKET, CALL_TYPE_PLAIN], "the entry must still fill"
     payload = res.raw_payload
-    assert payload.get("bracket_degraded") is True, (
+    assert payload.get(BRACKET_DEGRADED_KEY) is True, (
         "a dropped stop-loss must be visible to callers, not look like a clean fill"
     )
-    assert payload.get("unapplied_stop_loss") == 90.0
-    assert payload.get("unapplied_take_profit") == 110.0
+    assert payload.get(UNAPPLIED_STOP_LOSS_KEY) == 90.0
+    assert payload.get(UNAPPLIED_TAKE_PROFIT_KEY) == 110.0
 
 
 @pytest.mark.asyncio
@@ -92,8 +106,8 @@ async def test_successful_bracket_is_not_flagged(broker, monkeypatch):
         symbol="AAPL", side="buy", quantity=1, order_type="market",
         stop_loss=90.0, take_profit=110.0,
     ))
-    assert broker._calls == ["bracket"]
-    assert "bracket_degraded" not in res.raw_payload
+    assert broker._calls == [CALL_TYPE_BRACKET]
+    assert BRACKET_DEGRADED_KEY not in res.raw_payload
 
 
 @pytest.mark.asyncio
@@ -103,5 +117,5 @@ async def test_plain_order_without_bracket_is_not_flagged(broker, monkeypatch):
     res = await broker.place_order(OrderRequest(
         symbol="AAPL", side="buy", quantity=1, order_type="market",
     ))
-    assert broker._calls == ["plain"]
-    assert "bracket_degraded" not in res.raw_payload
+    assert broker._calls == [CALL_TYPE_PLAIN]
+    assert BRACKET_DEGRADED_KEY not in res.raw_payload
