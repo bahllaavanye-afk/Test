@@ -14,10 +14,9 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List
 
 from app.tasks.free_llm_router import call_consensus, available_providers
 from app.tasks.agent_memory import AgentMemory
@@ -67,10 +66,23 @@ class {class_name}(AbstractStrategy):
 
 class AIStrategyGenerator:
     def __init__(self, redis_client: Any = None):
+        """
+        Initialise the generator.
+
+        Args:
+            redis_client: Optional Redis client used by AgentMemory.
+                If provided, it must implement a ``write`` coroutine.
+        Raises:
+            ValueError: If ``redis_client`` is not ``None`` and does not provide
+                the required interface.
+        """
+        if redis_client is not None and not hasattr(redis_client, "write"):
+            raise ValueError("redis_client must have a 'write' method or be None")
         self._memory = AgentMemory(redis_client) if redis_client else None
         STAGING_DIR.mkdir(parents=True, exist_ok=True)
 
     async def run(self) -> None:
+        """Execute a generation cycle."""
         logger.info("AIStrategyGenerator: starting 6h generation cycle")
         providers = available_providers()
         if not providers:
@@ -85,16 +97,20 @@ class AIStrategyGenerator:
                     written.append(p)
 
             if self._memory and written:
-                await self._memory.write("strategy_proposals", {
-                    "count": len(written),
-                    "proposals": [w.get("name", "?") for w in written],
-                    "status": "staging",
-                })
+                await self._memory.write(
+                    "strategy_proposals",
+                    {
+                        "count": len(written),
+                        "proposals": [w.get("name", "?") for w in written],
+                        "status": "staging",
+                    },
+                )
             logger.info("AIStrategyGenerator: wrote %d staging strategies", len(written))
         except Exception as e:
             logger.exception("AIStrategyGenerator error: %s", e)
 
-    async def _generate_proposals(self) -> list[dict]:
+    async def _generate_proposals(self) -> List[Dict]:
+        """Request the LLM to produce up to two strategy proposals."""
         system = """You are a senior quantitative analyst. Propose trading strategy parameters.
 Output ONLY a JSON array of exactly 2 strategies, no other text."""
 
@@ -123,7 +139,7 @@ For each strategy, provide:
         if not responses:
             return []
 
-        all_proposals: list[dict] = []
+        all_proposals: List[Dict] = []
         seen = set()
         for resp in responses:
             try:
@@ -142,17 +158,66 @@ For each strategy, provide:
 
         return all_proposals[:2]
 
-    def _write_staging_file(self, proposal: dict) -> Path | None:
-        name = proposal.get("name", "")
-        if not name or not re.match(r'^[a-z][a-z0-9_]*$', name):
-            return None
+    def _write_staging_file(self, proposal: Dict) -> Path | None:
+        """
+        Validate a proposal and write it to the staging directory.
+
+        Args:
+            proposal: Dictionary containing strategy specifications.
+
+        Returns:
+            Path to the written file, or ``None`` if the file could not be written.
+
+        Raises:
+            ValueError: If required fields are missing or have invalid types/values.
+        """
+        if not isinstance(proposal, dict):
+            raise ValueError("Proposal must be a dictionary")
+
+        # Required string fields
+        required_str_fields = ["name", "class_name", "hypothesis", "market_type", "risk_bucket"]
+        for field in required_str_fields:
+            value = proposal.get(field)
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"Proposal field '{field}' must be a non‑empty string")
+
+        # Validate name pattern
+        name = proposal["name"]
+        if not re.match(r"^[a-z][a-z0-9_]*$", name):
+            raise ValueError(
+                f"Proposal name '{name}' is invalid; must match '^[a-z][a-z0-9_]*$'"
+            )
+
+        # Validate enumerated fields
+        if proposal["market_type"] not in {"equity", "crypto"}:
+            raise ValueError(
+                f"market_type must be 'equity' or 'crypto', got '{proposal['market_type']}'"
+            )
+        if proposal["risk_bucket"] not in {"directional", "arbitrage"}:
+            raise ValueError(
+                f"risk_bucket must be 'directional' or 'arbitrage', got '{proposal['risk_bucket']}'"
+            )
+
+        # Validate numeric fields
+        tick_interval = proposal.get("tick_interval")
+        if not isinstance(tick_interval, int) or tick_interval <= 0:
+            raise ValueError("tick_interval must be a positive integer")
+
+        expected_sharpe = proposal.get("expected_sharpe")
+        if not isinstance(expected_sharpe, (int, float)):
+            raise ValueError("expected_sharpe must be a number")
+
+        # Validate condition lists
+        entry_conditions = proposal.get("entry_conditions")
+        exit_conditions = proposal.get("exit_conditions")
+        if not isinstance(entry_conditions, list) or not all(isinstance(c, str) for c in entry_conditions):
+            raise ValueError("entry_conditions must be a list of strings")
+        if not isinstance(exit_conditions, list) or not all(isinstance(c, str) for c in exit_conditions):
+            raise ValueError("exit_conditions must be a list of strings")
 
         path = STAGING_DIR / f"{name}.py"
         if path.exists():
             return None
-
-        entry_conditions = proposal.get("entry_conditions", ["rsi < 30"])
-        exit_conditions = proposal.get("exit_conditions", ["rsi > 70"])
 
         # Build simple backtest body from entry/exit conditions
         backtest_body = "        close = df['close']\n"
