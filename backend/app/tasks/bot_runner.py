@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import random
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
@@ -21,18 +22,20 @@ def _first_run_time() -> datetime:
     """
     return datetime.now(timezone.utc) + timedelta(seconds=random.uniform(30, 150))
 
+
 if TYPE_CHECKING:
     from app.models.bot import Bot
 
+
 # Map interval strings to APScheduler kwargs
 _INTERVAL_MAP: dict[str, dict] = {
-    "1m":  {"minutes": 1},
-    "5m":  {"minutes": 5},
+    "1m": {"minutes": 1},
+    "5m": {"minutes": 5},
     "15m": {"minutes": 15},
     "30m": {"minutes": 30},
-    "1h":  {"hours": 1},
-    "4h":  {"hours": 4},
-    "1d":  {"hours": 24},
+    "1h": {"hours": 1},
+    "4h": {"hours": 4},
+    "1d": {"hours": 24},
 }
 
 
@@ -78,7 +81,9 @@ class BotRunner:
             pending = [b for b in bots if not (only_missing and self._has_job(b.id))]
             logger.info(
                 "BotRunner: scheduling bots",
-                enabled=len(bots), scheduling=len(pending), only_missing=only_missing,
+                enabled=len(bots),
+                scheduling=len(pending),
+                only_missing=only_missing,
             )
             for bot in pending:
                 await self.reschedule(bot)
@@ -89,10 +94,10 @@ class BotRunner:
             unscheduled = [b.id for b in bots if not self._has_job(b.id)]
             if unscheduled:
                 logger.error(
-                    "BotRunner: %d enabled bot(s) have NO scheduler job — they "
-                    "cannot fire and no orders will be placed",
+                    "BotRunner: %d enabled bot(s) have NO scheduler job — they cannot fire and no orders will be placed",
                     len(unscheduled),
-                    enabled=len(bots), unscheduled=len(unscheduled),
+                    enabled=len(bots),
+                    unscheduled=len(unscheduled),
                 )
             return len(pending)
         except Exception as exc:
@@ -101,6 +106,7 @@ class BotRunner:
 
     async def _run_bot(self, bot_id: str) -> None:
         """Called by scheduler — fetch bot from DB, evaluate, update."""
+        start_time = time.monotonic()
         try:
             from app.database import AsyncSessionLocal
             from app.models.bot import Bot
@@ -113,6 +119,17 @@ class BotRunner:
                 if bot is None or not bot.is_enabled:
                     return
                 bot_result = await engine.evaluate(bot, db)
+
+                # Extract metrics safely
+                signal_count = (
+                    len(bot_result.signal)
+                    if hasattr(bot_result, "signal") and isinstance(bot_result.signal, (list, tuple, set))
+                    else None
+                )
+                pnl = getattr(bot_result, "pnl", None)
+
+                elapsed_ms = (time.monotonic() - start_time) * 1000
+
                 logger.info(
                     "Bot evaluated",
                     bot_id=bot_id,
@@ -120,6 +137,9 @@ class BotRunner:
                     fired=bot_result.fired,
                     signal=bot_result.signal,
                     reason=bot_result.reason,
+                    signal_count=signal_count,
+                    execution_time_ms=round(elapsed_ms, 2),
+                    pnl=pnl,
                 )
         except Exception as exc:
             logger.error("Bot run failed", bot_id=bot_id, error=str(exc))
