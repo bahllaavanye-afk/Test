@@ -3,6 +3,7 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -45,7 +46,73 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = 100_000,
     ) -> ComparisonResult:
-        # Input validation
+        """Run a full comparison between manual and ML‑enhanced strategies."""
+        self._validate_inputs(
+            manual_signals,
+            ml_signals,
+            prices,
+            strategy_name,
+            symbol,
+            interval,
+            start_date,
+            end_date,
+            initial_equity,
+        )
+
+        manual_signals, ml_signals, prices = self._align_series(
+            manual_signals, ml_signals, prices
+        )
+
+        manual_metrics, ml_metrics = self._run_backtests(
+            manual_signals, ml_signals, prices, initial_equity
+        )
+
+        benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
+        benchmark_stats = get_benchmark_stats()
+
+        t_stat, p_val = self._compute_t_test(manual_metrics, ml_metrics)
+
+        improvement = ml_metrics.sharpe - manual_metrics.sharpe
+        winner = self._determine_winner(ml_metrics.sharpe, manual_metrics.sharpe, improvement)
+
+        logger.info(
+            "Comparison complete",
+            strategy=strategy_name,
+            manual_sharpe=manual_metrics.sharpe,
+            ml_sharpe=ml_metrics.sharpe,
+            p_value=round(p_val, 4),
+        )
+
+        return ComparisonResult(
+            strategy_name=strategy_name,
+            symbol=symbol,
+            interval=interval,
+            start_date=start_date,
+            end_date=end_date,
+            manual=manual_metrics,
+            ml_enhanced=ml_metrics,
+            benchmark_curves=benchmark_curves,
+            benchmark_stats=benchmark_stats,
+            ml_improvement_sharpe=round(improvement, 4),
+            t_statistic=round(float(t_stat), 4),
+            p_value=round(float(p_val), 6),
+            is_significant=p_val < 0.05,
+            winner=winner,
+        )
+
+    @staticmethod
+    def _validate_inputs(
+        manual_signals: pd.Series,
+        ml_signals: pd.Series,
+        prices: pd.Series,
+        strategy_name: str,
+        symbol: str,
+        interval: str,
+        start_date: date,
+        end_date: date,
+        initial_equity: float,
+    ) -> None:
+        """Validate all inputs before processing."""
         if not isinstance(manual_signals, pd.Series):
             raise ValueError("manual_signals must be a pandas Series.")
         if not isinstance(ml_signals, pd.Series):
@@ -79,22 +146,43 @@ class StrategyComparisonEngine:
         if initial_equity <= 0:
             raise ValueError("initial_equity must be a positive number.")
 
-        # Ensure series are aligned on the same index (optional but helps consistency)
+    @staticmethod
+    def _align_series(
+        manual_signals: pd.Series,
+        ml_signals: pd.Series,
+        prices: pd.Series,
+    ) -> tuple[pd.Series, pd.Series, pd.Series]:
+        """Align the three series on their common index."""
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
             raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
-        manual_signals = manual_signals.loc[common_index]
-        ml_signals = ml_signals.loc[common_index]
-        prices = prices.loc[common_index]
+        return (
+            manual_signals.loc[common_index],
+            ml_signals.loc[common_index],
+            prices.loc[common_index],
+        )
 
+    @staticmethod
+    def _run_backtests(
+        manual_signals: pd.Series,
+        ml_signals: pd.Series,
+        prices: pd.Series,
+        initial_equity: float,
+    ) -> tuple[BacktestMetrics, BacktestMetrics]:
+        """Execute backtests for both strategies."""
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
+        return manual_metrics, ml_metrics
 
-        benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
-        benchmark_stats = get_benchmark_stats()
-
+    @staticmethod
+    def _compute_t_test(
+        manual_metrics: BacktestMetrics,
+        ml_metrics: BacktestMetrics,
+    ) -> tuple[float, float]:
+        """Compute a two‑sample t‑test on the equity returns."""
         manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
         ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
+
         manual_ret = manual_eq.pct_change().dropna()
         ml_ret = ml_eq.pct_change().dropna()
 
@@ -103,33 +191,16 @@ class StrategyComparisonEngine:
             t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
         else:
             t_stat, p_val = 0.0, 1.0
+        return t_stat, p_val
 
-        improvement = ml_metrics.sharpe - manual_metrics.sharpe
-        winner = "ml" if ml_metrics.sharpe > manual_metrics.sharpe else "manual"
+    @staticmethod
+    def _determine_winner(
+        ml_sharpe: float,
+        manual_sharpe: float,
+        improvement: float,
+    ) -> str:
+        """Decide which strategy is the winner based on Sharpe improvement."""
+        winner = "ml" if ml_sharpe > manual_sharpe else "manual"
         if abs(improvement) < 0.1:
             winner = "neither"
-
-        logger.info(
-            "Comparison complete",
-            strategy=strategy_name,
-            manual_sharpe=manual_metrics.sharpe,
-            ml_sharpe=ml_metrics.sharpe,
-            p_value=round(p_val, 4),
-        )
-
-        return ComparisonResult(
-            strategy_name=strategy_name,
-            symbol=symbol,
-            interval=interval,
-            start_date=start_date,
-            end_date=end_date,
-            manual=manual_metrics,
-            ml_enhanced=ml_metrics,
-            benchmark_curves=benchmark_curves,
-            benchmark_stats=benchmark_stats,
-            ml_improvement_sharpe=round(improvement, 4),
-            t_statistic=round(float(t_stat), 4),
-            p_value=round(float(p_val), 6),
-            is_significant=p_val < 0.05,
-            winner=winner,
-        )
+        return winner

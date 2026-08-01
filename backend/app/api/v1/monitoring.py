@@ -40,6 +40,16 @@ def _load_health_report() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=HEALTH_REPORT_CORRUPTED_DETAIL) from exc
 
 
+def _read_file_text(path: Path) -> str:
+    """Read the entire contents of *path* as text, returning an empty string if the file is empty."""
+    return path.read_text().strip()
+
+
+def _parse_fix_log_lines(lines: List[str]) -> List[Dict[str, Any]]:
+    """Parse newline‑delimited JSON *lines* into a list of dictionaries."""
+    return [json.loads(line) for line in lines]
+
+
 def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
     """Read the fix log file and return the most recent *limit* entries.
 
@@ -49,12 +59,12 @@ def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
     if not FIX_LOG_PATH.exists():
         return []
     try:
-        raw_text = FIX_LOG_PATH.read_text().strip()
+        raw_text = _read_file_text(FIX_LOG_PATH)
         if not raw_text:
             return []
-        lines = raw_text.splitlines()
-        recent_lines = lines[-limit:]
-        return [json.loads(line) for line in recent_lines]
+        all_lines = raw_text.splitlines()
+        recent_lines = all_lines[-limit:]
+        return _parse_fix_log_lines(recent_lines)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=FIX_LOG_READ_ERROR_DETAIL.format(exc)) from exc
 
