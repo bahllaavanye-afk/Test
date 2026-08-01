@@ -1,9 +1,18 @@
 """Market regime and cross-strategy correlation endpoints."""
+from collections import Counter
 from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.ml.regime.detector import regime_monitor
 from app.risk.correlation_monitor import correlation_monitor
+
+# Mapping from detector regime enums to frontend-friendly labels
+_LABEL_MAP = {
+    "trending": "bull",
+    "mean_reverting": "sideways",
+    "high_vol": "bear",
+    "unknown": "unknown",
+}
 
 router = APIRouter(prefix="/regime", tags=["regime"])
 
@@ -17,24 +26,15 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     """
     states = regime_monitor.all_states()
     if not states:
-        return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
+        return {"regime": "unknown", "confidence": 0.0, "updated_at": None, "symbol_count": 0}
 
-    # Map detector regimes → frontend-friendly labels
-    _label_map = {
-        "trending": "bull",
-        "mean_reverting": "sideways",
-        "high_vol": "bear",
-        "unknown": "unknown",
-    }
-
-    from collections import Counter
     label_counts: Counter = Counter()
     confidences: list[float] = []
     latest_updated: str | None = None
 
     for sym_state in states.values():
         raw = sym_state.get("regime", "unknown")
-        label = _label_map.get(raw, "unknown")
+        label = _LABEL_MAP.get(raw, "unknown")
         label_counts[label] += 1
         confidences.append(sym_state.get("confidence", 0.0))
         updated = sym_state.get("updated_at")
