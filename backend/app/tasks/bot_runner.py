@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import random
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
@@ -21,18 +20,20 @@ def _first_run_time() -> datetime:
     """
     return datetime.now(timezone.utc) + timedelta(seconds=random.uniform(30, 150))
 
+
 if TYPE_CHECKING:
     from app.models.bot import Bot
 
+
 # Map interval strings to APScheduler kwargs
 _INTERVAL_MAP: dict[str, dict] = {
-    "1m":  {"minutes": 1},
-    "5m":  {"minutes": 5},
+    "1m": {"minutes": 1},
+    "5m": {"minutes": 5},
     "15m": {"minutes": 15},
     "30m": {"minutes": 30},
-    "1h":  {"hours": 1},
-    "4h":  {"hours": 4},
-    "1d":  {"hours": 24},
+    "1h": {"hours": 1},
+    "4h": {"hours": 4},
+    "1d": {"hours": 24},
 }
 
 
@@ -78,21 +79,20 @@ class BotRunner:
             pending = [b for b in bots if not (only_missing and self._has_job(b.id))]
             logger.info(
                 "BotRunner: scheduling bots",
-                enabled=len(bots), scheduling=len(pending), only_missing=only_missing,
+                enabled=len(bots),
+                scheduling=len(pending),
+                only_missing=only_missing,
             )
             for bot in pending:
                 await self.reschedule(bot)
 
-            # Enabled bots that ended up with no job are the whole failure mode:
-            # the fleet looks healthy in the API (is_enabled=True) while nothing
-            # can ever fire. Never let that be quiet.
             unscheduled = [b.id for b in bots if not self._has_job(b.id)]
             if unscheduled:
                 logger.error(
-                    "BotRunner: %d enabled bot(s) have NO scheduler job — they "
-                    "cannot fire and no orders will be placed",
+                    "BotRunner: %d enabled bot(s) have NO scheduler job — they cannot fire and no orders will be placed",
                     len(unscheduled),
-                    enabled=len(bots), unscheduled=len(unscheduled),
+                    enabled=len(bots),
+                    unscheduled=len(unscheduled),
                 )
             return len(pending)
         except Exception as exc:
@@ -148,7 +148,6 @@ class BotRunner:
                 logger.debug("Bot scheduled", bot_id=bot.id, interval=interval_str)
 
             elif trigger_type in ("price_cross", "indicator"):
-                # For non-schedule triggers, poll every 5 minutes and let the engine decide
                 self._scheduler.add_job(
                     self._run_bot,
                     "interval",
