@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Based on the collective knowledge, here are 2-3 concise bullet points of the most important, actionable knowledge:",
-    "Check thread counts",
-    "Scan for malware",
-    "Validate input types",
     "* We need to improve our status updates by providing concise, first-person responses referencing real file paths and specific names where available.",
     "Limit DB queries",
     "Check API availability",
@@ -199,8 +195,12 @@
     "Flush old logs",
     "Analyze NAV exposure",
     "Train TFT models",
-    "Optimize token usage"
+    "Optimize token usage",
+    "Check RAM limits",
+    "Validate API keys",
+    "Track thread counts",
+    "Reset timers daily"
   ],
-  "last_updated": "2026-08-01T12:01:29.989614+00:00",
+  "last_updated": "2026-08-01T14:05:09.822658+00:00",
   "total": 200
 }
