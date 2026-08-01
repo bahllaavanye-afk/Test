@@ -5,6 +5,22 @@ import numpy as np
 import pandas as pd
 from dataclasses import dataclass
 
+# Constants
+TRADING_DAYS_PER_YEAR = 252
+INITIAL_EQUITY = 100_000
+RNG_SEED = 42
+ROUND_PRECISION = 4
+PERCENTILE_LOW = 5
+PERCENTILE_HIGH = 95
+
+ERR_DAILY_RETURNS_TYPE = "daily_returns must be a pandas Series."
+ERR_DAILY_RETURNS_EMPTY = "daily_returns series cannot be empty."
+ERR_DAILY_RETURNS_NUMERIC = "daily_returns must contain numeric values."
+ERR_DAILY_RETURNS_FINITE = "daily_returns contains non‑finite values (NaN or Inf)."
+ERR_N_SIMULATIONS = "n_simulations must be a positive integer."
+ERR_N_YEARS = "n_years must be a positive number."
+ERR_RISK_FREE = "risk_free_daily must be a real number."
+
 
 @dataclass
 class MonteCarloResult:
@@ -29,7 +45,7 @@ def monte_carlo_simulation(
     daily_returns: pd.Series,
     n_simulations: int = 1000,
     n_years: int = 3,
-    risk_free_daily: float = 0.05 / 252,
+    risk_free_daily: float = 0.05 / TRADING_DAYS_PER_YEAR,
 ) -> MonteCarloResult:
     """Bootstrap daily returns to simulate N years of paths.
 
@@ -56,48 +72,48 @@ def monte_carlo_simulation(
     """
     # Input validation
     if not isinstance(daily_returns, pd.Series):
-        raise ValueError("daily_returns must be a pandas Series.")
+        raise ValueError(ERR_DAILY_RETURNS_TYPE)
     if daily_returns.empty:
-        raise ValueError("daily_returns series cannot be empty.")
+        raise ValueError(ERR_DAILY_RETURNS_EMPTY)
     if not np.issubdtype(daily_returns.dtype, np.number):
-        raise ValueError("daily_returns must contain numeric values.")
+        raise ValueError(ERR_DAILY_RETURNS_NUMERIC)
     if not np.isfinite(daily_returns.dropna()).all():
-        raise ValueError("daily_returns contains non‑finite values (NaN or Inf).")
+        raise ValueError(ERR_DAILY_RETURNS_FINITE)
     if not isinstance(n_simulations, int) or n_simulations <= 0:
-        raise ValueError("n_simulations must be a positive integer.")
+        raise ValueError(ERR_N_SIMULATIONS)
     if not isinstance(n_years, (int, float)) or n_years <= 0:
-        raise ValueError("n_years must be a positive number.")
+        raise ValueError(ERR_N_YEARS)
     if not isinstance(risk_free_daily, numbers.Real):
-        raise ValueError("risk_free_daily must be a real number.")
+        raise ValueError(ERR_RISK_FREE)
 
-    n_days = int(n_years * 252)
+    n_days = int(n_years * TRADING_DAYS_PER_YEAR)
     returns_array = daily_returns.dropna().values
     sharpes = []
     max_dds = []
     positive = 0
 
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(RNG_SEED)
     for _ in range(n_simulations):
         sampled = rng.choice(returns_array, size=n_days, replace=True)
-        equity = np.cumprod(1 + sampled) * 100_000
+        equity = np.cumprod(1 + sampled) * INITIAL_EQUITY
         peak = np.maximum.accumulate(equity)
         dd = (equity - peak) / peak
         max_dd = dd.min()
 
         excess = sampled - risk_free_daily
-        sharpe = (excess.mean() / excess.std() * np.sqrt(252)) if excess.std() > 0 else 0.0
+        sharpe = (excess.mean() / excess.std() * np.sqrt(TRADING_DAYS_PER_YEAR)) if excess.std() > 0 else 0.0
         sharpes.append(sharpe)
         max_dds.append(max_dd)
-        if equity[-1] > 100_000:
+        if equity[-1] > INITIAL_EQUITY:
             positive += 1
 
     return MonteCarloResult(
-        median_sharpe=round(float(np.median(sharpes)), 4),
-        p5_sharpe=round(float(np.percentile(sharpes, 5)), 4),
-        p95_sharpe=round(float(np.percentile(sharpes, 95)), 4),
-        median_max_dd=round(float(np.median(max_dds)), 4),
-        p95_max_dd=round(float(np.percentile(max_dds, 95)), 4),
-        p5_max_dd=round(float(np.percentile(max_dds, 5)), 4),
-        prob_positive_return=round(positive / n_simulations, 4),
+        median_sharpe=round(float(np.median(sharpes)), ROUND_PRECISION),
+        p5_sharpe=round(float(np.percentile(sharpes, PERCENTILE_LOW)), ROUND_PRECISION),
+        p95_sharpe=round(float(np.percentile(sharpes, PERCENTILE_HIGH)), ROUND_PRECISION),
+        median_max_dd=round(float(np.median(max_dds)), ROUND_PRECISION),
+        p95_max_dd=round(float(np.percentile(max_dds, PERCENTILE_HIGH)), ROUND_PRECISION),
+        p5_max_dd=round(float(np.percentile(max_dds, PERCENTILE_LOW)), ROUND_PRECISION),
+        prob_positive_return=round(positive / n_simulations, ROUND_PRECISION),
         num_simulations=n_simulations,
     )

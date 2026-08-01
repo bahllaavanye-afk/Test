@@ -19,7 +19,11 @@ from sqlalchemy.ext.asyncio import create_async_engine
 import app.database as db_mod
 from app.config import settings
 
-UNREACHABLE_PG = "postgresql+asyncpg://nouser:nopass@127.0.0.1:9/nodb"
+# Constants
+UNREACHABLE_PG_URL = "postgresql+asyncpg://nouser:nopass@127.0.0.1:9/nodb"
+PROBE_TIMEOUT_SHORT = 5.0
+PROBE_TIMEOUT_LONG = 10.0
+FALLBACK_SQLITE_URL_TEMPLATE = "sqlite+aiosqlite:///{path}/fallback.db"
 
 
 @pytest.fixture
@@ -34,7 +38,7 @@ def _restore_db_module(tmp_path):
         db_mod.FALLBACK_SQLITE_URL,
         settings.db_fallback_to_sqlite,
     )
-    db_mod.FALLBACK_SQLITE_URL = f"sqlite+aiosqlite:///{tmp_path}/fallback.db"
+    db_mod.FALLBACK_SQLITE_URL = FALLBACK_SQLITE_URL_TEMPLATE.format(path=tmp_path)
     yield
     (
         db_mod.engine,
@@ -48,12 +52,12 @@ def _restore_db_module(tmp_path):
 
 
 async def test_fallback_engages_when_primary_unreachable(_restore_db_module):
-    db_mod.engine = create_async_engine(UNREACHABLE_PG)
+    db_mod.engine = create_async_engine(UNREACHABLE_PG_URL)
     db_mod._is_sqlite = False
     settings.db_fallback_to_sqlite = True
     db_mod.db_fallback_active = False
 
-    live = await db_mod.ensure_database_alive(probe_timeout=5.0)
+    live = await db_mod.ensure_database_alive(probe_timeout=PROBE_TIMEOUT_SHORT)
 
     assert db_mod.db_fallback_active is True
     assert db_mod.db_primary_error  # recorded for /health/detailed
@@ -69,13 +73,13 @@ async def test_fallback_engages_when_primary_unreachable(_restore_db_module):
 
 
 async def test_fallback_disabled_keeps_dead_engine(_restore_db_module):
-    dead = create_async_engine(UNREACHABLE_PG)
+    dead = create_async_engine(UNREACHABLE_PG_URL)
     db_mod.engine = dead
     db_mod._is_sqlite = False
     settings.db_fallback_to_sqlite = False
     db_mod.db_fallback_active = False
 
-    live = await db_mod.ensure_database_alive(probe_timeout=5.0)
+    live = await db_mod.ensure_database_alive(probe_timeout=PROBE_TIMEOUT_SHORT)
 
     assert live is dead                       # unchanged: operator opted out
     assert db_mod.db_fallback_active is False
@@ -87,7 +91,7 @@ async def test_healthy_primary_is_untouched(_restore_db_module):
     # The suite's own (working) engine: the probe succeeds, nothing is rebound.
     db_mod.db_fallback_active = False
     before = db_mod.engine
-    live = await db_mod.ensure_database_alive(probe_timeout=10.0)
+    live = await db_mod.ensure_database_alive(probe_timeout=PROBE_TIMEOUT_LONG)
     assert live is before
     assert db_mod.db_fallback_active is False
 
@@ -98,6 +102,6 @@ async def test_already_sqlite_never_falls_back(_restore_db_module):
     db_mod._is_sqlite = True
     settings.db_fallback_to_sqlite = True
     db_mod.db_fallback_active = False
-    live = await db_mod.ensure_database_alive(probe_timeout=10.0)
+    live = await db_mod.ensure_database_alive(probe_timeout=PROBE_TIMEOUT_LONG)
     assert db_mod.db_fallback_active is False
     assert live is db_mod.engine

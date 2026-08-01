@@ -1,17 +1,34 @@
 """
-Backtest worker — polls for queued BacktestRun rows every 30 s and executes them.
+Backtest worker — polls for queued BacktestRun rows every POLL_INTERVAL seconds and executes them.
 
 Runs as a background asyncio task started from main.py lifespan.
 Uses yfinance for free OHLCV data — no broker keys required.
 """
 from __future__ import annotations
+
 import asyncio
 import uuid
-import pandas as pd
 from datetime import datetime, timezone
 
+import pandas as pd
 from sqlalchemy import select
+
 from app.utils.logging import logger
+
+# Constants
+POLL_INTERVAL: int = 30  # seconds between polling cycles
+DEFAULT_INITIAL_EQUITY: float = 100_000.0
+
+STATUS_QUEUED: str = "queued"
+STATUS_RUNNING: str = "running"
+STATUS_COMPLETED: str = "completed"
+STATUS_FAILED: str = "failed"
+
+COLUMN_CLOSE: str = "close"
+COLUMN_OPEN: str = "open"
+COLUMN_VOLUME: str = "volume"
+
+MAX_ERROR_MESSAGE_LENGTH: int = 500
 
 
 async def run_backtest_job(run_id: str | None) -> None:
@@ -28,18 +45,18 @@ async def run_backtest_job(run_id: str | None) -> None:
 
     async with AsyncSessionLocal() as db:
         run = await db.get(BacktestRun, run_id)
-        if not run or run.status != "queued":
+        if not run or run.status != STATUS_QUEUED:
             return
         # Validate essential fields
         if not all([run.symbol, run.start_date, run.end_date, run.interval, run.strategy_name]):
             logger.error(f"BacktestRun {run_id} missing required fields")
-            run.status = "failed"
+            run.status = STATUS_FAILED
             run.error_message = "Missing required backtest parameters"
             run.completed_at = datetime.now(timezone.utc)
             await db.commit()
             return
 
-        run.status = "running"
+        run.status = STATUS_RUNNING
         run.started_at = datetime.now(timezone.utc)
         await db.commit()
         # capture fields before session closes
@@ -48,7 +65,7 @@ async def run_backtest_job(run_id: str | None) -> None:
         end_date = run.end_date
         interval = run.interval
         strategy_name = run.strategy_name
-        initial_equity = (run.params or {}).get("initial_equity", 100_000.0)
+        initial_equity = (run.params or {}).get("initial_equity", DEFAULT_INITIAL_EQUITY)
 
     try:
         df = await fetch_ohlcv(symbol=symbol, start=start_date, end=end_date, interval=interval)
@@ -96,16 +113,16 @@ async def run_backtest_job(run_id: str | None) -> None:
 
         metrics = run_backtest(
             signals=signals_series,
-            prices=df["close"],
-            opens=df["open"],
-            volume=df["volume"],
+            prices=df[COLUMN_CLOSE],
+            opens=df[COLUMN_OPEN],
+            volume=df[COLUMN_VOLUME],
             initial_equity=initial_equity,
         )
 
         async with AsyncSessionLocal() as db:
             run = await db.get(BacktestRun, run_id)
             if run:
-                run.status = "completed"
+                run.status = STATUS_COMPLETED
                 run.completed_at = datetime.now(timezone.utc)
                 result = BacktestResult(
                     id=str(uuid.uuid4()),
@@ -134,24 +151,24 @@ async def run_backtest_job(run_id: str | None) -> None:
         async with AsyncSessionLocal() as db:
             run = await db.get(BacktestRun, run_id)
             if run:
-                run.status = "failed"
-                run.error_message = str(exc)[:500]
+                run.status = STATUS_FAILED
+                run.error_message = str(exc)[:MAX_ERROR_MESSAGE_LENGTH]
                 run.completed_at = datetime.now(timezone.utc)
                 await db.commit()
 
 
 async def backtest_worker_loop() -> None:
-    """Poll for queued BacktestRun rows every 30 s and run them concurrently."""
+    """Poll for queued BacktestRun rows every POLL_INTERVAL seconds and run them concurrently."""
     from app.database import AsyncSessionLocal
     from app.models.backtest import BacktestRun
 
-    logger.info("Backtest worker started — polling every 30s")
+    logger.info(f"Backtest worker started — polling every {POLL_INTERVAL}s")
     while True:
         try:
             async with AsyncSessionLocal() as db:
                 result = await db.execute(
                     select(BacktestRun)
-                    .where(BacktestRun.status == "queued")
+                    .where(BacktestRun.status == STATUS_QUEUED)
                     .order_by(BacktestRun.created_at)
                     .limit(5)
                 )
@@ -164,4 +181,4 @@ async def backtest_worker_loop() -> None:
         except Exception as exc:
             logger.warning(f"Backtest worker poll error: {exc}")
 
-        await asyncio.sleep(30)
+        await asyncio.sleep(POLL_INTERVAL)
