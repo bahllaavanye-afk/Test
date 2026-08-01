@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Log trade exceptions",
-    "Monitor system health",
-    "Based on the recent agent learnings, the following are 2-3 concise bullet points of the most important, actionable knowledge:",
-    "Log error codes",
     "Cache external APIs",
     "Implement drift detection",
     "Use circuit breaker",
@@ -199,8 +195,12 @@
     "Flush error queues",
     "Refactor codebases",
     "Optimize hyperparams",
-    "Monitor system logs"
+    "Monitor system logs",
+    "Reset stuck trades",
+    "Log market gaps",
+    "Bind API timeouts",
+    "Augment LSTM with S4"
   ],
-  "last_updated": "2026-08-01T16:55:39.986728+00:00",
+  "last_updated": "2026-08-01T17:58:03.519238+00:00",
   "total": 200
 }
