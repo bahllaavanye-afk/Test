@@ -14,10 +14,11 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, List
+
+from pydantic import BaseModel, Field, ValidationError, validator
 
 from app.tasks.free_llm_router import call_consensus, available_providers
 from app.tasks.agent_memory import AgentMemory
@@ -65,6 +66,75 @@ class {class_name}(AbstractStrategy):
 '''
 
 
+class StrategyProposal(BaseModel):
+    """
+    Pydantic schema for AI‑generated strategy proposals.
+    """
+
+    name: str = Field(
+        ...,
+        description="Snake_case identifier for the strategy.",
+        example="rsi_ema_combo",
+        regex=r"^[a-z][a-z0-9_]*$",
+    )
+    class_name: str = Field(
+        ...,
+        description="PascalCase class name used in the generated Python file.",
+        example="RsiEmaCombo",
+    )
+    hypothesis: str = Field(
+        ...,
+        description="One‑sentence hypothesis explaining why the strategy should work.",
+        example="RSI low combined with price above EMA indicates mean reversion.",
+    )
+    market_type: str = Field(
+        ...,
+        description="Market type, either 'equity' or 'crypto'.",
+        example="equity",
+    )
+    risk_bucket: str = Field(
+        ...,
+        description="Risk bucket classification, e.g., 'directional' or 'arbitrage'.",
+        example="directional",
+    )
+    tick_interval: int = Field(
+        ...,
+        ge=1,
+        description="Tick interval in seconds for the strategy runtime.",
+        example=3600,
+    )
+    expected_sharpe: float = Field(
+        ...,
+        gt=0,
+        description="Expected Sharpe ratio for the strategy.",
+        example=0.8,
+    )
+    entry_conditions: List[str] = Field(
+        ...,
+        min_items=1,
+        description="List of entry condition strings.",
+        example=["rsi < 30", "price > ema_21"],
+    )
+    exit_conditions: List[str] = Field(
+        ...,
+        min_items=1,
+        description="List of exit condition strings.",
+        example=["rsi > 70"],
+    )
+
+    @validator("market_type")
+    def validate_market_type(cls, v: str) -> str:
+        if v not in {"equity", "crypto"}:
+            raise ValueError("market_type must be 'equity' or 'crypto'")
+        return v
+
+    @validator("risk_bucket")
+    def validate_risk_bucket(cls, v: str) -> str:
+        if v not in {"directional", "arbitrage"}:
+            raise ValueError("risk_bucket must be 'directional' or 'arbitrage'")
+        return v
+
+
 class AIStrategyGenerator:
     def __init__(self, redis_client: Any = None):
         self._memory = AgentMemory(redis_client) if redis_client else None
@@ -85,16 +155,19 @@ class AIStrategyGenerator:
                     written.append(p)
 
             if self._memory and written:
-                await self._memory.write("strategy_proposals", {
-                    "count": len(written),
-                    "proposals": [w.get("name", "?") for w in written],
-                    "status": "staging",
-                })
+                await self._memory.write(
+                    "strategy_proposals",
+                    {
+                        "count": len(written),
+                        "proposals": [w.name for w in written],
+                        "status": "staging",
+                    },
+                )
             logger.info("AIStrategyGenerator: wrote %d staging strategies", len(written))
         except Exception as e:
             logger.exception("AIStrategyGenerator error: %s", e)
 
-    async def _generate_proposals(self) -> list[dict]:
+    async def _generate_proposals(self) -> List[StrategyProposal]:
         system = """You are a senior quantitative analyst. Propose trading strategy parameters.
 Output ONLY a JSON array of exactly 2 strategies, no other text."""
 
@@ -123,7 +196,7 @@ For each strategy, provide:
         if not responses:
             return []
 
-        all_proposals: list[dict] = []
+        proposals: List[StrategyProposal] = []
         seen = set()
         for resp in responses:
             try:
@@ -131,28 +204,31 @@ For each strategy, provide:
                 start, end = content.find("["), content.rfind("]") + 1
                 if start < 0 or end <= start:
                     continue
-                proposals = json.loads(content[start:end])
-                for p in proposals:
-                    name = p.get("name", "")
-                    if name and name not in seen:
+                raw_proposals = json.loads(content[start:end])
+                for raw in raw_proposals:
+                    name = raw.get("name", "")
+                    if not name or name in seen:
+                        continue
+                    try:
+                        proposal = StrategyProposal(**raw)
                         seen.add(name)
-                        all_proposals.append(p)
+                        proposals.append(proposal)
+                    except ValidationError as ve:
+                        logger.debug("Invalid proposal skipped: %s", ve)
+                        continue
             except Exception:
                 continue
 
-        return all_proposals[:2]
+        return proposals[:2]
 
-    def _write_staging_file(self, proposal: dict) -> Path | None:
-        name = proposal.get("name", "")
-        if not name or not re.match(r'^[a-z][a-z0-9_]*$', name):
+    def _write_staging_file(self, proposal: StrategyProposal) -> Path | None:
+        name = proposal.name
+        if not name:
             return None
 
         path = STAGING_DIR / f"{name}.py"
         if path.exists():
             return None
-
-        entry_conditions = proposal.get("entry_conditions", ["rsi < 30"])
-        exit_conditions = proposal.get("exit_conditions", ["rsi > 70"])
 
         # Build simple backtest body from entry/exit conditions
         backtest_body = "        close = df['close']\n"
@@ -160,9 +236,9 @@ For each strategy, provide:
         backtest_body += "        ema_21 = ta.ema(close, length=21).fillna(close)\n"
         backtest_body += "        entries = pd.Series(False, index=df.index)\n"
         backtest_body += "        exits = pd.Series(False, index=df.index)\n"
-        backtest_body += f"        # Entry: {', '.join(entry_conditions)}\n"
+        backtest_body += f"        # Entry: {', '.join(proposal.entry_conditions)}\n"
         backtest_body += "        entries = (rsi < 35) & (close > ema_21)\n"
-        backtest_body += f"        # Exit: {', '.join(exit_conditions)}\n"
+        backtest_body += f"        # Exit: {', '.join(proposal.exit_conditions)}\n"
         backtest_body += "        exits = rsi > 65\n"
 
         analyze_body = "        close = data['close']\n"
@@ -175,13 +251,13 @@ For each strategy, provide:
 
         code = _STRATEGY_TEMPLATE.format(
             timestamp=datetime.now(timezone.utc).isoformat(),
-            hypothesis=proposal.get("hypothesis", "AI-generated strategy"),
-            expected_sharpe=proposal.get("expected_sharpe", 0.8),
-            class_name=proposal.get("class_name", "AutoStrategy"),
+            hypothesis=proposal.hypothesis,
+            expected_sharpe=proposal.expected_sharpe,
+            class_name=proposal.class_name,
             strategy_name=name,
-            market_type=proposal.get("market_type", "equity"),
-            risk_bucket=proposal.get("risk_bucket", "directional"),
-            tick_interval=proposal.get("tick_interval", 3600),
+            market_type=proposal.market_type,
+            risk_bucket=proposal.risk_bucket,
+            tick_interval=proposal.tick_interval,
             backtest_body=backtest_body,
             analyze_body=analyze_body,
         )
