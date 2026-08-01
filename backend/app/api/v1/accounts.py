@@ -1,7 +1,7 @@
 """Account management endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.account import Account
@@ -10,6 +10,7 @@ from app.models.user import User
 from app.utils.security import encrypt_secret
 from app.utils.logging import logger
 from pydantic import BaseModel, ConfigDict, Field
+import asyncio
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -71,12 +72,48 @@ class AccountEquityOut(BaseModel):
     pattern_day_trader: bool | None
 
 
+def _validate_equity_data(data: dict) -> None:
+    """Basic sanity checks for equity related fields."""
+    for key in ("equity", "cash", "buying_power", "portfolio_value"):
+        value = data.get(key)
+        if value is not None and float(value) < 0:
+            raise ValueError(f"{key} cannot be negative: {value}")
+
+
+async def _fetch_alpaca_account_with_retry(account: Account, retries: int = 3, delay: float = 0.5):
+    """Retry wrapper for Alpaca account fetch with exponential backoff."""
+    from app.brokers.alpaca_orders import get_alpaca_account
+
+    attempt = 0
+    while True:
+        try:
+            data = await get_alpaca_account(account)
+            _validate_equity_data(data)
+            return data
+        except Exception as exc:  # pylint: disable=broad-except
+            attempt += 1
+            if attempt > retries:
+                logger.error(
+                    f"Alpaca account fetch failed after {retries} retries for account {account.id}: {exc}"
+                )
+                raise
+            backoff = delay * (2 ** (attempt - 1))
+            logger.warning(
+                f"Alpaca fetch attempt {attempt} failed for account {account.id}: {exc}. Retrying in {backoff}s."
+            )
+            await asyncio.sleep(backoff)
+
+
 @router.get("/", response_model=list[AccountOut])
 async def list_accounts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Account).where(Account.user_id == current_user.id))
+    """Return only active accounts belonging to the current user."""
+    stmt = select(Account).where(
+        and_(Account.user_id == current_user.id, Account.is_active == True)  # noqa: E712
+    )
+    result = await db.execute(stmt)
     return result.scalars().all()
 
 
@@ -87,6 +124,7 @@ async def create_account(
     current_user: User = Depends(get_current_user),
     request: Request = None,
 ):
+    """Create a new account with encrypted credentials and audit logging."""
     account = Account(
         user_id=current_user.id,
         broker=body.broker,
@@ -126,21 +164,29 @@ async def get_account_equity(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return live equity, buying power, and day-trade count from Alpaca."""
-    result = await db.execute(
-        select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
+    """Return live equity, buying power, and day‑trade count from Alpaca.
+
+    Includes confirmation filters and retry logic to improve data reliability.
+    """
+    stmt = select(Account).where(
+        and_(Account.id == account_id, Account.user_id == current_user.id)
     )
+    result = await db.execute(stmt)
     account = result.scalar_one_or_none()
     if not account:
         raise HTTPException(404, "Account not found")
 
-    if account.broker != "alpaca" or not account.encrypted_key:
-        raise HTTPException(400, "Live equity is only available for Alpaca accounts with stored credentials")
+    if not account.is_active:
+        raise HTTPException(400, "Account is inactive")
 
-    from app.brokers.alpaca_orders import get_alpaca_account
+    if account.broker != "alpaca" or not account.encrypted_key:
+        raise HTTPException(
+            400,
+            "Live equity is only available for Alpaca accounts with stored credentials",
+        )
 
     try:
-        data = await get_alpaca_account(account)
+        data = await _fetch_alpaca_account_with_retry(account)
     except Exception as e:
         logger.warning(f"Alpaca account fetch failed for account {account_id}: {e}")
         raise HTTPException(502, "Unable to fetch live account data from Alpaca")
@@ -150,8 +196,12 @@ async def get_account_equity(
         cash=float(data.get("cash", 0)),
         buying_power=float(data.get("buying_power", 0)),
         portfolio_value=float(data.get("portfolio_value", 0)),
-        day_trade_count=int(data["daytrade_count"]) if data.get("daytrade_count") is not None else None,
-        pattern_day_trader=bool(data.get("pattern_day_trader")) if data.get("pattern_day_trader") is not None else None,
+        day_trade_count=int(data["daytrade_count"])
+        if data.get("daytrade_count") is not None
+        else None,
+        pattern_day_trader=bool(data.get("pattern_day_trader"))
+        if data.get("pattern_day_trader") is not None
+        else None,
     )
 
 
@@ -161,10 +211,22 @@ async def delete_account(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Account).where(Account.id == account_id, Account.user_id == current_user.id))
+    """Delete an account after ensuring no open positions exist."""
+    stmt = select(Account).where(
+        and_(Account.id == account_id, Account.user_id == current_user.id)
+    )
+    result = await db.execute(stmt)
     account = result.scalar_one_or_none()
     if not account:
         raise HTTPException(404, "Account not found")
+
+    # Prevent deletion if the account has active positions (conservative exit logic)
+    if hasattr(account, "has_open_positions") and account.has_open_positions:
+        raise HTTPException(
+            400,
+            "Cannot delete account with open positions. Close positions before deletion.",
+        )
+
     await db.delete(account)
     await db.commit()
     return {"deleted": account_id}

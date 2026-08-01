@@ -12,6 +12,8 @@ The implementation mirrors the original code base and adds no new
 behaviour; it merely enriches the DataFrame with a collection of common
 technical features such as returns, volatility, EMA distance, RSI, MACD,
 Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
+Additional signal‑quality columns are added to help tighten entry
+conditions and provide confirmation filters for downstream strategy logic.
 """
 
 from __future__ import annotations
@@ -108,13 +110,28 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute EMA distance for span %d", span, exc_info=exc)
 
+    # EMA cross signals (short vs long)
+    try:
+        ema_short = close.ewm(span=9).mean()
+        ema_long = close.ewm(span=21).mean()
+        cross_up = (ema_short > ema_long) & (ema_short.shift(1) <= ema_long.shift(1))
+        cross_down = (ema_short < ema_long) & (ema_short.shift(1) >= ema_long.shift(1))
+        df["ema_cross_up"] = cross_up.astype(int)
+        df["ema_cross_down"] = cross_down.astype(int)
+    except Exception as exc:  # pragma: no cover
+        _logger.error("Failed to compute EMA cross signals", exc_info=exc)
+
     # --- RSI ---
     rsi14 = _safe_apply(ta.rsi, close, length=14)
     rsi21 = _safe_apply(ta.rsi, close, length=21)
     if rsi14 is not None:
         df["rsi_14"] = rsi14 / 100.0  # normalize to [0,1]
+        df["rsi_14_overbought"] = (rsi14 > 70).astype(int)
+        df["rsi_14_oversold"] = (rsi14 < 30).astype(int)
     if rsi21 is not None:
         df["rsi_21"] = rsi21 / 100.0
+        df["rsi_21_overbought"] = (rsi21 > 70).astype(int)
+        df["rsi_21_oversold"] = (rsi21 < 30).astype(int)
 
     # --- MACD ---
     macd_df = _safe_apply(ta.macd, close, fast=12, slow=26, signal=9)
@@ -123,6 +140,12 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             df["macd"] = macd_df["MACD_12_26_9"] / (close + 1e-9)
             df["macd_signal"] = macd_df["MACDs_12_26_9"] / (close + 1e-9)
             df["macd_hist"] = macd_df["MACDh_12_26_9"] / (close + 1e-9)
+
+            # MACD histogram crossing zero as a confirmation filter
+            macd_cross_up = (macd_df["MACDh_12_26_9"] > 0) & (macd_df["MACDh_12_26_9"].shift(1) <= 0)
+            macd_cross_down = (macd_df["MACDh_12_26_9"] < 0) & (macd_df["MACDh_12_26_9"].shift(1) >= 0)
+            df["macd_cross_up"] = macd_cross_up.astype(int)
+            df["macd_cross_down"] = macd_cross_down.astype(int)
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to normalize MACD components", exc_info=exc)
 
@@ -136,6 +159,10 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             df["bb_upper_dist"] = (upper - close) / (close + 1e-9)
             df["bb_lower_dist"] = (close - lower) / (close + 1e-9)
             df["bb_width"] = (upper - lower) / (mid + 1e-9)
+
+            # Bollinger band touch flags
+            df["bb_touch_upper"] = (close >= upper * 0.995).astype(int)
+            df["bb_touch_lower"] = (close <= lower * 1.005).astype(int)
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute Bollinger Band features", exc_info=exc)
 
@@ -151,6 +178,9 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     try:
         vol_ma = volume.rolling(20).mean()
         df["volume_ratio"] = volume / (vol_ma + 1e-9)
+
+        # Volume spike flag (ratio > 1.5)
+        df["volume_spike"] = (df["volume_ratio"] > 1.5).astype(int)
     except Exception as exc:  # pragma: no cover
         _logger.error("Failed to compute volume ratio", exc_info=exc)
 
@@ -160,6 +190,10 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
         try:
             df["atr_14"] = atr
             df["atr_pct"] = atr / (close + 1e-9)
+
+            # Simple ATR‑based stop‑loss levels (long and short)
+            df["atr_stop_long"] = close - 2 * atr
+            df["atr_stop_short"] = close + 2 * atr
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute ATR related features", exc_info=exc)
 
@@ -169,6 +203,10 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
         try:
             df["stoch_k"] = stoch["STOCHk_14_3_3"] / 100.0
             df["stoch_d"] = stoch["STOCHd_14_3_3"] / 100.0
+
+            # Overbought/oversold flags for stochastic
+            df["stoch_overbought"] = (stoch["STOCHk_14_3_3"] > 80).astype(int)
+            df["stoch_oversold"] = (stoch["STOCHk_14_3_3"] < 20).astype(int)
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute Stochastic Oscillator features", exc_info=exc)
 
@@ -177,6 +215,9 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     if adx_df is not None:
         try:
             df["adx"] = adx_df["ADX_14"] / 100.0
+
+            # ADX strength flag (trend considered strong if > 25)
+            df["adx_strong"] = (adx_df["ADX_14"] > 25).astype(int)
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute ADX feature", exc_info=exc)
 
