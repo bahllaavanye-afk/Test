@@ -1,10 +1,5 @@
 {
   "skills": [
-    "* The `backend/pipeline/investor_stage.json` file is being scanned by the `investor_pipeline` agent to auto-advance leads that have met the \"Qualified\" criteria.",
-    "Verify config files",
-    "Monitor system load",
-    "* A circuit-breaker wrapper will be added to `backend/app/api/external_client.py` for resilience and fault-tolerance.",
-    "Monitor API usage",
     "**Cross-Asset EMA Strategy:** A new cross-asset EMA strategy is being drafted (#4 and #3).",
     "Verify OS updates",
     "Analyze strategy variants",
@@ -199,8 +194,13 @@
     "Validate inputs",
     "Set CPU quotas",
     "Limit DB queries",
-    "Cache market data"
+    "Cache market data",
+    "Log API errors",
+    "Check DB connections",
+    "Implement circuit breaker",
+    "Use load balancers",
+    "Set memory limits"
   ],
-  "last_updated": "2026-08-01T21:23:36.238982+00:00",
+  "last_updated": "2026-08-01T22:26:01.780690+00:00",
   "total": 200
 }
