@@ -1,11 +1,5 @@
 {
   "skills": [
-    "**Cross-Asset EMA Strategy:** A new cross-asset EMA strategy is being drafted (#4 and #3).",
-    "Verify OS updates",
-    "Analyze strategy variants",
-    "Monitor data drift",
-    "Monitor retraining pipelines",
-    "Log trade rejections",
     "Track memory usage",
     "Analyze signal confidence",
     "* Examples of successful responses include:",
@@ -199,8 +193,14 @@
     "Check DB connections",
     "Implement circuit breaker",
     "Use load balancers",
-    "Set memory limits"
+    "Set memory limits",
+    "Retry failed trades",
+    "Use timeout exceptions",
+    "Implement rate limits",
+    "Check network latency",
+    "Refactor LSTM models",
+    "Implement S4-TFT predictors"
   ],
-  "last_updated": "2026-08-01T22:26:01.780690+00:00",
+  "last_updated": "2026-08-01T23:28:18.862037+00:00",
   "total": 200
 }
