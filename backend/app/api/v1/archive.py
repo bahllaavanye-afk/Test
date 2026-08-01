@@ -18,10 +18,14 @@ LIMIT_DESCRIPTION: str = "Maximum number of records to return (1-5000)"
 ERR_LIMIT_POSITIVE: str = "Limit must be a positive integer."
 ERR_RETRIEVE_ARCHIVE: str = "Failed to retrieve archive: {exc}"
 
+INDEX_PATH: str = "/index"
+ARCHIVE_PATH: str = "/{category}"
+EMPTY_DATE: str = ""
+
 router = APIRouter(prefix=ARCHIVE_PREFIX, tags=[ARCHIVE_TAG])
 
 
-@router.get("/index")
+@router.get(INDEX_PATH)
 async def get_index(current_user: User = Depends(get_current_user)):
     """
     Return a list of available archives.
@@ -32,7 +36,7 @@ async def get_index(current_user: User = Depends(get_current_user)):
     return archives if archives else []
 
 
-@router.get("/{category}")
+@router.get(ARCHIVE_PATH)
 async def get_archive(
     category: str,
     date: str | None = Query(
@@ -54,7 +58,7 @@ async def get_archive(
     * Returns an empty list if the replay yields no data.
     """
     # Normalize empty date strings
-    if date == "":
+    if date == EMPTY_DATE:
         date = None
 
     # Defensive check for limit (should already be enforced by Query)
