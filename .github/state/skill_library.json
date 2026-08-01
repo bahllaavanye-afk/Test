@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Cache external APIs",
-    "Implement drift detection",
-    "Use circuit breaker",
-    "Detect market halted",
     "Validate state files",
     "Check database connections",
     "Implement JSON schema validation",
@@ -199,8 +195,12 @@
     "Reset stuck trades",
     "Log market gaps",
     "Bind API timeouts",
-    "Augment LSTM with S4"
+    "Augment LSTM with S4",
+    "Set max retry counts",
+    "Track thread timeouts",
+    "Cap trade batch size",
+    "Monitor model metrics"
   ],
-  "last_updated": "2026-08-01T19:14:18.846484+00:00",
+  "last_updated": "2026-08-01T20:25:07.439999+00:00",
   "total": 200
 }
