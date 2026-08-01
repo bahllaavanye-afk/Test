@@ -1,12 +1,5 @@
 {
   "skills": [
-    "**Risk Metrics Monitoring**: The risk metrics in `state/current_risk.json` and `state/risk_limits.yaml` should be regularly reviewed to ensure compliance with the 5% NAV gross-exposure cap.",
-    "Log API errors",
-    "**UCB1 Bandit Initialization**: UCB1 bandit is being initialized, but further information is required to understand the context and how it relates to the trading AI platform.",
-    "Run quick backtests",
-    "Validate trade sizes",
-    "Check SSL certs",
-    "Set connection limits",
     "**Active tasks**: The continuous improver is currently parsing `.github/state/agent_memory.json` to identify peer-learned issues to act upon.",
     "Log system updates",
     "Log disk space usage",
@@ -199,8 +192,15 @@
     "* A variant strategy, \"SPY EMA-VWAP-MACD-ATR Momentum (5-min)\", has been proposed and is estimated to have a Sharpe ratio of 1.15 \u00b1 0.15, with entry long positions triggered above the 20-period VWAP.",
     "Flush cache regularly",
     "Handle empty order books",
-    "* Refactoring of Bloomberg-dark theme UI components is in progress: `src/components/` (`src/ui/theme/DarkTheme.tsx` and `src/components/UI/DarkMode.tsx` for specific files)."
+    "* Refactoring of Bloomberg-dark theme UI components is in progress: `src/components/` (`src/ui/theme/DarkTheme.tsx` and `src/components/UI/DarkMode.tsx` for specific files).",
+    "Check API keys",
+    "Log trade errors",
+    "Verify data feeds",
+    "Test algo params",
+    "Ping exchange sync",
+    "Parse log files",
+    "Refactor health checks"
   ],
-  "last_updated": "2026-08-01T06:36:09.960218+00:00",
+  "last_updated": "2026-08-01T09:02:47.073714+00:00",
   "total": 200
 }
