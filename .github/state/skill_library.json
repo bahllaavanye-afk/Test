@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Implement fail-safes",
-    "Validate signal confidence",
-    "Improve model accuracy",
-    "Monitor disk space",
-    "Verify trade id uniqueness",
     "Here are the key takeaways:",
     "* **Improve observability and documentation:** Add centralized logging and comprehensive docstrings, including explicit return-type annotations, to `backend/app/trading/engine.py`.",
     "Test SSL certificates",
@@ -199,8 +194,13 @@
     "Validate user input",
     "Bind CPU cores",
     "Refactor logging code",
-    "Implement attention mechanism"
+    "Implement attention mechanism",
+    "Monitor DNS resolving",
+    "Cache external APIs",
+    "Handle SSL timeouts",
+    "Optimize model retrain",
+    "Validate quota usage"
   ],
-  "last_updated": "2026-07-31T22:56:31.298200+00:00",
+  "last_updated": "2026-08-01T00:01:44.656611+00:00",
   "total": 200
 }
