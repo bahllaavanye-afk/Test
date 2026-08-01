@@ -27,17 +27,30 @@ from app.execution.vwap import VWAPExecution
 
 def _req(qty=100.0):
     return OrderRequest(
-        account_id="test", symbol="AAPL", side="buy", order_type="market",
-        quantity=qty, limit_price=None, stop_price=None, time_in_force="GTC",
-        execution_algo="market", risk_bucket="directional",
+        account_id="test",
+        symbol="AAPL",
+        side="buy",
+        order_type="market",
+        quantity=qty,
+        limit_price=None,
+        stop_price=None,
+        time_in_force="GTC",
+        execution_algo="market",
+        risk_bucket="directional",
     )
 
 
 class _Broker:
     """Fails the first `fail_first` slices, then fills. `fail_all` fails every one."""
 
-    def __init__(self, *, fail_all=False, fail_first=0, fill_price=100.0,
-                 fill_ratio=1.0):
+    def __init__(
+        self,
+        *,
+        fail_all: bool = False,
+        fail_first: int = 0,
+        fill_price: float = 100.0,
+        fill_ratio: float = 1.0,
+    ):
         self.fail_all = fail_all
         self.fail_first = fail_first
         self.fill_price = fill_price
@@ -55,16 +68,23 @@ class _Broker:
             avg_fill_price=self.fill_price,
         )
 
-    async def get_bars(self, symbol, timeframe="30Min", limit=13):
-        raise RuntimeError("no bars")      # forces the empirical VWAP profile
+    async def get_bars(self, symbol, timeframe: str = "30Min", limit: int = 13):
+        raise RuntimeError("no bars")  # forces the empirical VWAP profile
 
 
 # ── the helper itself ────────────────────────────────────────────────────────
 
+
 def test_zero_fill_is_rejected_not_partial(capsys):
     res = build_slice_result(
-        "TWAP", _req(), total_filled=0.0, total_cost=0.0, last_result=None,
-        slices_attempted=10, slices_failed=10, last_error="broker unreachable",
+        "TWAP",
+        _req(),
+        total_filled=0.0,
+        total_cost=0.0,
+        last_result=None,
+        slices_attempted=10,
+        slices_failed=10,
+        last_error="broker unreachable",
     )
 
     assert res.status == "rejected", "nothing filled is not a partial fill"
@@ -78,8 +98,12 @@ def test_zero_fill_is_rejected_not_partial(capsys):
 def test_complete_fill_is_filled():
     last = OrderResult(broker_order_id="ord-9", status="filled", filled_qty=10)
     res = build_slice_result(
-        "TWAP", _req(100), total_filled=100.0, total_cost=10_000.0,
-        last_result=last, slices_attempted=10,
+        "TWAP",
+        _req(100),
+        total_filled=100.0,
+        total_cost=10_000.0,
+        last_result=last,
+        slices_attempted=10,
     )
     assert res.status == "filled"
     assert res.broker_order_id == "ord-9"
@@ -89,8 +113,13 @@ def test_complete_fill_is_filled():
 def test_genuine_partial_still_reports_partial():
     last = OrderResult(broker_order_id="ord-3", status="filled", filled_qty=10)
     res = build_slice_result(
-        "TWAP", _req(100), total_filled=30.0, total_cost=3_000.0,
-        last_result=last, slices_attempted=10, slices_failed=7,
+        "TWAP",
+        _req(100),
+        total_filled=30.0,
+        total_cost=3_000.0,
+        last_result=last,
+        slices_attempted=10,
+        slices_failed=7,
     )
     assert res.status == "partial"
     assert res.filled_qty == 30.0
@@ -98,6 +127,7 @@ def test_genuine_partial_still_reports_partial():
 
 
 # ── each algorithm's ending ──────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_twap_total_failure_is_rejected():
@@ -163,5 +193,71 @@ async def test_partial_run_keeps_the_real_order_id():
 
     assert res.status == "partial"
     assert res.broker_order_id.startswith("ord-")
-    assert res.filled_qty == pytest.approx(80.0)   # 8 of 10 slices at 10 each
+    assert res.filled_qty == pytest.approx(80.0)  # 8 of 10 slices at 10 each
     assert res.raw_payload["slices_failed"] == 2
+
+
+# ── edge‑case tests ────────────────────────────────────────────────────────
+
+
+def test_build_slice_result_handles_none_request():
+    """Passing a None request should raise a clear error rather than explode."""
+    with pytest.raises(AttributeError):
+        # The function expects a request with a `quantity` attribute.
+        build_slice_result(
+            "TWAP",
+            None,  # type: ignore[arg-type]
+            total_filled=0.0,
+            total_cost=0.0,
+            last_result=None,
+            slices_attempted=0,
+        )
+
+
+def test_build_slice_result_empty_slices():
+    """When no slices were attempted the result should be rejected."""
+    res = build_slice_result(
+        "TWAP",
+        _req(),
+        total_filled=0.0,
+        total_cost=0.0,
+        last_result=None,
+        slices_attempted=0,
+        slices_failed=0,
+    )
+    assert res.status == "rejected"
+    assert res.broker_order_id == ""
+    assert res.filled_qty == 0
+
+
+def test_build_slice_result_boundary_threshold(capsys):
+    """Exactly at the 95 % fill threshold should be considered a full fill."""
+    request = _req(100)
+    # 95 % of 100 is 95.0
+    res = build_slice_result(
+        "TWAP",
+        request,
+        total_filled=95.0,
+        total_cost=9_500.0,
+        last_result=OrderResult(broker_order_id="ord-x", status="filled", filled_qty=95.0),
+        slices_attempted=5,
+    )
+    assert res.status == "filled"
+    assert "filled NOTHING" not in capsys.readouterr().out
+
+
+def test_build_slice_result_off_by_one_failure():
+    """If slices_failed is one less than slices_attempted, ensure logic still works."""
+    request = _req(100)
+    res = build_slice_result(
+        "TWAP",
+        request,
+        total_filled=50.0,
+        total_cost=5_000.0,
+        last_result=OrderResult(broker_order_id="ord-1", status="filled", filled_qty=50.0),
+        slices_attempted=5,
+        slices_failed=4,
+    )
+    assert res.status == "partial"
+    assert res.raw_payload["slices_failed"] == 4
+    assert res.filled_qty == 50.0
