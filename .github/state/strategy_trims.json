@@ -18,5 +18,15 @@
       "avg_return_pct": -0.2286,
       "total_return_pct": -2.2857
     }
+  },
+  "stat_arb_e": {
+    "trimmed_at": "2026-08-01T19:48:05.195475+00:00",
+    "reason": "cumulative return -20.0% \u2264 -5.0% over 11 trades",
+    "stats_at_trim": {
+      "trades": 11,
+      "win_rate": 0.0,
+      "avg_return_pct": -1.8208,
+      "total_return_pct": -20.0286
+    }
   }
 }
