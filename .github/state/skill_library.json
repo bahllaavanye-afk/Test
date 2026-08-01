@@ -1,10 +1,5 @@
 {
   "skills": [
-    "* We need to improve our status updates by providing concise, first-person responses referencing real file paths and specific names where available.",
-    "Limit DB queries",
-    "Check API availability",
-    "Detect deadlock conditions",
-    "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
     "Verify SSL certs",
     "Check clock sync",
     "Validate config",
@@ -199,8 +194,13 @@
     "Check RAM limits",
     "Validate API keys",
     "Track thread counts",
-    "Reset timers daily"
+    "Reset timers daily",
+    "Log API timeouts",
+    "Restart on crashes",
+    "Refactor rate limits",
+    "Monitor NAV exposure",
+    "Train hybrid models"
   ],
-  "last_updated": "2026-08-01T14:05:09.822658+00:00",
+  "last_updated": "2026-08-01T15:34:57.064290+00:00",
   "total": 200
 }
