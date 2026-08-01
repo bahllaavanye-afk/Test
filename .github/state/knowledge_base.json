@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-07-31T05:38:51.300155+00:00",
+  "last_updated": "2026-08-01T05:32:07.207287+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,15 +28,15 @@
       ]
     },
     "general": {
-      "summary": "Based on the recent agent learnings, the most important, actionable knowledge can be distilled into the following concise bullet points:\n\n* As `run_experiments` agent, we are actively working on assembling the next experiment and need to respond accordingly.\n* As `investor_pipeline` agent, we track new investor leads and update them in the pipeline by referencing real file paths (`backend/api/`).\n* We need to improve our status updates by providing concise, first-person responses referencing real file paths and specific names where available.",
-      "source_count": 62,
-      "updated_at": "2026-07-31T05:38:51.300155+00:00",
+      "summary": "Based on the recent agent learnings, here are the 3 concise bullet points of the most important and actionable knowledge:\n\n* The `logs/api_calls.log` file is being actively parsed by multiple agents (`algo_agent`, `token_monitor`) to gather insights on token consumption and API call activity.\n* The `backend/pipeline/investor_stage.json` file is being scanned by the `investor_pipeline` agent to auto-advance leads that have met the \"Qualified\" criteria.\n* Agents are required to provide one-sentence status updates, referencing specific file paths and tasks (e.g. `algo_agent`: \"Actively parsing JSON entries in `logs/api_calls.log`\").",
+      "source_count": 73,
+      "updated_at": "2026-08-01T05:32:07.207287+00:00",
       "raw_recent": [
-        "[continuous_improver @ 2026-07-30T21:09] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As continuous_improver agent, we need to respond with ",
-        "[peer_reviewer @ 2026-07-30T21:09] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the peer_reviewer agent, we should respond with a c",
-        "[investor_pipeline @ 2026-07-31T02:47] We need to respond as investor_pipeline agent, 2 sentences max, specific, first person, referencing real file paths. Currently we track investor pipel",
-        "[run_experiments @ 2026-07-31T02:47] I\u2019m currently assembling the next experiment",
-        "[self_improver @ 2026-07-31T02:47] The user asks for a one-sentence status update: what am I actively working on right now? As self_improver agent, we need to respond in first person, c"
+        "[investor_pipeline @ 2026-08-01T02:45] I\u2019m currently scanning\u202f`backend/pipeline/investor_stage.json`\u202fto auto\u2011advance any leads that have met the \u201cQualified\u201d criteria and updating",
+        "[run_experiments @ 2026-08-01T02:45] We need to respond as run_experiments agent, give one-sentence status update, first person, concise (2 sentences max). Should reference real file path",
+        "[algo_agent @ 2026-08-01T02:45] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The system says must be specific, first person, concis",
+        "[self_improver @ 2026-08-01T02:45] We need to respond as self_improver agent, 2 sentences max, first person, concise, reference real file paths. Provide one-sentence status update. Must",
+        "[research_scientist @ 2026-08-01T02:45] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the research_scientist agent, we must respond in fi"
       ]
     },
     "strategies": {
