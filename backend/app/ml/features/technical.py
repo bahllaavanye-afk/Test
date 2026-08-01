@@ -17,6 +17,7 @@ Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Optional
 
 import numpy as np
@@ -78,6 +79,9 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     if "close" not in df.columns:
         raise ValueError("Input DataFrame must contain a 'close' column.")
+
+    start_time = time.perf_counter()
+    original_columns = set(df.columns)
 
     df = df.copy()
     close = df["close"]
@@ -179,5 +183,23 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             df["adx"] = adx_df["ADX_14"] / 100.0
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute ADX feature", exc_info=exc)
+
+    # Structured logging of key metrics
+    end_time = time.perf_counter()
+    execution_time = end_time - start_time
+    new_columns = set(df.columns) - original_columns
+    signal_count = len(new_columns)
+
+    # Simple P&L approximation: cumulative return of close price
+    pnl = (close.iloc[-1] / close.iloc[0] - 1.0) if len(close) > 1 else 0.0
+
+    _logger.info(
+        "Technical feature computation completed",
+        extra={
+            "signal_count": signal_count,
+            "execution_time_seconds": execution_time,
+            "pnl": pnl,
+        },
+    )
 
     return df

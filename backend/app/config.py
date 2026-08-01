@@ -5,10 +5,24 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, model_validator
 import os as _os
+import logging
+import time
 
 # Resolve .env to the backend/ dir regardless of where uvicorn is launched from.
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
 _BACKEND_ENV = _os.path.join(_HERE, "..", ".env")
+
+# Configure a module‑level logger for structured metrics
+_logger = logging.getLogger("quantedge")
+if not _logger.handlers:
+    _handler = logging.StreamHandler()
+    _formatter = logging.Formatter(
+        fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    _handler.setFormatter(_formatter)
+    _logger.addHandler(_handler)
+    _logger.setLevel(logging.INFO)
 
 
 class Settings(BaseSettings):
@@ -47,9 +61,9 @@ class Settings(BaseSettings):
         url = values.get("database_url", "")
         if isinstance(url, str):
             if url.startswith("postgres://"):
-                url = "postgresql+asyncpg://" + url[len("postgres://"):]
+                url = "postgresql+asyncpg://" + url[len("postgres://") :]
             elif url.startswith("postgresql://"):
-                url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+                url = "postgresql+asyncpg://" + url[len("postgresql://") :]
             values["database_url"] = url
         return values
 
@@ -119,6 +133,24 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",")]
+
+    def log_metrics(self, signal_count: int, execution_time: float, pnl: float) -> None:
+        """
+        Log key operational metrics in a structured way at INFO level.
+
+        Args:
+            signal_count: Number of trading signals processed in the cycle.
+            execution_time: Duration of the execution cycle in seconds.
+            pnl: Profit and loss generated in the cycle (positive for profit, negative for loss).
+        """
+        _logger.info(
+            "trading_metrics",
+            extra={
+                "signal_count": signal_count,
+                "execution_time_seconds": execution_time,
+                "pnl": pnl,
+            },
+        )
 
 
 settings = Settings()
