@@ -1,12 +1,5 @@
 {
   "skills": [
-    "Verify SSL certs",
-    "Check clock sync",
-    "Validate config",
-    "Test dependency chains",
-    "Monitor queue lengths",
-    "Parse JSON logs.",
-    "Based on the recent agent learnings, the most important, actionable knowledge can be distilled into the following concise bullet points:",
     "Log trade exceptions",
     "Monitor system health",
     "Based on the recent agent learnings, the following are 2-3 concise bullet points of the most important, actionable knowledge:",
@@ -199,8 +192,15 @@
     "Restart on crashes",
     "Refactor rate limits",
     "Monitor NAV exposure",
-    "Train hybrid models"
+    "Train hybrid models",
+    "Validate data feeds",
+    "Limit open orders",
+    "Verify network conn",
+    "Flush error queues",
+    "Refactor codebases",
+    "Optimize hyperparams",
+    "Monitor system logs"
   ],
-  "last_updated": "2026-08-01T15:34:57.064290+00:00",
+  "last_updated": "2026-08-01T16:55:39.986728+00:00",
   "total": 200
 }
