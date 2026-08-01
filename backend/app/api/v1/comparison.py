@@ -1,16 +1,32 @@
 """Manual vs ML strategy comparison endpoints."""
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from app.database import get_db
-from app.api.deps import get_current_user
-from app.models.comparison import ComparisonResult as ComparisonModel
-from app.models.user import User
-from app.comparison.benchmarks import get_benchmark_stats
-from pydantic import BaseModel, ConfigDict, ConfigDict
 from datetime import date
 
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user
+from app.comparison.benchmarks import get_benchmark_stats
+from app.database import get_db
+from app.models.comparison import ComparisonResult as ComparisonModel
+from app.models.user import User
+
 router = APIRouter(prefix="/comparison", tags=["comparison"])
+
+
+def _to_float_or_none(value) -> float | None:
+    """Convert a possibly‑None numeric value to float or None."""
+    return float(value) if value is not None else None
+
+
+def _calculate_improvement(manual_sharpe, ml_sharpe) -> float | None:
+    """Calculate percentage improvement of ML Sharpe over manual Sharpe."""
+    if manual_sharpe is None or ml_sharpe is None:
+        return None
+    base = float(manual_sharpe) or 1e-9
+    improvement = (float(ml_sharpe) - float(manual_sharpe)) / abs(base)
+    return round(improvement, 4)
 
 
 class ComparisonOut(BaseModel):
@@ -28,17 +44,16 @@ class ComparisonOut(BaseModel):
 
     @classmethod
     def from_model(cls, m) -> "ComparisonOut":
-        improvement = None
-        if m.manual_sharpe is not None and m.ml_sharpe is not None:
-            base = float(m.manual_sharpe) or 1e-9
-            improvement = (float(m.ml_sharpe) - float(m.manual_sharpe)) / abs(base)
         return cls(
-            id=m.id, strategy_name=m.strategy_name, symbol=m.symbol,
-            manual_sharpe=float(m.manual_sharpe) if m.manual_sharpe else None,
-            ml_sharpe=float(m.ml_sharpe) if m.ml_sharpe else None,
-            is_significant=m.is_significant, winner=m.winner,
-            spy_sharpe=float(m.spy_sharpe) if m.spy_sharpe else None,
-            ml_improvement_pct=round(improvement, 4) if improvement else None,
+            id=m.id,
+            strategy_name=m.strategy_name,
+            symbol=m.symbol,
+            manual_sharpe=_to_float_or_none(m.manual_sharpe),
+            ml_sharpe=_to_float_or_none(m.ml_sharpe),
+            is_significant=m.is_significant,
+            winner=m.winner,
+            spy_sharpe=_to_float_or_none(m.spy_sharpe),
+            ml_improvement_pct=_calculate_improvement(m.manual_sharpe, m.ml_sharpe),
         )
 
 
