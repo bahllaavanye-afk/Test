@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
-
 @dataclass(slots=True)
 class OrderRequest:
     symbol: str
@@ -70,3 +69,44 @@ class AbstractBroker(ABC):
         self, symbol: str, interval: str, limit: int = 500
     ) -> list[dict]:
         """Return OHLCV bars. Each dict: {ts, open, high, low, close, volume}."""
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge cases
+# ----------------------------------------------------------------------
+import pytest
+
+def test_order_request_defaults():
+    """Verify that default values are correctly applied."""
+    req = OrderRequest(
+        symbol="AAPL",
+        side="buy",
+        order_type="market",
+        quantity=10.0,
+    )
+    assert req.time_in_force == "GTC"
+    assert req.account_id == ""
+    assert req.strategy_id is None
+    assert req.risk_bucket == "directional"
+    assert req.execution_algo == "limit_first"
+    assert req.limit_price is None
+    assert req.stop_price is None
+    assert req.stop_loss is None
+    assert req.take_profit is None
+
+def test_order_request_boundary_quantity_zero():
+    """Edge case: quantity set to zero should be accepted (no validation enforced)."""
+    req = OrderRequest(
+        symbol="MSFT",
+        side="sell",
+        order_type="limit",
+        quantity=0.0,
+        limit_price=250.0,
+    )
+    assert req.quantity == 0.0
+    assert req.limit_price == 250.0
+
+def test_abstract_broker_cannot_be_instantiated():
+    """AbstractBroker must remain abstract; instantiation should raise TypeError."""
+    with pytest.raises(TypeError):
+        AbstractBroker()
