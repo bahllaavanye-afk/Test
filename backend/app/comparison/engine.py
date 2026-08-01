@@ -3,6 +3,8 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
+import re
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -45,7 +47,13 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = 100_000,
     ) -> ComparisonResult:
-        # Input validation
+        """
+        Run a side‑by‑side comparison of a manual and an ML‑enhanced strategy.
+
+        Raises:
+            ValueError: If any input fails validation.
+        """
+        # Basic type checks
         if not isinstance(manual_signals, pd.Series):
             raise ValueError("manual_signals must be a pandas Series.")
         if not isinstance(ml_signals, pd.Series):
@@ -53,6 +61,7 @@ class StrategyComparisonEngine:
         if not isinstance(prices, pd.Series):
             raise ValueError("prices must be a pandas Series.")
 
+        # Empty checks
         if manual_signals.empty:
             raise ValueError("manual_signals series cannot be empty.")
         if ml_signals.empty:
@@ -60,13 +69,29 @@ class StrategyComparisonEngine:
         if prices.empty:
             raise ValueError("prices series cannot be empty.")
 
-        if not isinstance(strategy_name, str) or not strategy_name.strip():
-            raise ValueError("strategy_name must be a non-empty string.")
-        if not isinstance(symbol, str) or not symbol.strip():
-            raise ValueError("symbol must be a non-empty string.")
-        if not isinstance(interval, str) or not interval.strip():
-            raise ValueError("interval must be a non-empty string.")
+        # NaN checks
+        if manual_signals.isnull().any():
+            raise ValueError("manual_signals contains NaN values.")
+        if ml_signals.isnull().any():
+            raise ValueError("ml_signals contains NaN values.")
+        if prices.isnull().any():
+            raise ValueError("prices contains NaN values.")
 
+        # String parameter checks
+        if not isinstance(strategy_name, str) or not strategy_name.strip():
+            raise ValueError("strategy_name must be a non‑empty string.")
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("symbol must be a non‑empty string.")
+        if not isinstance(interval, str) or not interval.strip():
+            raise ValueError("interval must be a non‑empty string.")
+
+        # Interval format validation (e.g., '1m', '5m', '1h', '1d')
+        if not re.fullmatch(r"\d+[mhdw]", interval.strip().lower()):
+            raise ValueError(
+                f"interval '{interval}' is not in a recognized format (e.g., '5m', '1h', '1d')."
+            )
+
+        # Date checks
         if not isinstance(start_date, date):
             raise ValueError("start_date must be a datetime.date instance.")
         if not isinstance(end_date, date):
@@ -74,36 +99,48 @@ class StrategyComparisonEngine:
         if start_date > end_date:
             raise ValueError("start_date cannot be later than end_date.")
 
+        # Initial equity validation
         if not isinstance(initial_equity, (int, float)):
             raise ValueError("initial_equity must be a numeric type.")
         if initial_equity <= 0:
             raise ValueError("initial_equity must be a positive number.")
 
-        # Ensure series are aligned on the same index (optional but helps consistency)
+        # Alignment validation
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
-            raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
+            raise ValueError(
+                "manual_signals, ml_signals, and prices must share at least one common index."
+            )
         manual_signals = manual_signals.loc[common_index]
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
 
+        # Ensure index is monotonic increasing
+        if not common_index.is_monotonic_increasing:
+            raise ValueError("The index of the input series must be monotonic increasing.")
+
+        # Run backtests
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 
+        # Fetch benchmarks
         benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
         benchmark_stats = get_benchmark_stats()
 
+        # Equity curve processing
         manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
         ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
         manual_ret = manual_eq.pct_change().dropna()
         ml_ret = ml_eq.pct_change().dropna()
 
+        # Statistical test
         min_len = min(len(manual_ret), len(ml_ret))
         if min_len > 10:
             t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
         else:
             t_stat, p_val = 0.0, 1.0
 
+        # Determine improvement and winner
         improvement = ml_metrics.sharpe - manual_metrics.sharpe
         winner = "ml" if ml_metrics.sharpe > manual_metrics.sharpe else "manual"
         if abs(improvement) < 0.1:
