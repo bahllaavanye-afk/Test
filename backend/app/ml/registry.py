@@ -13,6 +13,8 @@ Usage:
 from __future__ import annotations
 
 import json
+import unittest
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -217,3 +219,86 @@ class ModelRegistry:
 
     def __repr__(self) -> str:
         return f"ModelRegistry(index={self.index_path}, n_models={len(self)})"
+
+
+# ----------------------------------------------------------------------
+# Unit tests – edge cases and boundary conditions
+# ----------------------------------------------------------------------
+class TestModelRegistryEdgeCases(unittest.TestCase):
+    def setUp(self):
+        # Use a temporary directory to avoid polluting the real filesystem.
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.index_path = Path(self.temp_dir.name) / "test_registry.json"
+        self.registry = ModelRegistry(index_path=self.index_path)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_register_empty_name_and_load(self):
+        """Register a model with an empty string as its name and ensure it can be loaded."""
+        record = self.registry.register(
+            name="",
+            model_type="tft",
+            artifact_path="models/empty_name.pt",
+            val_sharpe=1.23456,
+            val_accuracy=0.98765,
+            val_auc=0.87654,
+            tags=["edge"],
+        )
+        # Verify rounding behavior on boundary values
+        self.assertEqual(record["val_sharpe"], 1.2346)
+        self.assertEqual(record["val_accuracy"], 0.9877)
+        self.assertEqual(record["val_auc"], 0.8765)
+
+        # Loading using the empty name should return the same record
+        loaded = self.registry.load("")
+        self.assertEqual(loaded, record)
+
+    def test_get_best_on_empty_registry_returns_none(self):
+        """When no models are registered, get_best should return None."""
+        empty_registry = ModelRegistry(index_path=self.index_path)  # fresh instance, no records
+        self.assertEqual(len(empty_registry), 0)
+        self.assertIsNone(empty_registry.get_best())
+
+    def test_compare_models_skips_missing_and_warns(self):
+        """compare_models should skip unknown names without raising and return only existing records."""
+        # Register a single model
+        self.registry.register(
+            name="model_A",
+            model_type="lgbm",
+            artifact_path="models/A.pt",
+            val_sharpe=2.0,
+        )
+        # Compare with one existing and one missing model name
+        result = self.registry.compare_models(["model_A", "nonexistent_model"])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["name"], "model_A")
+
+    def test_duplicate_register_overwrites(self):
+        """Registering a model with an existing name should overwrite the previous entry."""
+        self.registry.register(
+            name="dup_model",
+            model_type="tft",
+            artifact_path="models/v1.pt",
+            val_sharpe=0.5,
+        )
+        # Overwrite with new metrics
+        self.registry.register(
+            name="dup_model",
+            model_type="tft",
+            artifact_path="models/v2.pt",
+            val_sharpe=1.5,
+        )
+        self.assertEqual(len(self.registry), 1)
+        record = self.registry.load("dup_model")
+        self.assertEqual(record["artifact_path"], "models/v2.pt")
+        self.assertEqual(record["val_sharpe"], 1.5)
+
+    def test_update_nonexistent_raises(self):
+        """Attempting to update a non‑existent model should raise a KeyError."""
+        with self.assertRaises(KeyError):
+            self.registry.update("ghost_model", val_sharpe=3.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
