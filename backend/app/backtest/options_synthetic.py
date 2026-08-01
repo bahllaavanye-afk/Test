@@ -5,10 +5,12 @@ proxy = realized (understates rich IV regimes, so short‑premium results here
 are CONSERVATIVE), fills at mid. Good for structure comparison and regime
 sanity checks — not for absolute P&L claims.
 """
+
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -17,7 +19,18 @@ TRADING_DAYS = 252
 
 
 def _norm_cdf(x: float) -> float:
-    """Standard normal cumulative distribution function."""
+    """Standard normal cumulative distribution function.
+
+    Parameters
+    ----------
+    x: float
+        Value at which to evaluate the CDF.
+
+    Returns
+    -------
+    float
+        Cumulative probability up to ``x``.
+    """
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
@@ -70,13 +83,28 @@ def bs_price(
 
 
 def realized_vol(close: pd.Series, window: int = 20) -> pd.Series:
-    """Annualized close‑to‑close realized vol — the IV proxy."""
+    """Annualized close‑to‑close realized volatility (IV proxy).
+
+    Parameters
+    ----------
+    close: pd.Series
+        Series of closing prices.
+    window: int, optional
+        Rolling window length for volatility calculation.
+
+    Returns
+    -------
+    pd.Series
+        Realized volatility series aligned with ``close``.
+    """
     rets = np.log(close / close.shift(1))
     return rets.rolling(window).std() * math.sqrt(TRADING_DAYS)
 
 
 @dataclass
 class SpreadLeg:
+    """Specification of a single leg in an option spread."""
+
     kind: str          # call | put
     side: str          # buy | sell
     moneyness: float   # strike = moneyness * entry spot
@@ -84,16 +112,19 @@ class SpreadLeg:
 
 @dataclass
 class SpreadBacktestResult:
+    """Aggregated results of a spread backtest."""
+
     trades: int
     wins: int
     total_pnl: float
     avg_pnl: float
     win_rate: float | None
     max_loss: float
-    pnl_series: list[float]
+    pnl_series: List[float]
 
     @property
     def summary(self) -> str:
+        """Human‑readable summary of the backtest performance."""
         wr = f"{self.win_rate:.0%}" if self.win_rate is not None else "—"
         return (
             f"{self.trades} trades, win {wr}, total {self.total_pnl:+.2f}, "
@@ -104,12 +135,31 @@ class SpreadBacktestResult:
 
 def price_spread(
     spot: float,
-    legs: list[SpreadLeg],
-    strikes: list[float],
+    legs: List[SpreadLeg],
+    strikes: List[float],
     t_years: float,
     sigma: float,
 ) -> float:
-    """Signed value of the spread to its HOLDER (long premium positive)."""
+    """Signed value of the spread to its holder (long premium positive).
+
+    Parameters
+    ----------
+    spot: float
+        Underlying price at valuation time.
+    legs: List[SpreadLeg]
+        List of legs defining the spread.
+    strikes: List[float]
+        Corresponding strike prices for each leg.
+    t_years: float
+        Time to expiry in years.
+    sigma: float
+        Annualized volatility used for pricing.
+
+    Returns
+    -------
+    float
+        Net value of the spread.
+    """
     value = 0.0
     for leg, strike in zip(legs, strikes):
         p = bs_price(spot, strike, t_years, sigma, leg.kind)
@@ -119,8 +169,8 @@ def price_spread(
 
 def backtest_spread(
     df: pd.DataFrame,
-    legs: list[SpreadLeg],
-    entry_mask: pd.Series | None = None,
+    legs: List[SpreadLeg],
+    entry_mask: Optional[pd.Series] = None,
     dte: int = 35,
     hold_days: int = 21,
     vol_window: int = 20,
@@ -131,7 +181,7 @@ def backtest_spread(
     ----------
     df: pd.DataFrame
         Must contain a ``close`` column.
-    legs: list[SpreadLeg]
+    legs: List[SpreadLeg]
         Specification of each leg.
     entry_mask: pd.Series | None, optional
         Boolean mask indicating entry dates; defaults to weekly entries.
@@ -154,7 +204,7 @@ def backtest_spread(
         entry_mask = pd.Series(False, index=df.index)
         entry_mask.iloc[vol_window::5] = True
 
-    pnls: list[float] = []
+    pnls: List[float] = []
     n = len(df)
 
     for i in np.flatnonzero(entry_mask.to_numpy()):
@@ -198,11 +248,11 @@ def backtest_spread(
 
 
 # Ready‑made structures mirroring the Options desk's mleg specs
-IRON_CONDOR = [
+IRON_CONDOR: List[SpreadLeg] = [
     SpreadLeg("put", "sell", 0.95),
     SpreadLeg("put", "buy", 0.91),
     SpreadLeg("call", "sell", 1.05),
     SpreadLeg("call", "buy", 1.09),
 ]
-BULL_PUT_SPREAD = [SpreadLeg("put", "sell", 0.96), SpreadLeg("put", "buy", 0.92)]
-BEAR_CALL_SPREAD = [SpreadLeg("call", "sell", 1.04), SpreadLeg("call", "buy", 1.08)]
+BULL_PUT_SPREAD: List[SpreadLeg] = [SpreadLeg("put", "sell", 0.96), SpreadLeg("put", "buy", 0.92)]
+BEAR_CALL_SPREAD: List[SpreadLeg] = [SpreadLeg("call", "sell", 1.04), SpreadLeg("call", "buy", 1.08)]
