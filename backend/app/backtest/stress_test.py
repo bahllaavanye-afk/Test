@@ -7,6 +7,8 @@ average across calm and turbulent regimes.
 """
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
 from datetime import date
 
@@ -14,6 +16,7 @@ import pandas as pd
 
 from app.backtest.engine import BacktestMetrics, run_backtest
 
+logger = logging.getLogger(__name__)
 
 @dataclass
 class StressScenario:
@@ -129,6 +132,11 @@ def run_stress_tests(
 
         # Fast check: if the scenario window does not intersect the price index, skip early
         if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
+            logger.info(
+                "Skipping scenario %s: no overlap with price data",
+                scenario.name,
+                extra={"scenario": scenario.name, "covered": False},
+            )
             results.append(
                 StressResult(
                     scenario=scenario,
@@ -145,6 +153,12 @@ def run_stress_tests(
         s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
 
         if s_prices is None or len(s_prices) < 5:
+            logger.info(
+                "Skipping scenario %s: insufficient price data (%d points)",
+                scenario.name,
+                len(s_prices) if s_prices is not None else 0,
+                extra={"scenario": scenario.name, "covered": False, "data_points": len(s_prices) if s_prices else 0},
+            )
             results.append(
                 StressResult(
                     scenario=scenario,
@@ -155,6 +169,7 @@ def run_stress_tests(
             )
             continue
 
+        scenario_start = time.perf_counter()
         metrics = run_backtest(
             signals=s_signals,
             prices=s_prices,
@@ -163,6 +178,18 @@ def run_stress_tests(
             initial_equity=initial_equity,
             commission_pct=commission_pct,
             slippage_pct=slippage_pct,
+        )
+        elapsed = time.perf_counter() - scenario_start
+
+        logger.info(
+            "Stress test completed",
+            extra={
+                "scenario": scenario.name,
+                "signal_count": len(s_signals) if s_signals is not None else 0,
+                "data_points": len(s_prices),
+                "total_return": metrics.total_return,
+                "exec_time_sec": elapsed,
+            },
         )
 
         results.append(
