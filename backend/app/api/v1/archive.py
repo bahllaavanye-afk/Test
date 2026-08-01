@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.archive.trade_archiver import replay, list_archives
+from datetime import datetime
 
 # Constants
 ARCHIVE_PREFIX: str = "/archive"
@@ -17,8 +18,35 @@ LIMIT_DESCRIPTION: str = "Maximum number of records to return (1-5000)"
 
 ERR_LIMIT_POSITIVE: str = "Limit must be a positive integer."
 ERR_RETRIEVE_ARCHIVE: str = "Failed to retrieve archive: {exc}"
+ERR_INVALID_CATEGORY: str = "Category must be a non‑empty string."
+ERR_INVALID_DATE: str = "Date must be in YYYY‑MM‑DD format."
+ERR_INVALID_LIMIT: str = f"Limit must be between {MIN_LIMIT} and {MAX_LIMIT}."
 
 router = APIRouter(prefix=ARCHIVE_PREFIX, tags=[ARCHIVE_TAG])
+
+
+def _validate_category(category: str) -> None:
+    """Validate that category is a non‑empty string."""
+    if not isinstance(category, str) or not category.strip():
+        raise ValueError(ERR_INVALID_CATEGORY)
+
+
+def _validate_date(date: str | None) -> None:
+    """Validate that date, if provided, matches YYYY‑MM‑DD."""
+    if date is None:
+        return
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+    except Exception:
+        raise ValueError(ERR_INVALID_DATE)
+
+
+def _validate_limit(limit: int) -> None:
+    """Validate that limit is within the allowed range."""
+    if not isinstance(limit, int):
+        raise ValueError(ERR_INVALID_LIMIT)
+    if not (MIN_LIMIT <= limit <= MAX_LIMIT):
+        raise ValueError(ERR_INVALID_LIMIT)
 
 
 @router.get("/index")
@@ -50,12 +78,16 @@ async def get_archive(
     Replay trades for a given category and optional date.
     Edge‑case handling:
     * `date` empty string is treated as None.
-    * `limit` is validated to be at least 1.
+    * `limit` is validated to be within allowed range.
     * Returns an empty list if the replay yields no data.
     """
+    # Input validation
+    _validate_category(category)
     # Normalize empty date strings
     if date == "":
         date = None
+    _validate_date(date)
+    _validate_limit(limit)
 
     # Defensive check for limit (should already be enforced by Query)
     if limit < MIN_LIMIT:
