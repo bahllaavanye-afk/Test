@@ -99,6 +99,44 @@ def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timesta
         return series.loc[mask]
 
 
+def _validate_series(name: str, series: pd.Series | None, allow_none: bool = False) -> None:
+    """Validate that an object is a pandas Series with a DatetimeIndex."""
+    if series is None:
+        if not allow_none:
+            raise ValueError(f"{name} must be a pandas Series, not None.")
+        return
+    if not isinstance(series, pd.Series):
+        raise ValueError(f"{name} must be a pandas Series, got {type(series).__name__}.")
+    if not isinstance(series.index, (pd.DatetimeIndex, pd.PeriodIndex)):
+        raise ValueError(f"{name} index must be a DatetimeIndex or PeriodIndex.")
+    if series.empty:
+        raise ValueError(f"{name} series must contain at least one data point.")
+
+
+def _validate_float(name: str, value: float, *, min_value: float = 0.0, max_value: float | None = None) -> None:
+    """Validate that a numeric input is a float within optional bounds."""
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a numeric type, got {type(value).__name__}.")
+    if value < min_value:
+        raise ValueError(f"{name} must be >= {min_value}, got {value}.")
+    if max_value is not None and value > max_value:
+        raise ValueError(f"{name} must be <= {max_value}, got {value}.")
+
+
+def _validate_scenarios(scenarios: list[StressScenario] | None) -> list[StressScenario]:
+    """Validate the scenarios argument and return a concrete list."""
+    if scenarios is None:
+        return STRESS_SCENARIOS
+    if not isinstance(scenarios, list):
+        raise ValueError("scenarios must be a list of StressScenario objects.")
+    if not scenarios:
+        raise ValueError("scenarios list cannot be empty.")
+    for i, s in enumerate(scenarios):
+        if not isinstance(s, StressScenario):
+            raise ValueError(f"scenarios[{i}] is not a StressScenario instance.")
+    return scenarios
+
+
 def run_stress_tests(
     signals: pd.Series,
     prices: pd.Series,
@@ -115,8 +153,15 @@ def run_stress_tests(
     Only scenarios where the price series has ≥ 5 data points are evaluated;
     others return period_covered=False with metrics=None.
     """
-    if scenarios is None:
-        scenarios = STRESS_SCENARIOS
+    # Input validation
+    _validate_series("signals", signals)
+    _validate_series("prices", prices)
+    _validate_series("opens", opens, allow_none=True)
+    _validate_series("volume", volume, allow_none=True)
+    _validate_float("initial_equity", initial_equity, min_value=0.0)
+    _validate_float("commission_pct", commission_pct, min_value=0.0, max_value=1.0)
+    _validate_float("slippage_pct", slippage_pct, min_value=0.0, max_value=1.0)
+    scenarios = _validate_scenarios(scenarios)
 
     results: list[StressResult] = []
 
@@ -184,6 +229,15 @@ def stress_summary(results: list[StressResult]) -> dict:
     Returns per-scenario max_drawdown, total_return, and sharpe.
     Only includes scenarios where period_covered=True.
     """
+    # Input validation
+    if not isinstance(results, list):
+        raise ValueError("results must be a list of StressResult objects.")
+    if not results:
+        raise ValueError("results list cannot be empty.")
+    for i, r in enumerate(results):
+        if not isinstance(r, StressResult):
+            raise ValueError(f"results[{i}] is not a StressResult instance.")
+
     out: dict = {}
     for r in results:
         if not r.period_covered or r.metrics is None:
