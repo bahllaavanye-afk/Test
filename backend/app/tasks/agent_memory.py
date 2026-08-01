@@ -33,16 +33,29 @@ class AgentMemory:
 
     async def write(self, topic: str, data: dict) -> None:
         """Append an observation to a topic list with a timestamp."""
+        if not topic:
+            logger.warning("AgentMemory.write called with empty or None topic")
+            return
+        if not isinstance(data, dict) or data is None:
+            logger.warning("AgentMemory.write called with invalid data for topic %s", topic)
+            return
         payload = json.dumps({"ts": time.time(), **data})
         key = f"{_PREFIX}{topic}"
         try:
             await self._r.lpush(key, payload)
+            # Trim to keep at most _MAX_LIST_LEN items (0-indexed inclusive)
             await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
         except Exception as e:
             logger.warning("AgentMemory.write failed for topic %s: %s", topic, e)
 
     async def set_latest(self, topic: str, data: dict) -> None:
         """Overwrite the latest value for a topic (single-value slot)."""
+        if not topic:
+            logger.warning("AgentMemory.set_latest called with empty or None topic")
+            return
+        if not isinstance(data, dict) or data is None:
+            logger.warning("AgentMemory.set_latest called with invalid data for topic %s", topic)
+            return
         key = f"{_PREFIX}latest:{topic}"
         payload = json.dumps({"ts": time.time(), **data})
         try:
@@ -54,6 +67,12 @@ class AgentMemory:
 
     async def read_recent(self, topic: str, n: int = 50) -> list[dict]:
         """Return up to n most-recent observations for a topic."""
+        if not topic:
+            logger.warning("AgentMemory.read_recent called with empty or None topic")
+            return []
+        if not isinstance(n, int) or n <= 0:
+            logger.warning("AgentMemory.read_recent called with non-positive n=%s for topic %s", n, topic)
+            return []
         key = f"{_PREFIX}{topic}"
         try:
             items = await self._r.lrange(key, 0, n - 1)
@@ -64,6 +83,9 @@ class AgentMemory:
 
     async def get_latest(self, topic: str) -> dict | None:
         """Return the latest single-value for a topic."""
+        if not topic:
+            logger.warning("AgentMemory.get_latest called with empty or None topic")
+            return None
         key = f"{_PREFIX}latest:{topic}"
         try:
             val = await self._r.get(key)
@@ -77,6 +99,8 @@ class AgentMemory:
         try:
             pattern = f"{_PREFIX}*"
             keys = await self._r.keys(pattern)
+            if not keys:
+                return []
             return [k.removeprefix(_PREFIX) for k in keys]
         except Exception as e:
             logger.warning("AgentMemory.read_all_topics failed: %s", e)

@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -30,22 +30,46 @@ def _load_health_report() -> Dict[str, Any]:
     """Load the health report JSON from disk.
 
     Returns a dictionary with the report contents. Raises HTTPException if the
-    file exists but cannot be parsed.
+    file exists but cannot be parsed or does not contain the expected structure.
     """
     if not HEALTH_REPORT_PATH.exists():
         return {"status": DEFAULT_HEALTH_STATUS, "message": DEFAULT_HEALTH_MESSAGE}
     try:
-        return json.loads(HEALTH_REPORT_PATH.read_text())
+        raw = HEALTH_REPORT_PATH.read_text()
+        report = json.loads(raw)
+        if not isinstance(report, dict):
+            raise ValueError("Health report is not a JSON object")
+        # Ensure required keys exist; fill defaults if missing
+        report.setdefault("status", DEFAULT_HEALTH_STATUS)
+        report.setdefault("message", DEFAULT_HEALTH_MESSAGE)
+        return report
     except Exception as exc:
         raise HTTPException(status_code=500, detail=HEALTH_REPORT_CORRUPTED_DETAIL) from exc
 
 
-def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
+def _read_fix_log(limit: Optional[int] = None) -> List[Dict[str, Any]]:
     """Read the fix log file and return the most recent *limit* entries.
 
     The log is stored as newline‑delimited JSON. Empty or missing files result in
     an empty list. Any parsing error raises an HTTPException.
+
+    Args:
+        limit: Maximum number of entries to return. If None or non‑positive,
+               defaults to DEFAULT_FIX_LOG_LIMIT. Excessively large values are
+               capped to avoid excessive memory usage.
+
+    Returns:
+        A list of dictionaries representing the most recent log entries,
+        ordered from oldest to newest (newest last).
     """
+    effective_limit = (
+        DEFAULT_FIX_LOG_LIMIT if limit is None or limit <= 0 else limit
+    )
+    # Cap the limit to a reasonable maximum to prevent OOM
+    MAX_LIMIT = 10_000
+    if effective_limit > MAX_LIMIT:
+        effective_limit = MAX_LIMIT
+
     if not FIX_LOG_PATH.exists():
         return []
     try:
@@ -53,10 +77,22 @@ def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
         if not raw_text:
             return []
         lines = raw_text.splitlines()
-        recent_lines = lines[-limit:]
-        return [json.loads(line) for line in recent_lines]
+        recent_lines = lines[-effective_limit:]
+        entries: List[Dict[str, Any]] = []
+        for line in recent_lines:
+            try:
+                entry = json.loads(line)
+                if isinstance(entry, dict):
+                    entries.append(entry)
+                # Skip non‑dict entries silently
+            except json.JSONDecodeError:
+                # Skip malformed lines; continue processing others
+                continue
+        return entries
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=FIX_LOG_READ_ERROR_DETAIL.format(exc)) from exc
+        raise HTTPException(
+            status_code=500, detail=FIX_LOG_READ_ERROR_DETAIL.format(exc)
+        ) from exc
 
 
 @router.get("/health")
@@ -71,7 +107,7 @@ async def get_health_report():
 
 @router.get("/fixes")
 async def get_fix_log(
-    limit: int = DEFAULT_FIX_LOG_LIMIT,
+    limit: Optional[int] = DEFAULT_FIX_LOG_LIMIT,
     current_user: User = Depends(get_current_user),
 ):
     """Recent auto‑fixes applied by the QA monitor (requires auth).
