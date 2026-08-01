@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Validate state files",
-    "Check database connections",
-    "Implement JSON schema validation",
-    "Check DB connections",
     "* The `backend/pipeline/investor_stage.json` file is being scanned by the `investor_pipeline` agent to auto-advance leads that have met the \"Qualified\" criteria.",
     "Verify config files",
     "Monitor system load",
@@ -199,8 +195,12 @@
     "Set max retry counts",
     "Track thread timeouts",
     "Cap trade batch size",
-    "Monitor model metrics"
+    "Monitor model metrics",
+    "Validate inputs",
+    "Set CPU quotas",
+    "Limit DB queries",
+    "Cache market data"
   ],
-  "last_updated": "2026-08-01T20:25:07.439999+00:00",
+  "last_updated": "2026-08-01T21:23:36.238982+00:00",
   "total": 200
 }
