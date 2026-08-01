@@ -1,30 +1,22 @@
 {
-  "generated_at": "2026-07-31T19:49:13.121273+00:00",
+  "generated_at": "2026-08-01T01:15:37.125662+00:00",
   "period_days": 30,
   "strategies": {
-    "vol_of_vol": {
-      "trades": 10,
-      "wins": 2,
-      "win_rate": 0.2,
-      "avg_return_pct": -0.2286,
-      "total_return_pct": -2.2857,
-      "last_updated": "2026-07-31T19:49:13.121273+00:00"
-    },
     "vol_of_vol_timing": {
       "trades": 5,
       "wins": 4,
       "win_rate": 0.8,
       "avg_return_pct": 0.3521,
       "total_return_pct": 1.7607,
-      "last_updated": "2026-07-31T19:49:13.121273+00:00"
+      "last_updated": "2026-08-01T01:15:37.125662+00:00"
     },
-    "avellaneda": {
-      "trades": 34,
-      "wins": 18,
-      "win_rate": 0.5294,
-      "avg_return_pct": -0.8441,
-      "total_return_pct": -28.6984,
-      "last_updated": "2026-07-31T19:49:13.121273+00:00"
+    "vol_of_vol": {
+      "trades": 10,
+      "wins": 2,
+      "win_rate": 0.2,
+      "avg_return_pct": -0.2286,
+      "total_return_pct": -2.2857,
+      "last_updated": "2026-08-01T01:15:37.125662+00:00"
     },
     "avellaneda_stoikov_mm": {
       "trades": 10,
@@ -32,7 +24,15 @@
       "win_rate": 0.9,
       "avg_return_pct": 5.3481,
       "total_return_pct": 53.481,
-      "last_updated": "2026-07-31T19:49:13.121273+00:00"
+      "last_updated": "2026-08-01T01:15:37.125662+00:00"
+    },
+    "avellaneda": {
+      "trades": 34,
+      "wins": 18,
+      "win_rate": 0.5294,
+      "avg_return_pct": -0.8441,
+      "total_return_pct": -28.6984,
+      "last_updated": "2026-08-01T01:15:37.125662+00:00"
     }
   },
   "tracked_order_ids": [
