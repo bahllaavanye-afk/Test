@@ -4,11 +4,14 @@ Runs every hour. Tracks LOC, test coverage, lint warnings.
 Does NOT modify source — just reports.
 """
 from __future__ import annotations
+
 import asyncio
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import List
+
+from pydantic import BaseModel, Field, validator
 
 from app.utils.logging import logger
 
@@ -71,22 +74,108 @@ def _count_tests(root: Path) -> dict:
     }
 
 
+class CodeQualitySnapshot(BaseModel):
+    """Schema representing a single code‑quality snapshot."""
+
+    timestamp: datetime = Field(
+        ...,
+        description="ISO‑8601 timestamp of when the snapshot was taken (UTC).",
+        example="2024-01-01T12:00:00+00:00",
+    )
+    files: int = Field(
+        ...,
+        description="Total number of Python files scanned.",
+        ge=0,
+        example=120,
+    )
+    total_lines: int = Field(
+        ...,
+        description="Total lines across all scanned files.",
+        ge=0,
+        example=3500,
+    )
+    code_lines: int = Field(
+        ...,
+        description="Lines containing executable code.",
+        ge=0,
+        example=2500,
+    )
+    comment_lines: int = Field(
+        ...,
+        description="Lines that are comments.",
+        ge=0,
+        example=500,
+    )
+    blank_lines: int = Field(
+        ...,
+        description="Lines that are empty or contain only whitespace.",
+        ge=0,
+        example=500,
+    )
+    comment_ratio: float = Field(
+        ...,
+        description="Ratio of comment lines to code lines.",
+        ge=0,
+        le=1,
+        example=0.2,
+    )
+    manual_strategies: int = Field(
+        ...,
+        description="Number of user‑defined manual strategies.",
+        ge=0,
+        example=8,
+    )
+    ml_strategies: int = Field(
+        ...,
+        description="Number of machine‑learning enhanced strategies.",
+        ge=0,
+        example=5,
+    )
+    unit_test_files: int = Field(
+        ...,
+        description="Count of unit test files.",
+        ge=0,
+        example=15,
+    )
+    integration_test_files: int = Field(
+        ...,
+        description="Count of integration test files.",
+        ge=0,
+        example=3,
+    )
+
+    @validator("timestamp")
+    def ensure_utc(cls, v: datetime) -> datetime:
+        """Validate that the timestamp is timezone‑aware and in UTC."""
+        if v.tzinfo is None:
+            raise ValueError("timestamp must be timezone‑aware")
+        return v.astimezone(timezone.utc)
+
+    @validator("comment_ratio")
+    def ratio_bounds(cls, v: float) -> float:
+        """Comment ratio must be between 0 and 1 inclusive."""
+        if not (0 <= v <= 1):
+            raise ValueError("comment_ratio must be between 0 and 1")
+        return round(v, 3)
+
+
 class CodeQualityLoop:
     def __init__(self, interval_seconds: int = 3600):
         self.interval_seconds = interval_seconds
         self._running = False
 
-    async def _snapshot(self) -> dict:
+    async def _snapshot(self) -> CodeQualitySnapshot:
         loop = asyncio.get_running_loop()
         loc = await loop.run_in_executor(None, _count_loc, BACKEND_ROOT)
         strat = await loop.run_in_executor(None, _count_strategies, BACKEND_ROOT)
         tests = await loop.run_in_executor(None, _count_tests, BACKEND_ROOT)
-        return {
+        raw = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             **loc,
             **strat,
             **tests,
         }
+        return CodeQualitySnapshot.parse_obj(raw)
 
     def _persist(self, snapshot: dict) -> None:
         try:
@@ -102,9 +191,9 @@ class CodeQualityLoop:
         logger.info("CodeQualityLoop started", interval=self.interval_seconds)
         while self._running:
             try:
-                snapshot = await self._snapshot()
-                self._persist(snapshot)
-                logger.debug("Code quality snapshot", **snapshot)
+                snapshot_model = await self._snapshot()
+                self._persist(snapshot_model.dict())
+                logger.debug("Code quality snapshot", **snapshot_model.dict())
             except asyncio.CancelledError:
                 return
             except Exception as e:
@@ -114,11 +203,13 @@ class CodeQualityLoop:
     async def stop(self) -> None:
         self._running = False
 
-    def latest(self) -> dict | None:
+    def latest(self) -> CodeQualitySnapshot | None:
         if not QUALITY_FILE.exists():
             return None
         try:
             history = json.loads(QUALITY_FILE.read_text())
-            return history[-1] if history else None
+            if not history:
+                return None
+            return CodeQualitySnapshot.parse_obj(history[-1])
         except Exception:
             return None
