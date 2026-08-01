@@ -12,6 +12,8 @@ The implementation mirrors the original code base and adds no new
 behaviour; it merely enriches the DataFrame with a collection of common
 technical features such as returns, volatility, EMA distance, RSI, MACD,
 Bollinger Bands, OBV, volume ratio, ATR, Stochastic Oscillator and ADX.
+Additionally, tighter entry/exit signal columns are added to aid strategy
+logic.
 """
 
 from __future__ import annotations
@@ -179,5 +181,53 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             df["adx"] = adx_df["ADX_14"] / 100.0
         except Exception as exc:  # pragma: no cover
             _logger.error("Failed to compute ADX feature", exc_info=exc)
+
+    # ------------------------------------------------------------------
+    # Signal generation – tighter entry/exit criteria
+    # ------------------------------------------------------------------
+    # The signals are deliberately conservative:
+    #   * Long entry requires oversold RSI, price near the lower Bollinger band,
+    #     positive MACD histogram (momentum), and a reasonably strong trend
+    #     indicated by ADX.
+    #   * Long exit triggers when the instrument becomes overbought, price
+    #     reaches the upper Bollinger band, or momentum turns negative.
+    #   * Short signals are the logical opposites.
+    # These columns can be directly used by downstream strategy code.
+    # ------------------------------------------------------------------
+    try:
+        # Ensure required columns exist before computing signals
+        required = ["rsi_14", "bb_lower_dist", "bb_upper_dist", "macd_hist", "adx"]
+        if all(col in df.columns for col in required):
+            # Long entry
+            df["long_entry"] = (
+                (df["rsi_14"] < 0.30) &
+                (df["bb_lower_dist"] < 0.02) &
+                (df["macd_hist"] > 0) &
+                (df["adx"] > 0.25)
+            ).astype(int)
+
+            # Long exit
+            df["long_exit"] = (
+                (df["rsi_14"] > 0.70) |
+                (df["bb_upper_dist"] < 0.02) |
+                (df["macd_hist"] < 0)
+            ).astype(int)
+
+            # Short entry (mirror of long entry)
+            df["short_entry"] = (
+                (df["rsi_14"] > 0.70) &
+                (df["bb_upper_dist"] < 0.02) &
+                (df["macd_hist"] < 0) &
+                (df["adx"] > 0.25)
+            ).astype(int)
+
+            # Short exit
+            df["short_exit"] = (
+                (df["rsi_14"] < 0.30) |
+                (df["bb_lower_dist"] < 0.02) |
+                (df["macd_hist"] > 0)
+            ).astype(int)
+    except Exception as exc:  # pragma: no cover
+        _logger.error("Failed to compute signal columns", exc_info=exc)
 
     return df
