@@ -17,10 +17,12 @@ from __future__ import annotations
 import asyncio
 import os
 import socket
+from typing import Literal
 
 import numpy as np
 import pandas as pd
 import pytest
+from pydantic import BaseModel, Field, ValidationError, validator
 
 os.environ.setdefault("SECRET_KEY", "test-secret-key-32-bytes-hex-xxxxxx")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_contract.db")
@@ -99,6 +101,50 @@ def no_network(monkeypatch):
         monkeypatch.setattr(_curl_requests, _fn, _blocked, raising=False)
 
 
+# ---------------------------------------------------------------------------
+# Pydantic schema for the signal objects returned by strategies.
+# ---------------------------------------------------------------------------
+class SignalSchema(BaseModel):
+    """Validated representation of a strategy signal.
+
+    Attributes
+    ----------
+    side : Literal['buy', 'sell']
+        The intended trade direction. Must be lower‑case.
+    confidence : float
+        Confidence score in the range [0.0, 1.0] indicating the strength of the
+        signal.
+    """
+
+    side: Literal["buy", "sell"] = Field(
+        ...,
+        description="Trade direction: either 'buy' or 'sell'.",
+        examples=["buy"],
+    )
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score between 0 (no confidence) and 1 (full confidence).",
+        examples=[0.85],
+    )
+
+    @validator("side", pre=True)
+    def normalize_side(cls, v: str) -> str:
+        """Ensure side is a lower‑case string."""
+        if not isinstance(v, str):
+            raise ValueError("side must be a string")
+        v_norm = v.strip().lower()
+        if v_norm not in {"buy", "sell"}:
+            raise ValueError("side must be 'buy' or 'sell'")
+        return v_norm
+
+    class Config:
+        schema_extra = {
+            "example": {"side": "buy", "confidence": 0.92},
+        }
+
+
 _LOADED = sorted(n for n, c in STRATEGY_REGISTRY.items() if c is not None)
 
 
@@ -132,6 +178,14 @@ def test_strategy_honors_contract(name: str, no_network):
 
     if sig is None:
         return  # no setup — a valid, honest answer
+
+    # Validate the returned signal against the schema.
+    try:
+        SignalSchema.parse_obj(sig)
+    except ValidationError as ve:
+        pytest.fail(f"{name}: signal validation failed: {ve}")
+
+    # Existing assertions remain for clarity.
     side = str(getattr(sig, "side", "")).lower()
     assert side in ("buy", "sell"), f"{name}: bad side {side!r}"
     conf = getattr(sig, "confidence", None)
