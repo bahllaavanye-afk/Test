@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+import pytest
 
 TRADING_DAYS = 252
 
@@ -206,3 +207,56 @@ IRON_CONDOR = [
 ]
 BULL_PUT_SPREAD = [SpreadLeg("put", "sell", 0.96), SpreadLeg("put", "buy", 0.92)]
 BEAR_CALL_SPREAD = [SpreadLeg("call", "sell", 1.04), SpreadLeg("call", "buy", 1.08)]
+
+# ----------------------------------------------------------------------
+# Unit tests for edge and boundary conditions
+# ----------------------------------------------------------------------
+
+
+def test_bs_price_intrinsic_when_zero_time_or_sigma():
+    """When time to expiry or volatility is non‑positive, price should equal intrinsic."""
+    spot = 100.0
+    strike = 110.0
+    # Call option, intrinsic is 0
+    assert bs_price(spot, strike, t_years=0.0, sigma=0.2, kind="call") == 0.0
+    assert bs_price(spot, strike, t_years=-0.1, sigma=0.2, kind="CALL") == 0.0
+    # Put option, intrinsic is strike - spot
+    expected_intrinsic = strike - spot
+    assert bs_price(spot, strike, t_years=0.0, sigma=0.2, kind="put") == expected_intrinsic
+    assert bs_price(spot, strike, t_years=0.0, sigma=0.0, kind="PUT") == expected_intrinsic
+
+
+def test_bs_price_invalid_inputs():
+    """Validate that invalid spot, strike or kind raise ValueError."""
+    with pytest.raises(ValueError):
+        bs_price(0.0, 100.0, 0.5, 0.2, "call")
+    with pytest.raises(ValueError):
+        bs_price(100.0, -10.0, 0.5, 0.2, "put")
+    with pytest.raises(ValueError):
+        bs_price(100.0, 100.0, 0.5, 0.2, "invalid_kind")
+
+
+def test_price_spread_empty_legs_returns_zero():
+    """An empty leg list should produce a zero spread value."""
+    assert price_spread(spot=100.0, legs=[], strikes=[], t_years=0.1, sigma=0.2) == 0.0
+
+
+def test_backtest_spread_no_trades_edge_cases():
+    """Backtest should handle data frames that yield no trades gracefully."""
+    # Minimal DataFrame with 10 rows; vol_window default is 20, so realized_vol will be NaN for all rows
+    dates = pd.date_range(start="2023-01-01", periods=10, freq="D")
+    df = pd.DataFrame({"close": np.linspace(100, 110, 10)}, index=dates)
+
+    # Entry mask all False – no entries should be processed
+    entry_mask = pd.Series(False, index=dates)
+    result = backtest_spread(df, legs=BULL_PUT_SPREAD, entry_mask=entry_mask, dte=30, hold_days=5)
+    assert result.trades == 0
+    assert result.win_rate is None
+    assert result.pnl_series == []
+
+    # Entry mask with a single True but hold_days exceeds DataFrame length – loop should break without error
+    entry_mask.iloc[0] = True
+    result = backtest_spread(df, legs=BULL_PUT_SPREAD, entry_mask=entry_mask, dte=30, hold_days=20)
+    assert result.trades == 0
+    assert result.win_rate is None
+    assert result.pnl_series == []
