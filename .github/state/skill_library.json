@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Log system updates",
-    "Log disk space usage",
-    "Check RAM allocation",
-    "Check data feed latency",
-    "Verify queue depths",
     "Based on the collective knowledge, here are 2-3 concise bullet points of the most important, actionable knowledge:",
     "Check thread counts",
     "Scan for malware",
@@ -199,8 +194,13 @@
     "Ping exchange sync",
     "Parse log files",
     "Refactor health checks",
-    "Monitor CPU usage"
+    "Monitor CPU usage",
+    "Rate limit APIs",
+    "Flush old logs",
+    "Analyze NAV exposure",
+    "Train TFT models",
+    "Optimize token usage"
   ],
-  "last_updated": "2026-08-01T10:56:28.032097+00:00",
+  "last_updated": "2026-08-01T12:01:29.989614+00:00",
   "total": 200
 }
