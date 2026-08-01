@@ -10,11 +10,12 @@ from app.utils.logging import logger
 
 try:
     import ccxt.async_support as ccxt
-    CCXT_AVAILABLE = True
-except ImportError:
+except ImportError as exc:
     ccxt = None  # type: ignore
-    CCXT_AVAILABLE = False
     logger.info("ccxt not installed — Binance broker disabled")
+    _IMPORT_ERROR = exc
+else:
+    _IMPORT_ERROR = None
 
 
 INTERVAL_MAP = {
@@ -29,6 +30,8 @@ INTERVAL_MAP = {
 
 class BinanceBroker(AbstractBroker):
     def __init__(self, api_key: str, secret: str, testnet: bool = True):
+        if _IMPORT_ERROR is not None:
+            raise BrokerError(f"ccxt import failed: {_IMPORT_ERROR}")
         self.exchange = ccxt.binance(
             {
                 "apiKey": api_key,
@@ -83,7 +86,12 @@ class BinanceBroker(AbstractBroker):
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:

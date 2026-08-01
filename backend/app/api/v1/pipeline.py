@@ -43,33 +43,33 @@ PIPELINE_DEFS = {
     "ml_experiments": {
         "label": "ML Experiments",
         "stages": [
-            {"name": "data_fetch",          "label": "Data Fetch",          "channel": "#squad-data"},
-            {"name": "cache_check",         "label": "Cache Check",         "channel": "#squad-data"},
+            {"name": "data_fetch", "label": "Data Fetch", "channel": "#squad-data"},
+            {"name": "cache_check", "label": "Cache Check", "channel": "#squad-data"},
             {"name": "feature_engineering", "label": "Feature Engineering", "channel": "#alpha-research"},
-            {"name": "backtesting",         "label": "Backtesting",         "channel": "#ml-experiments"},
-            {"name": "evaluation",          "label": "Evaluation",          "channel": "#ml-experiments"},
-            {"name": "employee_report",     "label": "Employee Report",     "channel": "#ml-experiments"},
-            {"name": "commit_results",      "label": "Commit Results",      "channel": None},
+            {"name": "backtesting", "label": "Backtesting", "channel": "#ml-experiments"},
+            {"name": "evaluation", "label": "Evaluation", "channel": "#ml-experiments"},
+            {"name": "employee_report", "label": "Employee Report", "channel": "#ml-experiments"},
+            {"name": "commit_results", "label": "Commit Results", "channel": None},
         ],
     },
     "desk_trading": {
         "label": "Desk Trading",
         "stages": [
-            {"name": "market_status",    "label": "Market Status",    "channel": None},
-            {"name": "data_fetch",       "label": "Data Fetch",       "channel": "#squad-data"},
-            {"name": "signal_generation","label": "Signal Generation","channel": None},
-            {"name": "risk_check",       "label": "Risk Check",       "channel": "#risk-alerts"},
-            {"name": "order_execution",  "label": "Order Execution",  "channel": None},
-            {"name": "fill_tracking",    "label": "Fill Tracking",    "channel": None},
-            {"name": "pnl_snapshot",     "label": "P&L Snapshot",     "channel": "#pnl-daily"},
+            {"name": "market_status", "label": "Market Status", "channel": None},
+            {"name": "data_fetch", "label": "Data Fetch", "channel": "#squad-data"},
+            {"name": "signal_generation", "label": "Signal Generation", "channel": None},
+            {"name": "risk_check", "label": "Risk Check", "channel": "#risk-alerts"},
+            {"name": "order_execution", "label": "Order Execution", "channel": None},
+            {"name": "fill_tracking", "label": "Fill Tracking", "channel": None},
+            {"name": "pnl_snapshot", "label": "P&L Snapshot", "channel": "#pnl-daily"},
         ],
     },
     "agent_team": {
         "label": "Agent Team",
         "stages": [
-            {"name": "data_fetch",    "label": "Data Fetch",    "channel": None},
-            {"name": "agent_dispatch","label": "Agent Dispatch","channel": None},
-            {"name": "agent_posts",   "label": "Discord Posts", "channel": "#engineering"},
+            {"name": "data_fetch", "label": "Data Fetch", "channel": None},
+            {"name": "agent_dispatch", "label": "Agent Dispatch", "channel": None},
+            {"name": "agent_posts", "label": "Discord Posts", "channel": "#engineering"},
         ],
     },
 }
@@ -134,8 +134,8 @@ def pipeline_status(
 @router.get("/status/latest")
 def pipeline_status_latest():
     """Return the most recent run for each pipeline type."""
-    runs    = _load_runs(100)
-    seen:   set[str] = set()
+    runs = _load_runs(100)
+    seen: set[str] = set()
     latest: list[dict] = []
     for run in runs:
         key = f"{run.get('pipeline')}:{run.get('desk', '')}"
