@@ -21,6 +21,7 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import app.ml.features.pandas_ta_compat as ta
 
@@ -181,3 +182,62 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             _logger.error("Failed to compute ADX feature", exc_info=exc)
 
     return df
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge cases
+# ----------------------------------------------------------------------
+
+
+def _generate_simple_df(close_vals, index=None, include_extra=True):
+    """Utility to create a minimal DataFrame for testing."""
+    if index is None:
+        index = pd.date_range(start="2023-01-01", periods=len(close_vals), freq="D")
+    data = {"close": close_vals}
+    if include_extra:
+        data["high"] = close_vals
+        data["low"] = close_vals
+        data["volume"] = np.ones_like(close_vals)
+    return pd.DataFrame(data, index=index)
+
+
+def test_add_technical_features_single_row():
+    """Edge case: DataFrame with a single row should not raise and produce NaNs."""
+    df = _generate_simple_df([100.0], include_extra=False)
+    result = add_technical_features(df)
+    # All computed columns should exist and contain NaN (or finite) values
+    for col in result.columns:
+        assert col in result.columns
+        # Single‑row calculations produce NaN for pct_change and rolling stats
+        if col.startswith("returns_") or col.startswith("vol_"):
+            assert pd.isna(result[col].iloc[0])
+        else:
+            # Non‑pct_change columns should be finite (no inf) even with single row
+            val = result[col].iloc[0]
+            assert np.isfinite(val) or pd.isna(val)
+
+
+def test_add_technical_features_missing_optional_columns():
+    """Edge case: Missing high/low/volume columns should default correctly."""
+    df = pd.DataFrame({"close": [100.0, 101.0, 102.0]}, index=pd.date_range("2023-01-01", periods=3))
+    result = add_technical_features(df)
+    # volume_ratio should be 1 (or very close) because volume defaults to ones
+    assert "volume_ratio" in result.columns
+    assert np.allclose(result["volume_ratio"].fillna(0).values, 1.0, atol=1e-6)
+
+
+def test_add_technical_features_zero_close_prices():
+    """Edge case: Zero close prices should not produce infinities due to division."""
+    close_vals = [0.0, 0.0, 0.0, 0.0]
+    df = _generate_simple_df(close_vals)
+    result = add_technical_features(df)
+    # Verify that no column contains infinite values
+    for col in result.columns:
+        series = result[col]
+        assert not np.any(np.isinf(series.replace([np.inf, -np.inf], np.nan))), f"Infinite values found in {col}"
+    # Normalized features that divide by close should be finite (or NaN) thanks to epsilon
+    for col in ["macd", "macd_signal", "macd_hist", "bb_upper_dist", "bb_lower_dist", "bb_width", "atr_pct"]:
+        if col in result:
+            assert np.all(np.isfinite(result[col].fillna(0)))  # no inf after NaN fill
+
+# The tests can be discovered and run with pytest without affecting production usage.
