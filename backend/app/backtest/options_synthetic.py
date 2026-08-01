@@ -117,6 +117,34 @@ def price_spread(
     return value
 
 
+def _default_entry_mask(vol: pd.Series, window: int) -> pd.Series:
+    """Create a weekly entry mask starting after ``window`` rows."""
+    mask = pd.Series(False, index=vol.index)
+    mask.iloc[window::5] = True
+    return mask
+
+
+def _compute_strikes(legs: list[SpreadLeg], spot: float) -> list[float]:
+    """Calculate strikes for each leg based on entry spot."""
+    return [leg.moneyness * spot for leg in legs]
+
+
+def _pnl_for_trade(
+    spot_in: float,
+    spot_out: float,
+    legs: list[SpreadLeg],
+    strikes: list[float],
+    dte_entry: float,
+    dte_exit: float,
+    sigma_in: float,
+    sigma_out: float,
+) -> float:
+    """Calculate P&L of a single spread trade."""
+    entry_v = price_spread(spot_in, legs, strikes, dte_entry, sigma_in)
+    exit_v = price_spread(spot_out, legs, strikes, dte_exit, sigma_out)
+    return exit_v - entry_v
+
+
 def backtest_spread(
     df: pd.DataFrame,
     legs: list[SpreadLeg],
@@ -151,8 +179,7 @@ def backtest_spread(
     vol = realized_vol(close, vol_window)
 
     if entry_mask is None:
-        entry_mask = pd.Series(False, index=df.index)
-        entry_mask.iloc[vol_window::5] = True
+        entry_mask = _default_entry_mask(vol, vol_window)
 
     pnls: list[float] = []
     n = len(df)
@@ -161,29 +188,31 @@ def backtest_spread(
         j = i + hold_days
         if j >= n:
             break
+
         sigma_in = float(vol.iloc[i]) if np.isfinite(vol.iloc[i]) else 0.0
         if sigma_in <= 0:
             continue
 
-        spot_in, spot_out = float(close.iloc[i]), float(close.iloc[j])
+        spot_in = float(close.iloc[i])
+        spot_out = float(close.iloc[j])
         sigma_out = float(vol.iloc[j]) if np.isfinite(vol.iloc[j]) else sigma_in
 
-        strikes = [leg.moneyness * spot_in for leg in legs]
-        entry_v = price_spread(
+        strikes = _compute_strikes(legs, spot_in)
+
+        dte_entry = dte / TRADING_DAYS
+        dte_exit = max(dte - hold_days, 0) / TRADING_DAYS
+
+        pnl = _pnl_for_trade(
             spot_in,
-            legs,
-            strikes,
-            dte / TRADING_DAYS,
-            sigma_in,
-        )
-        exit_v = price_spread(
             spot_out,
             legs,
             strikes,
-            max(dte - hold_days, 0) / TRADING_DAYS,
+            dte_entry,
+            dte_exit,
+            sigma_in,
             sigma_out,
         )
-        pnls.append(exit_v - entry_v)
+        pnls.append(pnl)
 
     wins = sum(1 for p in pnls if p > 0)
     return SpreadBacktestResult(
