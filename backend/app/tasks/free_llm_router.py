@@ -1,19 +1,18 @@
 """
 Free LLM Router — dispatches to 7 free providers in parallel.
 
-Priority cascade (fastest/highest-quota first):
-  1. Gemini Flash 2.0 (Google AI Studio — 1M TPM free)
-  2. Groq  (llama-3.3-70b — 6000 TPD free, very fast)
-  3. DeepSeek (deepseek-chat — $5 free credit, cheap)
-  4. SambaNova (Meta-Llama-3.3-70B — free tier)
-  5. Cerebras (llama-3.3-70b — free tier, fast inference)
-  6. Together AI (Llama-3.3-70B — $25 free credit)
-  7. Hyperbolic (llama-3.3-70b — $10 free credit)
+The router attempts to contact each configured free LLM provider according to a
+priority cascade (fastest/highest‑quota first).  Three operating modes are
+available:
 
-Modes:
-  - "race":      first successful response wins, rest cancelled
-  - "consensus": all respond, majority vote on yes/no questions
-  - "best_of":   all respond, pick longest coherent answer
+* ``race`` – the first successful response wins and the remaining requests are
+  cancelled.
+* ``consensus`` – all providers are queried; the caller can perform a majority
+  vote on the returned answers.
+* ``best_of`` – not implemented here, but could be added to select the longest
+  coherent answer.
+
+Only providers with a valid API key (environment variable) are contacted.
 """
 
 from __future__ import annotations
@@ -23,7 +22,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, List, Dict
 
 import httpx
 
@@ -31,8 +30,30 @@ logger = logging.getLogger(__name__)
 
 # ── Provider definitions ──────────────────────────────────────────────────────
 
+
 @dataclass
 class LLMProvider:
+    """
+    Configuration for a single LLM provider.
+
+    Attributes
+    ----------
+    name: str
+        Human‑readable identifier used in logs and responses.
+    env_key: str
+        Name of the environment variable that stores the provider's API key.
+    base_url: str
+        Base URL for the provider's OpenAI‑compatible endpoint.
+    model: str
+        Model identifier to request from the provider.
+    max_tokens: int, default 2048
+        Upper bound for the number of tokens the provider may generate.
+    timeout: float, default 30.0
+        HTTP client timeout (seconds) for the request.
+    headers_extra: dict
+        Additional HTTP headers that should be sent with each request.
+    """
+
     name: str
     env_key: str
     base_url: str
@@ -42,7 +63,7 @@ class LLMProvider:
     headers_extra: dict = field(default_factory=dict)
 
 
-PROVIDERS: list[LLMProvider] = [
+PROVIDERS: List[LLMProvider] = [
     LLMProvider(
         name="gemini",
         env_key="GEMINI_API_KEY",
@@ -97,6 +118,21 @@ PROVIDERS: list[LLMProvider] = [
 
 @dataclass
 class LLMResponse:
+    """
+    Normalised response from a provider.
+
+    Attributes
+    ----------
+    provider: str
+        Name of the provider that generated the response.
+    content: str
+        Generated text content.
+    latency_ms: float
+        Round‑trip latency measured in milliseconds.
+    tokens_used: int, default 0
+        Number of tokens reported by the provider for the request.
+    """
+
     provider: str
     content: str
     latency_ms: float
@@ -105,12 +141,33 @@ class LLMResponse:
 
 # ── Core caller ───────────────────────────────────────────────────────────────
 
+
 async def _call_provider(
     provider: LLMProvider,
-    messages: list[dict],
+    messages: List[Dict[str, Any]],
     temperature: float = 0.3,
     max_tokens: int | None = None,
 ) -> LLMResponse | None:
+    """
+    Send a chat completion request to a single provider.
+
+    Parameters
+    ----------
+    provider: LLMProvider
+        The provider configuration to use.
+    messages: list[dict]
+        Message history in OpenAI chat format.
+    temperature: float, default 0.3
+        Sampling temperature for the model.
+    max_tokens: int | None, default None
+        Maximum tokens to generate; falls back to the provider's default.
+
+    Returns
+    -------
+    LLMResponse | None
+        A populated ``LLMResponse`` on success, or ``None`` if the request
+        fails or the API key is missing/disabled.
+    """
     api_key = os.getenv(provider.env_key, "")
     if not api_key or api_key in ("disabled", ""):
         return None
@@ -143,13 +200,32 @@ async def _call_provider(
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
+
 async def call_race(
-    messages: list[dict],
+    messages: List[Dict[str, Any]],
     temperature: float = 0.3,
     max_tokens: int = 2048,
     timeout: float = 30.0,
 ) -> LLMResponse | None:
-    """Call all available providers in parallel; return the first successful response."""
+    """
+    Query all configured providers in parallel and return the first successful response.
+
+    Parameters
+    ----------
+    messages: list[dict]
+        Chat history to send to each provider.
+    temperature: float, default 0.3
+        Sampling temperature for the model.
+    max_tokens: int, default 2048
+        Upper bound for generated tokens.
+    timeout: float, default 30.0
+        Overall timeout for the race operation (seconds).
+
+    Returns
+    -------
+    LLMResponse | None
+        The winning provider's response, or ``None`` if no provider succeeded.
+    """
     tasks = {
         asyncio.create_task(_call_provider(p, messages, temperature, max_tokens)): p
         for p in PROVIDERS
@@ -176,12 +252,32 @@ async def call_race(
 
 
 async def call_consensus(
-    messages: list[dict],
+    messages: List[Dict[str, Any]],
     temperature: float = 0.3,
     max_tokens: int = 512,
     timeout: float = 40.0,
-) -> list[LLMResponse]:
-    """Call all providers and return all successful responses for consensus analysis."""
+) -> List[LLMResponse]:
+    """
+    Query all configured providers and collect their successful responses.
+
+    This mode is intended for downstream consensus logic (e.g., majority voting).
+
+    Parameters
+    ----------
+    messages: list[dict]
+        Chat history to send to each provider.
+    temperature: float, default 0.3
+        Sampling temperature for the model.
+    max_tokens: int, default 512
+        Upper bound for generated tokens.
+    timeout: float, default 40.0
+        Overall timeout for the operation (seconds).
+
+    Returns
+    -------
+    list[LLMResponse]
+        A list containing the successful responses from each provider.
+    """
     tasks = [
         _call_provider(p, messages, temperature, max_tokens)
         for p in PROVIDERS
@@ -193,6 +289,13 @@ async def call_consensus(
     return [r for r in results if isinstance(r, LLMResponse)]
 
 
-def available_providers() -> list[str]:
-    """Return names of providers with configured API keys."""
+def available_providers() -> List[str]:
+    """
+    Retrieve the names of providers that have a usable API key configured.
+
+    Returns
+    -------
+    list[str]
+        Provider identifiers that can be used by the router.
+    """
     return [p.name for p in PROVIDERS if os.getenv(p.env_key, "") not in ("", "disabled")]
