@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Parse exposure limits",
-    "* Given the current market conditions and risk status, we recommend using position sizing guidelines based on the 70/30 arbitrage/directional allocation ratio, as discussed in the #risk channel.",
-    "Validate data feeds",
-    "Reset stuck trades",
     "Scan for deadlocks",
     "Verify clock sync",
     "Limit DB queries",
@@ -199,8 +195,12 @@
     "Monitor memory usage",
     "Test for null values",
     "Catch SSL exceptions",
-    "Parse agent memory"
+    "Parse agent memory",
+    "Validate user input",
+    "Verify config files",
+    "Refactor type leaks",
+    "Monitor API limits"
   ],
-  "last_updated": "2026-08-02T16:54:39.570125+00:00",
+  "last_updated": "2026-08-02T17:58:59.421379+00:00",
   "total": 200
 }
