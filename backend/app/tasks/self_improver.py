@@ -1,12 +1,13 @@
 """
 Self-improvement autoloop. Runs forever, looking for ways to improve the platform:
   1. Take the top-3 strategies from AlgoAgent leaderboard
-  2. Sweep their parameters (Optuna-style) — run 5 random configs each
-  3. If a config beats the current best Sharpe by > 10%, promote it
+  2. Sweep their parameters (Optuna-style) — run a set number of random configs each
+  3. If a config beats the current best Sharpe by > IMPROVEMENT_FACTOR, promote it
   4. Log everything to experiments/results/self_improver.json
   5. Sleep, then repeat
 """
 from __future__ import annotations
+
 import asyncio
 import json
 import random
@@ -15,6 +16,18 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from app.utils.logging import logger
+
+# ----------------------------------------------------------------------
+# Constants
+# ----------------------------------------------------------------------
+DEFAULT_INTERVAL_SECONDS = 900
+CONFIGS_PER_ITERATION = 5
+IMPROVEMENT_FACTOR = 1.10
+MIN_SHARPE_THRESHOLD = 0.5
+MAX_HISTORY_LENGTH = 300
+BACKTEST_DAYS = 730
+MIN_HISTORY_LENGTH = 60
+MIN_SIGNALS_LENGTH = 30
 
 RESULTS_FILE = Path(__file__).parents[3] / "experiments" / "results" / "self_improver.json"
 RESULTS_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -44,9 +57,19 @@ PARAM_SPACES = {
     },
 }
 
+# Target strategies and symbols
+TARGETS = [
+    ("momentum", "SPY"),
+    ("momentum", "QQQ"),
+    ("mean_reversion", "AAPL"),
+    ("rsi_macd", "MSFT"),
+    ("breakout", "NVDA"),
+    ("supertrend", "SPY"),
+]
+
 
 class SelfImprover:
-    def __init__(self, algo_agent=None, interval_seconds: int = 900):
+    def __init__(self, algo_agent=None, interval_seconds: int = DEFAULT_INTERVAL_SECONDS):
         self.algo_agent = algo_agent
         self.interval_seconds = interval_seconds
         self._best_params: dict[str, dict] = {}    # strategy → best params dict
@@ -68,14 +91,20 @@ class SelfImprover:
             from app.strategies import STRATEGY_REGISTRY
 
             end = datetime.now(timezone.utc)
-            start = end - timedelta(days=730)
+            start = end - timedelta(days=BACKTEST_DAYS)
             loop = asyncio.get_running_loop()
             hist = await loop.run_in_executor(
                 None,
-                lambda: yf.download(symbol, start=str(start.date()), end=str(end.date()),
-                                    interval="1d", auto_adjust=True, progress=False)
+                lambda: yf.download(
+                    symbol,
+                    start=str(start.date()),
+                    end=str(end.date()),
+                    interval="1d",
+                    auto_adjust=True,
+                    progress=False,
+                ),
             )
-            if hist is None or len(hist) < 60:
+            if hist is None or len(hist) < MIN_HISTORY_LENGTH:
                 return 0.0
 
             close = hist["Close"].squeeze() if hasattr(hist["Close"], "squeeze") else hist["Close"]
@@ -90,7 +119,7 @@ class SelfImprover:
                 strat = cls()  # ignore params if constructor doesn't accept them
 
             signals = strat.backtest_signals(hist)
-            if signals is None or (hasattr(signals, "__len__") and len(signals) < 30):
+            if signals is None or (hasattr(signals, "__len__") and len(signals) < MIN_SIGNALS_LENGTH):
                 return 0.0
 
             sig_series = signals if hasattr(signals, "values") else pd.Series(signals, index=hist.index)
@@ -110,16 +139,20 @@ class SelfImprover:
         best_iter_sharpe = current_best
         best_iter_params = None
 
-        # 5 random configs per iteration
-        for _ in range(5):
+        # Random configs per iteration
+        for _ in range(CONFIGS_PER_ITERATION):
             params = self._sample_params(strategy)
             sharpe = await self._evaluate(strategy, symbol, params)
             if sharpe > best_iter_sharpe:
                 best_iter_sharpe = sharpe
                 best_iter_params = params
 
-        # Promote if improvement > 10%
-        if best_iter_params and best_iter_sharpe > current_best * 1.10 and best_iter_sharpe > 0.5:
+        # Promote if improvement exceeds threshold and Sharpe is above minimum
+        if (
+            best_iter_params
+            and best_iter_sharpe > current_best * IMPROVEMENT_FACTOR
+            and best_iter_sharpe > MIN_SHARPE_THRESHOLD
+        ):
             key = f"{strategy}:{symbol}"
             self._best_params[key] = best_iter_params
             self._best_sharpe[key] = best_iter_sharpe
@@ -130,7 +163,9 @@ class SelfImprover:
                 "params": best_iter_params,
                 "new_sharpe": round(best_iter_sharpe, 4),
                 "previous_sharpe": round(current_best, 4),
-                "improvement_pct": round((best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4),
+                "improvement_pct": round(
+                    (best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4
+                ),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             self._persist(promotion)
@@ -142,7 +177,7 @@ class SelfImprover:
         try:
             history = json.loads(RESULTS_FILE.read_text()) if RESULTS_FILE.exists() else []
             history.append(entry)
-            history = history[-300:]
+            history = history[-MAX_HISTORY_LENGTH:]
             RESULTS_FILE.write_text(json.dumps(history, indent=2))
         except Exception as exc:
             logger.debug("self_improver persist failed", error=str(exc))
@@ -162,10 +197,6 @@ class SelfImprover:
         self._running = True
         logger.info("SelfImprover started", interval=self.interval_seconds)
 
-        # Symbol coverage
-        TARGETS = [("momentum", "SPY"), ("momentum", "QQQ"), ("mean_reversion", "AAPL"),
-                   ("rsi_macd", "MSFT"), ("breakout", "NVDA"), ("supertrend", "SPY")]
-
         while self._running:
             self._iteration += 1
             logger.info("SelfImprover iteration", n=self._iteration)
@@ -175,7 +206,12 @@ class SelfImprover:
                 except asyncio.CancelledError:
                     return
                 except Exception as e:
-                    logger.warning("Self-improver target failed", strategy=strategy, symbol=symbol, error=str(e))
+                    logger.warning(
+                        "Self-improver target failed",
+                        strategy=strategy,
+                        symbol=symbol,
+                        error=str(e),
+                    )
             await asyncio.sleep(self.interval_seconds)
 
     async def stop(self) -> None:
