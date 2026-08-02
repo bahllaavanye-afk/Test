@@ -1,11 +1,5 @@
 {
   "skills": [
-    "Cap trade batch size",
-    "Validate schema",
-    "* The `logs/api_calls.log` file is being actively parsed by multiple agents (`algo_agent`, `token_monitor`) to gather insights on token consumption and API call activity.",
-    "* A circuit-breaker wrapper will be added to `backend/app/api/external_client.py` for resilience and fault-tolerance.",
-    "Validate API keys",
-    "Scan arXiv research",
     "* We have confirmation of system health, with all health-check endpoints in `backend/api/health_check.py` returning 200 OK, and `/v1/status` reporting a latency of 12 ms.",
     "* The self_improver agent is focused on referencing recent research and self-improvement initiatives.",
     "Apply peer-learned fixes",
@@ -199,8 +193,14 @@
     "Monitor disk space",
     "Validate model drift",
     "Implement S4-LSTM",
-    "Scan recent research"
+    "Scan recent research",
+    "Check RAM usage",
+    "Verify dependencies",
+    "Scan for updates",
+    "Ping network connectivity",
+    "Monitor exposure metrics",
+    "Log latency metrics"
   ],
-  "last_updated": "2026-08-02T07:29:49.254896+00:00",
+  "last_updated": "2026-08-02T09:35:31.827143+00:00",
   "total": 200
 }
