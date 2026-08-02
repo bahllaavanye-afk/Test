@@ -15,15 +15,38 @@ route needs a DB, a user and an account, and the arithmetic is what breaks.
 from __future__ import annotations
 
 import math
+from typing import Optional, Union
 
 import pytest
 
 
-def _annualized(total_return: float, days: int = 365) -> float:
-    """Mirrors the endpoint's annualised-return step, including its guard."""
+def _annualized(
+    total_return: Union[float, None],
+    days: Optional[int] = 365,
+) -> float:
+    """Mirrors the endpoint's annualised-return step, including its guard.
+
+    Handles edge cases:
+    * ``total_return`` of ``None`` is treated as a total loss (``-1.0``).
+    * ``days`` of ``None`` or non‑positive values fall back to the default
+      365‑day year to avoid division‑by‑zero.
+    * Non‑numeric ``total_return`` values raise ``TypeError`` to surface misuse.
+    """
+    # Guard against None or invalid total_return inputs
+    if total_return is None:
+        return -1.0
+    if not isinstance(total_return, (int, float)):
+        raise TypeError("total_return must be a float or int")
+
+    # Normalise days argument
+    if days is None or days <= 0:
+        days = 365
+
     n_years = days / 365.0
+    # Guard against total loss or worse; avoids complex numbers from fractional powers
     if total_return <= -1.0:
         return -1.0
+    # Ensure we never divide by zero; 0.01 is a safe lower bound for a year fraction
     return (1.0 + total_return) ** (1.0 / max(n_years, 0.01)) - 1.0
 
 
@@ -65,3 +88,16 @@ def test_sharpe_guard_survives_a_single_trading_day():
     assert math.isnan(std)
     sharpe = float((daily_returns.mean() - 0.05 / 252) / std * math.sqrt(252)) if std > 0 else 0.0
     assert sharpe == 0.0
+
+def test_edge_cases_none_and_invalid_inputs():
+    """Validate handling of None and non‑numeric inputs."""
+    # None total_return should be treated as total loss
+    assert _annualized(None) == -1.0
+    # None days falls back to default 365
+    assert _annualized(0.1, days=None) == pytest.approx(0.1)
+    # Zero or negative days also fall back to default
+    assert _annualized(0.1, days=0) == pytest.approx(0.1)
+    assert _annualized(0.1, days=-10) == pytest.approx(0.1)
+    # Invalid total_return type raises TypeError
+    with pytest.raises(TypeError):
+        _annualized("invalid")
