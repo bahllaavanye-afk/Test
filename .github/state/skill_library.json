@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Test DNS resolve",
-    "Optimize hybrid predictors",
-    "Parse research papers",
-    "Validate user input",
     "Implement attention mechanism",
     "Ping external feeds",
     "Check network latency",
@@ -199,8 +195,12 @@
     "Validate input types",
     "Retrain models",
     "Insert S4 blocks",
-    "Prepend LSTM layers"
+    "Prepend LSTM layers",
+    "Flush cache daily",
+    "Reset GPU contexts",
+    "Monitor latency logs",
+    "Optimize EMA-VWAP variants"
   ],
-  "last_updated": "2026-08-02T11:13:40.727553+00:00",
+  "last_updated": "2026-08-02T12:34:06.600389+00:00",
   "total": 200
 }
