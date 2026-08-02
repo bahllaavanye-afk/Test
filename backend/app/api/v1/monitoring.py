@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field, validator
 
 from app.api.deps import get_current_user
 from app.models.user import User
@@ -24,6 +25,57 @@ FIX_LOG_READ_ERROR_DETAIL = "Could not read fix log: {}"
 QA_CYCLE_STARTED_MESSAGE = "QA cycle started — poll /monitoring/health for results"
 
 router = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
+
+
+class HealthReportSchema(BaseModel):
+    """Schema representing the QA health report."""
+
+    status: str = Field(
+        ...,
+        description="Current health status of the QA subsystem.",
+        example="healthy",
+    )
+    message: str = Field(
+        ...,
+        description="Human‑readable description of the health status.",
+        example="All checks passed.",
+    )
+
+    class Config:
+        extra = "allow"  # Allow additional fields from the JSON file
+
+
+class FixLogEntrySchema(BaseModel):
+    """Schema for a single entry in the auto‑fix log."""
+
+    id: str | None = Field(
+        None,
+        description="Unique identifier for the fix operation, if provided.",
+        example="fix-2024-09-01-001",
+    )
+    description: str | None = Field(
+        None,
+        description="Brief description of what was fixed.",
+        example="Resolved missing configuration key.",
+    )
+    timestamp: str | None = Field(
+        None,
+        description="ISO‑8601 timestamp when the fix was applied.",
+        example="2024-09-01T12:34:56Z",
+    )
+
+    class Config:
+        extra = "allow"  # Preserve any additional data present in the log entry
+
+
+class TriggerResponseSchema(BaseModel):
+    """Response returned after triggering a QA cycle."""
+
+    message: str = Field(
+        ...,
+        description="Confirmation message indicating the QA cycle has been started.",
+        example=QA_CYCLE_STARTED_MESSAGE,
+    )
 
 
 def _load_health_report() -> Dict[str, Any]:
@@ -59,7 +111,7 @@ def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
         raise HTTPException(status_code=500, detail=FIX_LOG_READ_ERROR_DETAIL.format(exc)) from exc
 
 
-@router.get("/health")
+@router.get("/health", response_model=HealthReportSchema, summary="QA health status")
 async def get_health_report():
     """Public health status (no auth required).
 
@@ -69,9 +121,18 @@ async def get_health_report():
     return _load_health_report()
 
 
-@router.get("/fixes")
+@router.get(
+    "/fixes",
+    response_model=List[FixLogEntrySchema],
+    summary="Recent auto‑fixes",
+)
 async def get_fix_log(
-    limit: int = DEFAULT_FIX_LOG_LIMIT,
+    limit: int = Query(
+        DEFAULT_FIX_LOG_LIMIT,
+        ge=1,
+        description="Maximum number of recent fix entries to return.",
+        example=DEFAULT_FIX_LOG_LIMIT,
+    ),
     current_user: User = Depends(get_current_user),
 ):
     """Recent auto‑fixes applied by the QA monitor (requires auth).
@@ -81,7 +142,11 @@ async def get_fix_log(
     return _read_fix_log(limit)
 
 
-@router.post("/run-now")
+@router.post(
+    "/run-now",
+    response_model=TriggerResponseSchema,
+    summary="Trigger QA cycle",
+)
 async def trigger_qa_cycle(
     current_user: User = Depends(get_current_user),
 ):
