@@ -136,3 +136,69 @@ class AlphaDecayTracker:
             -staleness_hours * np.log(2) / profile.half_life_hours
         )
         return float(base_confidence * max(float(decay), 0.0))
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge and boundary conditions
+# ----------------------------------------------------------------------
+import unittest
+from datetime import datetime, timedelta
+
+
+class TestAlphaDecayTracker(unittest.TestCase):
+    def setUp(self):
+        self.tracker = AlphaDecayTracker()
+        # Base datetime index for tests
+        self.base_date = datetime(2023, 1, 1, 9, 0, 0)
+
+    def _make_index(self, periods: int, freq: str = "H"):
+        """Helper to create a pandas DatetimeIndex."""
+        return pd.date_range(self.base_date, periods=periods, freq=freq)
+
+    def test_compute_ic_profile_insufficient_data(self):
+        """When there is not enough overlapping data, profile should have zero IC and infinite half-life."""
+        # Create signals and prices with only 10 points (less than the 30 required)
+        idx = self._make_index(10)
+        signals = pd.Series(np.random.choice([-1, 0, 1], size=10), index=idx)
+        prices = pd.DataFrame(
+            {"close": np.random.rand(10) + 100},
+            index=idx,
+        )
+        profile = self.tracker.compute_ic_profile(signals, prices, "test_strategy")
+        self.assertEqual(profile.ic_0, 0.0)
+        self.assertTrue(np.isinf(profile.half_life_hours))
+        self.assertEqual(len(profile.horizons), 0)
+
+    def test_compute_ic_profile_missing_close_column(self):
+        """Missing 'close' column should raise a ValueError."""
+        idx = self._make_index(50)
+        signals = pd.Series(np.random.choice([-1, 0, 1], size=50), index=idx)
+        prices = pd.DataFrame(
+            {"open": np.random.rand(50) + 100},
+            index=idx,
+        )
+        with self.assertRaises(ValueError):
+            self.tracker.compute_ic_profile(signals, prices, "test_strategy")
+
+    def test_scale_confidence_boundary_half_life(self):
+        """When half-life is zero or negative, confidence should be unchanged."""
+        profile_zero = DecayProfile(
+            strategy_name="zero_half_life",
+            ic_0=0.5,
+            half_life_hours=0.0,
+            horizons={1: 0.5},
+        )
+        profile_negative = DecayProfile(
+            strategy_name="negative_half_life",
+            ic_0=0.5,
+            half_life_hours=-5.0,
+            horizons={1: 0.5},
+        )
+        base_conf = 0.8
+        for profile in (profile_zero, profile_negative):
+            scaled = self.tracker.scale_confidence(base_conf, profile, staleness_hours=10)
+            self.assertAlmostEqual(scaled, base_conf, places=7)
+
+
+if __name__ == "__main__":
+    unittest.main()
