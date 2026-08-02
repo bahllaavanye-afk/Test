@@ -4,9 +4,10 @@ Runs every hour. Tracks LOC, test coverage, lint warnings.
 Does NOT modify source — just reports.
 """
 from __future__ import annotations
+
 import asyncio
 import json
-import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -101,9 +102,22 @@ class CodeQualityLoop:
         self._running = True
         logger.info("CodeQualityLoop started", interval=self.interval_seconds)
         while self._running:
+            start_time = time.perf_counter()
             try:
                 snapshot = await self._snapshot()
                 self._persist(snapshot)
+
+                # Compute key metrics for structured logging
+                signal_count = snapshot.get("manual_strategies", 0) + snapshot.get("ml_strategies", 0)
+                execution_time = round(time.perf_counter() - start_time, 3)
+                pnl = snapshot.get("pnl")  # P&L not tracked here; will be None if absent
+
+                logger.info(
+                    "code_quality: iteration metrics",
+                    signal_count=signal_count,
+                    execution_time=execution_time,
+                    pnl=pnl,
+                )
                 logger.debug("Code quality snapshot", **snapshot)
             except asyncio.CancelledError:
                 return
