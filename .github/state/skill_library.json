@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Implement attention mechanism",
-    "Ping external feeds",
-    "Check network latency",
-    "Implement S4 layers",
-    "Limit open files",
     "Use deadlock detectors",
     "Validate quota usage",
     "Validate timestamps.",
@@ -199,8 +194,13 @@
     "Flush cache daily",
     "Reset GPU contexts",
     "Monitor latency logs",
-    "Optimize EMA-VWAP variants"
+    "Optimize EMA-VWAP variants",
+    "Validate API keys",
+    "Set timeout limits",
+    "Use try-except blocks",
+    "Verify data schemas",
+    "Prepend S4 blocks"
   ],
-  "last_updated": "2026-08-02T12:34:06.600389+00:00",
+  "last_updated": "2026-08-02T14:26:16.250081+00:00",
   "total": 200
 }
