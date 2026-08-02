@@ -81,17 +81,19 @@ STRESS_SCENARIOS: list[StressScenario] = [
 @dataclass
 class StressResult:
     scenario: StressScenario
-    # None if the price data doesn't cover this period
-    metrics: BacktestMetrics | None
+    metrics: BacktestMetrics | None  # None if the price data doesn't cover this period
     period_covered: bool
     data_points: int
 
 
-def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timestamp) -> pd.Series | None:
-    """Vectorized slice of a Series using .loc; returns None if input is None."""
+def _slice_series(
+    series: pd.Series | None,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+) -> pd.Series | None:
+    """Slice a Series using .loc; returns None if input is None."""
     if series is None:
         return None
-    # .loc works for both DatetimeIndex and PeriodIndex; fallback to boolean mask if needed
     try:
         return series.loc[start:end]
     except Exception:
@@ -119,8 +121,6 @@ def run_stress_tests(
         scenarios = STRESS_SCENARIOS
 
     results: list[StressResult] = []
-
-    # Convert once to pandas Timestamp for efficient comparison
     price_index = prices.index
 
     for scenario in scenarios:
@@ -181,7 +181,7 @@ def stress_summary(results: list[StressResult]) -> dict:
     """
     Compact summary dict suitable for JSON serialisation.
 
-    Returns per-scenario max_drawdown, total_return, and sharpe.
+    Returns per‑scenario max_drawdown, total_return, and sharpe.
     Only includes scenarios where period_covered=True.
     """
     out: dict = {}
@@ -205,3 +205,11 @@ def stress_summary(results: list[StressResult]) -> dict:
                 "num_trades": r.metrics.num_trades,
             }
     return out
+
+__all__ = [
+    "StressScenario",
+    "StressResult",
+    "STRESS_SCENARIOS",
+    "run_stress_tests",
+    "stress_summary",
+]
