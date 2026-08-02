@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Scan for deadlocks",
-    "Verify clock sync",
-    "Limit DB queries",
     "Log broker responses",
     "Log trade timestamps",
     "Verify data feeds",
@@ -199,8 +196,11 @@
     "Validate user input",
     "Verify config files",
     "Refactor type leaks",
-    "Monitor API limits"
+    "Monitor API limits",
+    "Log API responses",
+    "Check clock sync",
+    "Validate trade IDs"
   ],
-  "last_updated": "2026-08-02T17:58:59.421379+00:00",
+  "last_updated": "2026-08-02T19:20:19.430137+00:00",
   "total": 200
 }
