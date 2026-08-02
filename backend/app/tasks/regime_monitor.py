@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -21,9 +22,17 @@ from app.utils.logging import logger
 
 try:
     from hmmlearn.hmm import GaussianHMM
+
     _HMM_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     _HMM_AVAILABLE = False
+
+# Simple in‑memory cache to avoid redundant work within the same day
+_cache: Dict[str, Any] = {
+    "returns": None,  # np.ndarray of last fetched returns
+    "regime": None,   # int of last computed regime
+    "date": None,     # datetime.date of last fetch
+}
 
 
 def _compute_features(returns: np.ndarray) -> np.ndarray:
@@ -44,7 +53,7 @@ def _compute_features(returns: np.ndarray) -> np.ndarray:
     return np.column_stack([returns, vol_20])
 
 
-def _fit_hmm(features: np.ndarray) -> np.ndarray | None:
+def _fit_hmm(features: np.ndarray) -> Optional[np.ndarray]:
     """
     Fit a Gaussian HMM with 3 components and return the inferred state
     sequence. Returns ``None`` if fitting fails.
@@ -92,11 +101,8 @@ def _label_states(states: np.ndarray, features: np.ndarray) -> int:
     int
         Regime label for the most recent observation.
     """
-    # Compute mean return per state
     means = [features[states == s, 0].mean() for s in range(3)]
-    # Order states by ascending mean return
     order = np.argsort(means)
-    # Create mapping: lowest mean → bear (0), middle → sideways (1), highest → bull (2)
     label_map = {int(order[0]): 0, int(order[1]): 1, int(order[2]): 2}
     return int(label_map[int(states[-1])])
 
@@ -156,10 +162,11 @@ def _fit_regime(returns: np.ndarray) -> int:
     return _heuristic_regime(returns)
 
 
-def _fetch_spy_returns_sync() -> np.ndarray | None:
+def _fetch_spy_returns_sync() -> Optional[np.ndarray]:
     """Sync yfinance fetch — must be called via run_in_executor."""
     try:
         import yfinance as yf  # type: ignore
+
         end = datetime.now(timezone.utc).date()
         start = end - timedelta(days=400)
         df = yf.download(
@@ -173,7 +180,7 @@ def _fetch_spy_returns_sync() -> np.ndarray | None:
             return None
         closes = df["Close"].dropna()
         return closes.pct_change().dropna().values.astype(float)
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover
         logger.warning("Regime monitor: SPY fetch failed", error=str(exc))
         return None
 
@@ -200,13 +207,23 @@ def _synthetic_spy_returns(n: int = 300) -> np.ndarray:
     return rng.normal(daily_mu, daily_sigma, n).astype(float)
 
 
-async def _fetch_spy_returns() -> np.ndarray | None:
+async def _fetch_spy_returns() -> Optional[np.ndarray]:
     """Fetch 1 year of SPY daily returns without blocking the event loop."""
+    today = datetime.now(timezone.utc).date()
+    # Return cached data if we already fetched for today
+    if _cache["date"] == today and isinstance(_cache["returns"], np.ndarray):
+        return _cache["returns"]
+
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, _fetch_spy_returns_sync)
+    returns = await loop.run_in_executor(None, _fetch_spy_returns_sync)
+
+    if returns is not None:
+        _cache["returns"] = returns
+        _cache["date"] = today
+    return returns
 
 
-async def run_once(redis_client) -> int | None:
+async def run_once(redis_client) -> Optional[int]:
     """Fit regime, write to Redis, return regime int or None on failure."""
     returns = await _fetch_spy_returns()
     if returns is None:
@@ -215,13 +232,24 @@ async def run_once(redis_client) -> int | None:
         )
         returns = _synthetic_spy_returns()
 
-    regime = _fit_regime(returns)
+    # If returns haven't changed since last computation, reuse cached regime
+    if (
+        _cache["returns"] is not None
+        and np.array_equal(returns, _cache["returns"])
+        and isinstance(_cache["regime"], int)
+    ):
+        regime = _cache["regime"]
+    else:
+        regime = _fit_regime(returns)
+        _cache["regime"] = regime
+        _cache["returns"] = returns
+
     labels = {0: "bear", 1: "sideways", 2: "bull"}
 
     try:
         await redis_client.set("market:regime", str(regime), ex=600)  # TTL 10 min
         logger.info("Regime updated", regime=regime, label=labels[regime])
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover
         logger.warning("Regime monitor: Redis write failed", error=str(exc))
         return None
 
@@ -234,7 +262,7 @@ class RegimeMonitor:
     INTERVAL_SECONDS = 300  # 5 minutes
 
     def __init__(self):
-        self._task: asyncio.Task | None = None
+        self._task: Optional[asyncio.Task] = None
 
     def start(self) -> None:
         self._task = asyncio.create_task(self._loop(), name="regime_monitor")
@@ -250,6 +278,6 @@ class RegimeMonitor:
         while True:
             try:
                 await run_once(redis)
-            except Exception as exc:
+            except Exception as exc:  # pragma: no cover
                 logger.warning("Regime monitor loop error", error=str(exc))
             await asyncio.sleep(self.INTERVAL_SECONDS)

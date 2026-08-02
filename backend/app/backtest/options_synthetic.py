@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 
 import numpy as np
 import pandas as pd
@@ -69,10 +70,28 @@ def bs_price(
     return strike * math.exp(-rate * t_years) * _norm_cdf(-d2) - spot * _norm_cdf(-d1)
 
 
+@lru_cache(maxsize=32)
+def _cached_realized_vol(values: tuple, window: int) -> np.ndarray:
+    """Compute realized volatility on a tuple of close prices.
+
+    Returns a NumPy array aligned with the input length, with NaNs for
+    positions where the rolling window is not available.
+    """
+    close_arr = np.array(values, dtype=float)
+    # Log returns; prepend NaN to maintain length
+    rets = np.empty_like(close_arr)
+    rets[0] = np.nan
+    rets[1:] = np.log(close_arr[1:] / close_arr[:-1])
+    # Rolling standard deviation using pandas for simplicity
+    vol_series = pd.Series(rets).rolling(window).std() * math.sqrt(TRADING_DAYS)
+    return vol_series.to_numpy()
+
+
 def realized_vol(close: pd.Series, window: int = 20) -> pd.Series:
     """Annualized close‑to‑close realized vol — the IV proxy."""
-    rets = np.log(close / close.shift(1))
-    return rets.rolling(window).std() * math.sqrt(TRADING_DAYS)
+    # Use cached NumPy implementation for speed, then wrap back to Series
+    vol_np = _cached_realized_vol(tuple(close.astype(float).to_numpy()), window)
+    return pd.Series(vol_np, index=close.index)
 
 
 @dataclass
@@ -157,16 +176,21 @@ def backtest_spread(
     pnls: list[float] = []
     n = len(df)
 
-    for i in np.flatnonzero(entry_mask.to_numpy()):
+    # Convert to NumPy for fast indexing
+    close_np = close.to_numpy()
+    vol_np = vol.to_numpy()
+    entry_mask_np = entry_mask.to_numpy()
+
+    for i in np.flatnonzero(entry_mask_np):
         j = i + hold_days
         if j >= n:
             break
-        sigma_in = float(vol.iloc[i]) if np.isfinite(vol.iloc[i]) else 0.0
+        sigma_in = float(vol_np[i]) if np.isfinite(vol_np[i]) else 0.0
         if sigma_in <= 0:
             continue
 
-        spot_in, spot_out = float(close.iloc[i]), float(close.iloc[j])
-        sigma_out = float(vol.iloc[j]) if np.isfinite(vol.iloc[j]) else sigma_in
+        spot_in, spot_out = float(close_np[i]), float(close_np[j])
+        sigma_out = float(vol_np[j]) if np.isfinite(vol_np[j]) else sigma_in
 
         strikes = [leg.moneyness * spot_in for leg in legs]
         entry_v = price_spread(
