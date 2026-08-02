@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Implement real-time drift detection",
-    "Track thread counts",
-    "Implement lazy evaluation tests",
     "Retrain models periodically",
     "Verify network",
     "Optimize model predictors",
@@ -199,8 +196,11 @@
     "Validate trade IDs",
     "Detect memory leaks",
     "Handle timeout errors",
-    "Refactor sequence logic"
+    "Refactor sequence logic",
+    "Check null pointers",
+    "Sanitize user data",
+    "Track system resources"
   ],
-  "last_updated": "2026-08-02T20:27:16.838597+00:00",
+  "last_updated": "2026-08-02T21:25:22.516725+00:00",
   "total": 200
 }
