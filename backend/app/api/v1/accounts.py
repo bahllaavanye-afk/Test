@@ -1,7 +1,7 @@
 """Account management endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.account import Account
@@ -24,23 +24,32 @@ async def latest_total_equity(db: AsyncSession) -> float:
     """
     from app.models.account import AccountSnapshot
 
-    account_ids = (
-        (await db.execute(select(Account.id).where(Account.is_active == True)))  # noqa: E712
-        .scalars()
-        .all()
+    # Subquery to get the latest timestamp per account
+    latest_ts_subq = (
+        select(
+            AccountSnapshot.account_id,
+            func.max(AccountSnapshot.ts).label("latest_ts")
+        )
+        .group_by(AccountSnapshot.account_id)
+        .subquery()
     )
-    total = 0.0
-    for acc_id in account_ids:
-        snap = (
-            await db.execute(
-                select(AccountSnapshot.total_equity)
-                .where(AccountSnapshot.account_id == acc_id)
-                .order_by(AccountSnapshot.ts.desc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        total += float(snap or 0)
-    return total
+
+    # Join the latest snapshots with accounts that are active
+    stmt = (
+        select(func.coalesce(func.sum(AccountSnapshot.total_equity), 0))
+        .select_from(AccountSnapshot)
+        .join(
+            latest_ts_subq,
+            (AccountSnapshot.account_id == latest_ts_subq.c.account_id)
+            & (AccountSnapshot.ts == latest_ts_subq.c.latest_ts),
+        )
+        .join(Account, Account.id == AccountSnapshot.account_id)
+        .where(Account.is_active == True)  # noqa: E712
+    )
+
+    result = await db.execute(stmt)
+    total = result.scalar_one()
+    return float(total)
 
 
 class AccountCreate(BaseModel):
