@@ -17,8 +17,13 @@ TRADING_DAYS = 252
 
 
 def _norm_cdf(x: float) -> float:
-    """Standard normal cumulative distribution function."""
+    """Standard normal cumulative distribution function (scalar)."""
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def _norm_cdf_np(x: np.ndarray) -> np.ndarray:
+    """Standard normal cumulative distribution function (vectorized)."""
+    return 0.5 * (1.0 + np.erf(x / np.sqrt(2.0)))
 
 
 def bs_price(
@@ -29,28 +34,7 @@ def bs_price(
     kind: str,
     rate: float = 0.04,
 ) -> float:
-    """Black‑Scholes European price. At/past expiry returns intrinsic.
-
-    Parameters
-    ----------
-    spot: float
-        Current underlying price (>0).
-    strike: float
-        Option strike (>0).
-    t_years: float
-        Time to expiry in years.
-    sigma: float
-        Annualized volatility.
-    kind: str
-        Either ``"call"`` or ``"put"`` (case‑insensitive).
-    rate: float, optional
-        Continuously compounded risk‑free rate.
-
-    Returns
-    -------
-    float
-        Option price.
-    """
+    """Black‑Scholes European price. At/past expiry returns intrinsic."""
     if spot <= 0 or strike <= 0:
         raise ValueError("spot and strike must be positive")
     kind = kind.lower()
@@ -59,14 +43,46 @@ def bs_price(
     intrinsic = max(spot - strike, 0.0) if kind == "call" else max(strike - spot, 0.0)
     if t_years <= 0 or sigma <= 0:
         return intrinsic
-    d1 = (
-        math.log(spot / strike)
-        + (rate + 0.5 * sigma**2) * t_years
-    ) / (sigma * math.sqrt(t_years))
+    d1 = (math.log(spot / strike) + (rate + 0.5 * sigma**2) * t_years) / (
+        sigma * math.sqrt(t_years)
+    )
     d2 = d1 - sigma * math.sqrt(t_years)
     if kind == "call":
         return spot * _norm_cdf(d1) - strike * math.exp(-rate * t_years) * _norm_cdf(d2)
     return strike * math.exp(-rate * t_years) * _norm_cdf(-d2) - spot * _norm_cdf(-d1)
+
+
+def bs_price_np(
+    spot: np.ndarray,
+    strike: np.ndarray,
+    t_years: float,
+    sigma: np.ndarray,
+    kind: str,
+    rate: float = 0.04,
+) -> np.ndarray:
+    """Vectorized Black‑Scholes price for arrays of spot, strike, sigma."""
+    kind = kind.lower()
+    if kind not in {"call", "put"}:
+        raise ValueError('kind must be "call" or "put"')
+    intrinsic = np.where(
+        kind == "call",
+        np.maximum(spot - strike, 0.0),
+        np.maximum(strike - spot, 0.0),
+    )
+    # Mask where option is alive
+    alive = (t_years > 0) & (sigma > 0)
+    result = intrinsic.copy()
+    if not np.any(alive):
+        return result
+    sqrt_t = math.sqrt(t_years)
+    d1 = (np.log(spot / strike) + (rate + 0.5 * sigma**2) * t_years) / (sigma * sqrt_t)
+    d2 = d1 - sigma * sqrt_t
+    if kind == "call":
+        price = spot * _norm_cdf_np(d1) - strike * math.exp(-rate * t_years) * _norm_cdf_np(d2)
+    else:
+        price = strike * math.exp(-rate * t_years) * _norm_cdf_np(-d2) - spot * _norm_cdf_np(-d1)
+    result[alive] = price[alive]
+    return result
 
 
 def realized_vol(close: pd.Series, window: int = 20) -> pd.Series:
@@ -102,18 +118,21 @@ class SpreadBacktestResult:
         )
 
 
-def price_spread(
-    spot: float,
+def price_spread_vectorized(
+    spot: np.ndarray,
     legs: list[SpreadLeg],
-    strikes: list[float],
+    strikes: np.ndarray,
     t_years: float,
-    sigma: float,
-) -> float:
-    """Signed value of the spread to its HOLDER (long premium positive)."""
-    value = 0.0
-    for leg, strike in zip(legs, strikes):
-        p = bs_price(spot, strike, t_years, sigma, leg.kind)
-        value += p if leg.side == "buy" else -p
+    sigma: np.ndarray,
+) -> np.ndarray:
+    """Vectorized signed value of the spread to its HOLDER (long premium positive)."""
+    value = np.zeros_like(spot, dtype=float)
+    for leg in legs:
+        price = bs_price_np(spot, strikes, t_years, sigma, leg.kind)
+        if leg.side == "buy":
+            value += price
+        else:
+            value -= price
     return value
 
 
@@ -125,28 +144,7 @@ def backtest_spread(
     hold_days: int = 21,
     vol_window: int = 20,
 ) -> SpreadBacktestResult:
-    """Open the spread on each entry date, close by re‑pricing ``hold_days`` later.
-
-    Parameters
-    ----------
-    df: pd.DataFrame
-        Must contain a ``close`` column.
-    legs: list[SpreadLeg]
-        Specification of each leg.
-    entry_mask: pd.Series | None, optional
-        Boolean mask indicating entry dates; defaults to weekly entries.
-    dte: int, optional
-        Days to expiry at entry.
-    hold_days: int, optional
-        Holding period in days.
-    vol_window: int, optional
-        Window for realized volatility.
-
-    Returns
-    -------
-    SpreadBacktestResult
-        Aggregated backtest statistics.
-    """
+    """Open the spread on each entry date, close by re‑pricing ``hold_days`` later."""
     close = df["close"].astype(float)
     vol = realized_vol(close, vol_window)
 
@@ -154,45 +152,72 @@ def backtest_spread(
         entry_mask = pd.Series(False, index=df.index)
         entry_mask.iloc[vol_window::5] = True
 
-    pnls: list[float] = []
+    idx_entry = np.flatnonzero(entry_mask.to_numpy())
     n = len(df)
+    idx_exit = idx_entry + hold_days
+    valid = idx_exit < n
+    idx_entry = idx_entry[valid]
+    idx_exit = idx_exit[valid]
 
-    for i in np.flatnonzero(entry_mask.to_numpy()):
-        j = i + hold_days
-        if j >= n:
-            break
-        sigma_in = float(vol.iloc[i]) if np.isfinite(vol.iloc[i]) else 0.0
-        if sigma_in <= 0:
-            continue
+    sigma_in = vol.iloc[idx_entry].to_numpy()
+    sigma_in = np.where(np.isfinite(sigma_in), sigma_in, 0.0)
 
-        spot_in, spot_out = float(close.iloc[i]), float(close.iloc[j])
-        sigma_out = float(vol.iloc[j]) if np.isfinite(vol.iloc[j]) else sigma_in
+    # Filter out non‑positive vol entries early
+    alive_mask = sigma_in > 0
+    idx_entry = idx_entry[alive_mask]
+    idx_exit = idx_exit[alive_mask]
+    sigma_in = sigma_in[alive_mask]
 
-        strikes = [leg.moneyness * spot_in for leg in legs]
-        entry_v = price_spread(
-            spot_in,
-            legs,
-            strikes,
-            dte / TRADING_DAYS,
-            sigma_in,
+    if len(idx_entry) == 0:
+        return SpreadBacktestResult(
+            trades=0,
+            wins=0,
+            total_pnl=0.0,
+            avg_pnl=0.0,
+            win_rate=None,
+            max_loss=0.0,
+            pnl_series=[],
         )
-        exit_v = price_spread(
-            spot_out,
-            legs,
-            strikes,
-            max(dte - hold_days, 0) / TRADING_DAYS,
-            sigma_out,
-        )
-        pnls.append(exit_v - entry_v)
 
-    wins = sum(1 for p in pnls if p > 0)
+    spot_in = close.iloc[idx_entry].to_numpy()
+    spot_out = close.iloc[idx_exit].to_numpy()
+
+    sigma_out = vol.iloc[idx_exit].to_numpy()
+    sigma_out = np.where(np.isfinite(sigma_out), sigma_out, sigma_in)
+
+    # Strikes are based on entry spot only (as in original implementation)
+    strikes = np.array([leg.moneyness * spot_in for leg in legs], dtype=float).T
+
+    # Compute entry and exit values vectorized
+    entry_v = price_spread_vectorized(
+        spot_in,
+        legs,
+        strikes,
+        dte / TRADING_DAYS,
+        sigma_in,
+    )
+    exit_v = price_spread_vectorized(
+        spot_out,
+        legs,
+        strikes,
+        max(dte - hold_days, 0) / TRADING_DAYS,
+        sigma_out,
+    )
+    pnls = exit_v - entry_v
+
+    wins = int(np.sum(pnls > 0))
+    total_pnl = float(np.sum(pnls))
+    avg_pnl = float(np.mean(pnls)) if pnls.size else 0.0
+    max_loss = float(np.min(pnls)) if pnls.size else 0.0
+    win_rate = round(wins / pnls.size, 4) if pnls.size else None
+
     return SpreadBacktestResult(
-        trades=len(pnls),
+        trades=int(pnls.size),
         wins=wins,
-        total_pnl=round(float(sum(pnls)), 4),
-        avg_pnl=round(float(np.mean(pnls)), 4) if pnls else 0.0,
-        win_rate=round(wins / len(pnls), 4) if pnls else None,
-        max_loss=round(float(min(pnls)), 4) if pnls else 0.0,
+        total_pnl=round(total_pnl, 4),
+        avg_pnl=round(avg_pnl, 4),
+        win_rate=win_rate,
+        max_loss=round(max_loss, 4),
         pnl_series=[round(float(p), 4) for p in pnls],
     )
 
