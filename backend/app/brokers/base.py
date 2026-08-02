@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
-
 @dataclass(slots=True)
 class OrderRequest:
     symbol: str
@@ -70,3 +69,73 @@ class AbstractBroker(ABC):
         self, symbol: str, interval: str, limit: int = 500
     ) -> list[dict]:
         """Return OHLCV bars. Each dict: {ts, open, high, low, close, volume}."""
+
+
+# ==============================
+# Unit tests for edge conditions
+# ==============================
+import unittest
+
+class TestOrderRequestEdge(unittest.TestCase):
+    def test_zero_quantity(self):
+        """Zero quantity should be accepted by the dataclass."""
+        req = OrderRequest(symbol='AAPL', side='buy', order_type='market', quantity=0)
+        self.assertEqual(req.quantity, 0)
+
+    def test_negative_quantity(self):
+        """Negative quantity is allowed at construction (validation is upstream)."""
+        req = OrderRequest(symbol='AAPL', side='sell', order_type='market', quantity=-5)
+        self.assertLess(req.quantity, 0)
+
+    def test_limit_order_without_price(self):
+        """A limit order can be instantiated without a limit_price; validation occurs later."""
+        req = OrderRequest(symbol='AAPL', side='buy', order_type='limit', quantity=10)
+        self.assertIsNone(req.limit_price)
+
+class TestQuoteResultEdge(unittest.TestCase):
+    def test_missing_volume(self):
+        """Volume is optional and should default to None when omitted."""
+        qr = QuoteResult(symbol='BTC', bid=50000.0, ask=50100.0, last=50050.0)
+        self.assertIsNone(qr.volume)
+
+# Minimal concrete broker for async method testing
+class DummyBroker(AbstractBroker):
+    async def place_order(self, request: OrderRequest) -> OrderResult:
+        return OrderResult(broker_order_id='dummy123', status='filled')
+
+    async def cancel_order(self, broker_order_id: str) -> bool:
+        return True
+
+    async def get_order(self, broker_order_id: str) -> dict:
+        return {'id': broker_order_id, 'status': 'filled'}
+
+    async def get_positions(self) -> list[dict]:
+        return []
+
+    async def get_account(self) -> dict:
+        return {'balance': 100000.0, 'equity': 100000.0}
+
+    async def get_quote(self, symbol: str) -> QuoteResult:
+        return QuoteResult(symbol=symbol, bid=1.0, ask=1.1, last=1.05)
+
+    async def get_historical(self, symbol: str, interval: str, limit: int = 500) -> list[dict]:
+        return []
+
+class TestDummyBrokerAsync(unittest.IsolatedAsyncioTestCase):
+    async def test_place_order_returns_order_result(self):
+        broker = DummyBroker()
+        req = OrderRequest(symbol='AAPL', side='buy', order_type='market', quantity=1)
+        result = await broker.place_order(req)
+        self.assertIsInstance(result, OrderResult)
+        self.assertEqual(result.broker_order_id, 'dummy123')
+        self.assertEqual(result.status, 'filled')
+
+    async def test_get_quote_structure(self):
+        broker = DummyBroker()
+        quote = await broker.get_quote('AAPL')
+        self.assertIsInstance(quote, QuoteResult)
+        self.assertEqual(quote.symbol, 'AAPL')
+        self.assertGreaterEqual(quote.ask, quote.bid)
+
+if __name__ == '__main__':
+    unittest.main()
