@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Use deadlock detectors",
-    "Validate quota usage",
-    "Validate timestamps.",
-    "Limit order retries",
-    "Train TFT models",
     "Use timeout retries",
     "Check market hours",
     "Use Sharpe ratio metrics",
@@ -199,8 +194,13 @@
     "Set timeout limits",
     "Use try-except blocks",
     "Verify data schemas",
-    "Prepend S4 blocks"
+    "Prepend S4 blocks",
+    "Limit API calls",
+    "Log GPU temps",
+    "Refactor ambiguous code",
+    "Implement type safety checks",
+    "Review sequence handling"
   ],
-  "last_updated": "2026-08-02T14:26:16.250081+00:00",
+  "last_updated": "2026-08-02T15:37:27.675635+00:00",
   "total": 200
 }
