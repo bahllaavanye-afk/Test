@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Log broker responses",
-    "Log trade timestamps",
-    "Verify data feeds",
     "Implement real-time drift detection",
     "Track thread counts",
     "Implement lazy evaluation tests",
@@ -199,8 +196,11 @@
     "Monitor API limits",
     "Log API responses",
     "Check clock sync",
-    "Validate trade IDs"
+    "Validate trade IDs",
+    "Detect memory leaks",
+    "Handle timeout errors",
+    "Refactor sequence logic"
   ],
-  "last_updated": "2026-08-02T19:20:19.430137+00:00",
+  "last_updated": "2026-08-02T20:27:16.838597+00:00",
   "total": 200
 }
