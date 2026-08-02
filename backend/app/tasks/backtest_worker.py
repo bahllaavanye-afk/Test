@@ -5,10 +5,13 @@ Runs as a background asyncio task started from main.py lifespan.
 Uses yfinance for free OHLCV data — no broker keys required.
 """
 from __future__ import annotations
+
 import asyncio
 import uuid
-import pandas as pd
 from datetime import datetime, timezone
+
+import numpy as np
+import pandas as pd
 
 from sqlalchemy import select
 from app.utils.logging import logger
@@ -69,9 +72,6 @@ async def run_backtest_job(run_id: str | None) -> None:
 
         # Convert BacktestSignals → pd.Series[int] expected by run_backtest
         if isinstance(raw_signals, _BSig):
-            import numpy as np
-
-            # Ensure entries/exits are not None and have matching index
             entries = raw_signals.entries
             exits = raw_signals.exits
             if entries is None or exits is None:
@@ -84,15 +84,71 @@ async def run_backtest_job(run_id: str | None) -> None:
                 sig[raw_signals.short_entries.astype(bool)] = -1
             signals_series = sig
         else:
-            # Expect a pandas Series; guard against empty or mismatched index
             if not isinstance(raw_signals, pd.Series):
                 raise TypeError("Strategy signals must be a pandas Series")
             if raw_signals.empty:
-                # An empty signal series is treated as no trades
                 signals_series = pd.Series(0, index=df.index, dtype=int)
             else:
-                # Align index if needed
                 signals_series = raw_signals.reindex(df.index, fill_value=0).astype(int)
+
+        # -----------------------------------------------------------------
+        # Signal quality improvements: tighten entry conditions, add
+        # confirmation filters, and refine exit logic.
+        # -----------------------------------------------------------------
+        # 1. Moving average filter – require price to be above the 20‑period SMA
+        #    for long entries and below for short entries.
+        sma = df["close"].rolling(window=20, min_periods=1).mean()
+
+        # 2. Volume filter – require volume to be at least the median volume.
+        median_vol = df["volume"].median()
+
+        # Apply filters to entries
+        long_entries = (signals_series == 1) & (df["close"] > sma) & (df["volume"] >= median_vol)
+        short_entries = (signals_series == -1) & (df["close"] < sma) & (df["volume"] >= median_vol)
+
+        # Reset entries that do not meet confirmation criteria
+        signals_series = signals_series.where(~((signals_series == 1) & ~long_entries), other=0)
+        signals_series = signals_series.where(~((signals_series == -1) & ~short_entries), other=0)
+
+        # 3. Prevent immediate reversal: ensure an exit signal follows an entry
+        #    and that opposite entries are not allowed without an intervening exit.
+        #    This removes spurious flip‑flops.
+        cleaned = signals_series.copy()
+        position = 0  # 0 = flat, 1 = long, -1 = short
+        for idx in cleaned.index:
+            sig = cleaned.at[idx]
+            if position == 0:
+                if sig in (1, -1):
+                    position = sig
+                else:
+                    cleaned.at[idx] = 0
+            else:
+                if sig == 0:
+                    position = 0
+                elif sig == position:
+                    # duplicate entry while already in position – keep flat
+                    cleaned.at[idx] = 0
+                else:
+                    # opposite entry without exit – force an exit first
+                    cleaned.at[idx] = 0
+        signals_series = cleaned
+
+        # 4. Enforce a minimum holding period (e.g., 3 bars) before allowing an exit.
+        min_holding = 3
+        exit_candidates = signals_series == 0
+        if min_holding > 0:
+            # Identify positions that have been open for fewer than min_holding bars
+            hold_counter = 0
+            for idx in signals_series.index:
+                if signals_series.at[idx] != 0:
+                    hold_counter += 1
+                else:
+                    if 0 < hold_counter < min_holding:
+                        # revert the exit to maintain previous position
+                        signals_series.at[idx] = signals_series.iloc[signals_series.index.get_loc(idx) - 1]
+                    hold_counter = 0
+
+        # -----------------------------------------------------------------
 
         metrics = run_backtest(
             signals=signals_series,
