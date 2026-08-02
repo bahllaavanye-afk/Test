@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Track memory usage",
-    "Analyze signal confidence",
-    "* Examples of successful responses include:",
-    "Add unit tests",
-    "Optimize model retrain",
     "* The current net-used exposure is approximately 2.8% NAV, which is below the 5% NAV gross-exposure cap defined in `./state/risk_limits.yaml`.",
     "Review endpoint code",
     "Monitor model performance",
@@ -199,8 +194,13 @@
     "Implement rate limits",
     "Check network latency",
     "Refactor LSTM models",
-    "Implement S4-TFT predictors"
+    "Implement S4-TFT predictors",
+    "Log trade timestamps",
+    "Validate input data",
+    "Use deadlock detectors",
+    "Monitor exposure limits",
+    "Review health-check endpoints"
   ],
-  "last_updated": "2026-08-01T23:28:18.862037+00:00",
+  "last_updated": "2026-08-02T01:07:24.980140+00:00",
   "total": 200
 }
