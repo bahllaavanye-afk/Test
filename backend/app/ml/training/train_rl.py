@@ -1,15 +1,6 @@
-"""
-Training script for the A3C-LSTM RL trading agent.
-
-Usage:
-    python -m app.ml.training.train_rl  (uses a synthetic demo dataset)
-
-Or import and call directly:
-    from app.ml.training.train_rl import train_rl_agent
-    await train_rl_agent(ohlcv_df, n_episodes=2000)
-"""
 import asyncio
 import logging
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -197,19 +188,56 @@ async def train_rl_agent(
 # ------------------------------------------------------------------
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    if "--test" in sys.argv:
+        import unittest
 
-    rng = np.random.default_rng(42)
-    price = 100.0 * np.cumprod(1 + rng.normal(0, 0.01, 300))
-    demo_df = pd.DataFrame(
-        {
-            "open": price * 0.999,
-            "high": price * 1.005,
-            "low": price * 0.995,
-            "close": price,
-            "volume": rng.integers(100_000, 500_000, 300).astype(float),
-        }
-    )
+        class TestTrainRL(unittest.TestCase):
+            def setUp(self):
+                self.rng = np.random.default_rng(0)
 
-    trained = asyncio.run(train_rl_agent(demo_df, n_episodes=50, checkpoint_every=25))
-    print(f"Trained agent: {trained}")
+            def test_build_features_shape_and_values(self):
+                # Minimal DataFrame with a single row
+                df = pd.DataFrame({"close": [100.0], "volume": [200_000.0]})
+                features = _build_features(df)
+                self.assertEqual(features.shape, (1, 3))
+                # All features should be zero due to fillna on first differences
+                np.testing.assert_array_almost_equal(features[0], np.zeros(3))
+
+            def test_step_reward_last_index_returns_zero(self):
+                df = pd.DataFrame({"close": [100.0, 101.0]})
+                # t points to the last index; reward must be 0.0 regardless of action
+                reward = _step_reward(df, action=0, t=1)
+                self.assertEqual(reward, 0.0)
+
+            def test_train_rl_agent_raises_on_short_dataframe(self):
+                # DataFrame shorter than required _SEQ_LEN + 2 rows
+                df = pd.DataFrame(
+                    {
+                        "close": [100.0, 101.0],
+                        "volume": [150_000.0, 150_000.0],
+                        "open": [99.5, 100.5],
+                        "high": [101.0, 102.0],
+                        "low": [99.0, 100.0],
+                    }
+                )
+                with self.assertRaises(ValueError):
+                    asyncio.run(train_rl_agent(df, n_episodes=1))
+
+        unittest.main(argv=[sys.argv[0]])
+    else:
+        logging.basicConfig(level=logging.INFO)
+
+        rng = np.random.default_rng(42)
+        price = 100.0 * np.cumprod(1 + rng.normal(0, 0.01, 300))
+        demo_df = pd.DataFrame(
+            {
+                "open": price * 0.999,
+                "high": price * 1.005,
+                "low": price * 0.995,
+                "close": price,
+                "volume": rng.integers(100_000, 500_000, 300).astype(float),
+            }
+        )
+
+        trained = asyncio.run(train_rl_agent(demo_df, n_episodes=50, checkpoint_every=25))
+        print(f"Trained agent: {trained}")

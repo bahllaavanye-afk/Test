@@ -205,3 +205,103 @@ def stress_summary(results: list[StressResult]) -> dict:
                 "num_trades": r.metrics.num_trades,
             }
     return out
+
+
+# -------------------------------------------------------------------------
+# Unit tests for edge / boundary conditions
+# -------------------------------------------------------------------------
+import pytest
+from datetime import datetime, timedelta
+
+
+def _dummy_metrics():
+    """Create a minimal BacktestMetrics‑like object for testing."""
+    @dataclass
+    class DummyMetrics:
+        total_return: float = 0.05
+        max_drawdown: float = -0.10
+        sharpe: float = 1.2
+        win_rate: float = 0.55
+        num_trades: int = 10
+
+    return DummyMetrics()
+
+
+def test_slice_series_returns_none_for_none_input():
+    """_slice_series should gracefully handle a None input."""
+    start = pd.Timestamp("2022-01-01")
+    end = pd.Timestamp("2022-01-10")
+    assert _slice_series(None, start, end) is None
+
+
+def test_run_stress_tests_boundary_exact_five_points(monkeypatch):
+    """
+    Scenario where the price series contains exactly five data points
+    within the window – should be considered covered.
+    """
+    # Build a price series with 5 consecutive days
+    dates = pd.date_range(start="2022-01-01", periods=5, freq="D")
+    prices = pd.Series([100, 101, 102, 103, 104], index=dates)
+    signals = pd.Series([1, -1, 1, -1, 1], index=dates)
+
+    # Define a scenario that exactly matches the series range
+    scenario = StressScenario(
+        name="boundary_five",
+        label="Exact Five",
+        start=date(2022, 1, 1),
+        end=date(2022, 1, 5),
+        description="Exactly five trading days",
+    )
+
+    # Patch run_backtest to return a deterministic dummy metrics object
+    monkeypatch.setattr("app.backtest.stress_test.run_backtest", lambda **kwargs: _dummy_metrics())
+
+    results = run_stress_tests(signals, prices, scenarios=[scenario])
+
+    assert len(results) == 1
+    res = results[0]
+    assert res.period_covered is True
+    assert res.data_points == 5
+    assert res.metrics is not None
+    # Verify that the summary reflects the dummy metrics values
+    summary = stress_summary(results)
+    assert summary["boundary_five"]["covered"] is True
+    assert summary["boundary_five"]["total_return_pct"] == 5.0  # 0.05 * 100
+    assert summary["boundary_five"]["max_drawdown_pct"] == -10.0
+
+
+def test_run_stress_tests_no_overlap(monkeypatch):
+    """
+    Scenario where the price series does not intersect the scenario window.
+    The function should mark the scenario as not covered without invoking run_backtest.
+    """
+    # Simple series far away from the scenario dates
+    dates = pd.date_range(start="2020-01-01", periods=10, freq="D")
+    prices = pd.Series(range(10), index=dates)
+    signals = pd.Series([1] * 10, index=dates)
+
+    scenario = StressScenario(
+        name="no_overlap",
+        label="No Overlap",
+        start=date(2022, 6, 1),
+        end=date(2022, 6, 30),
+        description="Window with no price data",
+    )
+
+    # Ensure run_backtest would raise if called (it should not be)
+    def fail_backtest(**kwargs):
+        raise AssertionError("run_backtest should not be called when there is no overlap")
+
+    monkeypatch.setattr("app.backtest.stress_test.run_backtest", fail_backtest)
+
+    results = run_stress_tests(signals, prices, scenarios=[scenario])
+
+    assert len(results) == 1
+    res = results[0]
+    assert res.period_covered is False
+    assert res.data_points == 0
+    assert res.metrics is None
+
+    summary = stress_summary(results)
+    assert summary["no_overlap"]["covered"] is False
+    assert summary["no_overlap"]["label"] == "No Overlap"
