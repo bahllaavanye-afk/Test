@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, List, Dict
 
 
 @dataclass(slots=True)
@@ -64,9 +64,18 @@ class AbstractBroker(ABC):
     @abstractmethod
     async def get_quote(self, symbol: str) -> QuoteResult:
         """Return current bid/ask/last for a symbol."""
+        # Fast‑path validation to avoid unnecessary broker calls
+        if not symbol:
+            # Return a neutral quote when the symbol is missing
+            return QuoteResult(symbol="", bid=0.0, ask=0.0, last=0.0, volume=None)
+        raise NotImplementedError
 
     @abstractmethod
     async def get_historical(
         self, symbol: str, interval: str, limit: int = 500
     ) -> list[dict]:
         """Return OHLCV bars. Each dict: {ts, open, high, low, close, volume}."""
+        # Early exit for invalid parameters to prevent costly broker queries
+        if not symbol or limit <= 0:
+            return []
+        raise NotImplementedError
