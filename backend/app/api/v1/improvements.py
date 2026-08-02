@@ -2,14 +2,25 @@
 from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user
 from app.models.user import User
+from app.main import app
+from functools import lru_cache
 
 router = APIRouter(prefix="/improvements", tags=["improvements"])
 
 
+def _get_improver():
+    """Retrieve the self_improver instance from the application state."""
+    return getattr(app.state, "self_improver", None)
+
+
+def _get_code_quality_loop():
+    """Retrieve the code_quality_loop instance from the application state."""
+    return getattr(app.state, "code_quality_loop", None)
+
+
 @router.get("/history")
 async def get_history(current_user: User = Depends(get_current_user)):
-    from app.main import app
-    improver = getattr(app.state, "self_improver", None)
+    improver = _get_improver()
     if improver:
         return improver.get_history()
     return []
@@ -17,8 +28,7 @@ async def get_history(current_user: User = Depends(get_current_user)):
 
 @router.get("/quality")
 async def get_quality(current_user: User = Depends(get_current_user)):
-    from app.main import app
-    loop_ref = getattr(app.state, "code_quality_loop", None)
+    loop_ref = _get_code_quality_loop()
     if loop_ref is None:
         return {"status": "not_running", "message": "Code quality loop not started"}
     return loop_ref.latest()
@@ -26,8 +36,7 @@ async def get_quality(current_user: User = Depends(get_current_user)):
 
 @router.get("/best_params")
 async def get_best_params(current_user: User = Depends(get_current_user)):
-    from app.main import app
-    improver = getattr(app.state, "self_improver", None)
+    improver = _get_improver()
     if improver is None:
         return {"status": "not_running", "best_params": {}}
     return {"best_params": getattr(improver, "_best_params", {})}
