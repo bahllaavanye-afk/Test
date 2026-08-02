@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Retrain models periodically",
-    "Verify network",
     "Optimize model predictors",
     "Flush old logs",
     "* The added trailing-stop/RSI filter is expected to boost the strategy's win-rate and reduce drawdowns, with a potential Sharpe ratio in the 1.2-1.4 range.",
@@ -199,8 +197,10 @@
     "Refactor sequence logic",
     "Check null pointers",
     "Sanitize user data",
-    "Track system resources"
+    "Track system resources",
+    "Verify SSL certs",
+    "Enforce PEP-8 style"
   ],
-  "last_updated": "2026-08-02T21:25:22.516725+00:00",
+  "last_updated": "2026-08-02T22:26:46.103060+00:00",
   "total": 200
 }
