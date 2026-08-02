@@ -62,6 +62,122 @@ def _step_reward(df: pd.DataFrame, action: int, t: int) -> float:
         return 0.0
 
 
+def _prepare_features(
+    df: pd.DataFrame, n_features: int, seq_len: int
+) -> tuple[np.ndarray, int]:
+    """Build feature matrix and ensure it matches the required dimension."""
+    features = _build_features(df)  # (T, n_features_raw)
+    T = len(features)
+
+    if T < seq_len + 2:
+        raise ValueError(f"DataFrame too short ({T} rows); need at least {seq_len + 2}")
+
+    raw_dim = features.shape[1]
+    if raw_dim < n_features:
+        pad = np.zeros((T, n_features - raw_dim))
+        features = np.hstack([features, pad])
+    else:
+        features = features[:, :n_features]
+
+    return features, T
+
+
+def _collect_trajectory(
+    agent: A3CLSTMAgent,
+    features: np.ndarray,
+    df: pd.DataFrame,
+    seq_len: int,
+) -> tuple[list[torch.Tensor], list[int], list[float]]:
+    """Run a single episode and collect (state, action, reward) tuples."""
+    states: list[torch.Tensor] = []
+    actions: list[int] = []
+    rewards: list[float] = []
+
+    agent.eval()
+    with torch.no_grad():
+        for t in range(seq_len, len(features) - 1):
+            window = features[t - seq_len : t]  # (seq_len, n_features)
+            x = torch.tensor(window, dtype=torch.float32).unsqueeze(0)  # (1, seq_len, n_feat)
+            action = agent.select_action(x)
+            reward = _step_reward(df, action, t)
+
+            states.append(x.squeeze(0))  # (seq_len, n_features)
+            actions.append(action)
+            rewards.append(reward)
+
+    return states, actions, rewards
+
+
+def _update_agent(
+    agent: A3CLSTMAgent,
+    optimizer: torch.optim.Optimizer,
+    states: list[torch.Tensor],
+    actions: list[int],
+    rewards: list[float],
+    gamma: float,
+    grad_clip: float,
+) -> tuple[dict[str, torch.Tensor], float]:
+    """Perform a single gradient update for the collected trajectory."""
+    states_tensor = torch.stack(states)                     # (T', seq_len, n_features)
+    actions_tensor = torch.tensor(actions, dtype=torch.long)
+    dones = [False] * len(rewards)
+
+    agent.train()
+    optimizer.zero_grad()
+    loss_dict = agent.actor_critic_loss(
+        states_tensor, actions_tensor, rewards, dones, gamma=gamma
+    )
+    loss_dict["loss"].backward()
+    nn.utils.clip_grad_norm_(agent.parameters(), grad_clip)
+    optimizer.step()
+
+    ep_reward = float(sum(rewards))
+    return loss_dict, ep_reward
+
+
+def _log_progress(
+    episode: int,
+    n_episodes: int,
+    ep_reward: float,
+    total_rewards: list[float],
+    loss: torch.Tensor,
+) -> None:
+    """Log episode statistics every 10 episodes."""
+    if episode % 10 != 0:
+        return
+    avg = np.mean(total_rewards[-10:])
+    logger.info(
+        "Episode %d/%d  reward=%.4f  avg10=%.4f  loss=%.4f",
+        episode,
+        n_episodes,
+        ep_reward,
+        avg,
+        loss.item(),
+    )
+
+
+def _save_checkpoint(
+    agent: A3CLSTMAgent,
+    base_path: str,
+    episode: int,
+    total_rewards: list[float],
+    n_features: int,
+    hidden_size: int,
+) -> None:
+    """Save a checkpoint file for the given episode."""
+    ckpt_path = base_path.replace(".pt", f"_ep{episode:04d}.pt")
+    agent.save(
+        ckpt_path,
+        metadata={
+            "episode": episode,
+            "avg_reward": float(np.mean(total_rewards[-100:])),
+            "n_features": n_features,
+            "hidden_size": hidden_size,
+        },
+    )
+    logger.info("Checkpoint saved → %s", ckpt_path)
+
+
 async def train_rl_agent(
     ohlcv_df: pd.DataFrame,
     n_episodes: int = 1000,
@@ -94,89 +210,36 @@ async def train_rl_agent(
     Returns:
         Trained A3CLSTMAgent
     """
-    features = _build_features(ohlcv_df)  # (T, n_features_raw)
-    T = len(features)
-
-    if T < _SEQ_LEN + 2:
-        raise ValueError(f"DataFrame too short ({T} rows); need at least {_SEQ_LEN + 2}")
-
-    # Pad or trim to expected n_features
-    raw_dim = features.shape[1]
-    if raw_dim < n_features:
-        pad = np.zeros((T, n_features - raw_dim))
-        features = np.hstack([features, pad])
-    else:
-        features = features[:, :n_features]
+    features, T = _prepare_features(ohlcv_df, n_features, _SEQ_LEN)
 
     agent = A3CLSTMAgent(n_features=n_features, hidden_size=hidden_size, n_actions=3)
     optimizer = torch.optim.Adam(agent.parameters(), lr=lr)
 
     save_path = model_path or str(_CHECKPOINT_DIR / "a3c_lstm_latest.pt")
-
     total_rewards: list[float] = []
 
     for episode in range(1, n_episodes + 1):
-        states: list[torch.Tensor] = []
-        actions: list[int] = []
-        rewards: list[float] = []
-
-        agent.eval()
-        with torch.no_grad():
-            for t in range(_SEQ_LEN, T - 1):
-                window = features[t - _SEQ_LEN : t]  # (seq_len, n_features)
-                x = torch.tensor(window, dtype=torch.float32).unsqueeze(0)  # (1, seq_len, n_feat)
-                action = agent.select_action(x)
-                reward = _step_reward(ohlcv_df, action, t)
-
-                states.append(x.squeeze(0))  # (seq_len, n_features)
-                actions.append(action)
-                rewards.append(reward)
+        states, actions, rewards = _collect_trajectory(agent, features, ohlcv_df, _SEQ_LEN)
 
         if not states:
             continue
 
-        # Stack trajectory
-        states_tensor = torch.stack(states)           # (T', seq_len, n_features)
-        actions_tensor = torch.tensor(actions, dtype=torch.long)
-        dones = [False] * len(rewards)
-
-        # Single gradient update
-        agent.train()
-        optimizer.zero_grad()
-        loss_dict = agent.actor_critic_loss(
-            states_tensor, actions_tensor, rewards, dones, gamma=gamma
+        loss_dict, ep_reward = _update_agent(
+            agent, optimizer, states, actions, rewards, gamma, grad_clip
         )
-        loss_dict["loss"].backward()
-        nn.utils.clip_grad_norm_(agent.parameters(), grad_clip)
-        optimizer.step()
-
-        ep_reward = float(sum(rewards))
         total_rewards.append(ep_reward)
 
-        if episode % 10 == 0:
-            avg = np.mean(total_rewards[-10:])
-            logger.info(
-                "Episode %d/%d  reward=%.4f  avg10=%.4f  loss=%.4f",
-                episode,
-                n_episodes,
-                ep_reward,
-                avg,
-                loss_dict["loss"].item(),
-            )
+        _log_progress(episode, n_episodes, ep_reward, total_rewards, loss_dict["loss"])
 
-        # Save checkpoint
         if episode % checkpoint_every == 0:
-            ckpt_path = save_path.replace(".pt", f"_ep{episode:04d}.pt")
-            agent.save(
-                ckpt_path,
-                metadata={
-                    "episode": episode,
-                    "avg_reward": float(np.mean(total_rewards[-100:])),
-                    "n_features": n_features,
-                    "hidden_size": hidden_size,
-                },
+            _save_checkpoint(
+                agent,
+                save_path,
+                episode,
+                total_rewards,
+                n_features,
+                hidden_size,
             )
-            logger.info("Checkpoint saved → %s", ckpt_path)
 
     # Save final model as the "latest" checkpoint
     agent.save(

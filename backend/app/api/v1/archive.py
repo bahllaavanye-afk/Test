@@ -21,11 +21,42 @@ ERR_RETRIEVE_ARCHIVE: str = "Failed to retrieve archive: {exc}"
 router = APIRouter(prefix=ARCHIVE_PREFIX, tags=[ARCHIVE_TAG])
 
 
+def _normalize_date(date: str | None) -> str | None:
+    """
+    Convert empty strings to ``None`` for downstream processing.
+    """
+    return None if date == "" else date
+
+
+def _validate_limit(limit: int) -> None:
+    """
+    Ensure ``limit`` respects the defined bounds.
+    Raises:
+        HTTPException: If ``limit`` is less than ``MIN_LIMIT``.
+    """
+    if limit < MIN_LIMIT:
+        raise HTTPException(status_code=400, detail=ERR_LIMIT_POSITIVE)
+
+
+def _replay_archive(category: str, date: str | None, limit: int):
+    """
+    Wrapper around :func:`replay` that translates unexpected errors
+    into a client‑friendly HTTPException.
+    """
+    try:
+        return replay(category, date, limit)
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(
+            status_code=500,
+            detail=ERR_RETRIEVE_ARCHIVE.format(exc=exc),
+        ) from exc
+
+
 @router.get("/index")
 async def get_index(current_user: User = Depends(get_current_user)):
     """
     Return a list of available archives.
-    Handles the case where the underlying function returns None.
+    Handles the case where the underlying function returns ``None``.
     """
     archives = list_archives()
     # Ensure a list is always returned
@@ -36,7 +67,8 @@ async def get_index(current_user: User = Depends(get_current_user)):
 async def get_archive(
     category: str,
     date: str | None = Query(
-        None, description=DATE_DESCRIPTION
+        None,
+        description=DATE_DESCRIPTION,
     ),
     limit: int = Query(
         DEFAULT_LIMIT,
@@ -48,30 +80,16 @@ async def get_archive(
 ):
     """
     Replay trades for a given category and optional date.
+
     Edge‑case handling:
-    * `date` empty string is treated as None.
-    * `limit` is validated to be at least 1.
+    * ``date`` empty string is treated as ``None``.
+    * ``limit`` is validated to be at least ``MIN_LIMIT``.
     * Returns an empty list if the replay yields no data.
     """
-    # Normalize empty date strings
-    if date == "":
-        date = None
+    normalized_date = _normalize_date(date)
+    _validate_limit(limit)
 
-    # Defensive check for limit (should already be enforced by Query)
-    if limit < MIN_LIMIT:
-        raise HTTPException(
-            status_code=400,
-            detail=ERR_LIMIT_POSITIVE,
-        )
-
-    try:
-        result = replay(category, date, limit)
-    except Exception as exc:
-        # Convert unexpected errors to a client‑friendly response
-        raise HTTPException(
-            status_code=500,
-            detail=ERR_RETRIEVE_ARCHIVE.format(exc=exc),
-        ) from exc
+    result = _replay_archive(category, normalized_date, limit)
 
     # Ensure the endpoint always returns a list
     return result if result else []
