@@ -3,11 +3,12 @@ FOMC and macro event calendar.
 Key dates sourced from Federal Reserve schedule (hardcoded 2025-2026).
 Economic data via FRED API (free, no key required for basic calls).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
-from typing import Literal
+from datetime import date, timedelta
+from typing import Callable, Literal, Sequence
 
 
 @dataclass
@@ -19,6 +20,7 @@ class MacroEvent:
     description: str
 
     def to_dict(self) -> dict:
+        """Serialize the event to a JSON‑compatible dictionary."""
         return {
             "date": self.date.isoformat(),
             "title": self.title,
@@ -61,10 +63,13 @@ MONTHLY_EVENTS_2025 = [
 
 
 def get_upcoming_events(days_ahead: int = 90) -> list[dict]:
+    """Return a list of upcoming macro events up to *days_ahead* days."""
     today = date.today()
+    # Look ahead one calendar year to capture year‑end events
     cutoff = date(today.year + 1, today.month, today.day)
     events: list[MacroEvent] = []
 
+    # Fixed FOMC dates
     for fomc_date in FOMC_2025 + FOMC_2026:
         if today <= fomc_date <= cutoff:
             events.append(
@@ -77,7 +82,7 @@ def get_upcoming_events(days_ahead: int = 90) -> list[dict]:
                 )
             )
 
-    # Add approximate monthly events for next 4 months
+    # Approximate monthly events for the next four months
     for month_offset in range(4):
         m = ((today.month - 1 + month_offset) % 12) + 1
         y = today.year + ((today.month - 1 + month_offset) // 12)
@@ -129,6 +134,7 @@ def get_upcoming_events(days_ahead: int = 90) -> list[dict]:
 
 
 def get_next_fomc() -> dict | None:
+    """Return the next scheduled FOMC meeting, or ``None`` if none remain."""
     today = date.today()
     for d in sorted(FOMC_2025 + FOMC_2026):
         if d >= today:
@@ -138,3 +144,106 @@ def get_next_fomc() -> dict | None:
                 "title": "FOMC Rate Decision",
             }
     return None
+
+
+# -------------------------------------------------------------------------
+# Strategy helpers – signal generation & exit logic
+# -------------------------------------------------------------------------
+
+def _default_confirmation(_: MacroEvent) -> bool:
+    """Fallback confirmation filter that always passes."""
+    return True
+
+
+def filter_events_for_signal(
+    events: Sequence[MacroEvent],
+    max_days_away: int = 5,
+    allowed_categories: Sequence[str] | None = None,
+    confirmation: Callable[[MacroEvent], bool] = _default_confirmation,
+) -> list[MacroEvent]:
+    """
+    Tighten entry conditions by applying several filters:
+
+    * ``max_days_away`` – only consider events occurring within the next *N* days.
+    * ``allowed_categories`` – restrict signals to a whitelist of event categories.
+    * ``confirmation`` – an optional callable that provides an additional
+      confirmation filter (e.g., volatility, price‑action checks).
+
+    Returns a list of events that satisfy all criteria.
+    """
+    if allowed_categories is None:
+        allowed_categories = ["fomc", "cpi", "nfp", "gdp"]
+
+    filtered: list[MacroEvent] = []
+    today = date.today()
+    for ev in events:
+        days_away = (ev.date - today).days
+        if ev.importance != "high":
+            continue
+        if days_away < 0 or days_away > max_days_away:
+            continue
+        if ev.category not in allowed_categories:
+            continue
+        if not confirmation(ev):
+            continue
+        filtered.append(ev)
+    return filtered
+
+
+def generate_entry_signals(
+    days_ahead: int = 90,
+    max_days_away: int = 5,
+    allowed_categories: Sequence[str] | None = None,
+    confirmation: Callable[[MacroEvent], bool] = _default_confirmation,
+) -> list[dict]:
+    """
+    Produce entry signals for upcoming macro events.
+
+    The function first fetches the raw event list, then applies the tightened
+    entry filters defined in :func:`filter_events_for_signal`.  Each returned
+    dictionary contains the minimal information required by the execution layer
+    (date, category, and a human‑readable title).
+    """
+    raw_events = [
+        MacroEvent(**e)  # type: ignore[arg-type] – dict keys match the dataclass fields
+        for e in get_upcoming_events(days_ahead=days_ahead)
+    ]
+    candidates = filter_events_for_signal(
+        raw_events,
+        max_days_away=max_days_away,
+        allowed_categories=allowed_categories,
+        confirmation=confirmation,
+    )
+    return [
+        {
+            "date": ev.date.isoformat(),
+            "category": ev.category,
+            "title": ev.title,
+            "days_away": (ev.date - date.today()).days,
+        }
+        for ev in candidates
+    ]
+
+
+def should_exit_position(event_date: date, exit_buffer_days: int = 2) -> bool:
+    """
+    Determine whether a position tied to a macro event should be exited.
+
+    The default logic exits the position *exit_buffer_days* after the event
+    date, allowing a short window for post‑event price reaction while avoiding
+    unnecessary exposure.
+
+    Parameters
+    ----------
+    event_date: date
+        The calendar date of the macro event the position is linked to.
+    exit_buffer_days: int, optional
+        Number of days after the event to keep the position open.
+
+    Returns
+    -------
+    bool
+        ``True`` if the current date is beyond ``event_date + exit_buffer_days``.
+    """
+    today = date.today()
+    return today > event_date + timedelta(days=exit_buffer_days)
