@@ -1,16 +1,30 @@
 {
-  "generated_at": "2026-08-01T03:58:14.057354+00:00",
+  "generated_at": "2026-08-02T04:01:59.062291+00:00",
   "thresholds": {
-    "vol_of_vol": 0.74,
-    "avellaneda_stoikov_mm": 0.61,
-    "vol_of_vol_timing": 0.63
+    "vol_of_vol": 0.77,
+    "avellaneda_stoikov_mm": 0.6,
+    "vol_of_vol_timing": 0.61,
+    "analyst_re": 0.68,
+    "time_serie": 0.63,
+    "sector_rot": 0.63,
+    "options_pc": 0.63,
+    "stat_arb_e": 0.68
   },
   "rationale": {
-    "vol_of_vol_timing": "win_rate 80% > 65% \u2192 lowered -0.02",
+    "analyst_re": "win_rate 17% < 40% \u2192 raised +0.03",
     "vol_of_vol": "win_rate 20% < 40% \u2192 raised +0.03",
+    "time_serie": "win_rate 77% > 65% \u2192 lowered -0.02",
+    "sector_rot": "win_rate 100% > 65% \u2192 lowered -0.02",
+    "options_pc": "win_rate 100% > 65% \u2192 lowered -0.02",
+    "poly_time_": "only 1 trades \u2014 need >= 5 to tune",
+    "low_volati": "win_rate 40% in [40%, 65%] \u2014 no change",
+    "avellaneda": "win_rate 53% in [40%, 65%] \u2014 no change",
+    "gamma_expo": "only 2 trades \u2014 need >= 5 to tune",
     "avellaneda_stoikov_mm": "win_rate 90% > 65% \u2192 lowered -0.02",
-    "avellaneda": "win_rate 53% in [40%, 65%] \u2014 no change"
+    "stat_arb_e": "win_rate 0% < 40% \u2192 raised +0.03",
+    "vol_of_vol_timing": "win_rate 80% > 65% \u2192 lowered -0.02",
+    "put_call_r": "only 1 trades \u2014 need >= 5 to tune"
   },
-  "strategies_evaluated": 4,
-  "strategies_changed": 3
+  "strategies_evaluated": 13,
+  "strategies_changed": 8
 }
