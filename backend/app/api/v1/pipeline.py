@@ -5,6 +5,7 @@ No database needed: the JSON file is the source of truth.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Optional
@@ -12,6 +13,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
+
+_logger = logging.getLogger(__name__)
 
 
 def _resolve_state_file() -> Path:
@@ -116,6 +119,14 @@ def _enrich_run(run: dict) -> dict:
     return run
 
 
+def _aggregate_metrics(runs: list[dict]) -> dict:
+    """Calculate summed metrics for a collection of runs."""
+    signal = sum(r.get("signal_count", 0) for r in runs)
+    exec_time = sum(r.get("execution_time", 0) for r in runs)
+    pnl = sum(r.get("pnl", 0) for r in runs)
+    return {"signal_count": signal, "execution_time": exec_time, "pnl": pnl}
+
+
 @router.get("/status")
 def pipeline_status(
     pipeline: Optional[str] = Query(None),
@@ -128,20 +139,40 @@ def pipeline_status(
         runs = [r for r in runs if r.get("pipeline") == pipeline]
     if desk:
         runs = [r for r in runs if r.get("desk") == desk]
-    return [_enrich_run(r) for r in runs[:limit]]
+    selected = runs[:limit]
+    enriched = [_enrich_run(r) for r in selected]
+
+    metrics = _aggregate_metrics(selected)
+    _logger.info(
+        "pipeline_status",
+        extra={
+            "pipeline": pipeline,
+            "desk": desk,
+            "limit_requested": limit,
+            "run_count": len(selected),
+            **metrics,
+        },
+    )
+    return enriched
 
 
 @router.get("/status/latest")
 def pipeline_status_latest():
     """Return the most recent run for each pipeline type."""
-    runs    = _load_runs(100)
-    seen:   set[str] = set()
+    runs = _load_runs(100)
+    seen: set[str] = set()
     latest: list[dict] = []
     for run in runs:
         key = f"{run.get('pipeline')}:{run.get('desk', '')}"
         if key not in seen:
             seen.add(key)
             latest.append(_enrich_run(run))
+
+    metrics = _aggregate_metrics(latest)
+    _logger.info(
+        "pipeline_status_latest",
+        extra={"run_count": len(latest), **metrics},
+    )
     return latest
 
 
@@ -150,11 +181,22 @@ def pipeline_run_detail(run_id: str):
     """Return full detail for a specific pipeline run."""
     for run in _load_runs(100):
         if run.get("run_id") == run_id:
-            return _enrich_run(run)
+            enriched = _enrich_run(run)
+            metrics = {
+                "signal_count": run.get("signal_count", 0),
+                "execution_time": run.get("execution_time", 0),
+                "pnl": run.get("pnl", 0),
+            }
+            _logger.info(
+                "pipeline_run_detail",
+                extra={"run_id": run_id, **metrics},
+            )
+            return enriched
     raise HTTPException(status_code=404, detail=f"Run {run_id!r} not found")
 
 
 @router.get("/definitions")
 def pipeline_definitions():
     """Return static pipeline stage definitions for the frontend."""
+    _logger.info("pipeline_definitions_requested")
     return PIPELINE_DEFS
