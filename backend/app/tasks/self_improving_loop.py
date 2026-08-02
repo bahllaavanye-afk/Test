@@ -36,6 +36,8 @@ class SelfImprovingLoop:
         logger.info("SelfImprovingLoop: starting hourly cycle")
         try:
             metrics = await self._collect_strategy_metrics()
+            # Guard against None returned from DB layer
+            metrics = metrics or []
             await self._auto_disable_underperformers(metrics)
             await self._llm_improvement_pass(metrics)
             await self._broadcast_regime(metrics)
@@ -86,8 +88,11 @@ class SelfImprovingLoop:
 
     # ── Auto-disable ──────────────────────────────────────────────────────────
 
-    async def _auto_disable_underperformers(self, metrics: List[dict]) -> None:
+    async def _auto_disable_underperformers(self, metrics: List[dict] | None) -> None:
         """Disable strategies with Sharpe < 0 and >= 10 trades in the last 30 days."""
+        if not metrics:
+            return
+
         underperformers = [m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10]
         if not underperformers:
             return
@@ -114,7 +119,7 @@ class SelfImprovingLoop:
 
     # ── LLM improvement pass ──────────────────────────────────────────────────
 
-    async def _llm_improvement_pass(self, metrics: List[dict]) -> None:
+    async def _llm_improvement_pass(self, metrics: List[dict] | None) -> None:
         if not metrics:
             return
 
@@ -129,14 +134,26 @@ class SelfImprovingLoop:
         if response:
             await self._store_llm_suggestion(response)
 
-    def _select_top_bottom_strategies(self, metrics: List[dict]) -> Tuple[List[dict], List[dict]]:
-        """Return the top 5 and bottom 3 strategies based on Sharpe."""
-        top = sorted(metrics, key=lambda m: m["sharpe"], reverse=True)[:5]
-        bottom = sorted(metrics, key=lambda m: m["sharpe"])[:3]
-        return top, bottom
+    def _select_top_bottom_strategies(self, metrics: List[dict] | None) -> Tuple[List[dict], List[dict]]:
+        """Return the top 5 and bottom 3 strategies based on Sharpe, ensuring distinct sets."""
+        if not metrics:
+            return [], []
 
-    def _build_llm_prompt(self, top: List[dict], bottom: List[dict]) -> str:
+        # Sort once to avoid repeated work
+        sorted_metrics = sorted(metrics, key=lambda m: m["sharpe"])
+        bottom = sorted_metrics[:3]
+        top = sorted_metrics[-5:] if len(sorted_metrics) >= 5 else sorted_metrics[:]
+
+        # Ensure bottom and top do not overlap
+        top_names = {m["strategy"] for m in top}
+        bottom = [m for m in bottom if m["strategy"] not in top_names]
+
+        return list(top), list(bottom)
+
+    def _build_llm_prompt(self, top: List[dict] | None, bottom: List[dict] | None) -> str:
         """Create the prompt sent to the LLM with formatted strategy data."""
+        top = top or []
+        bottom = bottom or []
         return f"""You are a quantitative trading researcher.
 
 Top performing strategies (last 30d):
@@ -165,12 +182,19 @@ Be concise. Each suggestion under 2 sentences."""
 
     # ── Regime broadcast ──────────────────────────────────────────────────────
 
-    async def _broadcast_regime(self, metrics: List[dict]) -> None:
-        profitable = sum(1 for m in metrics if m["sharpe"] > 0.5)
-        total = len(metrics) or 1
-        health = profitable / total
+    async def _broadcast_regime(self, metrics: List[dict] | None) -> None:
+        if not metrics:
+            # Default to neutral regime when no data is available
+            regime = "sideways"
+            health = 0.0
+            profitable = 0
+            total = 0
+        else:
+            profitable = sum(1 for m in metrics if m["sharpe"] > 0.5)
+            total = len(metrics) or 1
+            health = profitable / total
+            regime = "bull" if health > 0.6 else ("bear" if health < 0.3 else "sideways")
 
-        regime = "bull" if health > 0.6 else ("bear" if health < 0.3 else "sideways")
         await self._memory.set_latest(
             "platform_health",
             {

@@ -22,6 +22,8 @@ async def latest_total_equity(db: AsyncSession) -> float:
     wants "current equity" must read the latest snapshot, not the account row;
     reading `account.total_equity` is an AttributeError.
     """
+    if db is None:
+        raise ValueError("Database session cannot be None")
     from app.models.account import AccountSnapshot
 
     account_ids = (
@@ -29,6 +31,9 @@ async def latest_total_equity(db: AsyncSession) -> float:
         .scalars()
         .all()
     )
+    if not account_ids:
+        return 0.0
+
     total = 0.0
     for acc_id in account_ids:
         snap = (
@@ -76,8 +81,11 @@ async def list_accounts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if db is None or current_user is None:
+        raise HTTPException(400, "Invalid request parameters")
     result = await db.execute(select(Account).where(Account.user_id == current_user.id))
-    return result.scalars().all()
+    accounts = result.scalars().all()
+    return accounts if accounts else []
 
 
 @router.post("/", response_model=AccountOut)
@@ -85,8 +93,13 @@ async def create_account(
     body: AccountCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    request: Request = None,
+    request: Request | None = None,
 ):
+    if body is None:
+        raise HTTPException(400, "Request body cannot be None")
+    if db is None or current_user is None:
+        raise HTTPException(400, "Invalid request parameters")
+
     account = Account(
         user_id=current_user.id,
         broker=body.broker,
@@ -94,18 +107,25 @@ async def create_account(
         mode=body.mode,
         encrypted_key=encrypt_secret(body.api_key),
         encrypted_secret=encrypt_secret(body.api_secret),
-        extra_config=body.extra_config,
+        extra_config=body.extra_config or {},
     )
     db.add(account)
 
     # Audit log for key addition
+    ip_address = None
+    user_agent = None
+    if request:
+        if request.client:
+            ip_address = request.client.host
+        user_agent = request.headers.get("user-agent", "")[:256] or None
+
     log = AuditLog(
         user_id=current_user.id,
         action="key_add",
         resource_type="account",
         resource_id=None,  # will be set after commit
-        ip_address=request.client.host if (request and request.client) else None,
-        user_agent=(request.headers.get("user-agent", "")[:256] if request else None),
+        ip_address=ip_address,
+        user_agent=user_agent,
         extra_data={"broker": body.broker, "mode": body.mode},
     )
     db.add(log)
@@ -127,6 +147,11 @@ async def get_account_equity(
     current_user: User = Depends(get_current_user),
 ):
     """Return live equity, buying power, and day-trade count from Alpaca."""
+    if not account_id:
+        raise HTTPException(400, "Account ID must be provided")
+    if db is None or current_user is None:
+        raise HTTPException(400, "Invalid request parameters")
+
     result = await db.execute(
         select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
     )
@@ -140,7 +165,7 @@ async def get_account_equity(
     from app.brokers.alpaca_orders import get_alpaca_account
 
     try:
-        data = await get_alpaca_account(account)
+        data = await get_alpaca_account(account) or {}
     except Exception as e:
         logger.warning(f"Alpaca account fetch failed for account {account_id}: {e}")
         raise HTTPException(502, "Unable to fetch live account data from Alpaca")
@@ -150,8 +175,12 @@ async def get_account_equity(
         cash=float(data.get("cash", 0)),
         buying_power=float(data.get("buying_power", 0)),
         portfolio_value=float(data.get("portfolio_value", 0)),
-        day_trade_count=int(data["daytrade_count"]) if data.get("daytrade_count") is not None else None,
-        pattern_day_trader=bool(data.get("pattern_day_trader")) if data.get("pattern_day_trader") is not None else None,
+        day_trade_count=int(data["daytrade_count"])
+        if data.get("daytrade_count") is not None
+        else None,
+        pattern_day_trader=bool(data.get("pattern_day_trader"))
+        if data.get("pattern_day_trader") is not None
+        else None,
     )
 
 
@@ -161,6 +190,11 @@ async def delete_account(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if not account_id:
+        raise HTTPException(400, "Account ID must be provided")
+    if db is None or current_user is None:
+        raise HTTPException(400, "Invalid request parameters")
+
     result = await db.execute(select(Account).where(Account.id == account_id, Account.user_id == current_user.id))
     account = result.scalar_one_or_none()
     if not account:
