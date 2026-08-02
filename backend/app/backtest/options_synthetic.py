@@ -13,7 +13,18 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-TRADING_DAYS = 252
+# Constants
+TRADING_DAYS: int = 252
+DEFAULT_RISK_FREE_RATE: float = 0.04
+DEFAULT_DTE: int = 35
+DEFAULT_HOLD_DAYS: int = 21
+DEFAULT_VOL_WINDOW: int = 20
+ENTRY_MASK_STEP: int = 5
+
+CALL: str = "call"
+PUT: str = "put"
+BUY: str = "buy"
+SELL: str = "sell"
 
 
 def _norm_cdf(x: float) -> float:
@@ -27,7 +38,7 @@ def bs_price(
     t_years: float,
     sigma: float,
     kind: str,
-    rate: float = 0.04,
+    rate: float = DEFAULT_RISK_FREE_RATE,
 ) -> float:
     """Black‑Scholes European price. At/past expiry returns intrinsic.
 
@@ -54,9 +65,9 @@ def bs_price(
     if spot <= 0 or strike <= 0:
         raise ValueError("spot and strike must be positive")
     kind = kind.lower()
-    if kind not in {"call", "put"}:
-        raise ValueError('kind must be "call" or "put"')
-    intrinsic = max(spot - strike, 0.0) if kind == "call" else max(strike - spot, 0.0)
+    if kind not in {CALL, PUT}:
+        raise ValueError(f'kind must be "{CALL}" or "{PUT}"')
+    intrinsic = max(spot - strike, 0.0) if kind == CALL else max(strike - spot, 0.0)
     if t_years <= 0 or sigma <= 0:
         return intrinsic
     d1 = (
@@ -64,12 +75,12 @@ def bs_price(
         + (rate + 0.5 * sigma**2) * t_years
     ) / (sigma * math.sqrt(t_years))
     d2 = d1 - sigma * math.sqrt(t_years)
-    if kind == "call":
+    if kind == CALL:
         return spot * _norm_cdf(d1) - strike * math.exp(-rate * t_years) * _norm_cdf(d2)
     return strike * math.exp(-rate * t_years) * _norm_cdf(-d2) - spot * _norm_cdf(-d1)
 
 
-def realized_vol(close: pd.Series, window: int = 20) -> pd.Series:
+def realized_vol(close: pd.Series, window: int = DEFAULT_VOL_WINDOW) -> pd.Series:
     """Annualized close‑to‑close realized vol — the IV proxy."""
     rets = np.log(close / close.shift(1))
     return rets.rolling(window).std() * math.sqrt(TRADING_DAYS)
@@ -113,7 +124,7 @@ def price_spread(
     value = 0.0
     for leg, strike in zip(legs, strikes):
         p = bs_price(spot, strike, t_years, sigma, leg.kind)
-        value += p if leg.side == "buy" else -p
+        value += p if leg.side == BUY else -p
     return value
 
 
@@ -121,9 +132,9 @@ def backtest_spread(
     df: pd.DataFrame,
     legs: list[SpreadLeg],
     entry_mask: pd.Series | None = None,
-    dte: int = 35,
-    hold_days: int = 21,
-    vol_window: int = 20,
+    dte: int = DEFAULT_DTE,
+    hold_days: int = DEFAULT_HOLD_DAYS,
+    vol_window: int = DEFAULT_VOL_WINDOW,
 ) -> SpreadBacktestResult:
     """Open the spread on each entry date, close by re‑pricing ``hold_days`` later.
 
@@ -152,7 +163,7 @@ def backtest_spread(
 
     if entry_mask is None:
         entry_mask = pd.Series(False, index=df.index)
-        entry_mask.iloc[vol_window::5] = True
+        entry_mask.iloc[vol_window::ENTRY_MASK_STEP] = True
 
     pnls: list[float] = []
     n = len(df)
@@ -199,10 +210,10 @@ def backtest_spread(
 
 # Ready‑made structures mirroring the Options desk's mleg specs
 IRON_CONDOR = [
-    SpreadLeg("put", "sell", 0.95),
-    SpreadLeg("put", "buy", 0.91),
-    SpreadLeg("call", "sell", 1.05),
-    SpreadLeg("call", "buy", 1.09),
+    SpreadLeg(PUT, SELL, 0.95),
+    SpreadLeg(PUT, BUY, 0.91),
+    SpreadLeg(CALL, SELL, 1.05),
+    SpreadLeg(CALL, BUY, 1.09),
 ]
-BULL_PUT_SPREAD = [SpreadLeg("put", "sell", 0.96), SpreadLeg("put", "buy", 0.92)]
-BEAR_CALL_SPREAD = [SpreadLeg("call", "sell", 1.04), SpreadLeg("call", "buy", 1.08)]
+BULL_PUT_SPREAD = [SpreadLeg(PUT, SELL, 0.96), SpreadLeg(PUT, BUY, 0.92)]
+BEAR_CALL_SPREAD = [SpreadLeg(CALL, SELL, 1.04), SpreadLeg(CALL, BUY, 1.08)]
