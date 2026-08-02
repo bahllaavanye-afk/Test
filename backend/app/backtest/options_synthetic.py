@@ -124,8 +124,17 @@ def backtest_spread(
     dte: int = 35,
     hold_days: int = 21,
     vol_window: int = 20,
+    *,
+    max_vol: float | None = None,
+    pnl_target_factor: float = 0.5,
+    pnl_stop_factor: float = -0.5,
 ) -> SpreadBacktestResult:
     """Open the spread on each entry date, close by re‑pricing ``hold_days`` later.
+
+    The entry logic is tightened with optional volatility filtering and a
+    confirmation that the spread is a credit (positive entry value).  Exit
+    logic now includes early‑exit based on profit‑target or stop‑loss
+    thresholds expressed as fractions of the initial credit.
 
     Parameters
     ----------
@@ -138,9 +147,15 @@ def backtest_spread(
     dte: int, optional
         Days to expiry at entry.
     hold_days: int, optional
-        Holding period in days.
+        Maximum holding period in days.
     vol_window: int, optional
         Window for realized volatility.
+    max_vol: float | None, optional
+        Upper bound on realized volatility for an entry to be considered.
+    pnl_target_factor: float, optional
+        Profit‑target as a fraction of the entry credit (positive).
+    pnl_stop_factor: float, optional
+        Stop‑loss as a fraction of the entry credit (negative).
 
     Returns
     -------
@@ -158,17 +173,19 @@ def backtest_spread(
     n = len(df)
 
     for i in np.flatnonzero(entry_mask.to_numpy()):
-        j = i + hold_days
-        if j >= n:
+        # Basic bounds check
+        if i + hold_days >= n:
             break
+
         sigma_in = float(vol.iloc[i]) if np.isfinite(vol.iloc[i]) else 0.0
         if sigma_in <= 0:
             continue
+        if max_vol is not None and sigma_in > max_vol:
+            continue
 
-        spot_in, spot_out = float(close.iloc[i]), float(close.iloc[j])
-        sigma_out = float(vol.iloc[j]) if np.isfinite(vol.iloc[j]) else sigma_in
-
+        spot_in = float(close.iloc[i])
         strikes = [leg.moneyness * spot_in for leg in legs]
+
         entry_v = price_spread(
             spot_in,
             legs,
@@ -176,14 +193,49 @@ def backtest_spread(
             dte / TRADING_DAYS,
             sigma_in,
         )
-        exit_v = price_spread(
-            spot_out,
-            legs,
-            strikes,
-            max(dte - hold_days, 0) / TRADING_DAYS,
-            sigma_out,
-        )
-        pnls.append(exit_v - entry_v)
+        # Require a credit (positive entry value) for credit spreads
+        if entry_v <= 0:
+            continue
+
+        # Define dynamic exit thresholds based on entry credit
+        target = entry_v * pnl_target_factor
+        stop = entry_v * pnl_stop_factor
+
+        exit_pnl: float | None = None
+        # Walk forward day‑by‑day to allow early exit
+        for offset in range(1, hold_days + 1):
+            j = i + offset
+            if j >= n:
+                break
+            spot_j = float(close.iloc[j])
+            sigma_j = float(vol.iloc[j]) if np.isfinite(vol.iloc[j]) else sigma_in
+            remaining_t = max(dte - offset, 0) / TRADING_DAYS
+            exit_v = price_spread(
+                spot_j,
+                legs,
+                strikes,
+                remaining_t,
+                sigma_j,
+            )
+            pnl = exit_v - entry_v
+            if pnl >= target or pnl <= stop:
+                exit_pnl = pnl
+                break
+
+        # If no early exit triggered, use final day value
+        if exit_pnl is None:
+            spot_out = float(close.iloc[i + hold_days])
+            sigma_out = float(vol.iloc[i + hold_days]) if np.isfinite(vol.iloc[i + hold_days]) else sigma_in
+            exit_v = price_spread(
+                spot_out,
+                legs,
+                strikes,
+                max(dte - hold_days, 0) / TRADING_DAYS,
+                sigma_out,
+            )
+            exit_pnl = exit_v - entry_v
+
+        pnls.append(exit_pnl)
 
     wins = sum(1 for p in pnls if p > 0)
     return SpreadBacktestResult(

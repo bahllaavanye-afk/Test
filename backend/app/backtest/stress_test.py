@@ -2,7 +2,7 @@
 Historical stress testing — overlay a strategy's signals on known crisis periods.
 
 Tests how a strategy would have performed during the most severe market dislocations,
-revealing tail-risk exposure that standard backtests can understate when they
+revealing tail‑risk exposure that standard backtests can understate when they
 average across calm and turbulent regimes.
 """
 from __future__ import annotations
@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import date
 
 import pandas as pd
+import numpy as np
 
 from app.backtest.engine import BacktestMetrics, run_backtest
 
@@ -99,6 +100,50 @@ def _slice_series(series: pd.Series | None, start: pd.Timestamp, end: pd.Timesta
         return series.loc[mask]
 
 
+def _filter_signals(
+    signals: pd.Series,
+    prices: pd.Series,
+    volume: pd.Series | None,
+    entry_window: int,
+    max_price_change: float,
+    min_volume_factor: float,
+) -> pd.Series:
+    """
+    Tighten entry conditions by applying three lightweight confirmation filters:
+
+    1. **Price volatility filter** – discards signals when the absolute
+       percentage change over ``entry_window`` exceeds ``max_price_change``.
+    2. **Volume filter** – requires current volume to be at least
+       ``min_volume_factor`` times the median volume of the slice.
+    3. **Signal non‑zero filter** – retains only non‑zero signals.
+
+    The function returns a copy of ``signals`` where failing entries are set to 0.
+    """
+    # Ensure we operate on copies to avoid side‑effects
+    filtered = signals.copy()
+
+    # 1. Price volatility filter
+    price_ret = prices.pct_change(entry_window).abs()
+    price_mask = price_ret <= max_price_change
+
+    # 2. Volume filter (optional)
+    if volume is not None:
+        vol_median = volume.median()
+        vol_threshold = vol_median * min_volume_factor
+        vol_mask = volume >= vol_threshold
+    else:
+        vol_mask = pd.Series(True, index=signals.index)
+
+    # 3. Non‑zero signal mask
+    signal_mask = signals != 0
+
+    # Combine masks; any False turns the signal to 0
+    combined_mask = signal_mask & price_mask & vol_mask
+    filtered = filtered.where(combined_mask, other=0)
+
+    return filtered
+
+
 def run_stress_tests(
     signals: pd.Series,
     prices: pd.Series,
@@ -108,12 +153,28 @@ def run_stress_tests(
     commission_pct: float = 0.001,
     slippage_pct: float = 0.0005,
     scenarios: list[StressScenario] | None = None,
+    *,
+    entry_window: int = 5,
+    max_price_change: float = 0.02,
+    min_volume_factor: float = 1.0,
 ) -> list[StressResult]:
     """
     Run the strategy through each stress scenario window.
 
-    Only scenarios where the price series has ≥ 5 data points are evaluated;
-    others return period_covered=False with metrics=None.
+    The function now tightens entry conditions by applying confirmation filters
+    (price volatility and volume) before the backtest is executed. Only scenarios
+    where the price series has ≥ 5 data points are evaluated; others return
+    ``period_covered=False`` with ``metrics=None``.
+
+    Parameters
+    ----------
+    entry_window: int
+        Look‑back period (in bars) for the price volatility filter.
+    max_price_change: float
+        Maximum allowed absolute price change over ``entry_window`` (e.g., 0.02 for 2%).
+    min_volume_factor: float
+        Multiplier applied to the median volume of the slice; volume must be at
+        least this factor times the median.
     """
     if scenarios is None:
         scenarios = STRESS_SCENARIOS
@@ -155,8 +216,18 @@ def run_stress_tests(
             )
             continue
 
-        metrics = run_backtest(
+        # Apply tightened entry filters
+        filtered_signals = _filter_signals(
             signals=s_signals,
+            prices=s_prices,
+            volume=s_volume,
+            entry_window=entry_window,
+            max_price_change=max_price_change,
+            min_volume_factor=min_volume_factor,
+        )
+
+        metrics = run_backtest(
+            signals=filtered_signals,
             prices=s_prices,
             opens=s_opens,
             volume=s_volume,
@@ -181,8 +252,8 @@ def stress_summary(results: list[StressResult]) -> dict:
     """
     Compact summary dict suitable for JSON serialisation.
 
-    Returns per-scenario max_drawdown, total_return, and sharpe.
-    Only includes scenarios where period_covered=True.
+    Returns per‑scenario max_drawdown, total_return, and sharpe.
+    Only includes scenarios where ``period_covered=True``.
     """
     out: dict = {}
     for r in results:
