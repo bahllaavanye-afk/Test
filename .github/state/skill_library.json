@@ -1,10 +1,5 @@
 {
   "skills": [
-    "* We have confirmation of system health, with all health-check endpoints in `backend/api/health_check.py` returning 200 OK, and `/v1/status` reporting a latency of 12 ms.",
-    "* The self_improver agent is focused on referencing recent research and self-improvement initiatives.",
-    "Apply peer-learned fixes",
-    "Monitor exposure limits",
-    "Check JVM heap size",
     "Test DNS resolve",
     "Optimize hybrid predictors",
     "Parse research papers",
@@ -199,8 +194,13 @@
     "Scan for updates",
     "Ping network connectivity",
     "Monitor exposure metrics",
-    "Log latency metrics"
+    "Log latency metrics",
+    "Check GPU temps",
+    "Validate input types",
+    "Retrain models",
+    "Insert S4 blocks",
+    "Prepend LSTM layers"
   ],
-  "last_updated": "2026-08-02T09:35:31.827143+00:00",
+  "last_updated": "2026-08-02T11:13:40.727553+00:00",
   "total": 200
 }
