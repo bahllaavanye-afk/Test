@@ -21,18 +21,20 @@ def _first_run_time() -> datetime:
     """
     return datetime.now(timezone.utc) + timedelta(seconds=random.uniform(30, 150))
 
+
 if TYPE_CHECKING:
     from app.models.bot import Bot
 
+
 # Map interval strings to APScheduler kwargs
 _INTERVAL_MAP: dict[str, dict] = {
-    "1m":  {"minutes": 1},
-    "5m":  {"minutes": 5},
+    "1m": {"minutes": 1},
+    "5m": {"minutes": 5},
     "15m": {"minutes": 15},
     "30m": {"minutes": 30},
-    "1h":  {"hours": 1},
-    "4h":  {"hours": 4},
-    "1d":  {"hours": 24},
+    "1h": {"hours": 1},
+    "4h": {"hours": 4},
+    "1d": {"hours": 24},
 }
 
 
@@ -43,6 +45,8 @@ class BotRunner:
         self._scheduler = scheduler
 
     def _has_job(self, bot_id: str) -> bool:
+        if not bot_id:
+            return False
         return self._scheduler.get_job(f"bot_{bot_id}") is not None
 
     async def start(self, only_missing: bool = False) -> int:
@@ -73,12 +77,14 @@ class BotRunner:
                         Bot.is_archived == False,  # noqa: E712
                     )
                 )
-                bots = result.scalars().all()
+                bots = result.scalars().all() or []
 
-            pending = [b for b in bots if not (only_missing and self._has_job(b.id))]
+            pending = [b for b in bots if b and not (only_missing and self._has_job(b.id))]
             logger.info(
                 "BotRunner: scheduling bots",
-                enabled=len(bots), scheduling=len(pending), only_missing=only_missing,
+                enabled=len(bots),
+                scheduling=len(pending),
+                only_missing=only_missing,
             )
             for bot in pending:
                 await self.reschedule(bot)
@@ -86,13 +92,14 @@ class BotRunner:
             # Enabled bots that ended up with no job are the whole failure mode:
             # the fleet looks healthy in the API (is_enabled=True) while nothing
             # can ever fire. Never let that be quiet.
-            unscheduled = [b.id for b in bots if not self._has_job(b.id)]
+            unscheduled = [b.id for b in bots if b and not self._has_job(b.id)]
             if unscheduled:
                 logger.error(
                     "BotRunner: %d enabled bot(s) have NO scheduler job — they "
                     "cannot fire and no orders will be placed",
                     len(unscheduled),
-                    enabled=len(bots), unscheduled=len(unscheduled),
+                    enabled=len(bots),
+                    unscheduled=len(unscheduled),
                 )
             return len(pending)
         except Exception as exc:
@@ -101,6 +108,9 @@ class BotRunner:
 
     async def _run_bot(self, bot_id: str) -> None:
         """Called by scheduler — fetch bot from DB, evaluate, update."""
+        if not bot_id:
+            logger.debug("_run_bot called with empty bot_id; skipping")
+            return
         try:
             from app.database import AsyncSessionLocal
             from app.models.bot import Bot
@@ -126,8 +136,11 @@ class BotRunner:
 
     async def reschedule(self, bot: "Bot") -> None:
         """Add or update a bot job in the scheduler."""
+        if bot is None:
+            logger.debug("reschedule called with None bot; skipping")
+            return
         try:
-            trigger_cfg: dict = bot.trigger or {}
+            trigger_cfg: dict = bot.trigger if isinstance(bot.trigger, dict) else {}
             trigger_type = trigger_cfg.get("type", "schedule")
 
             job_id = f"bot_{bot.id}"
@@ -159,13 +172,20 @@ class BotRunner:
                     next_run_time=_first_run_time(),
                     minutes=5,
                 )
-                logger.debug("Bot scheduled (poll)", bot_id=bot.id, trigger=trigger_type)
+                logger.debug(
+                    "Bot scheduled (poll)",
+                    bot_id=bot.id,
+                    trigger=trigger_type,
+                )
 
         except Exception as exc:
             logger.error("BotRunner.reschedule failed", bot_id=bot.id, error=str(exc))
 
     async def unschedule(self, bot_id: str) -> None:
         """Remove a bot job from the scheduler."""
+        if not bot_id:
+            logger.debug("unschedule called with empty bot_id; skipping")
+            return
         job_id = f"bot_{bot_id}"
         try:
             self._scheduler.remove_job(job_id)
