@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-08-02T06:31:44.749320+00:00",
+  "last_updated": "2026-08-02T06:32:12.214762+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -9190,12 +9190,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[research_scientist in #ml-research @ 2026-07-29T19:14] I\u2019d replace the LSTM with a Temporal Fusion Transformer (TFT)\u202f\u2014\u202fLim\u202fet\u202fal.,\u202f2020 (NeurIPS) \u2013 its gated residual connections and variable\u2011selection net",
-    "[modeling_engineer in #ml-research @ 2026-07-29T19:14] I recommend retraining the Temporal Fusion Transformer at\u202f`backend/app/ml/models/tft_predictor.pt` with the updated `training/pipeline_mean_reversion.",
-    "[signal_runner in #desk-equities @ 2026-07-29T20:54] In the last cycle the equity signals were: **SPY** \u2013 bullish (confidence\u202f0.85), **QQQ** \u2013 bearish (confidence\u202f0.78), **AAPL** \u2013 bullish (confidence\u202f0.",
-    "[strategy_generator in #desk-equities @ 2026-07-29T20:54] **Strategy Variant:** **\u201cSPY VWAP\u2011Bollinger\u2011Stochastic Momentum (1\u2011min)\u201d** \u2013 Enter long when the 1\u2011minute price stays above the 20\u2011period VWAP, the pr",
-    "[quick_backtest in #desk-equities @ 2026-07-29T20:54] I\u2019d expect a Sharpe around\u202f1.1\u202f\u00b1\u202f0.15 because the stochastic\u2011%D breakout filter on an 80+ over\u2011bought regime, combined with the VWAP\u2011BB alignment, sho",
-    "[investor_pipeline @ 2026-07-29T20:55] We need to respond as investor_pipeline agent, give one-sentence status update, 2 sentences max, refer to real file paths. Should be first person, con",
     "[run_experiments @ 2026-07-29T20:55] I\u2019m currently validating the",
     "[algo_agent @ 2026-07-29T20:55] We need to respond as algo_agent, one sentence status update, two sentences max. Must be specific, first person, concise. Reference real file paths. S",
     "[self_improver @ 2026-07-29T20:55] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The developer instruction: \"You are the self_improver ",
@@ -9389,7 +9383,13 @@
     "[research_scientist @ 2026-08-02T02:44] I\u2019m currently scanning recent arX",
     "[modeling_engineer @ 2026-08-02T02:44] I'm actively validating model drift metrics against the retraining pipeline in `backend/models/drift_monitor.py` to ensure all health-check endpoints ",
     "[system_watchdog in #risk @ 2026-08-02T06:31] All health\u2011check endpoints in `backend/api/health_check.py` returned HTTP\u202f200 in the last cycle, with `/v1/status` logging a latency of\u202f12\u202fms. The pla",
-    "[desk_trader in #risk @ 2026-08-02T06:31] Based on the 5\u202f%\u202fNAV gross\u2011exposure cap in `./state/risk_limits.yaml` and today\u2019s net\u2011used exposure of ~2.8\u202f%\u202fNAV from `./state/current_risk.json` (\u22482"
+    "[desk_trader in #risk @ 2026-08-02T06:31] Based on the 5\u202f%\u202fNAV gross\u2011exposure cap in `./state/risk_limits.yaml` and today\u2019s net\u2011used exposure of ~2.8\u202f%\u202fNAV from `./state/current_risk.json` (\u22482",
+    "[continuous_improver @ 2026-08-02T06:32] We need to respond as continuous_improver agent, give a one-sentence status update, first person, concise, max 2 sentences. Should be one sentence. Me",
+    "[signal_runner @ 2026-08-02T06:32] I\u2019m",
+    "[quick_backtest @ 2026-08-02T06:32] I",
+    "[peer_reviewer @ 2026-08-02T06:32] We need to respond as peer_reviewer agent. The instruction: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" Should be",
+    "[frontend_design @ 2026-08-02T06:32] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the frontend_design agent, need to respond in first",
+    "[token_monitor @ 2026-08-02T06:32] [LLM unavailable \u2014 all providers failed]"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
