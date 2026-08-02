@@ -101,3 +101,66 @@ def monte_carlo_simulation(
         prob_positive_return=round(positive / n_simulations, 4),
         num_simulations=n_simulations,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Unit tests for edge‑case handling
+# --------------------------------------------------------------------------- #
+
+import pytest
+
+
+def test_single_value_series_minimum_simulation():
+    """Single‑value daily returns with the smallest allowed simulation count."""
+    daily_returns = pd.Series([0.01])  # constant 1% daily return
+    result = monte_carlo_simulation(
+        daily_returns=daily_returns,
+        n_simulations=1,
+        n_years=1,  # 252 trading days
+    )
+    # With constant positive returns, Sharpe should be 0 (std = 0) and drawdown 0.
+    assert result.median_sharpe == 0.0
+    assert result.p5_sharpe == 0.0
+    assert result.p95_sharpe == 0.0
+    assert result.median_max_dd == 0.0
+    assert result.p5_max_dd == 0.0
+    assert result.p95_max_dd == 0.0
+    # Final equity is > initial capital, so probability of positive return is 1.
+    assert result.prob_positive_return == 1.0
+    assert result.num_simulations == 1
+
+
+def test_small_fraction_of_year_boundary():
+    """Very small n_years leading to a tiny number of simulated days."""
+    daily_returns = pd.Series([0.0, -0.01, 0.02])
+    # 0.01 years ≈ 2.52 days → int conversion yields 2 days.
+    result = monte_carlo_simulation(
+        daily_returns=daily_returns,
+        n_simulations=10,
+        n_years=0.01,
+    )
+    # Ensure the function runs and returns sensible bounds.
+    assert isinstance(result.median_sharpe, float)
+    assert 0.0 <= result.prob_positive_return <= 1.0
+    assert result.num_simulations == 10
+    # Median drawdown should be between the theoretical extremes.
+    assert result.median_max_dd <= 0.0  # drawdowns are non‑positive
+
+
+def test_non_integer_n_years_and_large_simulations():
+    """Non‑integer years and a larger simulation count to test input flexibility."""
+    daily_returns = pd.Series(np.random.normal(0.0005, 0.01, size=1000))
+    result = monte_carlo_simulation(
+        daily_returns=daily_returns,
+        n_simulations=500,
+        n_years=2.5,  # non‑integer years
+    )
+    # Basic sanity checks
+    assert result.num_simulations == 500
+    assert 0.0 <= result.prob_positive_return <= 1.0
+    # Percentiles must be ordered correctly.
+    assert result.p5_sharpe <= result.median_sharpe <= result.p95_sharpe
+    assert result.p5_max_dd <= result.median_max_dd <= result.p95_max_dd
+    # Ensure no NaNs appear in the result fields.
+    for field in result.__dict__.values():
+        assert not np.isnan(field)
