@@ -1,7 +1,5 @@
 {
   "skills": [
-    "* The current net-used exposure is approximately 2.8% NAV, which is below the 5% NAV gross-exposure cap defined in `./state/risk_limits.yaml`.",
-    "Review endpoint code",
     "Monitor model performance",
     "Analyze signal accuracy",
     "Apply type safety checks",
@@ -199,8 +197,10 @@
     "Validate input data",
     "Use deadlock detectors",
     "Monitor exposure limits",
-    "Review health-check endpoints"
+    "Review health-check endpoints",
+    "Implement S4-augment",
+    "Scan arXiv research"
   ],
-  "last_updated": "2026-08-02T01:07:24.980140+00:00",
+  "last_updated": "2026-08-02T04:51:39.249366+00:00",
   "total": 200
 }
