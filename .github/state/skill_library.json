@@ -1,10 +1,5 @@
 {
   "skills": [
-    "**LLM unavailability**: The LLM is currently unavailable due to provider failures (as seen in self_improver and peer_reviewer learnings).",
-    "Refine API logging",
-    "Test API timeouts",
-    "Check SSL certificates",
-    "Bind API timeouts",
     "Cap trade batch size",
     "Validate schema",
     "* The `logs/api_calls.log` file is being actively parsed by multiple agents (`algo_agent`, `token_monitor`) to gather insights on token consumption and API call activity.",
@@ -199,8 +194,13 @@
     "Check API keys",
     "Test API keys",
     "Analyze TFT models",
-    "Cache market data"
+    "Cache market data",
+    "Check system clocks",
+    "Monitor disk space",
+    "Validate model drift",
+    "Implement S4-LSTM",
+    "Scan recent research"
   ],
-  "last_updated": "2026-08-02T05:33:31.067874+00:00",
+  "last_updated": "2026-08-02T07:29:49.254896+00:00",
   "total": 200
 }
