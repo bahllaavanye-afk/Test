@@ -3,8 +3,10 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Dict, Tuple
 
 import pandas as pd
 from scipy import stats
@@ -12,6 +14,17 @@ from scipy import stats
 from app.backtest.engine import run_backtest, BacktestMetrics
 from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stats
 from app.utils.logging import logger
+
+# Simple in‑memory cache for benchmark curves to avoid repeated async fetches
+_benchmark_cache: Dict[Tuple[date, date], dict] = {}
+
+
+async def _cached_fetch_benchmark_curves(start_date: date, end_date: date) -> dict:
+    """Fetch benchmark curves with memoization to reduce redundant I/O."""
+    cache_key = (start_date, end_date)
+    if cache_key not in _benchmark_cache:
+        _benchmark_cache[cache_key] = await fetch_benchmark_curves(start_date, end_date)
+    return _benchmark_cache[cache_key]
 
 
 @dataclass
@@ -79,31 +92,42 @@ class StrategyComparisonEngine:
         if initial_equity <= 0:
             raise ValueError("initial_equity must be a positive number.")
 
-        # Ensure series are aligned on the same index (optional but helps consistency)
+        # Align series on a common index
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
-            raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
+            raise ValueError(
+                "manual_signals, ml_signals, and prices must share at least one common index."
+            )
         manual_signals = manual_signals.loc[common_index]
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
 
+        # Run backtests
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 
-        benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
+        # Cached benchmark fetch
+        benchmark_curves = await _cached_fetch_benchmark_curves(start_date, end_date)
         benchmark_stats = get_benchmark_stats()
 
+        # Equity curve extraction (vectorized)
         manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
         ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
+
+        # Daily returns
         manual_ret = manual_eq.pct_change().dropna()
         ml_ret = ml_eq.pct_change().dropna()
 
+        # Statistical test – use NumPy arrays for speed and Welch's t-test
         min_len = min(len(manual_ret), len(ml_ret))
         if min_len > 10:
-            t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
+            t_stat, p_val = stats.ttest_ind(
+                ml_ret.values[:min_len], manual_ret.values[:min_len], equal_var=False
+            )
         else:
             t_stat, p_val = 0.0, 1.0
 
+        # Determine improvement and winner
         improvement = ml_metrics.sharpe - manual_metrics.sharpe
         winner = "ml" if ml_metrics.sharpe > manual_metrics.sharpe else "manual"
         if abs(improvement) < 0.1:
