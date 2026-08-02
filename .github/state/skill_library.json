@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Use timeout retries",
-    "Check market hours",
-    "Use Sharpe ratio metrics",
-    "Test algo params",
-    "Analyze NAV exposure",
     "Parse exposure limits",
     "* Given the current market conditions and risk status, we recommend using position sizing guidelines based on the 70/30 arbitrage/directional allocation ratio, as discussed in the #risk channel.",
     "Validate data feeds",
@@ -199,8 +194,13 @@
     "Log GPU temps",
     "Refactor ambiguous code",
     "Implement type safety checks",
-    "Review sequence handling"
+    "Review sequence handling",
+    "Check API rate limits",
+    "Monitor memory usage",
+    "Test for null values",
+    "Catch SSL exceptions",
+    "Parse agent memory"
   ],
-  "last_updated": "2026-08-02T15:37:27.675635+00:00",
+  "last_updated": "2026-08-02T16:54:39.570125+00:00",
   "total": 200
 }
