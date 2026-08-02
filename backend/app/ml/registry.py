@@ -2,23 +2,24 @@
 ML Model Registry — tracks trained model artifacts, metadata, and performance.
 
 Each registered model is recorded in a JSON index file with:
-  model_type, created_at, val_sharpe, val_accuracy, artifact_path, tags
+  model_type, created_at, val_sharpe, val_accuracy, val_auc, artifact_path, tags
 
 Usage:
     registry = ModelRegistry()
-    registry.register("my_tft", model, metrics, artifact_path="models/tft_v1.pt")
-    registry.get_best("tft", metric="val_sharpe")
-    registry.compare_models(["tft_v1", "lgbm_v2"])
+    registry.register("my_tft", model_type="tft", artifact_path="models/tft_v1.pt",
+                      val_sharpe=1.2, val_accuracy=0.62, val_auc=0.71,
+                      tags=["production", "SPY", "1h"])
+    best = registry.get_best("tft", metric="val_sharpe")
+    signal = registry.evaluate_signal("my_tft")
 """
 from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, List, Mapping, Optional
 
 from app.utils.logging import logger
-
 
 _DEFAULT_INDEX = Path("experiments/model_registry.json")
 
@@ -31,6 +32,14 @@ class ModelRegistry:
     their metadata records.  Artifacts (weight files, etc.) are stored at
     paths provided by the caller.
     """
+
+    # ------------------------------------------------------------------
+    # Thresholds for signal quality – can be tuned per‑strategy
+    # ------------------------------------------------------------------
+    _SHARPE_MIN: float = 0.5
+    _ACCURACY_MIN: float = 0.55
+    _AUC_MIN: float = 0.60
+    _CONFIRMATION_TAGS: List[str] = ["production", "confirmed"]
 
     def __init__(self, index_path: str | Path = _DEFAULT_INDEX):
         self.index_path = Path(index_path)
@@ -47,17 +56,56 @@ class ModelRegistry:
             try:
                 self._records = json.loads(self.index_path.read_text())
             except json.JSONDecodeError as exc:
-                logger.warning(f"ModelRegistry: corrupt index at {self.index_path}: {exc}. Starting fresh.")
+                logger.warning(
+                    f"ModelRegistry: corrupt index at {self.index_path}: {exc}. Starting fresh."
+                )
                 self._records = {}
         else:
             self._records = {}
 
     def _save_index(self) -> None:
-        """Persist the in-memory index to disk atomically."""
+        """Persist the in‑memory index to disk atomically."""
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.index_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(self._records, indent=2, default=str))
         tmp.replace(self.index_path)
+
+    # ------------------------------------------------------------------
+    # Signal quality helpers
+    # ------------------------------------------------------------------
+
+    def _is_strong_signal(self, record: Mapping[str, Any]) -> bool:
+        """
+        Determine whether a model record satisfies tightened entry conditions.
+
+        Entry is considered strong when:
+          * Sharpe ≥ _SHARPE_MIN
+          * Accuracy ≥ _ACCURACY_MIN
+          * AUC ≥ _AUC_MIN
+          * All tags in _CONFIRMATION_TAGS are present
+        """
+        if record.get("val_sharpe", 0.0) < self._SHARPE_MIN:
+            return False
+        if record.get("val_accuracy", 0.0) < self._ACCURACY_MIN:
+            return False
+        if record.get("val_auc", 0.0) < self._AUC_MIN:
+            return False
+        tags = set(record.get("tags", []))
+        if not all(tag in tags for tag in self._CONFIRMATION_TAGS):
+            return False
+        return True
+
+    def _should_exit(self, record: Mapping[str, Any], current_sharpe: float) -> bool:
+        """
+        Exit filter based on degradation of Sharpe.
+
+        If the live Sharpe falls more than 20 % below the validation Sharpe,
+        the model is flagged for exit.
+        """
+        val_sharpe = record.get("val_sharpe", 0.0)
+        if val_sharpe <= 0:
+            return False
+        return current_sharpe < 0.8 * val_sharpe
 
     # ------------------------------------------------------------------
     # Public API
@@ -71,8 +119,8 @@ class ModelRegistry:
         val_sharpe: float = 0.0,
         val_accuracy: float = 0.0,
         val_auc: float = 0.5,
-        tags: list[str] | None = None,
-        extra: dict[str, Any] | None = None,
+        tags: Optional[List[str]] = None,
+        extra: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """
         Register a trained model.
@@ -81,10 +129,10 @@ class ModelRegistry:
             name:          Unique name for this model version (e.g. "tft_spy_v3").
             model_type:    Class identifier (e.g. "tft", "lightgbm", "lstm").
             artifact_path: Path where the model weights / files are saved.
-            val_sharpe:    Out-of-sample Sharpe ratio on validation set.
-            val_accuracy:  Direction accuracy on validation set (0-1).
-            val_auc:       ROC-AUC on validation set.
-            tags:          Free-form labels, e.g. ["production", "SPY", "1h"].
+            val_sharpe:    Out‑of‑sample Sharpe ratio on validation set.
+            val_accuracy: Direction accuracy on validation set (0‑1).
+            val_auc:       ROC‑AUC on validation set.
+            tags:          Free‑form labels, e.g. ["production", "SPY", "1h"].
             extra:         Any additional metadata to store.
 
         Returns:
@@ -101,6 +149,14 @@ class ModelRegistry:
             "tags": tags or [],
             **(extra or {}),
         }
+
+        # Validate entry quality – log a warning if thresholds are not met
+        if not self._is_strong_signal(record):
+            logger.warning(
+                f"ModelRegistry: model '{name}' does not meet strong‑signal thresholds. "
+                f"Sharpe={val_sharpe:.3f}, Acc={val_accuracy:.3f}, AUC={val_auc:.3f}"
+            )
+
         self._records[name] = record
         self._save_index()
         logger.info(f"ModelRegistry: registered '{name}' ({model_type}) sharpe={val_sharpe:.3f}")
@@ -117,14 +173,16 @@ class ModelRegistry:
             KeyError: if *name* is not found in the registry.
         """
         if name not in self._records:
-            raise KeyError(f"ModelRegistry: model '{name}' not found. Available: {list(self._records)}")
+            raise KeyError(
+                f"ModelRegistry: model '{name}' not found. Available: {list(self._records)}"
+            )
         return self._records[name]
 
     def list_models(
         self,
         model_type: str | None = None,
         tag: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> List[dict[str, Any]]:
         """
         List registered models, optionally filtered by type or tag.
 
@@ -142,7 +200,7 @@ class ModelRegistry:
         model_type: str | None = None,
         metric: str = "val_sharpe",
         tag: str | None = None,
-    ) -> dict[str, Any] | None:
+    ) -> Optional[dict[str, Any]]:
         """
         Return the best model record according to *metric*.
 
@@ -162,9 +220,9 @@ class ModelRegistry:
 
     def compare_models(
         self,
-        names: list[str],
+        names: List[str],
         sort_by: str = "val_sharpe",
-    ) -> list[dict[str, Any]]:
+    ) -> List[dict[str, Any]]:
         """
         Return a leaderboard for the specified model names.
 
@@ -201,7 +259,7 @@ class ModelRegistry:
         """
         Update fields on an existing record.
 
-        Useful for adding post-hoc metrics (e.g. live Sharpe after paper trading).
+        Useful for adding post‑hoc metrics (e.g. live Sharpe after paper trading).
 
         Raises:
             KeyError: if *name* is not found.
@@ -211,6 +269,33 @@ class ModelRegistry:
         self._records[name] = record
         self._save_index()
         return record
+
+    # ------------------------------------------------------------------
+    # Strategy‑logic helpers
+    # ------------------------------------------------------------------
+
+    def evaluate_signal(self, name: str, current_sharpe: Optional[float] = None) -> dict[str, Any]:
+        """
+        Evaluate entry and exit signals for a registered model.
+
+        The method returns a dictionary with boolean flags:
+            * ``entry`` – True if the model satisfies tightened entry criteria.
+            * ``exit``  – True if a degradation exit condition is met (requires
+                         ``current_sharpe`` to be provided).
+
+        Args:
+            name:            Model name to evaluate.
+            current_sharpe:  Live Sharpe ratio; if omitted, ``exit`` will be False.
+
+        Returns:
+            Mapping with keys ``entry`` and ``exit``.
+        """
+        record = self.load(name)
+        entry = self._is_strong_signal(record)
+        exit_flag = False
+        if current_sharpe is not None:
+            exit_flag = self._should_exit(record, float(current_sharpe))
+        return {"entry": entry, "exit": exit_flag}
 
     def __len__(self) -> int:
         return len(self._records)
