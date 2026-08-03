@@ -716,6 +716,41 @@ _ENSEMBLE_NET_MIN = float(os.environ.get("ENSEMBLE_NET_MIN", "0.60"))
 MIN_ORDER_USD = 25.0
 
 
+def slippage_bps(side: str, arrival_price: float | None,
+                 fill_price: float | None) -> float | None:
+    """Implementation shortfall in basis points, signed so POSITIVE = cost.
+
+    The desk has always had both inputs and never compared them: `limit_price`
+    is the decision-time bar close (the arrival price) and Alpaca returns
+    `filled_avg_price` on the fill. Without this, "7 orders placed" says nothing
+    about whether they were placed *well*, and a paper P&L with no execution
+    cost attached is not a believable one.
+
+    Convention is the standard IS cost sign, not a raw price delta: a buy that
+    fills ABOVE arrival paid up, and a sell that fills BELOW arrival gave up
+    edge. Both are costs, so both come back positive. Negative means price
+    improvement.
+
+    Returns None — never 0.0 — when the comparison cannot be made (no fill
+    price, no arrival price, non-positive arrival). A market-replacement order
+    is submitted without waiting for its fill, so `filled_avg_price` is legitimately
+    absent there, and recording those as zero slippage would report perfect
+    execution for trades nobody measured. That is the exact failure this repo
+    keeps finding; unmeasured has to stay distinguishable from measured-and-fine.
+    """
+    if arrival_price is None or fill_price is None:
+        return None
+    try:
+        arrival = float(arrival_price)
+        fill = float(fill_price)
+    except (TypeError, ValueError):
+        return None
+    if arrival <= 0 or fill <= 0:
+        return None
+    delta = (fill - arrival) if str(side).lower() == "buy" else (arrival - fill)
+    return round(delta / arrival * 10_000.0, 2)
+
+
 def _price_precision(price: float, is_crypto: bool) -> int:
     """Decimal places that keep `price` non-zero and meaningful.
 
@@ -2291,6 +2326,8 @@ async def main() -> None:
                 order = await _ensure_filled(order, symbol, signal.side, kelly_notional)
                 if order and order.get("id"):
                     print(f"    ✓ order {order['id']} submitted ({order.get('status', '?')})", flush=True)
+                    _fill_px = order.get("filled_avg_price")
+                    _slip = slippage_bps(signal.side, limit_price, _fill_px)
                     record = {
                         "desk":            desk.name,
                         "strategy":        strategy.name,
@@ -2302,8 +2339,20 @@ async def main() -> None:
                         "client_order_id": coid,
                         "order_type":      order.get("type", "limit"),
                         "status":          order.get("status", "?"),
+                        # Execution quality. arrival_price is the decision-time
+                        # bar close the limit was derived from; slippage_bps is
+                        # None (not 0.0) whenever the fill price is unavailable,
+                        # so unmeasured never masquerades as perfect.
+                        "arrival_price":   limit_price,
+                        "fill_price":      float(_fill_px) if _fill_px else None,
+                        "slippage_bps":    _slip,
                         "ts":              datetime.now(timezone.utc).isoformat(),
                     }
+                    if _slip is not None:
+                        print(f"    ⇢ slippage {_slip:+.1f} bps "
+                              f"(arrival {limit_price:.4f} → fill {float(_fill_px):.4f})", flush=True)
+                    else:
+                        print("    ⇢ slippage UNMEASURED (no fill price on this order)", flush=True)
                     all_orders.append(record)
                     total_notional += kelly_notional
                     desk_orders_map.setdefault(desk.name, []).append(record)
@@ -2360,6 +2409,24 @@ async def main() -> None:
             # The gap between "survived" and "placed" is where every silent
             # failure lives. It used to be unexplained: 15 survived, 0 placed,
             # no reason anywhere in the message. Publish the breakdown.
+            # Execution quality (TCA). "N orders placed" says nothing about
+            # whether they were placed well, and a paper P&L with no execution
+            # cost attached is not a believable one. Measured vs unmeasured is
+            # reported explicitly — a market replacement is submitted without
+            # waiting for its fill, so some orders legitimately have no fill
+            # price, and calling those 0 bps would report perfect execution for
+            # trades nobody measured.
+            _slips = [o["slippage_bps"] for o in all_orders if o.get("slippage_bps") is not None]
+            if _slips:
+                _avg = sum(_slips) / len(_slips)
+                _worst = max(_slips)
+                _unmeasured = len(all_orders) - len(_slips)
+                summary += (f"execution: avg slippage {_avg:+.1f} bps · worst {_worst:+.1f} bps "
+                            f"· {len(_slips)}/{len(all_orders)} measured")
+                summary += f" ({_unmeasured} unmeasured)\n" if _unmeasured else "\n"
+            elif all_orders:
+                summary += f"execution: 0/{len(all_orders)} fills measurable — no slippage data\n"
+
             _drops = locals().get("drops") or Counter()
             if _drops:
                 _total_dropped = sum(_drops.values())
