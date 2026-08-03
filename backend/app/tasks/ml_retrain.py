@@ -8,11 +8,118 @@ import asyncio
 import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.utils.logging import logger
+
+# --------------------------------------------------------------------------- #
+# Pydantic Schemas
+# --------------------------------------------------------------------------- #
+
+
+class RetrainConfig(BaseModel):
+    """Configuration describing a single model retraining job."""
+
+    model_name: str = Field(
+        ...,
+        description="Name of the model architecture (e.g., 'lstm').",
+        example="lstm",
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol for the asset to be trained on.",
+        example="BTC-USD",
+        regex=r"^[A-Z0-9\-.]{1,20}$",
+    )
+    interval: str = Field(
+        ...,
+        description="Data granularity interval compatible with yfinance.",
+        example="1h",
+        regex=r"^\d+[smhd]$",
+    )
+
+    @validator("interval")
+    def _validate_interval(cls, v: str) -> str:
+        """Ensure interval follows yfinance allowed pattern (e.g., '1h', '30m')."""
+        if not re.fullmatch(r"^\d+[smhd]$", v):
+            raise ValueError("interval must be a number followed by s,m,h, or d")
+        return v
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "model_name": "lstm",
+                "symbol": "BTC-USD",
+                "interval": "1h",
+            }
+        }
+
+
+class RetrainResult(BaseModel):
+    """Result payload returned after attempting to retrain a model."""
+
+    status: str = Field(
+        ...,
+        description="Overall status of the retraining attempt.",
+        example="success",
+    )
+    model: str = Field(
+        ...,
+        description="Model architecture that was retrained.",
+        example="lstm",
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol the model was trained on.",
+        example="BTC-USD",
+    )
+    retrained_at: str = Field(
+        ...,
+        description="ISO‑8601 timestamp when the retraining completed.",
+        example="2024-08-03T12:34:56.789Z",
+    )
+    reason: str | None = Field(
+        None,
+        description="Reason for skipping retraining, if applicable.",
+        example="insufficient data",
+    )
+    error: str | None = Field(
+        None,
+        description="Error message if the retraining failed.",
+        example="Network timeout",
+    )
+    best_model_path: str | None = Field(
+        None,
+        description="Filesystem path to the best model checkpoint produced.",
+        example="/models/lstm_btc_usd_20240803.ckpt",
+    )
+    sharpe: float | None = Field(
+        None,
+        description="Sharpe ratio achieved by the newly trained model.",
+        example=1.42,
+    )
+    additional_metrics: dict | None = Field(
+        None,
+        description="Any extra performance metrics returned by the training routine.",
+        example={"drawdown": 0.15},
+    )
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "status": "success",
+                "model": "lstm",
+                "symbol": "BTC-USD",
+                "retrained_at": "2024-08-03T12:34:56.789Z",
+                "best_model_path": "/models/lstm_btc_usd_20240803.ckpt",
+                "sharpe": 1.42,
+                "additional_metrics": {"drawdown": 0.15},
+            }
+        }
+
 
 # --------------------------------------------------------------------------- #
 # Constants
@@ -22,7 +129,7 @@ MIN_HIST_LENGTH: int = 200
 MAX_EPOCHS: int = 30
 DEFAULT_TRAIN_DAYS: int = 730
 CONFIGS_DIR: Path = Path(__file__).parents[3] / "experiments" / "configs"
-DEFAULT_RETRAIN_CONFIGS: list[tuple[str, str, str]] = [
+DEFAULT_RETRAIN_CONFIGS: List[Tuple[str, str, str]] = [
     ("lstm", "BTC-USD", "1h"),
     ("lstm", "ETH-USD", "1h"),
     ("lstm", "SPY", "1d"),
@@ -139,15 +246,15 @@ async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_IN
         return {"status": "error", "error": str(e)}
 
 
-def _load_retrain_configs() -> list[tuple[str, str, str]]:
+def _load_retrain_configs() -> List[Tuple[str, str, str]]:
     """
     Discover retrain targets dynamically from experiment configs (*.yaml).
     Falls back to a minimal default set if no configs exist or yaml is unavailable.
     Returns list of (model_name, symbol, interval).
     """
     configs_dir = CONFIGS_DIR
-    seen: set[tuple[str, str, str]] = set()
-    results: list[tuple[str, str, str]] = []
+    seen: set[Tuple[str, str, str]] = set()
+    results: List[Tuple[str, str, str]] = []
 
     for cfg_path in sorted(configs_dir.glob("*.yaml")):
         try:
