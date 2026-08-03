@@ -13,6 +13,10 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
+# Added imports for unit testing
+import unittest
+from unittest.mock import patch
+
 
 class Regime(str, Enum):
     TRENDING = "trending"
@@ -168,3 +172,66 @@ class RegimeMonitor:
 
 
 regime_monitor = RegimeMonitor()
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for edge and boundary conditions
+# ---------------------------------------------------------------------------
+
+class TestRegimeDetectorEdgeCases(unittest.TestCase):
+    def test_unknown_regime_when_insufficient_data(self):
+        """Prices list shorter than required 30 points should yield UNKNOWN regime."""
+        short_prices = [100.0] * 10  # clearly less than 30
+        state = detect_regime(short_prices)
+        self.assertEqual(state.regime, Regime.UNKNOWN)
+        self.assertEqual(state.confidence, 0.0)
+        self.assertAlmostEqual(state.vol_20d, 0.0, places=6)
+        self.assertAlmostEqual(state.hurst, 0.5, places=6)
+
+    def test_high_vol_boundary_above_threshold(self):
+        """
+        When realized volatility is just above the high_vol_threshold,
+        regime should be HIGH_VOL and confidence should be >0.6.
+        """
+        # Generate a price series with modest volatility.
+        # Use a sinusoidal pattern plus small random noise to control vol.
+        np.random.seed(0)
+        base = np.linspace(100, 120, 30)
+        noise = np.random.normal(0, 0.5, size=30)
+        prices = (base + noise).tolist()
+        # Use a low threshold to ensure vol exceeds it slightly.
+        state = detect_regime(prices, high_vol_threshold=0.01)
+        self.assertEqual(state.regime, Regime.HIGH_VOL)
+        self.assertGreater(state.confidence, 0.6)
+        self.assertGreater(state.vol_20d, 0.01)
+
+    @patch("__main__._hurst_exponent", return_value=0.55)
+    def test_hurst_boundary_trending_tiebreak_by_vol(self, mock_hurst):
+        """
+        When Hurst exponent is exactly at the trending cutoff (0.55),
+        the classifier falls back to the vol‑based tiebreak.
+        With low volatility it should choose TRENDING with confidence 0.5.
+        """
+        # Create a flat price series to produce low volatility.
+        prices = [100.0] * 30
+        state = detect_regime(prices)
+        self.assertEqual(state.regime, Regime.TRENDING)
+        self.assertEqual(state.confidence, 0.5)
+
+    @patch("__main__._hurst_exponent", return_value=0.45)
+    def test_hurst_boundary_mean_reverting_tiebreak_by_vol(self, mock_hurst):
+        """
+        When Hurst exponent is exactly at the mean‑reverting cutoff (0.45),
+        the classifier falls back to the vol‑based tiebreak.
+        With higher volatility it should choose MEAN_REVERTING with confidence 0.5.
+        """
+        # Construct a price series with higher volatility.
+        np.random.seed(1)
+        prices = (100 + np.cumsum(np.random.normal(0, 2, size=30))).tolist()
+        state = detect_regime(prices)
+        self.assertEqual(state.regime, Regime.MEAN_REVERTING)
+        self.assertEqual(state.confidence, 0.5)
+
+
+if __name__ == "__main__":
+    unittest.main()
