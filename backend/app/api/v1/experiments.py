@@ -3,15 +3,17 @@ import asyncio
 import logging
 import uuid
 from pathlib import Path
-from fastapi import APIRouter, Body, Depends, HTTPException
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.experiment import Experiment
 from app.models.user import User
 from pydantic import BaseModel, ConfigDict
-from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -50,21 +52,24 @@ class TrainRequest(BaseModel):
 
 async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
     """Background task: run the experiment script for the given config."""
-    import subprocess
     import sys
 
     script = Path(__file__).parents[4] / "experiments" / "run_experiment.py"
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
     try:
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, str(script), "--config", str(config_path),
-            "--experiment-id", experiment_id,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            sys.executable,
+            str(script),
+            "--config",
+            str(config_path),
+            "--experiment-id",
+            experiment_id,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
         )
         await proc.wait()
-    except Exception as exc:
-        logger.error("Experiment %s failed: %s", experiment_id, exc)
+    except Exception:
+        logger.exception("Experiment %s failed", experiment_id)
 
 
 @router.post("/train")
