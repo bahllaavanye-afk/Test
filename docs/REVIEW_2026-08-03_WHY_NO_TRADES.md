@@ -46,11 +46,27 @@ desk is getting roughly **15% of its intended in-window cadence**, and the other
 
 Two causes, both confirmed:
 
-**a. The anti-starvation trigger has never fired.** Both desk workflows declare
+**a. The anti-starvation trigger was dormant.** Both desk workflows declare
 `workflow_run: workflows: ["CI"]` specifically so they can ride CI completions
 instead of depending on cron. Across the last 30 runs of each: desk-trading was
-28× `schedule` + 2× `push`, crypto 30× `schedule`. **Zero `workflow_run` events on
-either.** The mechanism exists in the YAML and has never delivered a run.
+28× `schedule` + 2× `push`, crypto 30× `schedule`. Zero `workflow_run` events on
+either.
+
+> **CORRECTION, 2026-08-03 08:50.** The first version of this section read
+> "*has never fired … the mechanism exists in the YAML and has never delivered a
+> run*". The 30-run sample was accurate; the conclusion drawn from it was not.
+> `workflow_run` fires only for upstream runs on the **default branch**, and CI
+> runs almost entirely on `pull_request`, whose `head_branch` is the PR branch —
+> so no `workflow_run` event is emitted. The trigger was **dormant, not dead**.
+> As soon as CI actually ran on main (this review's own PR), it fired on both
+> desks at 06:43 and 07:45. On desk-trading both runs concluded `success`.
+>
+> On the crypto desk both concluded `skipped`, because its job carries
+> `if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'`.
+> That gate is **correct and deliberate** — see §4 — not a bug.
+
+The practical consequence for cadence is unchanged: because CI so rarely runs on
+main, the desks have in practice depended on the starved cron alone.
 
 **b. The pacemaker was cancelling itself.** `pacemaker.yml` is shaped "sleep
 3000s, then dispatch CI", and carried `concurrency: cancel-in-progress: true`.
@@ -174,12 +190,24 @@ deliberately untouched.
 
 - `pacemaker.yml`: `cancel-in-progress: true` → `false`. Restores the ~50-minute
   heartbeat that was landing 4 times in 30.
-- `pacemaker.yml`: new step dispatching `desk-trading.yml` and
-  `desk-trading-crypto-24x7.yml` directly. `workflow_dispatch` is the documented
-  exception to the GITHUB_TOKEN recursion guard and is already proven in this
-  repo, so it does not depend on the `workflow_run` path that has never fired,
-  nor on starved cron. Safe at any hour: `desk_order_placer` checks Alpaca's
-  clock itself, and both desks use `cancel-in-progress: false`.
+- `pacemaker.yml`: new step dispatching **`desk-trading.yml` only** directly.
+  `workflow_dispatch` is the documented exception to the GITHUB_TOKEN recursion
+  guard and is already proven in this repo, so it depends on neither starved cron
+  nor CI happening to run on main. Safe at any hour: `desk_order_placer` checks
+  Alpaca's clock itself, and desk-trading uses `cancel-in-progress: false`.
+
+  **The crypto workflow is deliberately excluded**, and the first version of this
+  step got that wrong by dispatching both. `desk-trading.yml` runs all nine desks
+  and crypto is `always_open=True`, so one dispatch already covers it 24/7.
+  `desk-trading-crypto-24x7.yml` gates its job on `schedule || workflow_dispatch`
+  expressly to cede any trigger it shares with the equity workflow: the two use
+  different concurrency groups, so on a shared trigger they run in **parallel**
+  and compete for Alpaca's free-tier data limit. Measured over 60 runs
+  (2026-07-28), 22 collided — one pair on sha `49e46ded` had desk-trading fetch
+  70 bars while the crypto-only run got 5 and 429s, i.e. the crypto run was
+  strictly worse *and* degraded its own twin. `workflow_dispatch` is on that
+  allowlist, so a pacemaker dispatch is the one route the cede-rule cannot block.
+  Pinned by `test_the_crypto_desk_is_not_dispatched_too`.
 - `.github/scripts/test_pacemaker_actually_delivers.py` — 12 tests pinning the
   concurrency setting, the sleep-vs-timeout relationship, all four dispatch
   targets, that each target declares `workflow_dispatch` (or the POST 404s), and

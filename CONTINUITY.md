@@ -18,12 +18,30 @@ logged `conf=1.00` on SLV, `1.00` on EPOL, `0.98` on EIDO, `0.80` on IWM and pla
 nothing, because it ran at 23:44 UTC and `desk_open = is_open or desk.always_open`
 was false. Only **12 of desk-trading's last 30 runs landed inside RTH** (5 Wed / 4
 Thu / 3 Fri) against a nominal 26 *per day* — ~15% of intended in-window cadence.
-Two causes, both confirmed and both now fixed:
-- the `workflow_run: ["CI"]` anti-starvation trigger on both desks has **never
-  fired** (last 30 runs: 28 schedule + 2 push / 30 schedule, zero workflow_run);
+Two causes:
 - the pacemaker was cancelling itself — `cancel-in-progress: true` on a
   sleep-3000s-then-dispatch job, **25 of 30 runs cancelled**, all dying short of
   the 50-minute sleep (max 47.9 min), while the only 4 successes took 50.4 min.
+  **Fixed** (`cancel-in-progress: false`) and the pacemaker now dispatches
+  `desk-trading.yml` directly every ~50 min.
+- ~~the `workflow_run: ["CI"]` trigger on both desks has never fired~~ —
+  **CORRECTED 2026-08-03 08:50.** The 30-run sample containing zero
+  workflow_run events was accurate; the inference from it was wrong.
+  `workflow_run` only fires for upstream runs on the DEFAULT branch, and CI runs
+  almost entirely on `pull_request` (head_branch = the PR branch), so the trigger
+  was **dormant, not dead**. The moment CI actually ran on main it fired on both
+  desks — 06:43 and 07:45, both `success` on desk-trading.
+
+**Do NOT dispatch `desk-trading-crypto-24x7.yml` from the pacemaker.** The first
+version of that step dispatched both desk workflows and would have reintroduced a
+measured bug. `desk-trading.yml` already runs ALL NINE desks and crypto is
+`always_open=True`, so one dispatch covers 24/7. The crypto-only workflow gates
+its job on `schedule || workflow_dispatch` precisely to CEDE shared triggers: the
+two use different concurrency groups, so on a shared trigger they run in PARALLEL
+and race for Alpaca's free-tier data. Measured over 60 runs (2026-07-28): 22
+collided; one pair on sha 49e46ded had desk-trading fetch 70 bars while the
+crypto-only run got 5 and 429s. Pinned by
+`test_the_crypto_desk_is_not_dispatched_too`.
 
 **Crypto desk — right time, unreachable gate.** `always_open`, so the clock is
 never its issue. `confidence = |raw_signal| · (target_vol/rv_21) / 2` is a

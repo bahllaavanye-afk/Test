@@ -42,11 +42,13 @@ _PACEMAKER = _WF / "pacemaker.yml"
 
 # Every workflow the pacemaker POSTs a /dispatches call to.
 _DISPATCH_TARGETS = (
-    "test.yml",                        # CI — drives the workflow_run fleet
-    "auto-merge.yml",                  # merge gate, own schedule is starved
-    "desk-trading.yml",                # equities + 7 other desks
-    "desk-trading-crypto-24x7.yml",    # always-open crypto desk
+    "test.yml",          # CI — drives the workflow_run fleet
+    "auto-merge.yml",    # merge gate, own schedule is starved
+    "desk-trading.yml",  # ALL NINE desks, crypto included (it is always_open)
 )
+
+# Deliberately NOT dispatched. See test_the_crypto_desk_is_not_dispatched_too.
+_MUST_NOT_DISPATCH = ("desk-trading-crypto-24x7.yml",)
 
 
 @pytest.fixture(scope="module")
@@ -99,17 +101,22 @@ def test_the_sleep_is_shorter_than_the_job_timeout(parsed):
 def _dispatched_workflows(text: str) -> set[str]:
     """Every workflow file the pacemaker can actually POST /dispatches for.
 
-    Two forms are in use and both must be recognised, or the test measures its
-    own regex instead of the workflow: a literal URL
-    (`.../workflows/test.yml/dispatches`) and a shell loop over a list
-    (`for wf in a.yml b.yml; do ... /workflows/$wf/dispatches`). Matching only
-    the literal form would have silently passed the desks as "not dispatched"
-    while they were being dispatched perfectly well.
+    Three forms are in use and all must be recognised, or the test measures its
+    own regex instead of the workflow:
+      1. a literal URL      — `.../workflows/test.yml/dispatches`
+      2. a shell loop       — `for wf in a.yml b.yml; do ... /workflows/$wf/...`
+      3. a plain assignment — `wf=a.yml` ... `/workflows/$wf/dispatches`
+
+    Matching only form 1 would silently report the desks as "not dispatched"
+    while they were being dispatched perfectly well; form 3 was added when the
+    desk loop collapsed to a single target and immediately broke this helper,
+    which is exactly what `test_the_loop_resolver_is_not_vacuous` guards against.
     """
     found = set(re.findall(r"workflows/([A-Za-z0-9._-]+\.yml)/dispatches", text))
     if re.search(r"workflows/\$\{?wf\}?/dispatches", text):
         for loop in re.findall(r"for\s+wf\s+in\s+([^\n;]+)", text):
             found.update(w for w in loop.split() if w.endswith(".yml"))
+        found.update(re.findall(r"^\s*wf=([A-Za-z0-9._-]+\.yml)\s*$", text, re.M))
     return found
 
 
@@ -151,11 +158,40 @@ def test_dispatch_targets_accept_workflow_dispatch(target):
     )
 
 
+@pytest.mark.parametrize("target", _MUST_NOT_DISPATCH)
+def test_the_crypto_desk_is_not_dispatched_too(text, target):
+    """Dispatching both desk workflows recreates a measured collision.
+
+    `desk-trading.yml` runs ALL NINE desks and crypto is `always_open=True`, so
+    one dispatch already covers the 24/7 desk. `desk-trading-crypto-24x7.yml`
+    exists only to fill the hours the equity cron cannot reach, and its job
+    carries
+
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    specifically so it CEDES every trigger it shares with the equity workflow —
+    the two use different concurrency groups, so on a shared trigger they run in
+    PARALLEL and compete for Alpaca's free-tier data limit. Measured over 60 runs
+    (2026-07-28): 22 collided. One pair on sha 49e46ded had desk-trading fetch 70
+    bars while the crypto-only run got 5 and 429s — the crypto run was strictly
+    worse AND degraded its own twin.
+
+    `workflow_dispatch` is on that allowlist, so a dispatch from here is the one
+    route the cede-rule cannot block. This test exists because the first version
+    of the pacemaker step dispatched both and would have reintroduced the bug.
+    """
+    assert target not in _dispatched_workflows(text), (
+        f"the pacemaker dispatches {target} as well as desk-trading.yml. Both "
+        f"run the crypto desk, in different concurrency groups, so they execute "
+        f"in parallel and race for Alpaca bars — 22 of 60 runs collided when "
+        f"this last happened. desk-trading.yml alone already covers crypto."
+    )
+
+
 def test_losing_a_desk_dispatch_does_not_kill_the_ci_heartbeat(text):
     """CI is the load-bearing dispatch; the desks must not be able to abort it."""
-    # Locate the desk step by the loop that names the desk workflows, then bound
-    # the search to that step rather than the whole remaining file.
-    step = text[text.index("for wf in desk-trading.yml"):].split("\n      - name:")[0]
+    # Bound the search to the desk step rather than the whole remaining file.
+    step = text[text.index("wf=desk-trading.yml"):].split("\n      - name:")[0]
     assert "exit 1" not in step, (
         "the desk dispatch exits non-zero on failure. The CI dispatch is the "
         "heartbeat for 36 downstream workflows and must survive a desk dispatch "
