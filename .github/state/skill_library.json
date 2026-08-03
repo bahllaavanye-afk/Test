@@ -1,10 +1,5 @@
 {
   "skills": [
-    "* Improvements are being made to increase UI contrast, including adjustments to `primary` colors in `src/ui/theme/DarkTheme.tsx`.",
-    "Validate config files",
-    "Flush log buffers",
-    "Check RAM limits",
-    "Validate input data",
     "* Refactoring of Bloomberg-dark theme UI components is in progress: `src/components/` (`src/ui/theme/DarkTheme.tsx` and `src/components/UI/DarkMode.tsx` for specific files).",
     "Scan for stale data",
     "Check config files",
@@ -199,8 +194,13 @@
     "Validate config",
     "Check db connections",
     "Apply peer-learned fixes",
-    "Run back-test suites"
+    "Run back-test suites",
+    "Check cron jobs",
+    "Test DNS resolve",
+    "Verify file perms",
+    "Ping dependencies",
+    "Retrain predictors"
   ],
-  "last_updated": "2026-08-03T01:07:50.678425+00:00",
+  "last_updated": "2026-08-03T05:01:06.148249+00:00",
   "total": 200
 }
