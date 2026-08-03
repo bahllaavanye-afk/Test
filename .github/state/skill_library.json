@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Review sequence handling",
-    "Set memory limits",
-    "Implement type safety checks",
     "Verify data types",
     "* Improvements are being made to increase UI contrast, including adjustments to `primary` colors in `src/ui/theme/DarkTheme.tsx`.",
     "Check data formats",
@@ -199,8 +196,11 @@
     "Log memory usage",
     "Monitor health-check endpoints",
     "Analyze log files for errors",
-    "Prepend S4 block to LSTM pipeline"
+    "Prepend S4 block to LSTM pipeline",
+    "Validate JSON schemas",
+    "Limit DB queries",
+    "Cache API keys"
   ],
-  "last_updated": "2026-08-03T15:24:12.136899+00:00",
+  "last_updated": "2026-08-03T17:23:49.116737+00:00",
   "total": 200
 }
