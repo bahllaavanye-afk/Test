@@ -8,6 +8,8 @@ sanity checks — not for absolute P&L claims.
 from __future__ import annotations
 
 import math
+import time
+import logging
 from dataclasses import dataclass
 
 import numpy as np
@@ -25,6 +27,8 @@ CALL: str = "call"
 PUT: str = "put"
 BUY: str = "buy"
 SELL: str = "sell"
+
+logger = logging.getLogger(__name__)
 
 
 def _norm_cdf(x: float) -> float:
@@ -158,6 +162,8 @@ def backtest_spread(
     SpreadBacktestResult
         Aggregated backtest statistics.
     """
+    start_time = time.perf_counter()
+
     close = df["close"].astype(float)
     vol = realized_vol(close, vol_window)
 
@@ -197,7 +203,7 @@ def backtest_spread(
         pnls.append(exit_v - entry_v)
 
     wins = sum(1 for p in pnls if p > 0)
-    return SpreadBacktestResult(
+    result = SpreadBacktestResult(
         trades=len(pnls),
         wins=wins,
         total_pnl=round(float(sum(pnls)), 4),
@@ -206,6 +212,17 @@ def backtest_spread(
         max_loss=round(float(min(pnls)), 4) if pnls else 0.0,
         pnl_series=[round(float(p), 4) for p in pnls],
     )
+
+    duration = time.perf_counter() - start_time
+    logger.info(
+        "Backtest completed",
+        extra={
+            "trades": result.trades,
+            "total_pnl": result.total_pnl,
+            "duration_seconds": round(duration, 4),
+        },
+    )
+    return result
 
 
 # Ready‑made structures mirroring the Options desk's mleg specs
