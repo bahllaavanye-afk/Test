@@ -563,7 +563,19 @@ Evidence-based, three stacked causes:
 1. **[FIXED] Loss cap froze the entire book all session** — every market-hours desk run logged `🛑 DAILY LOSS CAP: equity down 2.72% vs prior close (cap 2%)`. The cap compares to Alpaca `last_equity` = FRIDAY's close, so weekend crypto drift on existing positions tripped it before Monday even opened — and it blocked ALL orders including exits (couldn't add, couldn't de-risk). Desks were otherwise perfect: 410 signals, DIA/JNJ/GLD/EWT at conf 1.00. FIX: under the cap, risk-REDUCING orders stay allowed (`is_risk_reducing` vs live Alpaca positions, fail-strict on fetch error); only new exposure is blocked; cap state surfaced in the run log + Discord funnel line. 6 tests.
 2. **[FIXED] Bots never evaluated (all 61 last_run_at=None)** — APScheduler interval jobs wait one FULL interval before the first run, and every merge→deploy wipes the ephemeral SQLite + restarts the app, resetting that clock. 1h/1d bots never got to run. FIX: `next_run_time` = boot + 30–150s stagger, so every bot evaluates within ~2 min of every deploy.
 3. **[USER ACTION — the remaining one] Bot trades are DB-only and die with every deploy** on the SQLite fallback (desk trades survive because they re-sync from Alpaca 30d). Durable bot P&L requires unpausing Supabase (schema-drift-gate is DONE — the catch-up migration `k6f7a8b9c0d1` for slippage_records IS fields shipped 2026-07-22 and applies automatically on the first boot that reaches Postgres). STATUS 2026-07-22: catch-up migration landed on main (PR #878, af42dc8 live — verified via the new `/health/detailed` scheduler job-table). BUT the restored-Supabase reconnection did NOT hold — the fresh af42dc8 boot STILL fell back to SQLite: `database_primary: (ENOTFOUND) tenant/user postgres.vexzwnfbmznvxoxxktax not found` (Supavisor "tenant not found" = the project is paused again / restore reverted). The Supabase MCP tools were NOT available this session to re-restore. **USER ACTION: supabase.com/dashboard → the `vexzwnfbmznvxoxxktax` project → Restore/Unpause.** The moment it's reachable, the next boot binds Postgres + applies `k6f7a8b9c0d1` cleanly (schema is now in sync). Until then bot activity is visible between deploys but resets on each merge.
-- [ ] **[P2] Loss-cap window redesign** — `last_equity` spans the whole weekend for a 24/7 crypto book; measure vs a session anchor (portfolio-history API) instead. Needs validation — threshold semantics change.
+- [ ] **[P2] Loss-cap window redesign** — `last_equity` spans the whole weekend for a 24/7 crypto book; measure vs a
+  session anchor (portfolio-history API) instead. Needs validation — threshold semantics change.
+  **MEASURED 2026-08-03 22:40, and deliberately NOT changed.** Today was exactly the scenario this describes: the Monday
+  after a full weekend of 24/7 crypto drift, the same setup that froze the whole book on 2026-07-20. **The cap did not
+  trip.** Evidence: run `30836526905` (17:23) placed `time_series_momentum/EWT signal=BUY conf=1.00` and it filled — and
+  `desk_order_placer.py:2254` blocks any order where `_cap_active and not is_risk_reducing(...)`. A BUY with no offsetting
+  short is exposure-increasing, so an active cap would have blocked it. Eleven in-window runs today placed 7-9 orders each;
+  none was cap-blocked.
+  This is a **safety control**, and the entry itself says the threshold semantics change. Rewriting the baseline of a risk
+  limit speculatively — with no observed misfire, and while the 2026-07-21 mitigation (risk-reducing orders stay allowed
+  under the cap) is already in place and working — would be changing a brake because it *might* be too sensitive. Park it
+  until a run actually logs `🛑 DAILY LOSS CAP` spuriously; that log line is the trigger to revisit, and it is already
+  surfaced in both the run output and the Discord funnel.
 
 
 ## 🌡️ REGIME-AWARE STRATEGY SELECTION (user directive 2026-07-20: "different market conditions → different strategies")
