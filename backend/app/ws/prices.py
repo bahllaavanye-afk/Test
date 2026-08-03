@@ -28,23 +28,37 @@ async def _handle_ws(
         topic: Subscription topic for the manager.
         symbol: Optional symbol name for logging context.
     """
-    await manager.connect(websocket, topic)
+    try:
+        await manager.connect(websocket, topic)
+    except Exception as exc:  # pragma: no cover
+        logger.exception(
+            "Failed to register WebSocket with manager",
+            extra={"symbol": symbol, "topic": topic, "error": str(exc)},
+        )
+        await websocket.close()
+        return
+
     try:
         while True:
             try:
                 await websocket.receive_text()  # keep alive / ping handling
-            except Exception as exc:  # pragma: no cover
-                log_msg = (
-                    f"prices_ws receive error for {symbol}: {exc}"
-                    if symbol
-                    else f"prices_ws_all receive error: {exc}"
-                )
-                logger.warning(log_msg)
+            except WebSocketDisconnect:
+                # Normal disconnect; break the loop to cleanup
                 break
-    except WebSocketDisconnect:
-        pass
+            except Exception as exc:  # pragma: no cover
+                logger.exception(
+                    "Error receiving message on price WebSocket",
+                    extra={"symbol": symbol, "topic": topic, "error": str(exc)},
+                )
+                break
     finally:
-        manager.disconnect(websocket, topic)
+        try:
+            manager.disconnect(websocket, topic)
+        except Exception as exc:  # pragma: no cover
+            logger.exception(
+                "Error during WebSocket cleanup",
+                extra={"symbol": symbol, "topic": topic, "error": str(exc)},
+            )
 
 
 @router.websocket("/ws/prices")
