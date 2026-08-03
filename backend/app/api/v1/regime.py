@@ -1,9 +1,22 @@
 """Market regime and cross-strategy correlation endpoints."""
+import logging
+import time
+from collections import Counter
+
 from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.ml.regime.detector import regime_monitor
 from app.risk.correlation_monitor import correlation_monitor
+
+# Optional P&L import – fallback to zero if unavailable
+try:
+    from app.risk.pnl_tracker import get_current_pnl  # type: ignore
+except Exception:  # pragma: no cover
+    def get_current_pnl() -> float:
+        return 0.0
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/regime", tags=["regime"])
 
@@ -15,8 +28,19 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     Returns the most common regime (bull/bear/sideways mapped from detector enums)
     and average confidence. Falls back to safe defaults when no data is available.
     """
+    start_time = time.time()
+
     states = regime_monitor.all_states()
     if not states:
+        elapsed_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "endpoint=get_current_regime",
+            extra={
+                "signal_count": 0,
+                "execution_time_ms": round(elapsed_ms, 2),
+                "pnl": get_current_pnl(),
+            },
+        )
         return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
 
     # Map detector regimes → frontend-friendly labels
@@ -27,7 +51,6 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
         "unknown": "unknown",
     }
 
-    from collections import Counter
     label_counts: Counter = Counter()
     confidences: list[float] = []
     latest_updated: str | None = None
@@ -44,6 +67,16 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     overall_regime = label_counts.most_common(1)[0][0]
     avg_confidence = round(sum(confidences) / len(confidences), 3) if confidences else 0.0
 
+    elapsed_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "endpoint=get_current_regime",
+        extra={
+            "signal_count": len(states),
+            "execution_time_ms": round(elapsed_ms, 2),
+            "pnl": get_current_pnl(),
+        },
+    )
+
     return {
         "regime": overall_regime,
         "confidence": avg_confidence,
@@ -55,27 +88,84 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
 @router.get("/states")
 async def get_regime_states(current_user: User = Depends(get_current_user)):
     """Current regime classification for all tracked symbols."""
-    return regime_monitor.all_states()
+    start_time = time.time()
+    data = regime_monitor.all_states()
+    elapsed_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "endpoint=get_regime_states",
+        extra={
+            "signal_count": len(data),
+            "execution_time_ms": round(elapsed_ms, 2),
+            "pnl": get_current_pnl(),
+        },
+    )
+    return data
 
 
 @router.get("/states/{symbol}")
 async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_current_user)):
+    start_time = time.time()
     state = regime_monitor.get(symbol.upper())
     if not state:
+        elapsed_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "endpoint=get_regime_for_symbol",
+            extra={
+                "signal_count": 0,
+                "execution_time_ms": round(elapsed_ms, 2),
+                "pnl": get_current_pnl(),
+                "symbol": symbol,
+            },
+        )
         return {"error": f"No regime data for {symbol}. Feed price data first."}
-    return state.to_dict()
+    result = state.to_dict()
+    elapsed_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "endpoint=get_regime_for_symbol",
+        extra={
+            "signal_count": 1,
+            "execution_time_ms": round(elapsed_ms, 2),
+            "pnl": get_current_pnl(),
+            "symbol": symbol,
+        },
+    )
+    return result
 
 
 @router.get("/correlation")
 async def get_correlation_matrix(current_user: User = Depends(get_current_user)):
     """Live cross-strategy correlation matrix."""
+    start_time = time.time()
+    matrix = correlation_monitor.matrix_as_list()
+    reduced = list(correlation_monitor._reduced)
+    alerts = correlation_monitor.recent_alerts(10)
+    elapsed_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "endpoint=get_correlation_matrix",
+        extra={
+            "signal_count": len(matrix),
+            "execution_time_ms": round(elapsed_ms, 2),
+            "pnl": get_current_pnl(),
+        },
+    )
     return {
-        "matrix": correlation_monitor.matrix_as_list(),
-        "reduced_strategies": list(correlation_monitor._reduced),
-        "recent_alerts": correlation_monitor.recent_alerts(10),
+        "matrix": matrix,
+        "reduced_strategies": reduced,
+        "recent_alerts": alerts,
     }
 
 
 @router.get("/correlation/alerts")
 async def get_correlation_alerts(current_user: User = Depends(get_current_user)):
-    return correlation_monitor.recent_alerts(50)
+    start_time = time.time()
+    alerts = correlation_monitor.recent_alerts(50)
+    elapsed_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "endpoint=get_correlation_alerts",
+        extra={
+            "signal_count": len(alerts),
+            "execution_time_ms": round(elapsed_ms, 2),
+            "pnl": get_current_pnl(),
+        },
+    )
+    return alerts

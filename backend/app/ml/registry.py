@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -47,7 +48,9 @@ class ModelRegistry:
             try:
                 self._records = json.loads(self.index_path.read_text())
             except json.JSONDecodeError as exc:
-                logger.warning(f"ModelRegistry: corrupt index at {self.index_path}: {exc}. Starting fresh.")
+                logger.warning(
+                    f"ModelRegistry: corrupt index at {self.index_path}: {exc}. Starting fresh."
+                )
                 self._records = {}
         else:
             self._records = {}
@@ -58,6 +61,35 @@ class ModelRegistry:
         tmp = self.index_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(self._records, indent=2, default=str))
         tmp.replace(self.index_path)
+
+    def _log_metrics(
+        self,
+        operation: str,
+        name: str,
+        elapsed_ms: float,
+        **metrics: Any,
+    ) -> None:
+        """
+        Emit a structured INFO log entry for registry operations.
+
+        Parameters
+        ----------
+        operation: str
+            Name of the operation (e.g., "register", "delete", "update").
+        name: str
+            Model name the operation acted upon.
+        elapsed_ms: float
+            Execution time of the operation in milliseconds.
+        **metrics: Any
+            Additional key‑value pairs to include (e.g., signal_count, pnl).
+        """
+        log_payload = {
+            "operation": operation,
+            "model_name": name,
+            "execution_time_ms": round(elapsed_ms, 2),
+            **metrics,
+        }
+        logger.info(f"ModelRegistry metrics: {log_payload}")
 
     # ------------------------------------------------------------------
     # Public API
@@ -77,19 +109,23 @@ class ModelRegistry:
         """
         Register a trained model.
 
-        Args:
-            name:          Unique name for this model version (e.g. "tft_spy_v3").
-            model_type:    Class identifier (e.g. "tft", "lightgbm", "lstm").
-            artifact_path: Path where the model weights / files are saved.
-            val_sharpe:    Out-of-sample Sharpe ratio on validation set.
-            val_accuracy:  Direction accuracy on validation set (0-1).
-            val_auc:       ROC-AUC on validation set.
-            tags:          Free-form labels, e.g. ["production", "SPY", "1h"].
-            extra:         Any additional metadata to store.
+        Args
+        ----
+        name:          Unique name for this model version (e.g. "tft_spy_v3").
+        model_type:    Class identifier (e.g. "tft", "lightgbm", "lstm").
+        artifact_path: Path where the model weights / files are saved.
+        val_sharpe:    Out-of-sample Sharpe ratio on validation set.
+        val_accuracy:  Direction accuracy on validation set (0-1).
+        val_auc:       ROC-AUC on validation set.
+        tags:          Free-form labels, e.g. ["production", "SPY", "1h"].
+        extra:         Any additional metadata to store.
 
-        Returns:
+        Returns
+        -------
+        dict
             The metadata record dict that was persisted.
         """
+        start = time.time()
         record: dict[str, Any] = {
             "name": name,
             "model_type": model_type,
@@ -103,7 +139,15 @@ class ModelRegistry:
         }
         self._records[name] = record
         self._save_index()
+        elapsed_ms = (time.time() - start) * 1000
         logger.info(f"ModelRegistry: registered '{name}' ({model_type}) sharpe={val_sharpe:.3f}")
+        self._log_metrics(
+            operation="register",
+            name=name,
+            elapsed_ms=elapsed_ms,
+            signal_count=len(self._records),
+            pnl=record.get("val_sharpe", 0.0),
+        )
         return record
 
     def load(self, name: str) -> dict[str, Any]:
@@ -113,11 +157,15 @@ class ModelRegistry:
         The caller is responsible for actually loading the weights from
         ``record["artifact_path"]`` using the appropriate model class.
 
-        Raises:
-            KeyError: if *name* is not found in the registry.
+        Raises
+        ------
+        KeyError
+            if *name* is not found in the registry.
         """
         if name not in self._records:
-            raise KeyError(f"ModelRegistry: model '{name}' not found. Available: {list(self._records)}")
+            raise KeyError(
+                f"ModelRegistry: model '{name}' not found. Available: {list(self._records)}"
+            )
         return self._records[name]
 
     def list_models(
@@ -146,13 +194,16 @@ class ModelRegistry:
         """
         Return the best model record according to *metric*.
 
-        Args:
-            model_type: Restrict to a specific model type (optional).
-            metric:     Key to rank by — must exist in records.
-                        Typical values: "val_sharpe", "val_accuracy", "val_auc".
-            tag:        Restrict to models with this tag (optional).
+        Args
+        ----
+        model_type: Restrict to a specific model type (optional).
+        metric:     Key to rank by — must exist in records.
+                    Typical values: "val_sharpe", "val_accuracy", "val_auc".
+        tag:        Restrict to models with this tag (optional).
 
-        Returns:
+        Returns
+        -------
+        dict or None
             Metadata record dict, or None if the registry is empty / no match.
         """
         candidates = self.list_models(model_type=model_type, tag=tag)
@@ -168,11 +219,14 @@ class ModelRegistry:
         """
         Return a leaderboard for the specified model names.
 
-        Args:
-            names:   List of registered model names to compare.
-            sort_by: Metric to rank by (default ``val_sharpe``).
+        Args
+        ----
+        names:   List of registered model names to compare.
+        sort_by: Metric to rank by (default ``val_sharpe``).
 
-        Returns:
+        Returns
+        -------
+        list[dict]
             List of records sorted by *sort_by* descending.  Models not found
             in the registry are silently skipped with a warning.
         """
@@ -190,10 +244,18 @@ class ModelRegistry:
 
         Returns True if removed, False if not found.
         """
+        start = time.time()
         if name in self._records:
             del self._records[name]
             self._save_index()
+            elapsed_ms = (time.time() - start) * 1000
             logger.info(f"ModelRegistry: deleted '{name}'")
+            self._log_metrics(
+                operation="delete",
+                name=name,
+                elapsed_ms=elapsed_ms,
+                signal_count=len(self._records),
+            )
             return True
         return False
 
@@ -203,13 +265,24 @@ class ModelRegistry:
 
         Useful for adding post-hoc metrics (e.g. live Sharpe after paper trading).
 
-        Raises:
-            KeyError: if *name* is not found.
+        Raises
+        ------
+        KeyError
+            if *name* is not found.
         """
+        start = time.time()
         record = self.load(name)
         record.update(kwargs)
         self._records[name] = record
         self._save_index()
+        elapsed_ms = (time.time() - start) * 1000
+        self._log_metrics(
+            operation="update",
+            name=name,
+            elapsed_ms=elapsed_ms,
+            signal_count=len(self._records),
+            pnl=record.get("val_sharpe", 0.0),
+        )
         return record
 
     def __len__(self) -> int:
