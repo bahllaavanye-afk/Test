@@ -229,6 +229,24 @@ That shape is correct as a *daily* cooling-off rule and pathological if it persi
   all 16 crypto conflicts at 0.16-0.52, vetoing buy consensus of 0.61-0.97 — SHIB/USD had `avellaneda_stoikov_mm(0.90)`
   killed by a single 0.16. Confirmed healthy in production 2026-08-03: runs `30818846913` (13:37) and `30822832596`
   (14:28) each placed **7 orders across 9 desks**, `total_notional=+2587.46`.
+## 📏 2026-08-03 16:45 — execution quality is now measured (it never was)
+- [x] **Slippage vs arrival price is recorded per order.** The desk had both halves of an implementation-shortfall
+  calculation all along and never compared them: `limit_price` is the decision-time bar close (arrival) and Alpaca returns
+  `filled_avg_price` on the fill. `Done. 7 orders placed` told us trades happened and nothing about whether they happened
+  at a good price. New pure helper `slippage_bps()` in `desk_order_placer.py`; every order record now carries
+  `arrival_price`, `fill_price`, `slippage_bps`, and the run summary posts
+  `execution: avg slippage +X bps · worst +Y bps · N/M measured (K unmeasured)` to `#pnl-daily` beside the funnel line.
+- [x] **Two traps, both pinned by tests (15, mutation-checked).** (1) **Sign:** IS is a COST — a buy above arrival and a
+  sell below arrival are both positive. A raw price delta makes them +100/-100 and a mixed book averages to ~0 no matter
+  how bad execution gets; `test_a_mixed_book_of_equal_costs_does_not_average_to_zero` fails if that regresses.
+  (2) **Unmeasured != free:** `_ensure_filled()` submits a market replacement without awaiting its fill, so
+  `filled_avg_price` is legitimately absent there. Returning `0.0` would report *perfect execution for trades nobody
+  measured*. `slippage_bps()` returns `None`, the aggregate filters with an explicit `is not None` (not truthiness, which
+  would also drop genuine 0.0 bps fills), and the summary states the unmeasured count.
+- [ ] **[P2] Next TCA step: persist it.** Slippage is currently per-run only — logged and posted, then gone with the
+  runner. Per-strategy execution cost over time is what would actually inform sizing and retirement, and that needs the
+  records committed or written to Postgres. Blocked behind the same Supabase pause as trade history.
+
 - [x] **CORRECTION 2026-08-03 15:40 — the desks do NOT place naive market orders.** I previously reported they did, from
   `crypto_adaptive_trend.py:154`'s `metadata={"order_type": "market"}`. That metadata field is not what executes. The
   real path is `_ensure_filled()` (`desk_order_placer.py:1110`): **limit-first with cancel-replace**, falling back to a
