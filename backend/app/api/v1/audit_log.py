@@ -27,27 +27,16 @@ class AuditLogOut(BaseModel):
 
 @router.get("/", response_model=list[AuditLogOut])
 async def list_audit_log(
-    limit: int | None = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[AuditLogOut]:
-    """Return the last N audit events for the authenticated user.
-
-    Handles edge cases:
-    - `limit` being None.
-    - `limit` outside allowed bounds (defensive clamping).
-    - Missing or empty result set.
-    """
+    """Return the most recent audit events for the authenticated user."""
     if current_user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authenticated user not found.",
         )
-
-    if limit is None:
-        raise ValueError("limit must not be None")
-    if limit < 1 or limit > 500:
-        raise ValueError(f"limit must be between 1 and 500, got {limit}")
 
     result = await db.execute(
         select(AuditLog)
