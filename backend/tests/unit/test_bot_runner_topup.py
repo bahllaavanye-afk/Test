@@ -79,6 +79,30 @@ def _patch_db(monkeypatch, bots):
     monkeypatch.setattr(db_mod, "AsyncSessionLocal", lambda: _Session())
 
 
+def _patch_db_none(monkeypatch):
+    """Patch the DB layer to return None instead of a list."""
+    import app.database as db_mod
+
+    class _Result:
+        def scalars(self):
+            class _S:
+                def all(_self):
+                    return None
+            return _S()
+
+    class _Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def execute(self, _q):
+            return _Result()
+
+    monkeypatch.setattr(db_mod, "AsyncSessionLocal", lambda: _Session())
+
+
 @pytest.mark.asyncio
 async def test_enabled_bots_get_scheduled(monkeypatch):
     _patch_db(monkeypatch, [_Bot("a"), _Bot("b")])
@@ -167,3 +191,34 @@ async def test_start_failure_returns_zero_rather_than_raising(monkeypatch, capsy
 
     assert await BotRunner(_Scheduler()).start() == 0
     assert "BotRunner.start failed" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_none_db_returns_zero_and_no_jobs(monkeypatch):
+    """When the DB layer returns None, BotRunner should treat it as empty."""
+    _patch_db_none(monkeypatch)
+    sched = _Scheduler()
+
+    n = await BotRunner(sched).start()
+
+    assert n == 0
+    assert sched.jobs == {}
+
+
+@pytest.mark.asyncio
+async def test_only_missing_without_new_bots_returns_zero(monkeypatch):
+    """Calling start with only_missing=True should be a no‑op when no bots are new."""
+    _patch_db(monkeypatch, [_Bot("a"), _Bot("b")])
+    sched = _Scheduler()
+    runner = BotRunner(sched)
+
+    # Initial schedule
+    assert await runner.start() == 2
+    assert set(sched.jobs) == {"bot_a", "bot_b"}
+
+    # Patch DB with the same bots again
+    _patch_db(monkeypatch, [_Bot("a"), _Bot("b")])
+    n = await runner.start(only_missing=True)
+
+    assert n == 0, "no new bots means nothing should be scheduled"
+    assert set(sched.jobs) == {"bot_a", "bot_b"}
