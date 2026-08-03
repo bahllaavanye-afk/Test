@@ -74,11 +74,28 @@ permissions:
   actions: write              # required to dispatch CI
   contents: read
 
-# Exactly ONE pacemaker alive. A new CI completion supersedes any sleeper, so
-# a burst of PRs collapses to a single heartbeat instead of stacking dozens.
+# Exactly ONE pacemaker alive.
+#
+# This used to be `cancel-in-progress: true`, which made the workflow defeat
+# itself. The job's shape is "sleep 3000s, THEN dispatch" — all of its value is
+# in the last step. Upstream completions arrive here far more often than every
+# 50 minutes (median 18 min across the sampled window: five ignition workflows
+# plus CI, independently phased), and each arrival cancelled the sleeper before
+# it ever reached the dispatch.
+#
+# Measured 2026-08-03 over the last 30 runs: 25 cancelled, 4 success, 1 running.
+# Every cancelled run died short of the sleep — durations 0.1 to 47.9 minutes,
+# never 50 — while all four successes took 50.4 minutes and delivered. The
+# heartbeat ran at roughly half its intended rate, and the runs that "failed"
+# did so as a green-looking `cancelled`, which no alert path watches.
+#
+# With `false`, GitHub keeps the in-progress run and parks the newest trigger as
+# pending (superseding any older pending one), so at most one sleeper and one
+# queued successor exist. The sleeper now always reaches its dispatch step.
+# Pending runs consume no billable minutes.
 concurrency:
   group: pacemaker
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   heartbeat:
@@ -123,6 +140,91 @@ jobs:
             echo "❌ heartbeat NOT delivered (HTTP $code)" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
+
+      # The merge gate needs a heartbeat for the SAME reason the fleet does.
+      #
+      # auto-merge.yml only ever evaluates the single PR whose event woke it: a
+      # `pull_request_target` payload sets `context.payload.pull_request`, so
+      # `candidates` gets one entry and the `candidates.size === 0` branch — the
+      # one that scans ALL open PRs — never runs. Measured 2026-08-03 in run
+      # 30782308923, whose entire output was one line about one PR while ~90
+      # improver PRs sat open, at least one of them fully green.
+      #
+      # A `schedule` was added to auto-merge.yml for this, but 2h47m later it had
+      # produced zero runs — consistent with the starvation this whole workflow
+      # exists to route around (see the header: "GitHub starves free-tier
+      # schedules under load"). Dispatching it here does not depend on cron.
+      #
+      # Deliberately does NOT `exit 1` on failure, unlike the CI dispatch above:
+      # losing the merge sweep must not kill the fleet heartbeat, which is the
+      # more load-bearing of the two. It still emits ::error:: so the failure is
+      # visible — a silent skip here would be the same class of bug as the 403
+      # that hid in continuous-improvement.yml for its whole lifetime.
+      - name: Dispatch the merge gate (its own schedule is starved)
+        if: steps.killswitch.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          code=$(curl -sS -o /tmp/am.txt -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/auto-merge.yml/dispatches" \
+            -d '{"ref":"main"}')
+          if [ "$code" = "204" ]; then
+            echo "✅ merge gate dispatched — open PRs will be swept" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::auto-merge dispatch failed (HTTP $code): $(cat /tmp/am.txt)"
+            echo "⚠️ merge sweep NOT dispatched (HTTP $code) — green PRs will keep piling up" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # The trading desks are the reason the fleet exists, and they are the part
+      # of it that cron has starved hardest.
+      #
+      # Both desk workflows declare `workflow_run: workflows: ["CI"]` on the
+      # theory that they ride CI completions. Measured 2026-08-03 across their
+      # last 30 runs each: desk-trading fired 28x schedule + 2x push, crypto 30x
+      # schedule. ZERO workflow_run events on either. The anti-starvation trigger
+      # they were given has never once delivered, so in practice the desks run on
+      # the starved cron alone.
+      #
+      # What that costs, measured on desk-trading (cron "*/15 9-22 * * 1-5",
+      # nominally 52 runs per weekday, 26 of them inside US regular trading
+      # hours): 12 of the last 30 runs landed inside 13:30-20:00 UTC — 5 on Wed,
+      # 4 on Thu, 3 on Fri, against a nominal 26 per day. Roughly 15% of intended
+      # in-window cadence. Every out-of-window run generates real signals and
+      # then discards all of them: run 30673525449 logged conf=1.00 on SLV, 1.00
+      # on EPOL, 0.98 on EIDO, 0.80 on IWM and placed nothing, because
+      # `desk_open = is_open or desk.always_open` was false at 23:44 UTC.
+      #
+      # Dispatching here is safe at any hour and needs no clock logic of its own:
+      # desk_order_placer queries Alpaca's /v2/clock itself and skips non-
+      # always_open desks when the market is shut, so an off-hours dispatch costs
+      # one cheap signal-only run. Both desks set `cancel-in-progress: false` on
+      # their own concurrency groups, so a dispatch that overlaps a cron run
+      # queues rather than clobbering it.
+      #
+      # Like the merge gate above, a failure here must not abort the CI heartbeat,
+      # so no `exit 1` — but it is reported rather than swallowed.
+      - name: Dispatch the trading desks (their workflow_run trigger never fires)
+        if: steps.killswitch.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for wf in desk-trading.yml desk-trading-crypto-24x7.yml; do
+            code=$(curl -sS -o /tmp/desk.txt -w '%{http_code}' \
+              -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$wf/dispatches" \
+              -d '{"ref":"main"}')
+            if [ "$code" = "204" ]; then
+              echo "✅ dispatched $wf" | tee -a "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::$wf dispatch failed (HTTP $code): $(cat /tmp/desk.txt)"
+              echo "⚠️ $wf NOT dispatched (HTTP $code) — desk falls back to starved cron" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
 
       # If the dispatch fails the chain dies silently, which is the exact class
       # of failure this repo keeps getting bitten by. Say so where it is seen.
