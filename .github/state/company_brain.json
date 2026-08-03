@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785773636.7093205,
+    "last_updated": 1785773695.7550635,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,67 +109,52 @@
     },
     "opinion_score": 3,
     "macro_score": 3,
-    "vix": 15.99,
-    "market_scan_ts": 1785531465.4922073,
+    "vix": 15.63,
+    "market_scan_ts": 1785773695.723587,
     "sector_leaders": [
       "Energy",
       "Financials",
-      "Cons. Staples"
+      "Comm."
     ],
     "sector_laggards": [
-      "Cons. Disc.",
-      "Industrials",
-      "Tech"
+      "Tech",
+      "Materials",
+      "Utilities"
     ],
     "active_universe": [
       "AMZN",
       "MSFT",
-      "AAPL",
       "GOOGL",
-      "META",
-      "MA",
-      "ADBE",
-      "NOW",
-      "MO",
       "ORCL",
-      "NVDA",
-      "SPY",
-      "LLY",
-      "IWM",
-      "SLB",
+      "NOW",
+      "AAPL",
       "CRWD",
-      "QQQ",
-      "WMT",
+      "LLY",
+      "META",
+      "NVDA",
+      "MO",
+      "TSLA",
+      "SPY",
+      "CVX",
       "INTU",
-      "PEP"
+      "XLV",
+      "XLI",
+      "PANW",
+      "QQQ",
+      "SLB"
     ],
     "top_momentum": [
       "MSFT",
       "AMZN",
+      "INTU",
       "ADBE",
-      "MPC",
-      "INTU"
+      "CVX"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785767352.9006705
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 3,
-      "sector_leaders": [
-        "Energy",
-        "Healthcare",
-        "Financials"
-      ],
-      "gap_count": 3,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=3). Leading: Energy, Healthcare. Gaps: 3, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784753961.8292434
-    },
     {
       "lesson": "Deployment failed due to Vercel free tier daily limit (100 deployments). This blocks all future deployments and requires either upgrading to a paid plan or reducing deployment frequency.",
       "category": "execution",
@@ -2072,6 +2057,21 @@
       },
       "lesson": "[LLM unavailable \u2014 all providers failed]",
       "ts": 1785773636.7146573
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Comm."
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785773695.7607968
     }
   ],
   "github_insights": [
