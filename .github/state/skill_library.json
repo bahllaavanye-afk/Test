@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Retry failed trades",
-    "Optimize EMA-VWAP variants",
-    "Validate timestamps",
-    "Scan logs for leaks",
-    "Verify network connectivity",
     "Detect abnormal calls",
     "Limit API retries",
     "Test network latency",
@@ -199,8 +194,13 @@
     "Verify trade limits",
     "Handle SSL errors",
     "Track performance metrics",
-    "Analyze signal confidence"
+    "Analyze signal confidence",
+    "Verify API rate limits",
+    "Check data feed latency",
+    "Monitor system memory",
+    "Test market data gaps",
+    "Bind API to proxies"
   ],
-  "last_updated": "2026-08-03T20:42:47.073716+00:00",
+  "last_updated": "2026-08-03T22:05:13.668438+00:00",
   "total": 200
 }
