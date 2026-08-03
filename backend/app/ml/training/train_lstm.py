@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import time
 from pathlib import Path
 import pandas as pd
 import torch
@@ -55,7 +56,11 @@ async def train(
     batch_size: int = 256,
     lr: float = 1e-3,
 ) -> dict:
-    train_loader, val_loader, test_loader, n_features = build_dataloaders(ohlcv_df, seq_len, batch_size)
+    start_time = time.time()
+
+    train_loader, val_loader, test_loader, n_features = build_dataloaders(
+        ohlcv_df, seq_len, batch_size
+    )
 
     model = LSTMPredictor(
         n_features=n_features,
@@ -76,23 +81,60 @@ async def train(
     # Save final model
     save_path = ARTIFACTS_DIR / experiment_name / "final_model.pt"
     save_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({"model_state_dict": model.state_dict(), "n_features": n_features,
-                "hidden_size": hidden_size, "num_layers": num_layers, "dropout": dropout,
-                "seq_len": seq_len, "experiment": experiment_name}, str(save_path))
+    torch.save(
+        {
+            "model_state_dict": model.state_dict(),
+            "n_features": n_features,
+            "hidden_size": hidden_size,
+            "num_layers": num_layers,
+            "dropout": dropout,
+            "seq_len": seq_len,
+            "experiment": experiment_name,
+        },
+        str(save_path),
+    )
 
-    results["artifact_path"] = str(save_path)
+    # Structured monitoring metrics
+    execution_time = time.time() - start_time
+    signal_count = len(test_loader.dataset)
+    # Approximate P&L using sum of test labels (proxy for profitability)
+    try:
+        test_labels = test_loader.dataset.tensors[1]
+        pnl = float(test_labels.sum().item())
+    except Exception:
+        pnl = None
+
+    results.update(
+        {
+            "artifact_path": str(save_path),
+            "signal_count": signal_count,
+            "execution_time_seconds": execution_time,
+            "pnl_proxy": pnl,
+        }
+    )
     logger.info("LSTM training complete", **results)
     return results
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", required=True, help="Path to OHLCV CSV with columns: open,high,low,close,volume")
+    parser.add_argument(
+        "--csv",
+        required=True,
+        help="Path to OHLCV CSV with columns: open,high,low,close,volume",
+    )
     parser.add_argument("--name", default="lstm_run")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--hidden", type=int, default=128)
     args = parser.parse_args()
 
     df = pd.read_csv(args.csv, index_col=0, parse_dates=True)
-    result = asyncio.run(train(df, experiment_name=args.name, max_epochs=args.epochs, hidden_size=args.hidden))
+    result = asyncio.run(
+        train(
+            df,
+            experiment_name=args.name,
+            max_epochs=args.epochs,
+            hidden_size=args.hidden,
+        )
+    )
     print(json.dumps(result, indent=2))

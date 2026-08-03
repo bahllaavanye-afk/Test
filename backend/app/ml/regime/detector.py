@@ -7,12 +7,18 @@ Used to scale Kelly position sizing:
   HIGH_VOL    → 0.5x (half size — protect capital)
 """
 from __future__ import annotations
-import numpy as np
-from dataclasses import dataclass
+
+import logging
+import time
 from datetime import datetime, timezone
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+import numpy as np
+
+# Module logger
+_logger = logging.getLogger(__name__)
 
 class Regime(str, Enum):
     TRENDING = "trending"
@@ -103,13 +109,32 @@ def detect_regime(prices: list[float], high_vol_threshold: float = 0.25) -> Regi
         prices: List of close prices, most recent last.
         high_vol_threshold: Annualized vol above this → HIGH_VOL regime.
     """
+    start_time = time.time()
+    signal_count = len(prices)
+
     arr = np.array(prices, dtype=float)
     if len(arr) < 30:
-        return RegimeState(
-            regime=Regime.UNKNOWN, confidence=0.0, vol_20d=0.0,
-            hurst=0.5, sizing_multiplier=REGIME_SIZING_MULTIPLIER[Regime.UNKNOWN],
+        state = RegimeState(
+            regime=Regime.UNKNOWN,
+            confidence=0.0,
+            vol_20d=0.0,
+            hurst=0.5,
+            sizing_multiplier=REGIME_SIZING_MULTIPLIER[Regime.UNKNOWN],
             updated_at=datetime.now(timezone.utc),
         )
+        duration_ms = (time.time() - start_time) * 1000
+        _logger.info(
+            "detect_regime completed",
+            extra={
+                "signal_count": signal_count,
+                "execution_ms": round(duration_ms, 2),
+                "regime": state.regime.value,
+                "confidence": state.confidence,
+                "vol_20d": state.vol_20d,
+                "hurst": state.hurst,
+            },
+        )
+        return state
 
     # 20-day realized volatility (annualized)
     rets = np.diff(np.log(arr[-21:] + 1e-10))
@@ -133,7 +158,7 @@ def detect_regime(prices: list[float], high_vol_threshold: float = 0.25) -> Regi
         regime = Regime.TRENDING if vol_20d < 0.15 else Regime.MEAN_REVERTING
         confidence = 0.5
 
-    return RegimeState(
+    state = RegimeState(
         regime=regime,
         confidence=float(confidence),
         vol_20d=vol_20d,
@@ -141,6 +166,20 @@ def detect_regime(prices: list[float], high_vol_threshold: float = 0.25) -> Regi
         sizing_multiplier=REGIME_SIZING_MULTIPLIER[regime],
         updated_at=datetime.now(timezone.utc),
     )
+
+    duration_ms = (time.time() - start_time) * 1000
+    _logger.info(
+        "detect_regime completed",
+        extra={
+            "signal_count": signal_count,
+            "execution_ms": round(duration_ms, 2),
+            "regime": state.regime.value,
+            "confidence": state.confidence,
+            "vol_20d": state.vol_20d,
+            "hurst": state.hurst,
+        },
+    )
+    return state
 
 
 class RegimeMonitor:
@@ -152,8 +191,24 @@ class RegimeMonitor:
         self._states: dict[str, RegimeState] = {}
 
     def update(self, symbol: str, prices: list[float]) -> RegimeState:
+        start_time = time.time()
         state = detect_regime(prices)
         self._states[symbol] = state
+        # Approximate P&L as simple return over the price window
+        pnl = 0.0
+        if len(prices) >= 2 and prices[0] > 0:
+            pnl = (prices[-1] - prices[0]) / prices[0]
+        duration_ms = (time.time() - start_time) * 1000
+        _logger.info(
+            "regime_monitor update",
+            extra={
+                "symbol": symbol,
+                "regime": state.regime.value,
+                "confidence": state.confidence,
+                "execution_ms": round(duration_ms, 2),
+                "pnl": round(pnl, 6),
+            },
+        )
         return state
 
     def get(self, symbol: str) -> RegimeState | None:
