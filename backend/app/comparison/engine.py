@@ -29,6 +29,14 @@ LOG_STRATEGY_FIELD: str = "strategy"
 LOG_MANUAL_SHARPE_FIELD: str = "manual_sharpe"
 LOG_ML_SHARPE_FIELD: str = "ml_sharpe"
 LOG_P_VALUE_FIELD: str = "p_value"
+LOG_MESSAGE_COMPARISON_COMPLETE: str = "Comparison complete"
+LOG_ERROR_FETCH_BENCHMARK: str = "Failed to fetch benchmark curves"
+LOG_ERROR_KEY: str = "error"
+
+# Winner identifiers
+WINNER_ML: str = "ml"
+WINNER_MANUAL: str = "manual"
+WINNER_NEITHER: str = "neither"
 
 
 @dataclass
@@ -112,7 +120,7 @@ class StrategyComparisonEngine:
         try:
             benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
         except Exception as exc:
-            logger.error("Failed to fetch benchmark curves", error=str(exc))
+            logger.error(LOG_ERROR_FETCH_BENCHMARK, **{LOG_ERROR_KEY: str(exc)})
             benchmark_curves = {}
         benchmark_stats = get_benchmark_stats()
 
@@ -130,12 +138,12 @@ class StrategyComparisonEngine:
             t_stat, p_val = 0.0, 1.0
 
         improvement = ml_metrics.sharpe - manual_metrics.sharpe
-        winner = "ml" if ml_metrics.sharpe > manual_metrics.sharpe else "manual"
+        winner = WINNER_ML if ml_metrics.sharpe > manual_metrics.sharpe else WINNER_MANUAL
         if abs(improvement) < IMPROVEMENT_THRESHOLD:
-            winner = "neither"
+            winner = WINNER_NEITHER
 
         logger.info(
-            "Comparison complete",
+            LOG_MESSAGE_COMPARISON_COMPLETE,
             **{
                 LOG_STRATEGY_FIELD: strategy_name,
                 LOG_MANUAL_SHARPE_FIELD: manual_metrics.sharpe,
