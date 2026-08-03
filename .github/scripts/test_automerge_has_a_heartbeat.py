@@ -5,21 +5,21 @@ human-pushed branch. In the three days since, the improver opened ~90 PRs and
 the gate never woke once. `#1341` sat green — `test`, `test-agents`,
 `frontend-build` all success — labelled `automerge`, not a draft, unmerged.
 
-Every declared trigger is dead for exactly the PRs this gate exists to land,
-because GitHub suppresses workflow runs from events attributed to GITHUB_TOKEN
-and every step of the improver's loop uses it:
+CORRECTED 2026-08-03 04:40. My first explanation here was that every declared
+trigger is *suppressed* for bot PRs. That is wrong, and the run log says so:
+auto-merge DID fire at 03:38 (`30782308923`, `event=pull_request_target`). Its
+entire output was one line —
 
-    pull_request_target: labeled     the bot applies `automerge`   -> suppressed
-    check_suite: completed           checks from the bot's CI      -> suppressed
-    workflow_run: [CI] completed     CI dispatched by the bot      -> suppressed
+    #232: base claude/advanced-trading-bot-d5Lmw != main
 
-Every historical auto-merge run confirms it: the event is `pull_request_target`
-or `check_suite`, and each traces back to a human push.
+— one PR evaluated, skipped, done.
 
-This is the next link in the same chain as the missing `actions: write` (#1245).
-That fix made CI actually run on improver PRs. This one makes something read the
-result. Fixing one stage keeps exposing the next — worth expecting rather than
-being surprised by.
+The real mechanism is narrower and worse. A `pull_request_target` payload sets
+`context.payload.pull_request`, so `candidates` gets exactly ONE entry and the
+`candidates.size === 0` branch — the only path that scans all open PRs — never
+runs. **The gate wakes, but only ever for the single PR whose event woke it.**
+Nothing sweeps the backlog, so a PR that goes green after its own event has
+passed is never revisited.
 
 `workflow_dispatch` is the documented exception to the recursion guard and was
 already declared here, but nothing ever called it. The fix is a `schedule`: a
@@ -95,4 +95,45 @@ def test_the_label_gate_survives(text):
     assert "REQUIRED_LABEL = 'automerge'" in text, (
         "the opt-in label gate is gone. A scheduled sweep over ALL open PRs "
         "without it would auto-merge anything that happens to be green."
+    )
+
+
+def test_the_pacemaker_dispatches_the_gate_too():
+    """The schedule alone was not enough — it produced zero runs in 2h47m.
+
+    `auto-merge.yml`'s own `schedule` is subject to exactly the starvation the
+    pacemaker exists to route around; its header says so outright ("GitHub
+    starves free-tier schedules under load"). So the gate gets dispatched from
+    the pacemaker's heartbeat as well, which does not depend on cron.
+
+    The two are deliberately kept BOTH: they show up distinguishably in the run
+    log (`event=schedule` vs `event=workflow_dispatch`), so whichever actually
+    delivers can be identified rather than guessed at.
+    """
+    pm = _WF.parent / "pacemaker.yml"
+    assert pm.exists(), "pacemaker.yml is gone — the fleet heartbeat moved"
+    text = pm.read_text()
+    assert "auto-merge.yml/dispatches" in text, (
+        "the pacemaker no longer dispatches the merge gate. Its own schedule is "
+        "starved (zero runs in 2h47m when measured), so without this the gate "
+        "only ever evaluates the single PR whose event woke it and green PRs "
+        "accumulate indefinitely."
+    )
+    # A dispatch that cannot report its own failure is the 403 bug again.
+    block = text[text.index("auto-merge.yml/dispatches"):]
+    assert "::error::" in block[:900], (
+        "the auto-merge dispatch swallows its failure. A silent skip here is "
+        "the same class as the permanent 403 that hid in "
+        "continuous-improvement.yml for its entire lifetime."
+    )
+
+
+def test_the_merge_dispatch_does_not_kill_the_fleet_heartbeat():
+    """Losing the merge sweep must not take the whole pacemaker down with it."""
+    text = (_WF.parent / "pacemaker.yml").read_text()
+    block = text[text.index("auto-merge.yml/dispatches"):]
+    assert "exit 1" not in block[:900], (
+        "the auto-merge dispatch exits non-zero on failure. The CI dispatch "
+        "above it is the load-bearing heartbeat for 36 downstream workflows; a "
+        "failed merge sweep must not abort the job before/around it."
     )

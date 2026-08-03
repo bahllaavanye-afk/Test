@@ -124,6 +124,43 @@ jobs:
             exit 1
           fi
 
+      # The merge gate needs a heartbeat for the SAME reason the fleet does.
+      #
+      # auto-merge.yml only ever evaluates the single PR whose event woke it: a
+      # `pull_request_target` payload sets `context.payload.pull_request`, so
+      # `candidates` gets one entry and the `candidates.size === 0` branch — the
+      # one that scans ALL open PRs — never runs. Measured 2026-08-03 in run
+      # 30782308923, whose entire output was one line about one PR while ~90
+      # improver PRs sat open, at least one of them fully green.
+      #
+      # A `schedule` was added to auto-merge.yml for this, but 2h47m later it had
+      # produced zero runs — consistent with the starvation this whole workflow
+      # exists to route around (see the header: "GitHub starves free-tier
+      # schedules under load"). Dispatching it here does not depend on cron.
+      #
+      # Deliberately does NOT `exit 1` on failure, unlike the CI dispatch above:
+      # losing the merge sweep must not kill the fleet heartbeat, which is the
+      # more load-bearing of the two. It still emits ::error:: so the failure is
+      # visible — a silent skip here would be the same class of bug as the 403
+      # that hid in continuous-improvement.yml for its whole lifetime.
+      - name: Dispatch the merge gate (its own schedule is starved)
+        if: steps.killswitch.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          code=$(curl -sS -o /tmp/am.txt -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/auto-merge.yml/dispatches" \
+            -d '{"ref":"main"}')
+          if [ "$code" = "204" ]; then
+            echo "✅ merge gate dispatched — open PRs will be swept" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::auto-merge dispatch failed (HTTP $code): $(cat /tmp/am.txt)"
+            echo "⚠️ merge sweep NOT dispatched (HTTP $code) — green PRs will keep piling up" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       # If the dispatch fails the chain dies silently, which is the exact class
       # of failure this repo keeps getting bitten by. Say so where it is seen.
       - name: Alert if the heartbeat broke

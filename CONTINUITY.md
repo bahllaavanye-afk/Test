@@ -378,6 +378,14 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 🫀 2026-08-03 05:40 — the merge gate now rides the pacemaker, not just cron
+
+The `schedule` added at 02:40 has produced **zero runs in 2h47m**. That is the same starvation the pacemaker exists to route around — its own header says *"GitHub starves free-tier schedules under load"* — so relying on cron for the merge sweep was betting on the one mechanism this repo has already measured as unreliable.
+
+- [x] **[P0] The pacemaker now dispatches `auto-merge.yml` alongside its CI heartbeat.** ~50-minute cadence, no cron dependency. Kept **both** mechanisms deliberately: they appear distinguishably in the run log (`event=schedule` vs `event=workflow_dispatch`), so whichever actually delivers can be identified instead of guessed at — which matters given I have now mis-attributed this mechanism once already.
+- [x] **Failure is visible but non-fatal.** Unlike the CI dispatch above it, the merge dispatch does **not** `exit 1`: losing the sweep must not kill the heartbeat driving 36 downstream workflows. It still emits `::error::`, because a silent skip here would be the same class as the permanent 403 that hid in `continuous-improvement.yml` for its whole lifetime. Both properties are pinned by tests.
+- [ ] **[P1] Still unverified.** No `event=schedule` run yet, and the pacemaker dispatch has not had a cycle. Do not record either as working until an auto-merge run with the corresponding event actually appears and the green backlog moves.
+
 ## ⚖️ 2026-08-03 04:40 — CORRECTION to the 02:40 entry: the mechanism was wrong, the fix is right
 I wrote that **every** trigger on `auto-merge.yml` is suppressed for bot PRs. Not true as stated.
 
