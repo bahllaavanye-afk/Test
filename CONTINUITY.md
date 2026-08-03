@@ -39,6 +39,36 @@ pacemaker survives its sleep → dispatches desk-trading → lands in market hou
 real paper orders. Dispatch cadence is exact: 10:16, 11:07, 11:57, 12:47, 13:37,
 14:28 — every 50 minutes, no drift. Cron contributed **one** run all day (12:17).
 
+### 🧩 WHY Vercel blocks improver PRs but not mine — resolved 2026-08-03 18:40
+My PRs merge while ~100 improver PRs sit frozen on a Vercel `failure`. That is not
+gate inconsistency. `frontend/vercel.json` has:
+```json
+"ignoreCommand": "git diff --quiet HEAD^ HEAD -- ."
+```
+Vercel skips the build when this exits 0 (no diff). My PRs touch only backend and
+workflow files, so the build is skipped and Vercel posts **`success` —
+"Canceled by Ignored Build Step"** (verified on `#1366`, sha `290522ee`). Improver
+PRs attempt a real build, hit the 100/day free-tier cap, and get `failure`.
+
+**The command only inspects the TIP COMMIT** (`HEAD^ HEAD`), while every improver
+PR has **5 commits** (verified on `#1352` and `#1358`). So whether a preview builds
+is decided by whether the *last* commit happened to touch `frontend/` — not by
+whether the PR does. Quota gets burned on PRs whose net frontend diff may be
+nothing, and previews are skipped for PRs that genuinely change the frontend.
+
+To be precise about severity: build **correctness** is NOT at risk — `frontend-build`
+is a REQUIRED CI check and runs regardless. A false skip loses only the preview
+deployment. The real cost is the quota burn, and the `failure` status it produces
+once the cap is hit, which is what freezes the merge gate.
+
+**`frontend/vercel.json` is under "Do NOT Modify" (`frontend/src/CLAUDE.md:40`), so
+this was NOT changed here.** Operator options, both one-liners in that file:
+- Skip previews for bot branches outright — prepend
+  `case "$VERCEL_GIT_COMMIT_REF" in improver/*) exit 0;; esac` to the ignoreCommand.
+  Directly ends the cap burn and unfreezes the backlog.
+- Or compare the whole PR range instead of the tip commit, so the decision reflects
+  the PR's actual frontend diff.
+
 ### 🔴 The merge gate is fine; VERCEL is blocking all 100 open PRs (found 14:37)
 `auto-merge.yml` now fires on both events — 3 `schedule` + 6 `workflow_dispatch`
 runs today, all `success`, all sweeping every open PR. **The backlog still did not
