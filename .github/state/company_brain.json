@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785779875.8394806,
+    "last_updated": 1785783144.2346797,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 3,
     "macro_score": 3,
-    "vix": 15.78,
-    "market_scan_ts": 1785779875.8087234,
+    "vix": 15.75,
+    "market_scan_ts": 1785783144.2056174,
     "sector_leaders": [
       "Energy",
       "Financials",
@@ -127,41 +127,34 @@
       "ORCL",
       "GOOGL",
       "AAPL",
-      "NOW",
       "CRWD",
+      "NOW",
       "LLY",
       "CMCSA",
       "PANW",
       "NVDA",
-      "META",
       "SPY",
       "TSLA",
       "QQQ",
+      "META",
       "MA",
-      "IWM",
-      "SLB",
       "CVX",
-      "XLV"
+      "SLB",
+      "XLV",
+      "IWM"
     ],
     "top_momentum": [
       "MSFT",
       "AMZN",
       "INTU",
       "ADBE",
-      "COP"
+      "VZ"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785767352.9006705
   },
   "episodic": [
-    {
-      "lesson": "Only 2 of 60 generated signals survived the gate+topK funnel (3.3% conversion), placing just 2 orders. Extremely low throughput may indicate overly conservative filtering or model underperformance.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784760037.6058717
-    },
     {
       "lesson": "FX desk placed only 1 of 8 high-confidence signals (\u22650.6) and skipped 2 due to existing positions. This suggests possible over-positioning in certain pairs or insufficient risk capacity for new entries.",
       "category": "risk",
@@ -2088,6 +2081,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785779875.8451993
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Comm."
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785783144.240204
     }
   ],
   "github_insights": [
