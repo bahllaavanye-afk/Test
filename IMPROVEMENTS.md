@@ -221,7 +221,24 @@ That shape is correct as a *daily* cooling-off rule and pathological if it persi
 - [x] **Added a contradiction detector.** `daily_loss_cap_hit` is `equity < last_equity * (1 - cap)`. With **zero open positions and no fills, equity cannot move**, so it should EQUAL prior close and the cap cannot legitimately be active. If it is, the inputs are wrong — a stale `last_equity` being the known candidate (the source already carries a 2026-07-20 note about weekend crypto drift against Friday's close; eighteen days is not a weekend). The run now prints `⚠️ equity EQUALS prior close — cap should not be active; suspect a stale last_equity` when that holds, so the next run distinguishes "correct daily cap" from "firing on stale inputs" instead of leaving it to inference.
 - [x] **Made the summary say which.** The drawdown figure was printed only to the CI log; the Discord line said just `🛑 loss cap ACTIVE — new exposure blocked`. It now carries `equity $X vs prior close $Y (-Z%, cap 2%) · N position(s) eligible to reduce`, plus an explicit `⚠️ nothing can pass while this is 0`. The next desk run answers the question in the channel instead of requiring an Actions-log dig. 8 tests (`test_loss_cap_visibility.py`), including the divide-by-zero when the broker fetch fails.
 - [ ] **[USER] The Alpaca paper-account reset is now the confirmed blocker on trading**, not a background nag. Everything upstream of order placement works; the cap is the terminal gate and it cannot clear itself while the book is empty.
-- [ ] **[P2] Ensemble signals cancel out at scale.** Same run: nearly every crypto symbol logged `sell/buy conflict — stand aside` (SOL, AVAX, LTC, DOGE, LINK, BCH, DOT, XRP, SHIB, SUSHI, YFI, GRT, CRV, XTZ, BAT). Only 3 signals survived from 9 desks. Worth investigating separately from the cap — it caps the ceiling on trade count even once the account is healthy.
+- [x] **[P2] ~~Ensemble signals cancel out at scale.~~ SUPERSEDED — fixed 2026-07-28, this entry predates the fix.**
+  The always-stand-aside rule is gone. `desk_order_placer.py:696-713` now combines opposing sides with the same
+  `1-prod(1-ci)` used for agreement and trades the dominant side at the NET confidence, gated by `_ENSEMBLE_NET_MIN`
+  (default 0.60, matching `confidence_min`, and settable >1.0 to restore the old rule without a code change). The
+  measurement that motivated it is in that comment: over 76 conflicts, `crypto_adaptive_trend` was the ONLY sell voice on
+  all 16 crypto conflicts at 0.16-0.52, vetoing buy consensus of 0.61-0.97 — SHIB/USD had `avellaneda_stoikov_mm(0.90)`
+  killed by a single 0.16. Confirmed healthy in production 2026-08-03: runs `30818846913` (13:37) and `30822832596`
+  (14:28) each placed **7 orders across 9 desks**, `total_notional=+2587.46`.
+- [x] **CORRECTION 2026-08-03 15:40 — the desks do NOT place naive market orders.** I previously reported they did, from
+  `crypto_adaptive_trend.py:154`'s `metadata={"order_type": "market"}`. That metadata field is not what executes. The
+  real path is `_ensure_filled()` (`desk_order_placer.py:1110`): **limit-first with cancel-replace**, falling back to a
+  market order only after `FILL_WAIT_S` elapses without a fill, and double-fill safe (if the cancel races a fill, the fill
+  wins and no replacement is sent). Live evidence, run `30822832596`:
+  `► time_series_momentum/EWT signal=BUY conf=1.00 — placing $194 limit-first order` → `✓ limit filled after 5s`.
+  This changes the standing research recommendation: "switch from market orders to IS-aware limit logic" is **already
+  substantially done**. What is genuinely missing is the measurement half — no TCA, no slippage-vs-arrival-price logging.
+  That, not the order type, is the real execution-quality gap.
+- [ ] **[P2] ~~Original entry retained for provenance~~ Ensemble signals cancel out at scale.** Same run: nearly every crypto symbol logged `sell/buy conflict — stand aside` (SOL, AVAX, LTC, DOGE, LINK, BCH, DOT, XRP, SHIB, SUSHI, YFI, GRT, CRV, XTZ, BAT). Only 3 signals survived from 9 desks. Worth investigating separately from the cap — it caps the ceiling on trade count even once the account is healthy.
 
 ## 🛡️ 2026-07-28 — the 5xx guard never covered parameterised routes (the hole the scanner bug fell through)
 
