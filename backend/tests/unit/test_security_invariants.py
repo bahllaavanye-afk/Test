@@ -63,3 +63,69 @@ def test_slack_integration_stays_removed():
         if "slack.com/api" in text or "SLACK_BOT_TOKEN" in text:
             offenders.append(str(path.relative_to(backend_app)))
     assert not offenders, f"Slack must stay removed from the backend; found in: {offenders}"
+
+
+# ----------------------------------------------------------------------
+# Strategy logic invariants – tighten entry, confirmation, and exit checks
+# ----------------------------------------------------------------------
+
+
+def _read_strategy_files():
+    """Helper to collect all Python files under the strategies package."""
+    strategies_dir = Path(__file__).resolve().parents[2] / "app" / "strategies"
+    if not strategies_dir.is_dir():
+        return []
+    return [p for p in strategies_dir.rglob("*.py") if "__pycache__" not in str(p)]
+
+
+def test_strategy_entry_conditions_are_tight():
+    """Entry functions should include basic risk filters before signalling."""
+    files = _read_strategy_files()
+    if not files:
+        # No strategy code present – nothing to enforce at the moment.
+        return
+    for path in files:
+        src = path.read_text(errors="ignore")
+        # Look for a function that appears to generate a signal (heuristic)
+        if "def generate_signal" in src or "def signal_" in src:
+            # Ensure the function checks volatility, price, and volume thresholds.
+            # Simple keyword presence check; more sophisticated static analysis is out of scope.
+            required_checks = ["volatility", "price", "volume"]
+            missing = [c for c in required_checks if c not in src.lower()]
+            assert not missing, (
+                f"{path.relative_to(path.parents[2])} entry logic missing checks: {missing}"
+            )
+
+
+def test_strategy_confirmation_filters_present():
+    """Signals must be confirmed before order placement."""
+    files = _read_strategy_files()
+    if not files:
+        return
+    for path in files:
+        src = path.read_text(errors="ignore")
+        # If an order placement call exists, ensure a confirmation call precedes it.
+        if "place_order" in src:
+            # Find the first occurrence of place_order
+            idx_place = src.find("place_order")
+            # Look backwards for a confirmation call within the same function (simple heuristic)
+            snippet = src[:idx_place]
+            assert "confirm_signal" in snippet, (
+                f"{path.relative_to(path.parents[2])} places orders without confirming the signal"
+            )
+
+
+def test_strategy_exit_logic_includes_protective_measures():
+    """Exit functions should contain stop‑loss and take‑profit logic."""
+    files = _read_strategy_files()
+    if not files:
+        return
+    for path in files:
+        src = path.read_text(errors="ignore")
+        # Heuristic: functions named exit_ or close_position
+        if "def exit_" in src or "def close_position" in src:
+            required_logic = ["stop_loss", "take_profit"]
+            missing = [c for c in required_logic if c not in src.lower()]
+            assert not missing, (
+                f"{path.relative_to(path.parents[2])} exit logic missing: {missing}"
+            )
