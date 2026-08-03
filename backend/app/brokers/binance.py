@@ -1,9 +1,12 @@
 """
 Binance broker integration via CCXT async.
 Supports spot trading, real-time order book, and triangular arb scanning.
+Enhanced with lightweight signal helpers for tighter entry/exit decisions.
 """
 import asyncio
 import time
+from typing import Optional, Dict, Any, List
+
 from app.brokers.base import AbstractBroker, OrderRequest, OrderResult, QuoteResult
 from app.utils.exceptions import BrokerError
 from app.utils.logging import logger
@@ -11,7 +14,7 @@ from app.utils.logging import logger
 try:
     import ccxt.async_support as ccxt
     CCXT_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     ccxt = None  # type: ignore
     CCXT_AVAILABLE = False
     logger.info("ccxt not installed — Binance broker disabled")
@@ -28,6 +31,10 @@ INTERVAL_MAP = {
 
 
 class BinanceBroker(AbstractBroker):
+    """
+    Binance broker implementation with additional signal utilities.
+    """
+
     def __init__(self, api_key: str, secret: str, testnet: bool = True):
         self.exchange = ccxt.binance(
             {
@@ -42,12 +49,19 @@ class BinanceBroker(AbstractBroker):
             self.exchange.set_sandbox_mode(True)
 
         # Cache for expensive calls
-        self._ticker_cache = {"data": None, "timestamp": 0.0}
+        self._ticker_cache: Dict[str, Any] = {"data": None, "timestamp": 0.0}
         self._ticker_lock = asyncio.Lock()
 
-    async def close(self):
+        # Simple in‑memory cache for recent OHLCV (used by signal helpers)
+        self._ohlcv_cache: Dict[str, Dict[str, Any]] = {}
+        self._ohlcv_lock = asyncio.Lock()
+
+    async def close(self) -> None:
         await self.exchange.close()
 
+    # ----------------------------------------------------------------------
+    # Core broker methods (unchanged behaviour)
+    # ----------------------------------------------------------------------
     async def place_order(self, request: OrderRequest) -> OrderResult:
         try:
             if request.order_type == "market":
@@ -83,13 +97,18 @@ class BinanceBroker(AbstractBroker):
             await self.exchange.cancel_order(broker_order_id, symbol)
             return True
         except Exception as e:
-            logger.warning("Binance cancel_order failed", order_id=broker_order_id, symbol=symbol, error=str(e))
+            logger.warning(
+                "Binance cancel_order failed",
+                order_id=broker_order_id,
+                symbol=symbol,
+                error=str(e),
+            )
             return False
 
     async def get_order(self, broker_order_id: str, symbol: str = "") -> dict:
         return await self.exchange.fetch_order(broker_order_id, symbol)
 
-    async def get_positions(self) -> list[dict]:
+    async def get_positions(self) -> List[dict]:
         balance = await self.exchange.fetch_balance()
         positions = []
         for asset, info in balance["total"].items():
@@ -125,7 +144,7 @@ class BinanceBroker(AbstractBroker):
 
     async def get_historical(
         self, symbol: str, interval: str = "1d", limit: int = 500
-    ) -> list[dict]:
+    ) -> List[dict]:
         tf = INTERVAL_MAP.get(interval, "1d")
         ohlcv = await self.exchange.fetch_ohlcv(symbol, tf, limit=limit)
         return [
@@ -159,3 +178,143 @@ class BinanceBroker(AbstractBroker):
             except Exception as e:
                 logger.error("Failed to fetch tickers from Binance", error=str(e))
                 raise BrokerError(f"Binance ticker fetch error: {e}")
+
+    # ----------------------------------------------------------------------
+    # Signal helper methods – tightened entry/exit logic
+    # ----------------------------------------------------------------------
+    async def _cached_ohlcv(
+        self, symbol: str, interval: str = "5m", limit: int = 100
+    ) -> List[dict]:
+        """Retrieve OHLCV with a short‑term cache to reduce API pressure."""
+        key = f"{symbol}:{interval}:{limit}"
+        async with self._ohlcv_lock:
+            entry = self._ohlcv_cache.get(key)
+            now = time.monotonic()
+            if entry and now - entry["timestamp"] < 30:  # 30‑second TTL
+                return entry["data"]
+            data = await self.get_historical(symbol, interval, limit)
+            self._ohlcv_cache[key] = {"data": data, "timestamp": now}
+            return data
+
+    def _simple_moving_average(self, data: List[dict], window: int = 20) -> float:
+        """Calculate SMA of close prices; returns 0 if insufficient data."""
+        closes = [bar["close"] for bar in data[-window:]]
+        return sum(closes) / len(closes) if closes else 0.0
+
+    async def should_enter(
+        self,
+        symbol: str,
+        side: str = "buy",
+        price_threshold: float = 0.001,
+        volume_multiplier: float = 1.5,
+    ) -> bool:
+        """
+        Determine if entry conditions are satisfied.
+
+        Tightened criteria:
+        1. Current price must be within `price_threshold` of the short‑term SMA.
+        2. Recent volume must exceed `volume_multiplier` × median recent volume.
+        3. Order‑book imbalance > 5 % (bid side for buys, ask side for sells).
+
+        Returns True only when **all** conditions hold.
+        """
+        try:
+            ticker = await self.get_quote(symbol)
+            ohlcv = await self._cached_ohlcv(symbol, interval="5m", limit=100)
+
+            sma = self._simple_moving_average(ohlcv, window=20)
+            if sma == 0:
+                return False
+
+            price = ticker.last
+            price_diff = abs(price - sma) / sma
+
+            # Condition 1: price proximity
+            if price_diff > price_threshold:
+                return False
+
+            # Condition 2: volume spike
+            recent_volumes = [bar["volume"] for bar in ohlcv[-20:]]
+            median_vol = sorted(recent_volumes)[len(recent_volumes) // 2] or 1
+            if ticker.volume < median_vol * volume_multiplier:
+                return False
+
+            # Condition 3: order‑book imbalance
+            order_book = await self.get_order_book(symbol, limit=20)
+            bids = sum([b[1] for b in order_book["bids"]])
+            asks = sum([a[1] for a in order_book["asks"]])
+            if side == "buy":
+                imbalance = (bids - asks) / (bids + asks + 1e-9)
+            else:
+                imbalance = (asks - bids) / (bids + asks + 1e-9)
+            if imbalance < 0.05:  # require at least 5 % imbalance
+                return False
+
+            return True
+        except Exception as e:
+            logger.warning("Signal entry check failed", symbol=symbol, error=str(e))
+            return False
+
+    async def should_exit(
+        self,
+        symbol: str,
+        entry_price: float,
+        profit_target: float = 0.02,
+        stop_loss: float = 0.01,
+        trailing_percent: float = 0.015,
+    ) -> bool:
+        """
+        Evaluate exit conditions.
+
+        Exit triggers:
+        * Profit target reached (price ≥ entry_price * (1 + profit_target))
+        * Stop‑loss breached (price ≤ entry_price * (1 - stop_loss))
+        * Trailing stop: price falls > `trailing_percent` from recent high.
+
+        Returns True when any condition is met.
+        """
+        try:
+            ticker = await self.get_quote(symbol)
+            price = ticker.last
+
+            # Profit target
+            if price >= entry_price * (1 + profit_target):
+                return True
+
+            # Stop loss
+            if price <= entry_price * (1 - stop_loss):
+                return True
+
+            # Trailing stop logic
+            ohlcv = await self._cached_ohlcv(symbol, interval="5m", limit=50)
+            recent_high = max(bar["high"] for bar in ohlcv)
+            if price < recent_high * (1 - trailing_percent):
+                return True
+
+            return False
+        except Exception as e:
+            logger.warning("Signal exit check failed", symbol=symbol, error=str(e))
+            return False
+
+    async def generate_signal(
+        self,
+        symbol: str,
+        side: str = "buy",
+        entry_price: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Produce a signal dict containing entry/exit flags.
+
+        If `entry_price` is None, only entry evaluation is performed.
+        When an `entry_price` is provided, exit evaluation is performed.
+        """
+        signal: Dict[str, Any] = {"symbol": symbol, "side": side, "enter": False, "exit": False}
+        if entry_price is None:
+            signal["enter"] = await self.should_enter(symbol, side=side)
+        else:
+            signal["exit"] = await self.should_exit(symbol, entry_price=entry_price)
+        return signal
+
+    # ----------------------------------------------------------------------
+    # End of BinanceBroker
+    # ----------------------------------------------------------------------

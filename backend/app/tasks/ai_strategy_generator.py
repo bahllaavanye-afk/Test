@@ -14,10 +14,9 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, List
 
 from app.tasks.free_llm_router import call_consensus, available_providers
 from app.tasks.agent_memory import AgentMemory
@@ -94,7 +93,7 @@ class AIStrategyGenerator:
         except Exception as e:
             logger.exception("AIStrategyGenerator error: %s", e)
 
-    async def _generate_proposals(self) -> list[dict]:
+    async def _generate_proposals(self) -> List[dict]:
         system = """You are a senior quantitative analyst. Propose trading strategy parameters.
 Output ONLY a JSON array of exactly 2 strategies, no other text."""
 
@@ -123,7 +122,7 @@ For each strategy, provide:
         if not responses:
             return []
 
-        all_proposals: list[dict] = []
+        all_proposals: List[dict] = []
         seen = set()
         for resp in responses:
             try:
@@ -154,24 +153,61 @@ For each strategy, provide:
         entry_conditions = proposal.get("entry_conditions", ["rsi < 30"])
         exit_conditions = proposal.get("exit_conditions", ["rsi > 70"])
 
-        # Build simple backtest body from entry/exit conditions
-        backtest_body = "        close = df['close']\n"
-        backtest_body += "        rsi = ta.rsi(close, length=14).fillna(50)\n"
-        backtest_body += "        ema_21 = ta.ema(close, length=21).fillna(close)\n"
-        backtest_body += "        entries = pd.Series(False, index=df.index)\n"
-        backtest_body += "        exits = pd.Series(False, index=df.index)\n"
-        backtest_body += f"        # Entry: {', '.join(entry_conditions)}\n"
-        backtest_body += "        entries = (rsi < 35) & (close > ema_21)\n"
-        backtest_body += f"        # Exit: {', '.join(exit_conditions)}\n"
-        backtest_body += "        exits = rsi > 65\n"
+        # Helper to generate indicator calculation snippets and condition expressions
+        def build_body(conditions: List[str], prefix: str) -> (str, str):
+            """Returns (indicator_setup_code, combined_condition_code)."""
+            indicator_code = ""
+            locals_map = {}
+            for cond in conditions:
+                tokens = cond.replace(">", " > ").replace("<", " < ").replace(">=", " >= ").replace("<=", " <= ").split()
+                if len(tokens) != 3:
+                    continue
+                indicator, op, value = tokens
+                # Normalise indicator names to variables
+                var_name = indicator.replace(".", "_")
+                if var_name not in locals_map:
+                    if indicator.startswith("rsi"):
+                        indicator_code += f"        {var_name} = ta.rsi(close, length=14).fillna(50)\n"
+                    elif indicator.startswith("ema_"):
+                        length = int(indicator.split("_")[1])
+                        indicator_code += f"        {var_name} = ta.ema(close, length={length}).fillna(close)\n"
+                    elif indicator == "price":
+                        indicator_code += f"        {var_name} = close\n"
+                    else:
+                        # Fallback: treat as raw series (e.g., bollinger bands)
+                        indicator_code += f"        {var_name} = ta.{indicator}(close).fillna(0)\n"
+                    locals_map[indicator] = var_name
+                # Build comparison string
+                locals_map.setdefault(indicator, var_name)
+            # Combine conditions using logical AND
+            condition_expr = " & ".join(
+                f"({cond.replace(ind, locals_map.get(ind, ind))})" for cond in conditions
+            )
+            return indicator_code, condition_expr
 
+        # Build backtest body
+        backtest_body = "        close = df['close']\n"
+        entry_setup, entry_expr = build_body(entry_conditions, "entry")
+        backtest_body += entry_setup
+        backtest_body += "        entries = pd.Series(False, index=df.index)\n"
+        # Confirmation: require entry condition to hold for 2 consecutive bars
+        backtest_body += f"        entries = ({entry_expr}).rolling(2).sum() == 2\n"
+        exit_setup, exit_expr = build_body(exit_conditions, "exit")
+        backtest_body += exit_setup
+        backtest_body += "        exits = pd.Series(False, index=df.index)\n"
+        backtest_body += f"        exits = {exit_expr}\n"
+
+        # Build analyze body
         analyze_body = "        close = data['close']\n"
-        analyze_body += "        rsi = ta.rsi(close, length=14)\n"
-        analyze_body += "        if rsi is None or rsi.empty: return None\n"
-        analyze_body += "        last_rsi = rsi.iloc[-1]\n"
-        analyze_body += "        ema_21 = ta.ema(close, length=21).iloc[-1]\n"
-        analyze_body += "        if last_rsi < 35 and close.iloc[-1] > ema_21:\n"
-        analyze_body += "            return Signal(symbol=symbol, side='buy', confidence=0.65, strategy=self.name)\n"
+        entry_setup_an, entry_expr_an = build_body(entry_conditions, "entry")
+        analyze_body += entry_setup_an
+        exit_setup_an, exit_expr_an = build_body(exit_conditions, "exit")
+        analyze_body += exit_setup_an
+        # Confirmation in live analysis: require current bar meets entry_expr and previous bar also met it
+        analyze_body += "        if (" + entry_expr_an + ").iloc[-1] and (" + entry_expr_an + ").iloc[-2]:\n"
+        analyze_body += "            return Signal(symbol=symbol, side='buy', confidence=0.70, strategy=self.name)\n"
+        analyze_body += "        if " + exit_expr_an + ".iloc[-1]:\n"
+        analyze_body += "            return Signal(symbol=symbol, side='sell', confidence=0.70, strategy=self.name)\n"
 
         code = _STRATEGY_TEMPLATE.format(
             timestamp=datetime.now(timezone.utc).isoformat(),
