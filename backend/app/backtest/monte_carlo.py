@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import numbers
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -32,7 +32,28 @@ class MonteCarloResult:
     p95_max_dd: float
     p5_max_dd: float
     prob_positive_return: float
-    num_simulations: int
+    num_simulations: int = field(repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate the dataclass fields after initialization."""
+        numeric_fields = {
+            "median_sharpe": self.median_sharpe,
+            "p5_sharpe": self.p5_sharpe,
+            "p95_sharpe": self.p95_sharpe,
+            "median_max_dd": self.median_max_dd,
+            "p95_max_dd": self.p95_max_dd,
+            "p5_max_dd": self.p5_max_dd,
+            "prob_positive_return": self.prob_positive_return,
+        }
+        for name, value in numeric_fields.items():
+            if not isinstance(value, numbers.Real):
+                raise ValueError(f"{name} must be a real number, got {type(value)}.")
+        if not (0.0 <= self.prob_positive_return <= 1.0):
+            raise ValueError(
+                "prob_positive_return must be between 0 and 1 inclusive."
+            )
+        if not isinstance(self.num_simulations, int) or self.num_simulations <= 0:
+            raise ValueError("num_simulations must be a positive integer.")
 
 
 def monte_carlo_simulation(

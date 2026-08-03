@@ -23,6 +23,8 @@ router = APIRouter(prefix=INTEGRATIONS_PREFIX, tags=[INTEGRATIONS_TAG])
 @router.get(NOTION_STATUS_PATH)
 async def notion_status(current_user: User = Depends(get_current_user)):
     """Whether Notion sync is configured."""
+    if current_user is None:
+        raise ValueError("current_user must not be None")
     sync = get_notion_sync()
     return {
         KEY_ENABLED: sync.enabled,
@@ -36,5 +38,9 @@ async def notion_status(current_user: User = Depends(get_current_user)):
 @router.post(NOTION_SYNC_PATH)
 async def trigger_notion_sync(current_user: User = Depends(get_current_user)):
     """Trigger a bidirectional GitHub Issues ↔ Notion sync."""
+    if current_user is None:
+        raise ValueError("current_user must not be None")
     sync = get_notion_sync()
+    if sync is None:
+        raise ValueError("sync instance must not be None")
     return await sync.sync_all()

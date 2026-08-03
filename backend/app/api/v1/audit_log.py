@@ -44,13 +44,10 @@ async def list_audit_log(
             detail="Authenticated user not found.",
         )
 
-    # Defensive handling for limit being None or out of range.
     if limit is None:
-        limit = 100
-    elif limit < 1:
-        limit = 1
-    elif limit > 500:
-        limit = 500
+        raise ValueError("limit must not be None")
+    if limit < 1 or limit > 500:
+        raise ValueError(f"limit must be between 1 and 500, got {limit}")
 
     result = await db.execute(
         select(AuditLog)
