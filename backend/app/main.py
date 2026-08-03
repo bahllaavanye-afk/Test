@@ -2,6 +2,7 @@
 from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -351,6 +352,68 @@ async def lifespan(app: FastAPI):
     logger.info("QuantEdge shutdown complete")
 
 
+# The four exact top-level filenames app/ml/inference.py opens. Nothing else is
+# reachable by it — not at any subdirectory depth.
+INFERENCE_MODEL_FILES = (
+    "lstm_latest.pt",
+    "xgboost_latest.ubj",
+    "lorentzian_latest.pkl",
+    "scaler_latest.pkl",
+)
+
+
+def ml_models_check(models_dir: str | Path) -> dict:
+    """Report trained artifacts and loadable models as two separate numbers.
+
+    They are different questions, and the old check conflated them into one
+    number that answered neither:
+
+      artifacts_on_disk — what training actually produced. The previous version
+        globbed only the top level, but `ci_lstm_trainer.py` writes to
+        `ARTIFACTS_DIR/lstm_<symbol>_1d/model.pt` — a subdirectory — so every
+        model it has ever trained was invisible here. Hence `rglob`.
+
+      count / ok — what `app/ml/inference.py` can actually load, i.e. the four
+        exact top-level names in INFERENCE_MODEL_FILES.
+
+    `ok` keys off LOADABLE, deliberately. Switching this check to `rglob` alone
+    (the literal fix IMPROVEMENTS.md called for) would have flipped
+    `ok: false -> true` the moment the weekly trainer ran, reporting "models
+    loaded" while inference still had nothing — the exact green-looking absence
+    this repo keeps paying for. The gap is real and documented: the CI trainer
+    and `app.ml.models.lstm` define two different networks under the same name,
+    so even a correctly-named artifact would fail `load_state_dict()`.
+
+    Reporting both numbers keeps the difference between them visible instead of
+    letting either one imply the other.
+    """
+    models_path = Path(models_dir)
+    artifacts: list[Path] = []
+    if models_path.exists():
+        for pattern in ("*.pt", "*.ubj", "*.pkl"):
+            artifacts.extend(models_path.rglob(pattern))
+
+    loadable = [n for n in INFERENCE_MODEL_FILES if (models_path / n).exists()]
+
+    if loadable:
+        note = f"{len(loadable)} model(s) loadable by inference: {', '.join(loadable)}"
+    elif artifacts:
+        note = (
+            f"{len(artifacts)} trained artifact(s) on disk but NONE loadable — "
+            f"inference.py reads only {', '.join(INFERENCE_MODEL_FILES)} from the "
+            f"top level of {models_dir}. Promotion is unwired."
+        )
+    else:
+        note = "Run experiments/run_experiment.py to train models"
+
+    return {
+        "ok": len(loadable) > 0,
+        "count": len(loadable),
+        "artifacts_on_disk": len(artifacts),
+        "note": note,
+    }
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="QuantEdge API",
@@ -503,15 +566,7 @@ def create_app() -> FastAPI:
             "note": "Set ALPACA_API_KEY + ALPACA_SECRET_KEY to enable live/paper trading" if alpaca is None else "connected",
         }
 
-        # ML models on disk
-        from pathlib import Path as _Path
-        _models_dir = _Path(settings.models_dir)
-        _model_files = (list(_models_dir.glob("*.pt")) + list(_models_dir.glob("*.ubj")) + list(_models_dir.glob("*.pkl"))) if _models_dir.exists() else []
-        checks["ml_models"] = {
-            "ok": len(_model_files) > 0,
-            "count": len(_model_files),
-            "note": "Run experiments/run_experiment.py to train models" if not _model_files else "models loaded",
-        }
+        checks["ml_models"] = ml_models_check(settings.models_dir)
 
         # Non-critical checks don't make status degraded
         non_critical = {"redis", "torch", "alpaca", "ml_models"}
