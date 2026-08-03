@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 from dataclasses import dataclass
 
+import pytest
+
 
 @dataclass
 class MonteCarloResult:
@@ -101,3 +103,28 @@ def monte_carlo_simulation(
         prob_positive_return=round(positive / n_simulations, 4),
         num_simulations=n_simulations,
     )
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge‑case validation
+# ----------------------------------------------------------------------
+
+
+def test_monte_carlo_empty_series_raises():
+    """Empty daily returns series should raise a ValueError."""
+    with pytest.raises(ValueError, match="daily_returns series cannot be empty"):
+        monte_carlo_simulation(pd.Series([], dtype=float))
+
+
+def test_monte_carlo_non_numeric_series_raises():
+    """Series containing non‑numeric values should raise a ValueError."""
+    series = pd.Series(["a", "b"])
+    with pytest.raises(ValueError, match="daily_returns must contain numeric values"):
+        monte_carlo_simulation(series)
+
+
+def test_monte_carlo_zero_simulations_raises():
+    """Zero simulations should raise a ValueError."""
+    series = pd.Series([0.01, -0.02, 0.015])
+    with pytest.raises(ValueError, match="n_simulations must be a positive integer"):
+        monte_carlo_simulation(series, n_simulations=0)
