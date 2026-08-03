@@ -7,7 +7,7 @@ from app.api.deps import get_current_user, get_current_active_superuser
 from app.models.strategy import Strategy
 from app.models.user import User
 from app.strategies import STRATEGY_REGISTRY, list_desks, strategies_by_desk
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, validator
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
 
@@ -28,6 +28,12 @@ class StrategyOut(BaseModel):
 
 class StrategyToggle(BaseModel):
     is_enabled: bool
+
+    @validator("is_enabled")
+    def must_be_bool(cls, v):
+        if not isinstance(v, bool):
+            raise ValueError("is_enabled must be a boolean")
+        return v
 
 
 @router.get("/params-schema")
@@ -84,24 +90,35 @@ async def list_active(
     # Fallback: query DB directly with a lightweight column selection
     try:
         async with AsyncSessionLocal() as db:
-            stmt = select(
-                Strategy.name,
-                Strategy.symbols,
-                Strategy.tick_interval_seconds,
-                Strategy.confidence_threshold,
-            ).where(Strategy.is_enabled.is_(True))
+            stmt = (
+                select(
+                    Strategy.name,
+                    Strategy.symbols,
+                    Strategy.tick_interval_seconds,
+                    Strategy.confidence_threshold,
+                )
+                .where(Strategy.is_enabled.is_(True))
+                .where(Strategy.confidence_threshold >= 0.7)  # enforce tighter entry confidence
+            )
             result = await db.execute(stmt)
             rows = result.mappings().all()
-            return [
-                {
-                    "name": row["name"],
-                    "symbols": row["symbols"] if isinstance(row["symbols"], list) else [],
-                    "tick_interval_seconds": int(row.get("tick_interval_seconds", 3600)),
-                    "confidence_threshold": float(row.get("confidence_threshold", 0.6)),
-                    "is_running": True,
-                }
-                for row in rows
-            ]
+            filtered = []
+            for row in rows:
+                tick = row.get("tick_interval_seconds", 3600)
+                conf = row.get("confidence_threshold", 0.6)
+                # Additional sanity checks
+                if tick <= 0 or not (0.0 <= conf <= 1.0):
+                    continue
+                filtered.append(
+                    {
+                        "name": row["name"],
+                        "symbols": row["symbols"] if isinstance(row["symbols"], list) else [],
+                        "tick_interval_seconds": int(tick),
+                        "confidence_threshold": float(conf),
+                        "is_running": True,
+                    }
+                )
+            return filtered
     except Exception:
         # Return empty list rather than crashing — frontend must handle this gracefully
         return []
@@ -123,10 +140,19 @@ async def toggle_strategy(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
 ):
+    """Enable or disable a strategy, enforcing a minimum confidence threshold for activation."""
     result = await db.execute(select(Strategy).where(Strategy.id == strategy_id))
     strategy = result.scalar_one_or_none()
     if not strategy:
-        raise HTTPException(404, "Strategy not found")
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    if body.is_enabled and strategy.confidence_threshold < 0.7:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Cannot enable strategy: confidence_threshold "
+                f"{strategy.confidence_threshold:.2f} is below the required minimum of 0.70."
+            ),
+        )
     strategy.is_enabled = body.is_enabled
     await db.commit()
     return {"id": strategy_id, "is_enabled": body.is_enabled}

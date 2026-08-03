@@ -10,6 +10,13 @@ Features:
   - Top-of-book depth ratio
   - PIN proxy (Probability of Informed Trading)
   - Kyle's lambda (price impact coefficient)
+
+Signal logic:
+  - Tightened entry conditions based on imbalance, spread and depth ratio.
+  - Confirmation filter requiring the conditions to hold for a configurable
+    number of consecutive snapshots.
+  - Exit logic based on reversal of imbalance, spread widening or depth ratio
+    deterioration.
 """
 from __future__ import annotations
 
@@ -23,6 +30,7 @@ BASIS_POINTS_MULTIPLIER: float = 10_000.0
 MIN_SAMPLE_SIZE: int = 5
 VAR_VOLUME_EPS: float = 1e-12
 
+# Feature column names
 COL_HIGH: str = "high"
 COL_LOW: str = "low"
 COL_CLOSE: str = "close"
@@ -31,6 +39,18 @@ COL_LOB_IMBALANCE: str = "lob_imbalance"
 COL_SPREAD_BPS: str = "spread_bps"
 
 MICROSTRUCTURE_FEATURE_COLS = [COL_LOB_IMBALANCE, COL_SPREAD_BPS]
+
+# Signal thresholds – these can be tuned per instrument
+IMBALANCE_ENTRY_THRESHOLD: float = 0.20   # minimum absolute imbalance to consider entry
+SPREAD_ENTRY_MAX_BPS: float = 5.0        # max spread (bps) for entry
+DEPTH_RATIO_ENTRY_MIN: float = 1.2      # minimum depth ratio for entry
+PIN_PROXY_MAX: float = 0.30              # max PIN proxy (high values suggest informed flow)
+
+IMBALANCE_EXIT_THRESHOLD: float = 0.10   # imbalance magnitude below which we exit
+SPREAD_EXIT_MAX_BPS: float = 10.0        # spread widening trigger for exit
+DEPTH_RATIO_EXIT_MIN: float = 0.9        # depth ratio deterioration trigger for exit
+
+DEFAULT_CONFIRMATION_LOOKBACK: int = 3   # number of consecutive bars required
 
 
 class OrderBookFeatures:
@@ -167,6 +187,101 @@ class OrderBookFeatures:
             "depth_ratio": self.compute_depth_ratio(bids, asks),
             "pin_proxy": self.compute_pin_proxy(buy_volume, sell_volume),
         }
+
+    # --------------------------------------------------------------------- #
+    # Signal generation utilities
+    # --------------------------------------------------------------------- #
+
+    def _entry_conditions_met(self, row: pd.Series) -> bool:
+        """
+        Evaluate tightened entry conditions on a single row of features.
+        """
+        if abs(row["imbalance"]) < IMBALANCE_ENTRY_THRESHOLD:
+            return False
+        if row["spread_bps"] > SPREAD_ENTRY_MAX_BPS:
+            return False
+        if row.get("depth_ratio", 1.0) < DEPTH_RATIO_ENTRY_MIN:
+            return False
+        if row.get("pin_proxy", 0.0) > PIN_PROXY_MAX:
+            return False
+        return True
+
+    def _exit_conditions_met(self, row: pd.Series) -> bool:
+        """
+        Evaluate exit conditions on a single row of features.
+        """
+        if abs(row["imbalance"]) < IMBALANCE_EXIT_THRESHOLD:
+            return True
+        if row["spread_bps"] > SPREAD_EXIT_MAX_BPS:
+            return True
+        if row.get("depth_ratio", 1.0) < DEPTH_RATIO_EXIT_MIN:
+            return True
+        return False
+
+    def generate_signals(
+        self,
+        df: pd.DataFrame,
+        confirmation_lookback: int = DEFAULT_CONFIRMATION_LOOKBACK,
+    ) -> pd.DataFrame:
+        """
+        Generate entry/exit signals based on microstructure features.
+
+        The method adds two columns to the DataFrame:
+            * ``signal`` – 1 for long entry, -1 for short entry, 0 for no position.
+            * ``signal_reason`` – short textual description for debugging.
+
+        Entry requires that the tightened entry conditions hold for
+        ``confirmation_lookback`` consecutive rows.  Exit triggers as soon
+        as any exit condition is satisfied.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Must contain at least the columns defined in ``MICROSTRUCTURE_FEATURE_COLS``.
+        confirmation_lookback : int, optional
+            Number of consecutive bars that must satisfy entry conditions.
+            Default is ``DEFAULT_CONFIRMATION_LOOKBACK``.
+
+        Returns
+        -------
+        pd.DataFrame
+            Input DataFrame with the added ``signal`` and ``signal_reason`` columns.
+        """
+        df = df.copy()
+
+        # Ensure required columns exist
+        missing = [c for c in MICROSTRUCTURE_FEATURE_COLS if c not in df.columns]
+        if missing:
+            raise ValueError(f"Missing required microstructure feature columns: {missing}")
+
+        # Compute boolean masks for entry and exit conditions
+        entry_mask = df.apply(self._entry_conditions_met, axis=1)
+        exit_mask = df.apply(self._exit_conditions_met, axis=1)
+
+        # Confirmation filter: entry only if the mask is True for the last N rows
+        confirmed_entry = entry_mask.rolling(window=confirmation_lookback, min_periods=confirmation_lookback).apply(
+            lambda x: 1.0 if x.all() else 0.0, raw=False
+        ).astype(bool)
+
+        # Initialise signal columns
+        df["signal"] = 0
+        df["signal_reason"] = ""
+
+        # Long vs short based on sign of imbalance
+        long_entries = confirmed_entry & (df["imbalance"] > 0)
+        short_entries = confirmed_entry & (df["imbalance"] < 0)
+
+        df.loc[long_entries, "signal"] = 1
+        df.loc[short_entries, "signal"] = -1
+        df.loc[long_entries, "signal_reason"] = "entry_long_imbalance"
+        df.loc[short_entries, "signal_reason"] = "entry_short_imbalance"
+
+        # Override with exit signals where applicable
+        exit_positions = (df["signal"] != 0) & exit_mask
+        df.loc[exit_positions, "signal"] = 0
+        df.loc[exit_positions, "signal_reason"] = "exit_condition"
+
+        return df
 
 
 def add_microstructure_features(
