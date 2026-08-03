@@ -1,21 +1,3 @@
-"""
-Free LLM Router — dispatches to 7 free providers in parallel.
-
-Priority cascade (fastest/highest-quota first):
-  1. Gemini Flash 2.0 (Google AI Studio — 1M TPM free)
-  2. Groq  (llama-3.3-70b — 6000 TPD free, very fast)
-  3. DeepSeek (deepseek-chat — $5 free credit, cheap)
-  4. SambaNova (Meta-Llama-3.3-70B — free tier)
-  5. Cerebras (llama-3.3-70b — free tier, fast inference)
-  6. Together AI (Llama-3.3-70B — $25 free credit)
-  7. Hyperbolic (llama-3.3-70b — $10 free credit)
-
-Modes:
-  - "race":      first successful response wins, rest cancelled
-  - "consensus": all respond, majority vote on yes/no questions
-  - "best_of":   all respond, pick longest coherent answer
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -26,9 +8,30 @@ from dataclasses import dataclass, field
 
 import httpx
 
+# ── Constants ───────────────────────────────────────────────────────────────
+
+DEFAULT_TEMPERATURE = 0.3
+DEFAULT_MAX_TOKENS_RACE = 2048
+DEFAULT_TIMEOUT_RACE = 30.0
+
+DEFAULT_MAX_TOKENS_CONSENSUS = 512
+DEFAULT_TIMEOUT_CONSENSUS = 40.0
+
+DEFAULT_PROVIDER_MAX_TOKENS = 2048
+DEFAULT_PROVIDER_TIMEOUT = 30.0
+
+AUTH_HEADER = "Authorization"
+CONTENT_TYPE_HEADER = "Content-Type"
+JSON_CONTENT_TYPE = "application/json"
+CHAT_COMPLETIONS_ENDPOINT = "/chat/completions"
+
+NO_API_KEYS_MSG = "free_llm_router: no API keys configured"
+DISABLED_KEYS = ("", "disabled")
+
 logger = logging.getLogger(__name__)
 
 # ── Provider definitions ──────────────────────────────────────────────────────
+
 
 @dataclass
 class LLMProvider:
@@ -36,8 +39,8 @@ class LLMProvider:
     env_key: str
     base_url: str
     model: str
-    max_tokens: int = 2048
-    timeout: float = 30.0
+    max_tokens: int = DEFAULT_PROVIDER_MAX_TOKENS
+    timeout: float = DEFAULT_PROVIDER_TIMEOUT
     headers_extra: dict = field(default_factory=dict)
 
 
@@ -104,14 +107,15 @@ class LLMResponse:
 
 # ── Core caller ───────────────────────────────────────────────────────────────
 
+
 async def _call_provider(
     provider: LLMProvider,
     messages: list[dict],
-    temperature: float = 0.3,
+    temperature: float = DEFAULT_TEMPERATURE,
     max_tokens: int | None = None,
 ) -> LLMResponse | None:
     api_key = os.getenv(provider.env_key, "")
-    if not api_key or api_key in ("disabled", ""):
+    if not api_key or api_key in DISABLED_KEYS:
         return None
 
     payload = {
@@ -125,8 +129,8 @@ async def _call_provider(
     try:
         async with httpx.AsyncClient(timeout=provider.timeout) as client:
             resp = await client.post(
-                f"{provider.base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                f"{provider.base_url}{CHAT_COMPLETIONS_ENDPOINT}",
+                headers={AUTH_HEADER: f"Bearer {api_key}", CONTENT_TYPE_HEADER: JSON_CONTENT_TYPE},
                 json=payload,
             )
             resp.raise_for_status()
@@ -142,20 +146,21 @@ async def _call_provider(
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
+
 async def call_race(
     messages: list[dict],
-    temperature: float = 0.3,
-    max_tokens: int = 2048,
-    timeout: float = 30.0,
+    temperature: float = DEFAULT_TEMPERATURE,
+    max_tokens: int = DEFAULT_MAX_TOKENS_RACE,
+    timeout: float = DEFAULT_TIMEOUT_RACE,
 ) -> LLMResponse | None:
     """Call all available providers in parallel; return the first successful response."""
     tasks = {
         asyncio.create_task(_call_provider(p, messages, temperature, max_tokens)): p
         for p in PROVIDERS
-        if os.getenv(p.env_key, "") not in ("", "disabled")
+        if os.getenv(p.env_key, "") not in DISABLED_KEYS
     }
     if not tasks:
-        logger.warning("free_llm_router: no API keys configured")
+        logger.warning(NO_API_KEYS_MSG)
         return None
 
     done, pending = await asyncio.wait(
@@ -176,15 +181,15 @@ async def call_race(
 
 async def call_consensus(
     messages: list[dict],
-    temperature: float = 0.3,
-    max_tokens: int = 512,
-    timeout: float = 40.0,
+    temperature: float = DEFAULT_TEMPERATURE,
+    max_tokens: int = DEFAULT_MAX_TOKENS_CONSENSUS,
+    timeout: float = DEFAULT_TIMEOUT_CONSENSUS,
 ) -> list[LLMResponse]:
     """Call all providers and return all successful responses for consensus analysis."""
     tasks = [
         _call_provider(p, messages, temperature, max_tokens)
         for p in PROVIDERS
-        if os.getenv(p.env_key, "") not in ("", "disabled")
+        if os.getenv(p.env_key, "") not in DISABLED_KEYS
     ]
     if not tasks:
         return []
@@ -194,4 +199,4 @@ async def call_consensus(
 
 def available_providers() -> list[str]:
     """Return names of providers with configured API keys."""
-    return [p.name for p in PROVIDERS if os.getenv(p.env_key, "") not in ("", "disabled")]
+    return [p.name for p in PROVIDERS if os.getenv(p.env_key, "") not in DISABLED_KEYS]

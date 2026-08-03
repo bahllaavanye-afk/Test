@@ -9,7 +9,17 @@ from app.models.user import User
 from app.comparison.benchmarks import get_benchmark_stats
 from pydantic import BaseModel, ConfigDict
 
-router = APIRouter(prefix="/comparison", tags=["comparison"])
+# Constants
+PREFIX = "/comparison"
+TAG = "comparison"
+ENDPOINT_BENCHMARKS = "/benchmarks"
+ENDPOINT_RESULTS = "/results"
+ENDPOINT_ROOT = "/"
+MIN_MANUAL_SHARPE = 1e-9
+IMPROVEMENT_PRECISION = 4
+DEFAULT_LIMIT = 20
+
+router = APIRouter(prefix=PREFIX, tags=[TAG])
 
 
 class ComparisonOut(BaseModel):
@@ -29,7 +39,7 @@ class ComparisonOut(BaseModel):
     def from_model(cls, m) -> "ComparisonOut":
         improvement = None
         if m.manual_sharpe is not None and m.ml_sharpe is not None:
-            base = float(m.manual_sharpe) or 1e-9
+            base = float(m.manual_sharpe) or MIN_MANUAL_SHARPE
             improvement = (float(m.ml_sharpe) - float(m.manual_sharpe)) / abs(base)
         return cls(
             id=m.id,
@@ -40,23 +50,23 @@ class ComparisonOut(BaseModel):
             is_significant=m.is_significant,
             winner=m.winner,
             spy_sharpe=float(m.spy_sharpe) if m.spy_sharpe else None,
-            ml_improvement_pct=round(improvement, 4) if improvement else None,
+            ml_improvement_pct=round(improvement, IMPROVEMENT_PRECISION) if improvement else None,
         )
 
 
-@router.get("/benchmarks")
+@router.get(ENDPOINT_BENCHMARKS)
 async def get_benchmarks():
     return get_benchmark_stats()
 
 
-@router.get("/results", response_model=list[ComparisonOut])
-@router.get("/", response_model=list[ComparisonOut])
+@router.get(ENDPOINT_RESULTS, response_model=list[ComparisonOut])
+@router.get(ENDPOINT_ROOT, response_model=list[ComparisonOut])
 async def list_comparisons(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(ComparisonModel).order_by(ComparisonModel.created_at.desc()).limit(20)
+        select(ComparisonModel).order_by(ComparisonModel.created_at.desc()).limit(DEFAULT_LIMIT)
     )
     rows = result.scalars().all()
     return [ComparisonOut.from_model(r) for r in rows]
