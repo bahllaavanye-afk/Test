@@ -6,8 +6,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Optional
 
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 from scipy import stats
 
 from app.backtest.engine import run_backtest, BacktestMetrics
@@ -39,22 +41,97 @@ WINNER_MANUAL: str = "manual"
 WINNER_NEITHER: str = "neither"
 
 
-@dataclass
-class ComparisonResult:
-    strategy_name: str
-    symbol: str
-    interval: str
-    start_date: date
-    end_date: date
-    manual: BacktestMetrics | None = None
-    ml_enhanced: BacktestMetrics | None = None
-    benchmark_curves: dict = field(default_factory=dict)
-    benchmark_stats: dict = field(default_factory=dict)
-    ml_improvement_sharpe: float = 0.0
-    t_statistic: float = 0.0
-    p_value: float = 1.0
-    is_significant: bool = False
-    winner: str = WINNER_NEITHER
+class ComparisonResult(BaseModel):
+    """Pydantic model representing the outcome of a strategy comparison."""
+
+    strategy_name: str = Field(
+        ...,
+        description="Name of the strategy under comparison.",
+        example="MeanRev20",
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol of the asset.",
+        example="AAPL",
+    )
+    interval: str = Field(
+        ...,
+        description="Data interval (e.g., 15m, 1h).",
+        example="15m",
+    )
+    start_date: date = Field(
+        ...,
+        description="Start date of the backtest period.",
+        example="2023-01-01",
+    )
+    end_date: date = Field(
+        ...,
+        description="End date of the backtest period.",
+        example="2023-06-30",
+    )
+    manual: Optional[BacktestMetrics] = Field(
+        None,
+        description="Metrics from the manual signal backtest.",
+    )
+    ml_enhanced: Optional[BacktestMetrics] = Field(
+        None,
+        description="Metrics from the ML‑enhanced signal backtest.",
+    )
+    benchmark_curves: dict = Field(
+        default_factory=dict,
+        description="Benchmark equity curves fetched for the period.",
+        example={"SPY": [100_000, 101_200, 102_500]},
+    )
+    benchmark_stats: dict = Field(
+        default_factory=dict,
+        description="Statistical summary of benchmarks.",
+        example={"SPY": {"mean_return": 0.02, "volatility": 0.15}},
+    )
+    ml_improvement_sharpe: float = Field(
+        0.0,
+        description="Difference in Sharpe ratio (ML - manual).",
+        example=0.12,
+    )
+    t_statistic: float = Field(
+        0.0,
+        description="Student's t statistic from the returns comparison test.",
+        example=2.34,
+    )
+    p_value: float = Field(
+        1.0,
+        description="P‑value of the statistical test.",
+        example=0.0195,
+    )
+    is_significant: bool = Field(
+        False,
+        description="Indicates whether the p‑value is below the significance threshold.",
+        example=True,
+    )
+    winner: str = Field(
+        WINNER_NEITHER,
+        description="Identified winner: 'ml', 'manual', or 'neither'.",
+        example="ml",
+    )
+
+    @validator("end_date")
+    def check_date_order(cls, v: date, values: dict) -> date:
+        start = values.get("start_date")
+        if start and v < start:
+            raise ValueError("end_date must be on or after start_date")
+        return v
+
+    @validator("p_value")
+    def validate_p_value_range(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("p_value must be between 0 and 1")
+        return v
+
+    @validator("winner")
+    def validate_winner(cls, v: str) -> str:
+        allowed = {WINNER_ML, WINNER_MANUAL, WINNER_NEITHER}
+        if v not in allowed:
+            raise ValueError(f"winner must be one of {allowed}")
+        return v
 
 
 class StrategyComparisonEngine:
