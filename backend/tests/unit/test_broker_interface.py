@@ -63,15 +63,47 @@ def test_no_broker_subclass_is_abstract():
     )
 
 
+def _required_interface_methods() -> set[str]:
+    """Return the full set of methods defined by AbstractBroker."""
+    return {
+        "place_order",
+        "cancel_order",
+        "get_order",
+        "get_positions",
+        "get_account",
+        "get_quote",
+        "get_historical",
+    }
+
+
+def test_all_broker_classes_implement_interface_directly():
+    """Ensure every concrete broker implements the full interface in its own
+    class body. Inheritance of stubs can hide missing implementations after a
+    truncation edit.
+    """
+    required = _required_interface_methods()
+    failures: dict[str, list[str]] = {}
+    for mod in _BROKER_MODULES:
+        try:
+            module = importlib.import_module(mod)
+        except Exception:
+            continue
+        for name, obj in vars(module).items():
+            if isinstance(obj, type) and issubclass(obj, AbstractBroker) and obj is not AbstractBroker:
+                own = set(vars(obj))
+                missing = required - own
+                if missing:
+                    failures[f"{mod}.{obj.__name__}"] = sorted(missing)
+    assert not failures, f"Brokers missing direct interface implementations: {failures}"
+
+
 def test_alpaca_broker_declares_every_interface_method_directly():
     """Belt and braces: the primary broker must implement the full interface in
     its own body (not inherit stubs) — truncation deletes method bodies."""
     pytest.importorskip("alpaca")
     from app.brokers.alpaca import AlpacaBroker
-    required = {
-        "place_order", "cancel_order", "get_order",
-        "get_positions", "get_account", "get_quote", "get_historical",
-    }
+
+    required = _required_interface_methods()
     own = set(vars(AlpacaBroker))
     missing = required - own
     assert not missing, f"AlpacaBroker missing methods in class body: {sorted(missing)}"
