@@ -32,6 +32,31 @@ Two causes:
   was **dormant, not dead**. The moment CI actually ran on main it fired on both
   desks — 06:43 and 07:45, both `success` on desk-trading.
 
+### ✅ VERIFIED 2026-08-03 10:16 — the pacemaker dispatch works
+First-ever `workflow_dispatch` run on `desk-trading.yml`: run `30804944671`,
+triggered by `github-actions[bot]`, `desks_run=9`, conclusion `success`. So
+`cancel-in-progress: false` let the sleeper reach its dispatch, and the dispatch
+returned 204. `orders_placed=0` is CORRECT for that run — 10:21 UTC is pre-market
+(US RTH = 13:30-20:00 UTC). Note there were **no `schedule` runs at all** on
+Monday between 09:00 and 10:16 despite cron `*/15 9-22 * * 1-5`, which is the
+starvation this dispatch exists to route around.
+
+### 🔴 The Polymarket desk has NO execution path (found 2026-08-03 10:30)
+Run `30804944671` logged three `poly_cross_market_hedge` signals at **conf=1.00**
+on `PM:` symbols, all dropped as "(Polymarket closed)".
+
+**Do not "fix" this by setting `always_open=True`.** That was the instinct and it
+is wrong for the second time in two ticks (cf. the crypto-24x7 gate below).
+`desk_order_placer.py` references `brokers` **zero times** — every order is a POST
+to Alpaca `/v2/orders` (line 1101). `backend/app/brokers/polymarket.py` exists but
+the desk script never imports it. Flipping the flag would send
+`PM:Will Tucker Carlson win the 2028 Republi…` to Alpaca and fail.
+
+The clock gate is accidentally masking a deeper gap: **the Polymarket desk is
+decorative in the desk runner** — 8 strategies, conf up to 1.00, no route to a
+venue. Fixing it means wiring `brokers/polymarket.py` into the desk (or removing
+the desk), not touching the market-hours flag. Not attempted; needs a decision.
+
 **Do NOT dispatch `desk-trading-crypto-24x7.yml` from the pacemaker.** The first
 version of that step dispatched both desk workflows and would have reintroduced a
 measured bug. `desk-trading.yml` already runs ALL NINE desks and crypto is
