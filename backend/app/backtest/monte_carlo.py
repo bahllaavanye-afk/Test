@@ -1,9 +1,19 @@
 """Monte Carlo simulation: bootstrap equity curve for robustness confidence intervals."""
 from __future__ import annotations
+
+import logging
 import numbers
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass
+
+
+logger = logging.getLogger(__name__)
+
+
+class MonteCarloError(RuntimeError):
+    """Raised when an unexpected error occurs during Monte Carlo simulation."""
 
 
 @dataclass
@@ -53,6 +63,8 @@ def monte_carlo_simulation(
     ------
     ValueError
         If any input is invalid.
+    MonteCarloError
+        If an unexpected error occurs during the simulation.
     """
     # Input validation
     if not isinstance(daily_returns, pd.Series):
@@ -72,24 +84,36 @@ def monte_carlo_simulation(
 
     n_days = int(n_years * 252)
     returns_array = daily_returns.dropna().values
-    sharpes = []
-    max_dds = []
+    sharpes: list[float] = []
+    max_dds: list[float] = []
     positive = 0
 
     rng = np.random.default_rng(42)
-    for _ in range(n_simulations):
-        sampled = rng.choice(returns_array, size=n_days, replace=True)
-        equity = np.cumprod(1 + sampled) * 100_000
-        peak = np.maximum.accumulate(equity)
-        dd = (equity - peak) / peak
-        max_dd = dd.min()
 
-        excess = sampled - risk_free_daily
-        sharpe = (excess.mean() / excess.std() * np.sqrt(252)) if excess.std() > 0 else 0.0
-        sharpes.append(sharpe)
-        max_dds.append(max_dd)
-        if equity[-1] > 100_000:
-            positive += 1
+    try:
+        for _ in range(n_simulations):
+            sampled = rng.choice(returns_array, size=n_days, replace=True)
+            equity = np.cumprod(1 + sampled) * 100_000
+            peak = np.maximum.accumulate(equity)
+            dd = (equity - peak) / peak
+            max_dd = dd.min()
+
+            excess = sampled - risk_free_daily
+            sharpe = (
+                (excess.mean() / excess.std() * np.sqrt(252))
+                if excess.std() > 0
+                else 0.0
+            )
+            sharpes.append(sharpe)
+            max_dds.append(max_dd)
+            if equity[-1] > 100_000:
+                positive += 1
+    except Exception as exc:  # pragma: no cover
+        logger.exception(
+            "Unexpected error during Monte Carlo simulation",
+            extra={"n_simulations": n_simulations, "n_years": n_years},
+        )
+        raise MonteCarloError("Monte Carlo simulation failed") from exc
 
     return MonteCarloResult(
         median_sharpe=round(float(np.median(sharpes)), 4),

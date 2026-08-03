@@ -57,32 +57,55 @@ class AlphaDecayTracker:
 
         Returns:
             DecayProfile with IC at each horizon and fitted half-life in hours.
-            Raises ValueError if prices has no 'close' column.
+
+        Raises:
+            ValueError: If ``prices`` does not contain a ``close`` column.
         """
         start_time = time.time()
         signal_count = int(signals.shape[0])
 
         if "close" not in prices.columns:
+            logger.error(
+                {
+                    "event": "compute_ic_profile",
+                    "strategy": strategy_name,
+                    "error": "MissingCloseColumn",
+                    "message": "prices DataFrame must contain a 'close' column",
+                }
+            )
             raise ValueError("prices DataFrame must contain a 'close' column")
 
         ics: dict[int, float] = {}
 
         for h in self.HORIZONS:
-            fwd_ret = prices["close"].pct_change(h).shift(-h)
-            common = signals.index.intersection(fwd_ret.index)
-            if len(common) < 30:
+            try:
+                fwd_ret = prices["close"].pct_change(h).shift(-h)
+                common = signals.index.intersection(fwd_ret.index)
+                if len(common) < 30:
+                    continue
+
+                s = signals.loc[common].dropna()
+                r = fwd_ret.loc[s.index].dropna()
+                s = s.loc[r.index]
+
+                if len(s) < 20:
+                    continue
+
+                ic_val, _ = spearmanr(s, r)
+                if not np.isnan(ic_val):
+                    ics[h] = float(ic_val)
+            except Exception as e:
+                logger.exception(
+                    {
+                        "event": "compute_ic_profile",
+                        "strategy": strategy_name,
+                        "horizon": h,
+                        "error": type(e).__name__,
+                        "message": str(e),
+                    }
+                )
+                # Skip this horizon on error
                 continue
-
-            s = signals.loc[common].dropna()
-            r = fwd_ret.loc[s.index].dropna()
-            s = s.loc[r.index]
-
-            if len(s) < 20:
-                continue
-
-            ic_val, _ = spearmanr(s, r)
-            if not np.isnan(ic_val):
-                ics[h] = float(ic_val)
 
         if len(ics) < 2:
             profile = DecayProfile(
@@ -108,8 +131,27 @@ class AlphaDecayTracker:
                 )
                 ic_0, lam = float(popt[0]), float(popt[1])
                 half_life = np.log(2) / lam if lam > 0 else float("inf")
-            except Exception:
-                ic_0 = float(ic_arr[0]) if len(ic_arr) > 0 else 0.0
+            except (RuntimeError, ValueError) as e:
+                logger.error(
+                    {
+                        "event": "compute_ic_profile",
+                        "strategy": strategy_name,
+                        "error": type(e).__name__,
+                        "message": "Curve fitting failed, falling back to first IC value",
+                    }
+                )
+                ic_0 = float(ic_arr[0]) if ic_arr.size > 0 else 0.0
+                half_life = float("inf")
+            except Exception as e:
+                logger.exception(
+                    {
+                        "event": "compute_ic_profile",
+                        "strategy": strategy_name,
+                        "error": type(e).__name__,
+                        "message": str(e),
+                    }
+                )
+                ic_0 = float(ic_arr[0]) if ic_arr.size > 0 else 0.0
                 half_life = float("inf")
 
             profile = DecayProfile(
@@ -120,9 +162,20 @@ class AlphaDecayTracker:
             )
 
         # Approximate P&L as sum of one‑step forward returns aligned with signals
-        fwd_one = prices["close"].pct_change().shift(-1)
-        common_one = signals.index.intersection(fwd_one.index)
-        pnl = float((signals.loc[common_one] * fwd_one.loc[common_one]).sum())
+        try:
+            fwd_one = prices["close"].pct_change().shift(-1)
+            common_one = signals.index.intersection(fwd_one.index)
+            pnl = float((signals.loc[common_one] * fwd_one.loc[common_one]).sum())
+        except Exception as e:
+            logger.exception(
+                {
+                    "event": "compute_ic_profile",
+                    "strategy": strategy_name,
+                    "error": type(e).__name__,
+                    "message": "PnL calculation failed, defaulting to 0.0",
+                }
+            )
+            pnl = 0.0
 
         elapsed = time.time() - start_time
         logger.info(
@@ -155,8 +208,35 @@ class AlphaDecayTracker:
         Returns:
             Adjusted confidence in [0, 1].  Returns base_confidence unchanged
             when half-life is infinite (signal does not decay).
+
+        Raises:
+            ValueError: If ``base_confidence`` is outside the [0, 1] range or
+                ``staleness_hours`` is negative.
         """
         start_time = time.time()
+
+        if not 0.0 <= base_confidence <= 1.0:
+            logger.error(
+                {
+                    "event": "scale_confidence",
+                    "strategy": profile.strategy_name,
+                    "error": "InvalidBaseConfidence",
+                    "message": f"base_confidence {base_confidence} not in [0, 1]",
+                }
+            )
+            raise ValueError("base_confidence must be between 0 and 1")
+
+        if staleness_hours < 0:
+            logger.error(
+                {
+                    "event": "scale_confidence",
+                    "strategy": profile.strategy_name,
+                    "error": "NegativeStaleness",
+                    "message": f"staleness_hours {staleness_hours} cannot be negative",
+                }
+            )
+            raise ValueError("staleness_hours cannot be negative")
+
         if profile.half_life_hours == float("inf") or profile.half_life_hours <= 0:
             adjusted = float(base_confidence)
         else:
