@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Verify data types",
-    "* Improvements are being made to increase UI contrast, including adjustments to `primary` colors in `src/ui/theme/DarkTheme.tsx`.",
-    "Check data formats",
-    "**SSL Certificate Verification**: Verify the integrity of SSL certificates in `/etc/ssl/certs` to ensure secure API connections, such as what's being done by `token_monitor`.",
-    "Test API keys",
     "Parse agent memory",
     "Here are 3 concise bullet points of the most important, actionable knowledge extracted from the recent agent learnings:",
     "Set timeout thresholds",
@@ -199,8 +194,13 @@
     "Prepend S4 block to LSTM pipeline",
     "Validate JSON schemas",
     "Limit DB queries",
-    "Cache API keys"
+    "Cache API keys",
+    "Validate API timestamps",
+    "Use retry on timeouts",
+    "Log API response codes",
+    "Check for null pointers",
+    "Scan log files"
   ],
-  "last_updated": "2026-08-03T17:23:49.116737+00:00",
+  "last_updated": "2026-08-03T19:04:58.449705+00:00",
   "total": 200
 }
