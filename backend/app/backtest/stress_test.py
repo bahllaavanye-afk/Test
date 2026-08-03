@@ -23,6 +23,22 @@ DEFAULT_COMMISSION_PCT: float = 0.001
 DEFAULT_SLIPPAGE_PCT: float = 0.0005
 MIN_DATA_POINTS: int = 5
 
+# Percentage conversion constants for summary output
+PCT_MULTIPLIER: float = 100.0
+PCT_PRECISION: int = 2
+
+# Dictionary keys used in the JSON‑serialisable summary
+KEY_COVERED = "covered"
+KEY_LABEL = "label"
+KEY_DESCRIPTION = "description"
+KEY_DATA_POINTS = "data_points"
+KEY_TOTAL_RETURN_PCT = "total_return_pct"
+KEY_MAX_DRAWDOWN_PCT = "max_drawdown_pct"
+KEY_SHARPE = "sharpe"
+KEY_WIN_RATE = "win_rate"
+KEY_NUM_TRADES = "num_trades"
+
+
 @dataclass
 class StressScenario:
     name: str
@@ -196,23 +212,24 @@ def stress_summary(results: list[StressResult]) -> dict:
     for r in results:
         if not r.period_covered or r.metrics is None:
             out[r.scenario.name] = {
-                "covered": False,
-                "label": r.scenario.label,
-                "description": r.scenario.description,
+                KEY_COVERED: False,
+                KEY_LABEL: r.scenario.label,
+                KEY_DESCRIPTION: r.scenario.description,
             }
         else:
             out[r.scenario.name] = {
-                "covered": True,
-                "label": r.scenario.label,
-                "description": r.scenario.description,
-                "data_points": r.data_points,
-                "total_return_pct": round(r.metrics.total_return * 100, 2),
-                "max_drawdown_pct": round(r.metrics.max_drawdown * 100, 2),
-                "sharpe": r.metrics.sharpe,
-                "win_rate": r.metrics.win_rate,
-                "num_trades": r.metrics.num_trades,
+                KEY_COVERED: True,
+                KEY_LABEL: r.scenario.label,
+                KEY_DESCRIPTION: r.scenario.description,
+                KEY_DATA_POINTS: r.data_points,
+                KEY_TOTAL_RETURN_PCT: round(r.metrics.total_return * PCT_MULTIPLIER, PCT_PRECISION),
+                KEY_MAX_DRAWDOWN_PCT: round(r.metrics.max_drawdown * PCT_MULTIPLIER, PCT_PRECISION),
+                KEY_SHARPE: r.metrics.sharpe,
+                KEY_WIN_RATE: r.metrics.win_rate,
+                KEY_NUM_TRADES: r.metrics.num_trades,
             }
     return out
+
 
 __all__ = [
     "StressScenario",
