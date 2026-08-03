@@ -1,11 +1,5 @@
 {
   "skills": [
-    "Insert S4 blocks",
-    "Test thread safety",
-    "Tighten static-type safety",
-    "* A circuit-breaker wrapper will be added to `backend/app/api/external_client.py` for resilience and fault-tolerance.",
-    "Monitor DNS resolving",
-    "Track timeout errors.",
     "Review sequence handling",
     "Set memory limits",
     "Implement type safety checks",
@@ -199,8 +193,14 @@
     "Use idempotent requests",
     "Test retry intervals",
     "Scan data types",
-    "Track model drift"
+    "Track model drift",
+    "Verify SSL certificates",
+    "Test API rate limits",
+    "Log memory usage",
+    "Monitor health-check endpoints",
+    "Analyze log files for errors",
+    "Prepend S4 block to LSTM pipeline"
   ],
-  "last_updated": "2026-08-03T12:18:48.085401+00:00",
+  "last_updated": "2026-08-03T15:24:12.136899+00:00",
   "total": 200
 }
