@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Optimize token usage",
-    "Streamline color tokens",
-    "Validate timestamp",
-    "Check RAM overflow",
     "* Improvements are being made to increase UI contrast, including adjustments to `primary` colors in `src/ui/theme/DarkTheme.tsx`.",
     "Validate config files",
     "Flush log buffers",
@@ -199,8 +195,12 @@
     "Enforce PEP-8 style",
     "Monitor thread counts",
     "Tighten static-type safety",
-    "Integrate new models"
+    "Integrate new models",
+    "Validate config",
+    "Check db connections",
+    "Apply peer-learned fixes",
+    "Run back-test suites"
   ],
-  "last_updated": "2026-08-02T23:29:05.685146+00:00",
+  "last_updated": "2026-08-03T01:07:50.678425+00:00",
   "total": 200
 }
