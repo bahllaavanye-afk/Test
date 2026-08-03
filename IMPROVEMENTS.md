@@ -1,5 +1,16 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 💤 2026-08-03 02:40 — the merge gate has not fired in three days
+
+Both earlier fixes verified live: the improver's dispatch logs `CI dispatched on improver/run-30773290001` instead of the 403, and improver PRs now get full CI. The stage *after* that is dead.
+
+**`auto-merge.yml`'s last run was 2026-07-29 23:45**, on a human-pushed branch. In the three days since, the improver opened ~90 PRs (now `#1341`) and the gate never woke. `#1341` is green (`test`, `test-agents`, `frontend-build`), labelled `automerge`, not a draft, unmerged.
+
+- [x] **[P0] Gave the gate a heartbeat it owns.** Every declared trigger is suppressed for bot PRs — GitHub does not start runs from GITHUB_TOKEN-attributed events, and the improver opens the PR, applies the label, and dispatches CI, all with that token. `pull_request_target: labeled`, `check_suite: completed` and `workflow_run: [CI] completed` are therefore all dead here; every historical run traces back to a human push. Added `schedule: "17,47 * * * *"`. A floor, not a guarantee — free-tier cron is starved (measured 1h22m–3h12m late) — but the job is idempotent so a late sweep still lands what is eligible.
+- [x] **Pinned the coupling that makes it non-decorative.** A scheduled run has no event payload, so without the existing `candidates.size === 0` fallback that scans all open PRs it would exit green having inspected nothing. 4 tests; the schedule test fails against the old file, and the others pin the required-checks list and the `automerge` label gate — both of which matter *more* now that the gate can run with no CI event to anchor it.
+- [ ] **[P1] The backlog is not all trigger-blocked.** `#1337`'s `test` genuinely failed; some unknown share of the ~90 open PRs will be legitimately red. The sweep will sort them, but do not read "gate fixed" as "90 PRs will land".
+- [ ] **[USER] The stale-PR decision from 07-29 is now much larger.** ~90 open improver PRs, oldest based on `main` from days ago. Still not mass-merged or mass-closed here.
+
 ## ✅ 2026-07-29 22:45 — dispatch fix verified live; and it fixed a STALL, not a safety hole
 
 Verified on a live run instead of assuming. Improver run `30496380998` (22:30, head `fa4a99a2` — the first carrying `actions: write`) dispatched cleanly, and **PR #1246 has CI check runs, the first improver PR ever to get them**, starting 3 seconds after the dispatch. `test` then **FAILED**, so the gate is holding it.

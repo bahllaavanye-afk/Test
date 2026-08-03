@@ -378,6 +378,45 @@ suspect.
 **Cost while unresolved:** MKR/USD burns a top-K slot every run — this run it was 1 of only 3
 signals that passed, so a third of the desk's capacity went to a guaranteed reject.
 
+## 💤 2026-08-03 02:40 — THE MERGE GATE HAS NOT FIRED IN THREE DAYS
+Both earlier fixes are confirmed working in production. The improver's dispatch step now logs
+`CI dispatched on improver/run-30773290001` instead of the 403, and improver PRs get full CI. But
+the stage *after* that is dead.
+
+**`auto-merge.yml`'s last run was 2026-07-29 23:45** — on a human-pushed branch. In the three days
+since, the improver opened ~90 PRs (now at `#1341`) and the gate never woke once. `#1341` is green
+(`test`, `test-agents`, `frontend-build` all success), carries the `automerge` label, is not a
+draft, and is unmerged.
+
+**Why:** every trigger it declared is suppressed for exactly the PRs it exists to land. GitHub does
+not start workflow runs from events attributed to GITHUB_TOKEN, and every step of the improver's
+loop uses it:
+```
+pull_request_target: labeled    the bot applies `automerge`  -> suppressed
+check_suite: completed          checks from the bot's CI     -> suppressed
+workflow_run: [CI] completed    CI dispatched by the bot     -> suppressed
+```
+Every historical auto-merge run is `pull_request_target` or `check_suite`, each traceable to a human
+push. `workflow_dispatch` was already declared and nothing ever called it.
+
+**This is the next link in the same chain as the missing `actions: write`.** That fix made CI run;
+this one makes something read the result. Fixing one stage keeps exposing the next — worth expecting
+rather than being surprised by.
+
+**Fix:** a `schedule` (`17,47 * * * *`) — a heartbeat the gate owns, independent of any bot event.
+It is a floor, not a guarantee: free-tier cron is starved here (measured 1h22m–3h12m late), but the
+job is idempotent and cheap, so a late sweep still lands everything eligible.
+
+**The schedule only works because of the zero-candidate fallback.** A scheduled run has no event
+payload, so candidate collection yields nothing; without the existing `candidates.size === 0` branch
+that scans all open PRs, it would succeed having examined zero PRs — a green no-op, this repo's
+signature failure. `test_the_schedule_is_not_decorative` pins the two together. Also pinned: the
+required-checks list and the `automerge` label gate, both of which matter *more* now that the gate
+runs without any CI event to anchor it.
+
+**Not claimed:** that this unblocks all ~90 PRs. `#1337` was checked and its `test` job genuinely
+failed — that one is correctly blocked, and an unknown share of the backlog will be too.
+
 ## 🎯 2026-07-29 23:40 — the improver was spending half its budget on files it cannot improve
 `improve_file()` rejects anything over `MAX_FILE_CHARS` (8000), and `main()` caps the loop at 10
 attempts for 5 wanted improvements. `pick_target_file()` did not know about the limit, so it kept
