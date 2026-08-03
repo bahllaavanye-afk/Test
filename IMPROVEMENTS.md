@@ -145,6 +145,28 @@ by type          traces   successes          by reason
   Deliberately **not** done: no salvaging prose into code. A response with no fence and no valid Python still fails the syntax check — the goal is to stop discarding good output, not to start accepting bad output.
 - [x] **Verified live: the 15:40 roll-call fix works in production.** The 17:14 run wrote `total_runs: 61, success_rate_pct: 100.0, failures_recorded: 0` — real numbers where it previously wrote `0` and `0`, and the new `failures_recorded` field is present and correctly reporting the gap this entry closes.
 
+## 🧠 2026-08-03 21:45 — the ML work is aimed at the one model family that cannot run in production
+Read before touching any LSTM promotion item below. The whole 07-29 section is real work that **cannot change production
+behaviour on current hosting**, and the reason is deliberate.
+- [x] **torch is excluded from Render on purpose.** `backend/pyproject.toml:54-56`: *"ML inference — in [ml] optional group
+  so Render free tier skips the 800MB torch wheel … Render installs: pip install -e "." (no torch = ML strategies degrade
+  gracefully)"*. `render.yaml:19` confirms: `pip install -e "."`, no `[ml]` extra. So `torch: available: false` is CORRECT,
+  not a bug, and LSTM/SSM/Mamba/PatchTST inference is impossible there at any artifact quality.
+- [x] **But xgboost, lightgbm and scikit-learn ARE installed** — base deps (`pyproject.toml:40,45,46`). `inference.py`
+  loads four exact filenames and **three need no torch**: `xgboost_latest.ubj`, `lorentzian_latest.pkl`,
+  `scaler_latest.pkl` (vs `lstm_latest.pt`).
+- [x] **Nothing produces the torch-free artifacts.** The only CI trainer is `ci_lstm_trainer.py` (LSTM). A repo-wide grep
+  for `xgboost_latest`/`lorentzian_latest` returns only `app/main.py` (health check) and `app/ml/inference.py` (loader).
+  Backend trainers are `train_lstm`/`train_ssm` (torch) and `train_ppo_exec`/`train_rl` (stable-baselines3 → torch).
+  `app/ml/models/xgboost_model.py` is a class with no pipeline behind it. Six successful weekly LSTM runs produced
+  artifacts for the one runtime that is not installed; the two that ARE installed have no trainer.
+- [ ] **[USER] Two real options, both operator calls.** (a) **Torch-free, no hosting change:** add an XGBoost/LightGBM
+  trainer to CI and promote to `xgboost_latest.ubj` — runtime, model class and loader all already exist, only the trainer
+  is missing, and it would work on Render today. (b) **Torch path:** host inference where torch fits (paid tier or a
+  separate worker), which is what would make the `LSTMPredictor` unification below worth doing.
+- [ ] **Until one is chosen, the LSTM items below are parked, not pending.** Leaving them on the active list is how six
+  weeks of training ran into a runtime that was never going to load it.
+
 ## 🔬 2026-07-29 15:10 — six trained models, zero reaching inference; and the roll call was counting the wrong dimension
 
 Two of the open questions from the 14:00 sweep, answered with measurements rather than inference.
