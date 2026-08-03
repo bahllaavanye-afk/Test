@@ -20,6 +20,11 @@ _lock = asyncio.Lock()
 # In‑memory counters for monitoring
 _stats: dict[str, dict[str, float]] = defaultdict(lambda: {"count": 0, "pnl": 0.0})
 
+# Signal quality thresholds
+_MIN_CONFIDENCE = 0.6  # Minimum confidence required for entry signals
+_REQUIRED_SIGNAL_FIELDS = {"signal_id", "action", "confidence"}
+_REQUIRED_EXIT_FIELDS = {"reason"}
+
 
 def _today_file(category: str) -> Path:
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -31,11 +36,46 @@ def _sync_append(path: str, line: str) -> None:
         f.write(line)
 
 
+def _validate_signal(data: dict) -> bool:
+    """
+    Apply tighter entry conditions and exit confirmation filters.
+    Returns True if the signal passes validation, otherwise False.
+    """
+    # Basic required fields
+    if not _REQUIRED_SIGNAL_FIELDS.issubset(data):
+        logger.debug("Signal missing required fields", data=data)
+        return False
+
+    confidence = data.get("confidence")
+    if not isinstance(confidence, (int, float)) or confidence < _MIN_CONFIDENCE:
+        logger.debug("Signal confidence below threshold", confidence=confidence)
+        return False
+
+    action = data.get("action")
+    if action == "enter":
+        # Entry signal: ensure confidence is high and required fields exist
+        return True
+    elif action == "exit":
+        # Exit signal: require additional confirmation fields
+        if not _REQUIRED_EXIT_FIELDS.issubset(data):
+            logger.debug("Exit signal missing confirmation fields", data=data)
+            return False
+        return True
+    # Other actions are allowed without extra checks
+    return True
+
+
 async def archive_event(category: str, data: dict) -> None:
     """
     category: 'orders' | 'fills' | 'signals' | 'decisions' | 'risk'
     Appends a single JSON line to today's file. Atomic (lock‑guarded).
     """
+    # Apply signal quality filters only for signal‑related categories
+    if category in {"signals", "decisions"}:
+        if not _validate_signal(data):
+            logger.info("Signal filtered out by validation", category=category, data=data)
+            return
+
     start = time.monotonic()
     record = {"ts": datetime.now(timezone.utc).isoformat(), **data}
     line = json.dumps(record, default=str) + "\n"
