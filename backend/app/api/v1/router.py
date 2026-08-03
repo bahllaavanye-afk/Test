@@ -1,6 +1,9 @@
-"""API v1 router — mounts all sub-routers."""
+"""API v1 router — mounts all sub‑routers."""
 import logging
+from typing import List, Optional
+
 from fastapi import APIRouter
+from pydantic import BaseModel, Field, validator
 
 from app.api.v1 import (
     auth,
@@ -39,8 +42,34 @@ logger = logging.getLogger(__name__)
 
 api_router = APIRouter()
 
-def _include(router_obj, name: str):
-    """Safely include a sub‑router, handling None or invalid inputs."""
+
+class RouterInfo(BaseModel):
+    """Schema describing a sub‑router to be mounted on the API."""
+    name: str = Field(
+        ...,
+        description="Human‑readable identifier for the sub‑router.",
+        example="auth",
+    )
+    router: APIRouter = Field(
+        ...,
+        description="FastAPI APIRouter instance that contains the endpoints for the sub‑router.",
+    )
+
+    @validator("router")
+    def validate_router_instance(cls, v):
+        """Ensure the provided router is a FastAPI APIRouter instance."""
+        if not isinstance(v, APIRouter):
+            raise ValueError("router must be an instance of fastapi.APIRouter")
+        return v
+
+
+def _include(router_obj: Optional[APIRouter], name: str) -> None:
+    """Safely include a sub‑router, handling None or invalid inputs.
+
+    Args:
+        router_obj: The APIRouter instance to include. If ``None`` the router is skipped.
+        name: Identifier used for logging.
+    """
     if router_obj is None:
         logger.warning("Router %s is None and will be skipped.", name)
         return
@@ -49,39 +78,43 @@ def _include(router_obj, name: str):
     except Exception as exc:  # pragma: no cover
         logger.error("Failed to include router %s: %s", name, exc)
 
-# List of (router, name) tuples for systematic inclusion
-_routers = [
-    (auth.router, "auth"),
-    (accounts.router, "accounts"),
-    (orders.router, "orders"),
-    (positions.router, "positions"),
-    (trades.router, "trades"),
-    (strategies.router, "strategies"),
-    (backtests.router, "backtests"),
-    (comparison.router, "comparison"),
-    (experiments.router, "experiments"),
-    (ml.router, "ml"),
-    (risk.router, "risk"),
-    (market_data.router, "market_data"),
-    (getattr(market_data, "router_underscore", None), "market_data_underscore"),
-    (analytics.router, "analytics"),
-    (agents.router, "agents"),
-    (notifications.router, "notifications"),
-    (archive.router, "archive"),
-    (improvements.router, "improvements"),
-    (monitoring.router, "monitoring"),
-    (options_router, "options"),
-    (regime_router, "regime"),
-    (audit_log_router, "audit_log"),
-    (integrations.router, "integrations"),
-    (pipeline.router, "pipeline"),
-    (leaderboard.router, "leaderboard"),
-    (releases.router, "releases"),
-    (bots_router, "bots"),
-    (scanners_router, "scanners"),
-    (discord_router, "discord"),
-    (webhooks_router, "webhooks"),
+
+# List of RouterInfo objects for systematic inclusion
+_routers: List[RouterInfo] = [
+    RouterInfo(name="auth", router=auth.router),
+    RouterInfo(name="accounts", router=accounts.router),
+    RouterInfo(name="orders", router=orders.router),
+    RouterInfo(name="positions", router=positions.router),
+    RouterInfo(name="trades", router=trades.router),
+    RouterInfo(name="strategies", router=strategies.router),
+    RouterInfo(name="backtests", router=backtests.router),
+    RouterInfo(name="comparison", router=comparison.router),
+    RouterInfo(name="experiments", router=experiments.router),
+    RouterInfo(name="ml", router=ml.router),
+    RouterInfo(name="risk", router=risk.router),
+    RouterInfo(name="market_data", router=market_data.router),
+    RouterInfo(
+        name="market_data_underscore",
+        router=getattr(market_data, "router_underscore", None),
+    ),
+    RouterInfo(name="analytics", router=analytics.router),
+    RouterInfo(name="agents", router=agents.router),
+    RouterInfo(name="notifications", router=notifications.router),
+    RouterInfo(name="archive", router=archive.router),
+    RouterInfo(name="improvements", router=improvements.router),
+    RouterInfo(name="monitoring", router=monitoring.router),
+    RouterInfo(name="options", router=options_router),
+    RouterInfo(name="regime", router=regime_router),
+    RouterInfo(name="audit_log", router=audit_log_router),
+    RouterInfo(name="integrations", router=integrations.router),
+    RouterInfo(name="pipeline", router=pipeline.router),
+    RouterInfo(name="leaderboard", router=leaderboard.router),
+    RouterInfo(name="releases", router=releases.router),
+    RouterInfo(name="bots", router=bots_router),
+    RouterInfo(name="scanners", router=scanners_router),
+    RouterInfo(name="discord", router=discord_router),
+    RouterInfo(name="webhooks", router=webhooks_router),
 ]
 
-for r, n in _routers:
-    _include(r, n)
+for router_info in _routers:
+    _include(router_info.router, router_info.name)
