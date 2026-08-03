@@ -1,5 +1,5 @@
 """
-Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
+Strategy Comparison Engine: run manual vs ML‑enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
@@ -30,6 +30,14 @@ LOG_MANUAL_SHARPE_FIELD: str = "manual_sharpe"
 LOG_ML_SHARPE_FIELD: str = "ml_sharpe"
 LOG_P_VALUE_FIELD: str = "p_value"
 
+# Additional constants for string literals
+LOG_COMPARISON_COMPLETE_MSG: str = "Comparison complete"
+ERROR_FETCH_BENCHMARK_MSG: str = "Failed to fetch benchmark curves"
+EQUITY_KEY: str = "equity"
+WINNER_ML: str = "ml"
+WINNER_MANUAL: str = "manual"
+WINNER_NEITHER: str = "neither"
+
 
 @dataclass
 class ComparisonResult:
@@ -46,7 +54,7 @@ class ComparisonResult:
     t_statistic: float = 0.0
     p_value: float = 1.0
     is_significant: bool = False
-    winner: str = "neither"
+    winner: str = WINNER_NEITHER
 
 
 class StrategyComparisonEngine:
@@ -112,13 +120,13 @@ class StrategyComparisonEngine:
         try:
             benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
         except Exception as exc:
-            logger.error("Failed to fetch benchmark curves", error=str(exc))
+            logger.error(ERROR_FETCH_BENCHMARK_MSG, error=str(exc))
             benchmark_curves = {}
         benchmark_stats = get_benchmark_stats()
 
         # Equity curve processing
-        manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
-        ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
+        manual_eq = pd.Series([e[EQUITY_KEY] for e in manual_metrics.equity_curve])
+        ml_eq = pd.Series([e[EQUITY_KEY] for e in ml_metrics.equity_curve])
         manual_ret = manual_eq.pct_change().dropna()
         ml_ret = ml_eq.pct_change().dropna()
 
@@ -130,12 +138,12 @@ class StrategyComparisonEngine:
             t_stat, p_val = 0.0, 1.0
 
         improvement = ml_metrics.sharpe - manual_metrics.sharpe
-        winner = "ml" if ml_metrics.sharpe > manual_metrics.sharpe else "manual"
+        winner = WINNER_ML if ml_metrics.sharpe > manual_metrics.sharpe else WINNER_MANUAL
         if abs(improvement) < IMPROVEMENT_THRESHOLD:
-            winner = "neither"
+            winner = WINNER_NEITHER
 
         logger.info(
-            "Comparison complete",
+            LOG_COMPARISON_COMPLETE_MSG,
             **{
                 LOG_STRATEGY_FIELD: strategy_name,
                 LOG_MANUAL_SHARPE_FIELD: manual_metrics.sharpe,
