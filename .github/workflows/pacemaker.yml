@@ -181,50 +181,64 @@ jobs:
       # The trading desks are the reason the fleet exists, and they are the part
       # of it that cron has starved hardest.
       #
-      # Both desk workflows declare `workflow_run: workflows: ["CI"]` on the
-      # theory that they ride CI completions. Measured 2026-08-03 across their
-      # last 30 runs each: desk-trading fired 28x schedule + 2x push, crypto 30x
-      # schedule. ZERO workflow_run events on either. The anti-starvation trigger
-      # they were given has never once delivered, so in practice the desks run on
-      # the starved cron alone.
+      # Measured on desk-trading (cron "*/15 9-22 * * 1-5", nominally 52 runs per
+      # weekday, 26 inside US regular trading hours): 12 of its last 30 runs
+      # landed inside 13:30-20:00 UTC — 5 Wed, 4 Thu, 3 Fri, against a nominal 26
+      # PER DAY. Roughly 15% of intended in-window cadence. Every out-of-window
+      # run generates real signals and discards all of them: run 30673525449
+      # logged conf=1.00 on SLV, 1.00 on EPOL, 0.98 on EIDO, 0.80 on IWM and
+      # placed nothing, because `desk_open = is_open or desk.always_open` was
+      # false at 23:44 UTC.
       #
-      # What that costs, measured on desk-trading (cron "*/15 9-22 * * 1-5",
-      # nominally 52 runs per weekday, 26 of them inside US regular trading
-      # hours): 12 of the last 30 runs landed inside 13:30-20:00 UTC — 5 on Wed,
-      # 4 on Thu, 3 on Fri, against a nominal 26 per day. Roughly 15% of intended
-      # in-window cadence. Every out-of-window run generates real signals and
-      # then discards all of them: run 30673525449 logged conf=1.00 on SLV, 1.00
-      # on EPOL, 0.98 on EIDO, 0.80 on IWM and placed nothing, because
-      # `desk_open = is_open or desk.always_open` was false at 23:44 UTC.
+      # CORRECTION (2026-08-03, replacing the first version of this comment).
+      # That version claimed the desks' `workflow_run: workflows: ["CI"]` trigger
+      # "has never once delivered", from a sample of 30 runs per desk containing
+      # zero workflow_run events. The sample was accurate; the inference was not.
+      # `workflow_run` only fires for upstream runs on the DEFAULT branch, and CI
+      # runs almost entirely on `pull_request` (head_branch = the PR branch). The
+      # trigger was dormant, not dead — the moment CI actually ran on main it
+      # fired on both desks, at 06:43 and 07:45, exactly as designed.
       #
-      # Dispatching here is safe at any hour and needs no clock logic of its own:
+      # ONLY desk-trading.yml is dispatched here, deliberately.
+      # desk-trading.yml runs ALL NINE desks, crypto included, and crypto is
+      # `always_open=True`, so a single dispatch covers the 24/7 desk at any hour.
+      # desk-trading-crypto-24x7.yml exists only to fill the hours desk-trading's
+      # weekday cron does not reach, and its job carries
+      #   if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      # precisely so it CEDES any trigger it shares with the equity workflow. The
+      # two use different concurrency groups, so on a shared trigger they run in
+      # PARALLEL and compete for Alpaca's free-tier data limit. Measured over 60
+      # runs (2026-07-28): 22 collided; one pair on sha 49e46ded had
+      # desk-trading fetch 70 bars while the crypto-only run got 5 and 429s.
+      # Dispatching both here would recreate that collision by the one route the
+      # cede-rule cannot block — `workflow_dispatch` is on its allowlist.
+      #
+      # Dispatching is safe at any hour and needs no clock logic of its own:
       # desk_order_placer queries Alpaca's /v2/clock itself and skips non-
       # always_open desks when the market is shut, so an off-hours dispatch costs
-      # one cheap signal-only run. Both desks set `cancel-in-progress: false` on
-      # their own concurrency groups, so a dispatch that overlaps a cron run
-      # queues rather than clobbering it.
+      # one cheap signal-only run. desk-trading sets `cancel-in-progress: false`,
+      # so a dispatch overlapping a cron run queues rather than clobbering it.
       #
       # Like the merge gate above, a failure here must not abort the CI heartbeat,
       # so no `exit 1` — but it is reported rather than swallowed.
-      - name: Dispatch the trading desks (their workflow_run trigger never fires)
+      - name: Dispatch the trading desk (cron delivers ~15% of intended cadence)
         if: steps.killswitch.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          for wf in desk-trading.yml desk-trading-crypto-24x7.yml; do
-            code=$(curl -sS -o /tmp/desk.txt -w '%{http_code}' \
-              -X POST \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$wf/dispatches" \
-              -d '{"ref":"main"}')
-            if [ "$code" = "204" ]; then
-              echo "✅ dispatched $wf" | tee -a "$GITHUB_STEP_SUMMARY"
-            else
-              echo "::error::$wf dispatch failed (HTTP $code): $(cat /tmp/desk.txt)"
-              echo "⚠️ $wf NOT dispatched (HTTP $code) — desk falls back to starved cron" >> "$GITHUB_STEP_SUMMARY"
-            fi
-          done
+          wf=desk-trading.yml
+          code=$(curl -sS -o /tmp/desk.txt -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$wf/dispatches" \
+            -d '{"ref":"main"}')
+          if [ "$code" = "204" ]; then
+            echo "✅ dispatched $wf (all 9 desks; crypto is always_open)" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::$wf dispatch failed (HTTP $code): $(cat /tmp/desk.txt)"
+            echo "⚠️ $wf NOT dispatched (HTTP $code) — desk falls back to starved cron" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       # If the dispatch fails the chain dies silently, which is the exact class
       # of failure this repo keeps getting bitten by. Say so where it is seen.
