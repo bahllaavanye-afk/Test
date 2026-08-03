@@ -39,6 +39,49 @@ pacemaker survives its sleep → dispatches desk-trading → lands in market hou
 real paper orders. Dispatch cadence is exact: 10:16, 11:07, 11:57, 12:47, 13:37,
 14:28 — every 50 minutes, no drift. Cron contributed **one** run all day (12:17).
 
+### 🧠 ML IS AIMED AT THE ONE MODEL FAMILY THAT CANNOT RUN IN PRODUCTION (2026-08-03 21:45)
+Before doing any more LSTM promotion work, read this. It cannot pay off on the
+current hosting, and the reason is deliberate.
+
+**torch is excluded from Render on purpose.** `backend/pyproject.toml:54-56`:
+> `# ML inference — in [ml] optional group so Render free tier skips the 800MB torch wheel`
+> `# Render installs: pip install -e "."   (no torch = ML strategies degrade gracefully)`
+
+`render.yaml:19` confirms it: `pip install -e "."` — no `[ml]` extra. So
+`torch: available: false` in `/health/detailed` is **correct behaviour, not a bug**,
+and LSTM / SSM / Mamba / PatchTST inference is impossible there at any artifact
+quality.
+
+**But Render DOES get xgboost, lightgbm and scikit-learn** — they are base
+dependencies (`pyproject.toml:40,45,46`). And `app/ml/inference.py` loads four
+exact filenames, **three of which need no torch**:
+`lstm_latest.pt` (torch), `xgboost_latest.ubj`, `lorentzian_latest.pkl`,
+`scaler_latest.pkl`.
+
+**The mismatch:** the only CI trainer is `.github/scripts/ci_lstm_trainer.py` —
+LSTM, torch-only. A repo-wide grep for `xgboost_latest` / `lorentzian_latest`
+returns only `app/main.py` (the health check) and `app/ml/inference.py` (the
+loader). **Nothing anywhere produces them.** The backend trainers are
+`train_lstm`/`train_ssm` (torch) and `train_ppo_exec`/`train_rl`
+(stable-baselines3 → torch). `app/ml/models/xgboost_model.py` exists as a class
+with no pipeline behind it.
+
+So: six successful weekly LSTM training runs produced artifacts for the one
+runtime that is not installed, while the two runtimes that ARE installed have no
+trainer at all.
+
+**Consequence for the IMPROVEMENTS ML items** (unify the two `LSTMPredictor`
+architectures, promote `lstm_latest.pt`, verify the round trip): all real work,
+none of it can change production behaviour while torch is absent. Do not treat
+them as the next ML step.
+
+**The two genuine options, both operator calls:**
+- **Torch-free path (no hosting change):** add an XGBoost/LightGBM trainer to CI
+  and promote to `xgboost_latest.ubj`. Works on Render *today* — the runtime,
+  the model class and the loader all already exist; only the trainer is missing.
+- **Torch path:** host inference where torch fits (paid Render tier or a separate
+  worker), which then makes the LSTM unification work worth doing.
+
 ### 🧩 WHY Vercel blocks improver PRs but not mine — resolved 2026-08-03 18:40
 My PRs merge while ~100 improver PRs sit frozen on a Vercel `failure`. That is not
 gate inconsistency. `frontend/vercel.json` has:
