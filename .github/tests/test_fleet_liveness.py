@@ -97,11 +97,34 @@ def test_pacemaker_can_dispatch_workflows():
 
 
 def test_only_one_pacemaker_runs_at_a_time():
-    """A burst of PRs must collapse to one heartbeat, not stack dozens of sleepers."""
+    """A burst of PRs must collapse to one heartbeat, not stack dozens of sleepers.
+
+    The intent above is unchanged; the mechanism is corrected. This used to assert
+    `cancel-in-progress is True`, which achieved "one pacemaker" by destroying the
+    one that was about to do the work. The job sleeps 3000s and *then* dispatches,
+    so all of its value is in the last step, and its ignition sources arrive far
+    more often than every 50 minutes.
+
+    Measured 2026-08-03 over the last 30 runs: 25 cancelled (durations 0.1–47.9
+    min, never reaching the 50-minute sleep), 4 success (50.2–50.4 min, the only
+    ones that dispatched anything), 1 running. The heartbeat ran at roughly half
+    its intended rate and every loss was recorded as `cancelled`, a conclusion no
+    alert path watches.
+
+    The concurrency GROUP is what enforces "one at a time": with
+    cancel-in-progress false GitHub keeps the in-progress run and parks the newest
+    trigger as pending, superseding any older pending run. At most one sleeper
+    plus one queued successor — sleepers still cannot stack, and the sleeper now
+    always reaches its dispatch.
+    """
     doc = _load(PACEMAKER)
     conc = doc.get("concurrency", {})
     assert conc.get("group") == "pacemaker"
-    assert conc.get("cancel-in-progress") is True
+    assert conc.get("cancel-in-progress") is not True, (
+        "cancel-in-progress: true cancels the pacemaker before its dispatch step; "
+        "measured 25 of 30 runs lost this way. The concurrency group alone is what "
+        "prevents stacking."
+    )
 
 
 def test_sleep_fits_inside_the_job_timeout():

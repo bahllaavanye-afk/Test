@@ -6,7 +6,56 @@
 > lost. Keep it current: when you finish or start something material, update this file in
 > the same commit.
 
-_Last updated: 2026-07-29._
+_Last updated: 2026-08-03._
+
+## 🔴 WHY THERE ARE NO TRADES — answered 2026-08-03, full writeup in `docs/REVIEW_2026-08-03_WHY_NO_TRADES.md`
+
+The desks are **not** broken and the strategies are **not** silent. Signals fire on
+nearly every run and are then discarded, for two unrelated mechanical reasons.
+
+**Equity-side desks (8 of 9) — right signals, wrong time.** Run `30673525449`
+logged `conf=1.00` on SLV, `1.00` on EPOL, `0.98` on EIDO, `0.80` on IWM and placed
+nothing, because it ran at 23:44 UTC and `desk_open = is_open or desk.always_open`
+was false. Only **12 of desk-trading's last 30 runs landed inside RTH** (5 Wed / 4
+Thu / 3 Fri) against a nominal 26 *per day* — ~15% of intended in-window cadence.
+Two causes, both confirmed and both now fixed:
+- the `workflow_run: ["CI"]` anti-starvation trigger on both desks has **never
+  fired** (last 30 runs: 28 schedule + 2 push / 30 schedule, zero workflow_run);
+- the pacemaker was cancelling itself — `cancel-in-progress: true` on a
+  sleep-3000s-then-dispatch job, **25 of 30 runs cancelled**, all dying short of
+  the 50-minute sleep (max 47.9 min), while the only 4 successes took 50.4 min.
+
+**Crypto desk — right time, unreachable gate.** `always_open`, so the clock is
+never its issue. `confidence = |raw_signal| · (target_vol/rv_21) / 2` is a
+*position size*, not a conviction, and falls as vol rises. Ceiling is
+`0.40/(2·rv_21)`: **0.40 at 50% vol, 0.26 at 65%** — under the 0.60 order gate AND
+the 0.45 exploration floor. Run `30782697088`: 16 signals, confidences 0.23–0.44,
+`passed=0 filtered=16 explored=0`. Best signal 0.44 against a 0.45 floor.
+Also: 16 of 16 signals came from `crypto_adaptive_trend` alone — the desk's other
+13 strategies die on CoinGecko 429 / Binance-OI HTTP 451 from US runners.
+
+**NOT a bug:** desk-trading's Fri→Mon gap is `cron * * 1-5` correctly skipping the
+weekend. Checked before reporting.
+
+**Fixed in this pass (mechanical only):** pacemaker `cancel-in-progress: false`;
+pacemaker now dispatches both desks directly via `workflow_dispatch` (the proven
+recursion-guard exception, independent of cron and of the dead workflow_run path);
+`test_pacemaker_actually_delivers.py` (12 tests, mutation-checked).
+
+**NOT fixed, deliberately — operator decision needed:** the crypto recalibration.
+The obvious fix (`confidence = |raw_signal|`) was tried and **reverted**: it scores
+0.83/0.92/0.94 on a *zero-drift* random walk because `tanh(composite_raw*5)`
+saturates, i.e. it trades noise. A real fix is a backtested strategy change under
+the repo's walk-forward standard. Recorded as `xfail(strict=True)` in
+`backend/tests/unit/test_desk_confidence_gate_is_reachable.py` so it reports XPASS
+when someone fixes it. Related: `analyze()` (tanh on raw returns) and
+`backtest_signals()` (`.rank(pct=True)` percentiles) are **different functions** —
+backtests of this strategy do not describe live behaviour.
+
+**Discord is fine, and had been reporting all of this.** `#pnl-daily` carries
+per-desk funnel telemetry (`⚠️ *Commodities*: 3 signal(s) fired, 0 placed — 3
+market closed`) every run. Per-desk channels are silent only because
+`_post_chat(desk.chat_channel, …)` sits inside `if desk_order_list:`.
 
 ## 🛑 SUPABASE IS **PAUSED** — read this before the 07-25 section below, which is now WRONG
 **Measured 2026-07-29 14:00 via Supabase MCP `list_projects`:**
