@@ -16,7 +16,7 @@ import json
 import logging
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, List, Tuple
+from typing import Any, Callable, List, Tuple
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,11 +29,32 @@ logger = logging.getLogger(__name__)
 
 class SelfImprovingLoop:
     def __init__(self, db_session_factory: Any, redis_client: Any):
+        """
+        Initialize the SelfImprovingLoop.
+
+        Parameters
+        ----------
+        db_session_factory: Any
+            A callable that returns an async SQLAlchemy session. Must be callable.
+        redis_client: Any
+            An async Redis client with a ``publish`` coroutine method.
+
+        Raises
+        ------
+        ValueError
+            If ``db_session_factory`` is not callable or ``redis_client`` does not
+            provide a callable ``publish`` attribute.
+        """
+        if not callable(db_session_factory):
+            raise ValueError("db_session_factory must be a callable that returns an AsyncSession")
+        if not hasattr(redis_client, "publish") or not callable(getattr(redis_client, "publish")):
+            raise ValueError("redis_client must have a callable 'publish' method")
         self._factory = db_session_factory
         self._memory = AgentMemory(redis_client)
         self._redis = redis_client
 
     async def run_cycle(self) -> None:
+        """Execute one full self‑improving cycle."""
         logger.info("SelfImprovingLoop: starting hourly cycle")
         start_time = time.perf_counter()
         try:

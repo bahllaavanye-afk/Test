@@ -1,4 +1,5 @@
 """Account management endpoints."""
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -71,6 +72,32 @@ class AccountEquityOut(BaseModel):
     pattern_day_trader: bool | None
 
 
+def _validate_account_id(account_id: str) -> None:
+    """Validate that an account_id is a non‑empty valid UUID string."""
+    if not isinstance(account_id, str) or not account_id.strip():
+        raise ValueError("account_id must be a non-empty string")
+    try:
+        uuid.UUID(account_id)
+    except ValueError as exc:
+        raise ValueError(f"account_id '{account_id}' is not a valid UUID") from exc
+
+
+def _validate_account_create(body: AccountCreate) -> None:
+    """Validate fields of AccountCreate before persisting."""
+    if not body.broker or not isinstance(body.broker, str):
+        raise ValueError("broker must be a non-empty string")
+    if not body.label or not isinstance(body.label, str):
+        raise ValueError("label must be a non-empty string")
+    if body.mode not in {"paper", "live"}:
+        raise ValueError("mode must be either 'paper' or 'live'")
+    if not body.api_key or not isinstance(body.api_key, str):
+        raise ValueError("api_key must be a non-empty string")
+    if not body.api_secret or not isinstance(body.api_secret, str):
+        raise ValueError("api_secret must be a non-empty string")
+    if not isinstance(body.extra_config, dict):
+        raise ValueError("extra_config must be a dictionary")
+
+
 @router.get("/", response_model=list[AccountOut])
 async def list_accounts(
     db: AsyncSession = Depends(get_db),
@@ -87,6 +114,8 @@ async def create_account(
     current_user: User = Depends(get_current_user),
     request: Request = None,
 ):
+    _validate_account_create(body)
+
     account = Account(
         user_id=current_user.id,
         broker=body.broker,
@@ -127,6 +156,8 @@ async def get_account_equity(
     current_user: User = Depends(get_current_user),
 ):
     """Return live equity, buying power, and day-trade count from Alpaca."""
+    _validate_account_id(account_id)
+
     result = await db.execute(
         select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
     )
@@ -161,6 +192,8 @@ async def delete_account(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _validate_account_id(account_id)
+
     result = await db.execute(select(Account).where(Account.id == account_id, Account.user_id == current_user.id))
     account = result.scalar_one_or_none()
     if not account:
