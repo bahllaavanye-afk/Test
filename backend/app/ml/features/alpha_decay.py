@@ -12,22 +12,65 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 from scipy.optimize import curve_fit
 from scipy.stats import spearmanr
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class DecayProfile:
-    strategy_name: str
-    ic_0: float           # IC at t=0
-    half_life_hours: float  # hours until IC halves
-    horizons: dict = field(default_factory=dict)  # {horizon_hours: ic_value}
+class DecayProfile(BaseModel):
+    """
+    Pydantic model representing the decay characteristics of a strategy's predictive power.
+    """
+
+    strategy_name: str = Field(
+        ...,
+        description="Name of the strategy for which the decay profile is computed.",
+        example="momentum",
+    )
+    ic_0: float = Field(
+        ...,
+        description="IC at time zero (t=0). Correlation between signal and immediate forward return.",
+        ge=-1.0,
+        le=1.0,
+        example=0.12,
+    )
+    half_life_hours: float = Field(
+        ...,
+        description=(
+            "Half‑life of IC decay expressed in hours. "
+            "Use `float('inf')` if decay is not observed."
+        ),
+        example=48.0,
+    )
+    horizons: dict[int, float] = Field(
+        default_factory=dict,
+        description=(
+            "Mapping from horizon (in hours) to the IC value observed at that horizon."
+        ),
+        example={1: 0.12, 4: 0.08, 24: 0.04},
+    )
+
+    @validator("half_life_hours")
+    def validate_half_life(cls, v: float) -> float:
+        if v != float("inf") and v <= 0:
+            raise ValueError("half_life_hours must be positive or infinite")
+        return v
+
+    @validator("horizons")
+    def validate_horizons(cls, v: dict[int, float]) -> dict[int, float]:
+        for horizon, ic_val in v.items():
+            if not isinstance(horizon, int) or horizon <= 0:
+                raise ValueError("horizon keys must be positive integers")
+            if not isinstance(ic_val, (float, int)):
+                raise ValueError("IC values must be numeric")
+            if ic_val < -1 or ic_val > 1:
+                raise ValueError("IC values must be between -1 and 1")
+        return v
 
 
 class AlphaDecayTracker:
@@ -96,6 +139,7 @@ class AlphaDecayTracker:
             ic_arr = np.array(list(ics.values()), dtype=float)
 
             try:
+
                 def exp_decay(t: np.ndarray, ic0: float, lam: float) -> np.ndarray:
                     return ic0 * np.exp(-lam * t)
 
