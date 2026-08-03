@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+import numbers
 
 import pandas as pd
 from scipy import stats
@@ -58,6 +59,37 @@ class ComparisonResult:
 
 
 class StrategyComparisonEngine:
+    @staticmethod
+    def _validate_series(series: pd.Series, name: str) -> None:
+        """Validate that a pandas Series is suitable for backtesting."""
+        if not isinstance(series, pd.Series):
+            raise ValueError(f"{name} must be a pandas Series.")
+        if series.empty:
+            raise ValueError(f"{name} series cannot be empty.")
+        if series.isnull().any():
+            raise ValueError(f"{name} series contains NaN values.")
+        if not series.index.is_monotonic_increasing:
+            raise ValueError(f"{name} index must be monotonic increasing.")
+        if not pd.api.types.is_numeric_dtype(series):
+            raise ValueError(f"{name} series must contain numeric values.")
+
+    @staticmethod
+    def _validate_string(value: str, name: str) -> None:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{name} must be a non‑empty string.")
+
+    @staticmethod
+    def _validate_date(value: date, name: str) -> None:
+        if not isinstance(value, date):
+            raise ValueError(f"{name} must be a datetime.date instance.")
+
+    @staticmethod
+    def _validate_initial_equity(value: numbers.Number) -> None:
+        if not isinstance(value, (int, float)):
+            raise ValueError("initial_equity must be a numeric type.")
+        if value <= 0:
+            raise ValueError("initial_equity must be a positive number.")
+
     async def run_comparison(
         self,
         manual_signals: pd.Series,
@@ -76,39 +108,24 @@ class StrategyComparisonEngine:
         and computes statistical significance of the Sharpe improvement.
         """
         # Input validation
-        if not isinstance(manual_signals, pd.Series):
-            raise ValueError("manual_signals must be a pandas Series.")
-        if not isinstance(ml_signals, pd.Series):
-            raise ValueError("ml_signals must be a pandas Series.")
-        if not isinstance(prices, pd.Series):
-            raise ValueError("prices must be a pandas Series.")
-        if manual_signals.empty:
-            raise ValueError("manual_signals series cannot be empty.")
-        if ml_signals.empty:
-            raise ValueError("ml_signals series cannot be empty.")
-        if prices.empty:
-            raise ValueError("prices series cannot be empty.")
-        if not isinstance(strategy_name, str) or not strategy_name.strip():
-            raise ValueError("strategy_name must be a non‑empty string.")
-        if not isinstance(symbol, str) or not symbol.strip():
-            raise ValueError("symbol must be a non‑empty string.")
-        if not isinstance(interval, str) or not interval.strip():
-            raise ValueError("interval must be a non‑empty string.")
-        if not isinstance(start_date, date):
-            raise ValueError("start_date must be a datetime.date instance.")
-        if not isinstance(end_date, date):
-            raise ValueError("end_date must be a datetime.date instance.")
+        self._validate_series(manual_signals, "manual_signals")
+        self._validate_series(ml_signals, "ml_signals")
+        self._validate_series(prices, "prices")
+        self._validate_string(strategy_name, "strategy_name")
+        self._validate_string(symbol, "symbol")
+        self._validate_string(interval, "interval")
+        self._validate_date(start_date, "start_date")
+        self._validate_date(end_date, "end_date")
         if start_date > end_date:
             raise ValueError("start_date cannot be later than end_date.")
-        if not isinstance(initial_equity, (int, float)):
-            raise ValueError("initial_equity must be a numeric type.")
-        if initial_equity <= 0:
-            raise ValueError("initial_equity must be a positive number.")
+        self._validate_initial_equity(initial_equity)
 
         # Align series on common index
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
-            raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
+            raise ValueError(
+                "manual_signals, ml_signals, and prices must share at least one common index."
+            )
         manual_signals = manual_signals.loc[common_index]
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
