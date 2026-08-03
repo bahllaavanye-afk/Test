@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Parse agent memory",
-    "Here are 3 concise bullet points of the most important, actionable knowledge extracted from the recent agent learnings:",
-    "Set timeout thresholds",
-    "Check db connections",
     "Retry failed trades",
     "Optimize EMA-VWAP variants",
     "Validate timestamps",
@@ -199,8 +195,12 @@
     "Use retry on timeouts",
     "Log API response codes",
     "Check for null pointers",
-    "Scan log files"
+    "Scan log files",
+    "Verify trade limits",
+    "Handle SSL errors",
+    "Track performance metrics",
+    "Analyze signal confidence"
   ],
-  "last_updated": "2026-08-03T19:04:58.449705+00:00",
+  "last_updated": "2026-08-03T20:42:47.073716+00:00",
   "total": 200
 }
