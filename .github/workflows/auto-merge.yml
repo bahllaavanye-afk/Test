@@ -17,6 +17,26 @@ on:
     # finished and green PRs sat unmerged until the next unrelated event.
     workflows: ["CI"]
     types: [completed]
+  # NONE of the triggers above fire for a bot-authored PR. GitHub's recursion
+  # guard suppresses workflow runs from events attributed to GITHUB_TOKEN, and
+  # every step of the improver's loop is GITHUB_TOKEN: it opens the PR, applies
+  # the `automerge` label, and dispatches CI. So `pull_request_target: labeled`,
+  # `check_suite: completed` and `workflow_run: [CI] completed` are all dead for
+  # exactly the PRs this gate exists to land.
+  #
+  # Measured 2026-08-03: the last auto-merge run was 2026-07-29 23:45, on a
+  # human-pushed branch. In the three days since, the improver opened ~90 PRs;
+  # #1341 sits green (test, test-agents, frontend-build all success), labelled
+  # `automerge`, not a draft, unmerged. The gate never woke up.
+  #
+  # `workflow_dispatch` is the documented exception to the recursion guard, and
+  # it was already declared here — but nothing ever called it. A schedule gives
+  # the gate its own heartbeat that does not depend on any bot event. It is a
+  # floor, not a guarantee: free-tier cron is starved here (measured elsewhere in
+  # this repo at 1h20m–3h12m late), but the job is idempotent and cheap, so a
+  # late sweep still lands everything eligible.
+  schedule:
+    - cron: "17,47 * * * *"
   workflow_dispatch: {}
 
 permissions:
