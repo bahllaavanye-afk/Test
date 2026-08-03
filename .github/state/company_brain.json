@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785788645.8444386,
+    "last_updated": 1785788881.5006368,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -110,8 +110,8 @@
     },
     "opinion_score": 3,
     "macro_score": 3,
-    "vix": 15.77,
-    "market_scan_ts": 1785785014.5946338,
+    "vix": 15.84,
+    "market_scan_ts": 1785788881.4714797,
     "sector_leaders": [
       "Energy",
       "Financials",
@@ -129,48 +129,33 @@
       "GOOGL",
       "CRWD",
       "AAPL",
-      "NOW",
       "LLY",
-      "CMCSA",
       "PANW",
+      "CMCSA",
+      "NOW",
       "NVDA",
-      "SPY",
-      "TSLA",
-      "QQQ",
-      "META",
-      "SLB",
-      "MA",
+      "MRK",
       "CVX",
-      "XLK",
-      "XLV"
+      "BRK-B",
+      "SPY",
+      "META",
+      "QQQ",
+      "XLI",
+      "TSLA",
+      "INTU"
     ],
     "top_momentum": [
       "MSFT",
       "AMZN",
       "INTU",
       "ADBE",
-      "BLK"
+      "COP"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785788645.8429856
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "neutral",
-      "score": 1,
-      "sector_leaders": [
-        "Energy",
-        "Healthcare",
-        "Financials"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=neutral (score=1). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784833544.9614913
-    },
     {
       "source": "market_scanner_v2",
       "regime": "neutral",
@@ -2068,6 +2053,21 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1785788642.9990304
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Comm."
+      ],
+      "gap_count": 8,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
+      "ts": 1785788881.5061855
     }
   ],
   "github_insights": [
