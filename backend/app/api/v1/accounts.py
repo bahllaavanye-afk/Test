@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.account import Account
@@ -24,21 +25,36 @@ async def latest_total_equity(db: AsyncSession) -> float:
     """
     from app.models.account import AccountSnapshot
 
-    account_ids = (
-        (await db.execute(select(Account.id).where(Account.is_active == True)))  # noqa: E712
-        .scalars()
-        .all()
-    )
+    try:
+        account_ids = (
+            (await db.execute(select(Account.id).where(Account.is_active == True)))  # noqa: E712
+            .scalars()
+            .all()
+        )
+    except SQLAlchemyError as e:
+        logger.exception(
+            "Failed to fetch active account IDs for equity calculation",
+            extra={"error": str(e)},
+        )
+        raise HTTPException(500, "Unable to calculate total equity")
+
     total = 0.0
     for acc_id in account_ids:
-        snap = (
-            await db.execute(
-                select(AccountSnapshot.total_equity)
-                .where(AccountSnapshot.account_id == acc_id)
-                .order_by(AccountSnapshot.ts.desc())
-                .limit(1)
+        try:
+            snap = (
+                await db.execute(
+                    select(AccountSnapshot.total_equity)
+                    .where(AccountSnapshot.account_id == acc_id)
+                    .order_by(AccountSnapshot.ts.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+        except SQLAlchemyError as e:
+            logger.exception(
+                "Failed to fetch latest snapshot for account",
+                extra={"account_id": acc_id, "error": str(e)},
             )
-        ).scalar_one_or_none()
+            continue
         total += float(snap or 0)
     return total
 
@@ -76,7 +92,14 @@ async def list_accounts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Account).where(Account.user_id == current_user.id))
+    try:
+        result = await db.execute(select(Account).where(Account.user_id == current_user.id))
+    except SQLAlchemyError as e:
+        logger.exception(
+            "Database error while listing accounts",
+            extra={"user_id": current_user.id, "error": str(e)},
+        )
+        raise HTTPException(500, "Unable to retrieve accounts")
     return result.scalars().all()
 
 
@@ -110,12 +133,33 @@ async def create_account(
     )
     db.add(log)
 
-    await db.commit()
-    await db.refresh(account)
+    try:
+        await db.commit()
+    except SQLAlchemyError as e:
+        logger.exception(
+            "Failed to commit new account to the database",
+            extra={"user_id": current_user.id, "broker": body.broker, "error": str(e)},
+        )
+        raise HTTPException(500, "Failed to create account")
+    try:
+        await db.refresh(account)
+    except SQLAlchemyError as e:
+        logger.exception(
+            "Failed to refresh newly created account",
+            extra={"account_id": account.id, "error": str(e)},
+        )
+        raise HTTPException(500, "Failed to retrieve created account")
 
     # Update the audit log with the new account id
     log.resource_id = account.id
-    await db.commit()
+    try:
+        await db.commit()
+    except SQLAlchemyError as e:
+        logger.exception(
+            "Failed to update audit log with account ID",
+            extra={"account_id": account.id, "error": str(e)},
+        )
+        raise HTTPException(500, "Failed to finalize account creation")
 
     return account
 
@@ -127,9 +171,16 @@ async def get_account_equity(
     current_user: User = Depends(get_current_user),
 ):
     """Return live equity, buying power, and day-trade count from Alpaca."""
-    result = await db.execute(
-        select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
-    )
+    try:
+        result = await db.execute(
+            select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
+        )
+    except SQLAlchemyError as e:
+        logger.exception(
+            "Database error while fetching account for equity request",
+            extra={"account_id": account_id, "user_id": current_user.id, "error": str(e)},
+        )
+        raise HTTPException(500, "Unable to retrieve account information")
     account = result.scalar_one_or_none()
     if not account:
         raise HTTPException(404, "Account not found")
@@ -142,7 +193,10 @@ async def get_account_equity(
     try:
         data = await get_alpaca_account(account)
     except Exception as e:
-        logger.warning(f"Alpaca account fetch failed for account {account_id}: {e}")
+        logger.exception(
+            "Alpaca account fetch failed",
+            extra={"account_id": account_id, "error": str(e)},
+        )
         raise HTTPException(502, "Unable to fetch live account data from Alpaca")
 
     return AccountEquityOut(
@@ -150,8 +204,12 @@ async def get_account_equity(
         cash=float(data.get("cash", 0)),
         buying_power=float(data.get("buying_power", 0)),
         portfolio_value=float(data.get("portfolio_value", 0)),
-        day_trade_count=int(data["daytrade_count"]) if data.get("daytrade_count") is not None else None,
-        pattern_day_trader=bool(data.get("pattern_day_trader")) if data.get("pattern_day_trader") is not None else None,
+        day_trade_count=int(data["daytrade_count"])
+        if data.get("daytrade_count") is not None
+        else None,
+        pattern_day_trader=bool(data.get("pattern_day_trader"))
+        if data.get("pattern_day_trader") is not None
+        else None,
     )
 
 
@@ -161,10 +219,26 @@ async def delete_account(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Account).where(Account.id == account_id, Account.user_id == current_user.id))
+    try:
+        result = await db.execute(
+            select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
+        )
+    except SQLAlchemyError as e:
+        logger.exception(
+            "Database error while locating account for deletion",
+            extra={"account_id": account_id, "user_id": current_user.id, "error": str(e)},
+        )
+        raise HTTPException(500, "Unable to locate account")
     account = result.scalar_one_or_none()
     if not account:
         raise HTTPException(404, "Account not found")
-    await db.delete(account)
-    await db.commit()
+    try:
+        await db.delete(account)
+        await db.commit()
+    except SQLAlchemyError as e:
+        logger.exception(
+            "Failed to delete account from database",
+            extra={"account_id": account_id, "error": str(e)},
+        )
+        raise HTTPException(500, "Failed to delete account")
     return {"deleted": account_id}
