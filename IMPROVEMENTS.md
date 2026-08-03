@@ -6,7 +6,39 @@ The `schedule` added at 02:40 has produced **zero runs in 2h47m**. That is the s
 
 - [x] **[P0] The pacemaker now dispatches `auto-merge.yml` alongside its CI heartbeat.** ~50-minute cadence, no cron dependency. Kept **both** mechanisms deliberately: they appear distinguishably in the run log (`event=schedule` vs `event=workflow_dispatch`), so whichever actually delivers can be identified instead of guessed at — which matters given I have now mis-attributed this mechanism once already.
 - [x] **Failure is visible but non-fatal.** Unlike the CI dispatch above it, the merge dispatch does **not** `exit 1`: losing the sweep must not kill the heartbeat driving 36 downstream workflows. It still emits `::error::`, because a silent skip here would be the same class as the permanent 403 that hid in `continuous-improvement.yml` for its whole lifetime. Both properties are pinned by tests.
-- [ ] **[P1] Still unverified.** No `event=schedule` run yet, and the pacemaker dispatch has not had a cycle. Do not record either as working until an auto-merge run with the corresponding event actually appears and the green backlog moves.
+- [x] **[P1] ~~Still unverified.~~ VERIFIED 2026-08-03 14:37 — triggers work, and the backlog is blocked by something else entirely.**
+  Both events now appear on `auto-merge.yml`: **3 `schedule` + 6 `workflow_dispatch` runs today**, all `success`. The pacemaker
+  dispatch also delivered on the desk side — 5 dispatches at exact 50-minute spacing (10:16, 11:07, 11:57, 12:47, 13:37), and
+  the 13:37 one landed in RTH and logged **`Done. 7 orders placed across 9 desks.`** (run `30818846913`).
+  
+  **But the green backlog did NOT move — it grew to 100 open PRs.** Root cause found, and it is not the gate's triggers,
+  its label rule, or CI:
+  
+  `#1358` carries `automerge`, is not a draft, bases on `main`, and has all three REQUIRED_CHECKS green
+  (`test`, `test-agents`, `frontend-build`). `mergeable_state: "unstable"`. Its combined commit status:
+  ```json
+  {"state": "failure", "context": "Vercel",
+   "description": "Deployment rate limited — retry in 24 hours.",
+   "target_url": "https://vercel.com/...?upgradeToPro=build-rate-limit"}
+  ```
+  `auto-merge.yml` ends with `if (combined.state === 'failure' || combined.state === 'error') continue;`, so **every bot PR
+  is refused because a preview deployment could not run.** Nothing is wrong with the code.
+  
+  This is a closed loop: each bot PR triggers a Vercel preview → the free-tier cap (100/day) is exhausted → Vercel posts
+  `failure` → the gate refuses → PRs accumulate → more previews attempted.
+  
+  **Note the inconsistency in the gate itself:** it already treats Vercel as decorative for check-runs —
+  `IGNORE = ['automerge', 'ops-sync', 'Vercel Preview Comments']`, on the stated grounds that "Vercel comments are
+  decorative. Neither gates correctness — only real CI jobs do." — then hard-blocks on the Vercel *commit status*.
+  Excluding the `Vercel` context from the combined-status check would be consistent with that stated intent and safe,
+  because `frontend-build` is a REQUIRED check and is the actual frontend correctness gate.
+- [ ] **[USER] That one-line gate fix is deliberately NOT shipped.** Its effect is to auto-merge ~50 labelled, green,
+  stale PRs in one sweep — which is precisely the open stale-PR decision below, and an outward-facing action on work this
+  session did not author. Several are known-defective: `#1246` adds a false invariant to a SHARED test
+  (`assert signs[i] != signs[i-1]`, wrong for any trend-follower), a `position[idx - 1]` on a `DatetimeIndex` that cannot
+  run, and an audit log that silently drops records. Decide the backlog first, then the gate fix is a one-liner.
+- [ ] **[USER] The cheaper fix is on the Vercel side:** disable preview deployments for `improver/**` branches. That stops
+  the cap burn, the bandwidth burn, and the `failure` status in one change — no repo edit needed.
 
 ## ⚖️ 2026-08-03 04:40 — CORRECTION to the 02:40 entry: the mechanism was wrong, the fix is right
 I wrote that **every** trigger on `auto-merge.yml` is suppressed for bot PRs. Not true as stated.
