@@ -3,6 +3,7 @@ Strategy Comparison Engine: run manual vs ML-enhanced strategy on same period,
 compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -45,6 +46,11 @@ class StrategyComparisonEngine:
         end_date: date,
         initial_equity: float = 100_000,
     ) -> ComparisonResult:
+        """Run a side‑by‑side backtest comparison between manual and ML‑enhanced signals.
+
+        Validates inputs, aligns series, executes backtests, fetches benchmark data,
+        and computes statistical significance of the Sharpe improvement.
+        """
         # Input validation
         if not isinstance(manual_signals, pd.Series):
             raise ValueError("manual_signals must be a pandas Series.")
@@ -52,34 +58,30 @@ class StrategyComparisonEngine:
             raise ValueError("ml_signals must be a pandas Series.")
         if not isinstance(prices, pd.Series):
             raise ValueError("prices must be a pandas Series.")
-
         if manual_signals.empty:
             raise ValueError("manual_signals series cannot be empty.")
         if ml_signals.empty:
             raise ValueError("ml_signals series cannot be empty.")
         if prices.empty:
             raise ValueError("prices series cannot be empty.")
-
         if not isinstance(strategy_name, str) or not strategy_name.strip():
-            raise ValueError("strategy_name must be a non-empty string.")
+            raise ValueError("strategy_name must be a non‑empty string.")
         if not isinstance(symbol, str) or not symbol.strip():
-            raise ValueError("symbol must be a non-empty string.")
+            raise ValueError("symbol must be a non‑empty string.")
         if not isinstance(interval, str) or not interval.strip():
-            raise ValueError("interval must be a non-empty string.")
-
+            raise ValueError("interval must be a non‑empty string.")
         if not isinstance(start_date, date):
             raise ValueError("start_date must be a datetime.date instance.")
         if not isinstance(end_date, date):
             raise ValueError("end_date must be a datetime.date instance.")
         if start_date > end_date:
             raise ValueError("start_date cannot be later than end_date.")
-
         if not isinstance(initial_equity, (int, float)):
             raise ValueError("initial_equity must be a numeric type.")
         if initial_equity <= 0:
             raise ValueError("initial_equity must be a positive number.")
 
-        # Ensure series are aligned on the same index (optional but helps consistency)
+        # Align series on common index
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
             raise ValueError("manual_signals, ml_signals, and prices must share at least one common index.")
@@ -90,14 +92,21 @@ class StrategyComparisonEngine:
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 
-        benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
+        # Fetch benchmark data safely
+        try:
+            benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
+        except Exception as exc:
+            logger.error("Failed to fetch benchmark curves", error=str(exc))
+            benchmark_curves = {}
         benchmark_stats = get_benchmark_stats()
 
+        # Equity curve processing
         manual_eq = pd.Series([e["equity"] for e in manual_metrics.equity_curve])
         ml_eq = pd.Series([e["equity"] for e in ml_metrics.equity_curve])
         manual_ret = manual_eq.pct_change().dropna()
         ml_ret = ml_eq.pct_change().dropna()
 
+        # Statistical test
         min_len = min(len(manual_ret), len(ml_ret))
         if min_len > 10:
             t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
