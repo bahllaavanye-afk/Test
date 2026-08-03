@@ -23,9 +23,21 @@ from __future__ import annotations
 
 import pathlib
 
-import pytest
+import pytest  # noqa: F401  (kept for test collection; assertions are bare)
 
-yaml = pytest.importorskip("yaml")
+# NOT `pytest.importorskip("yaml")`.
+#
+# That is how this module spent its whole life doing nothing: CI installed
+# `pytest pytest-timeout pandas` and never pyyaml, so every test below skipped on
+# every run while the suite reported green. The workflow comment even asserted
+# pyyaml was installed when it was not. Every invariant here — pacemaker
+# permissions, workflow_run names matching a real workflow's `name:`, sleep
+# fitting inside the job timeout, one pacemaker at a time — was unenforced.
+#
+# A hard import fails loudly if the dependency is ever dropped again, which is
+# the entire point: a liveness suite that can silently skip is worse than no
+# suite, because it looks like coverage.
+import yaml
 
 WORKFLOWS = pathlib.Path(__file__).resolve().parents[1] / "workflows"
 PACEMAKER = WORKFLOWS / "pacemaker.yml"

@@ -56,8 +56,19 @@ jobs:
         run: |
           pip install uv --quiet
           # pandas is needed by the desk bars-batch tests (desk_order_placer
-          # builds OHLCV frames); pyyaml keeps other guards dependency-free.
-          uv pip install --system pytest pytest-timeout pandas
+          # builds OHLCV frames).
+          #
+          # pyyaml is NOT optional, despite what the previous version of this
+          # comment claimed. It said "pyyaml keeps other guards dependency-free"
+          # while the install line below never installed it, and
+          # .github/tests/test_fleet_liveness.py opens with
+          # `yaml = pytest.importorskip("yaml")`. The result: that entire module
+          # skipped on every CI run — every fleet-liveness invariant (pacemaker
+          # permissions, workflow_run names matching a real workflow, sleep vs
+          # job timeout, single-pacemaker concurrency) has never once executed
+          # here. Found 2026-08-03 when a new test imported yaml directly and
+          # was the first thing to fail on it.
+          uv pip install --system pytest pytest-timeout pandas pyyaml
 
       - name: Run agent script tests
         # .github/scripts/test_*.py (agent team, strategy gate/trimmer, and the
