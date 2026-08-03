@@ -37,3 +37,44 @@ class FeatureScaler:
             instance.scaler = pickle.load(f)
         instance.fitted = True
         return instance
+
+
+# ==========================
+# Unit tests for FeatureScaler
+# ==========================
+import tempfile
+import os
+import pytest
+
+
+def test_transform_before_fit_raises():
+    """Calling transform before fit should raise RuntimeError."""
+    scaler = FeatureScaler()
+    with pytest.raises(RuntimeError, match="Scaler not fitted"):
+        scaler.transform(np.array([[1.0, 2.0]]))
+
+
+def test_fit_transform_empty_input_raises():
+    """Fitting on an empty array should raise a ValueError from sklearn."""
+    scaler = FeatureScaler()
+    empty_array = np.empty((0, 2))
+    with pytest.raises(ValueError):
+        scaler.fit_transform(empty_array)
+
+
+def test_save_and_load_preserves_scaler_behavior():
+    """After saving and loading, the scaler should produce identical transformations."""
+    scaler = FeatureScaler()
+    data = np.array([[1.0, 2.0], [3.0, 4.0]])
+    transformed_original = scaler.fit_transform(data)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        file_path = os.path.join(tmpdir, "scaler.pkl")
+        scaler.save(file_path)
+
+        # Load a new instance from disk
+        loaded_scaler = FeatureScaler.load(file_path)
+        transformed_loaded = loaded_scaler.transform(data)
+
+        # The transformed outputs should be numerically identical
+        np.testing.assert_allclose(transformed_original, transformed_loaded, rtol=1e-7, atol=0)

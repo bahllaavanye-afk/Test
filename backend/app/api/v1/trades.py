@@ -150,3 +150,67 @@ async def list_trades(
         )
         for row in rows
     ]
+
+# ----------------------------------------------------------------------
+# Unit tests for edge cases
+# ----------------------------------------------------------------------
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from types import SimpleNamespace
+
+def test_tradeout_invalid_side():
+    """Side validation should reject values other than 'buy' or 'sell'."""
+    with pytest.raises(ValueError, match="side must be either 'buy' or 'sell'"):
+        TradeOut(
+            id="trd_invalid",
+            symbol="AAPL",
+            side="hold",  # invalid side
+            quantity=10,
+        )
+
+def test_tradeout_zero_quantity():
+    """Quantity validation should reject zero or negative values."""
+    with pytest.raises(ValueError, match="quantity must be greater than 0"):
+        TradeOut(
+            id="trd_zero_qty",
+            symbol="AAPL",
+            side="buy",
+            quantity=0,  # zero quantity
+        )
+
+@pytest.mark.asyncio
+async def test_list_trades_limit_boundary_validation():
+    """FastAPI should enforce the limit bounds (1 <= limit <= 500)."""
+    app = FastAPI()
+    # Override dependencies with minimal mocks
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1)
+    async def mock_db():
+        class MockSession:
+            async def execute(self, query):
+                class Result:
+                    def all(self):
+                        return []
+                return Result()
+        return MockSession()
+    app.dependency_overrides[get_db] = mock_db
+    app.include_router(router)
+
+    client = TestClient(app)
+
+    # Below lower bound
+    resp_low = client.get("/trades/", params={"limit": 0})
+    assert resp_low.status_code == 422
+
+    # Above upper bound
+    resp_high = client.get("/trades/", params={"limit": 501})
+    assert resp_high.status_code == 422
+
+    # Valid edge values should succeed (return empty list)
+    resp_min = client.get("/trades/", params={"limit": 1})
+    assert resp_min.status_code == 200
+    assert resp_min.json() == []
+
+    resp_max = client.get("/trades/", params={"limit": 500})
+    assert resp_max.status_code == 200
+    assert resp_max.json() == []
