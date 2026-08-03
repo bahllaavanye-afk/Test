@@ -167,7 +167,23 @@ The documented promotion path is a **comment** in the workflow header — "1. Do
 
 - [x] **Fixed.** `improvement_stats` has **two writers with incompatible key spaces and incompatible schemas** sharing one dict: `continuous_improver.record_success()` keys by *improvement type* (`cleanup`, `docstrings`, …) with `{successes, failures, test_pass}`; `SharedContext.record_success()` keys by *agent name* with `{runs, successes, last_summary}`. The reporter read `runs` — the second schema — indexed by agent name — the second key space. `SharedContext.record_success()` has **zero call sites** outside its own docstring example, so that dimension has never been written by anything, and the live file holds only the first writer's entries, none of which carries `runs`. Every lookup returned 0; the `if total_runs else 0` guard then zeroed the percentage, so both numbers agreed and both were wrong. Real figure: **61 recorded attempts** across 8 improvement types. The roll call now reads `18 agents online · 61 recorded runs` instead of `0 total runs · 0% success rate`.
 - [x] **Did not publish a fabricated 100%.** The only live writer never increments `failures`, so the ratio is definitionally 100 — the header says `no failures recorded` until a failure actually is, and the status file ships `failures_recorded` so a consumer can tell a real 100% from an untracked one. Per-agent `(0 runs)` suffixes are omitted rather than printed, since nothing writes that dimension. 10 tests, all 10 fail against the old code; one asserts against the live `agent_memory.json` rather than a hand-made dict.
-- [ ] **[P2] `SharedContext.record_success()` is dead code.** Zero call sites. Either wire the agents to it — which is what would give genuine per-agent run counts — or delete it; leaving it is another live-looking decoy.
+- [ ] **[P2] `SharedContext.record_success()` is dead code.** Zero call sites. Either wire the agents to it — which is what
+  would give genuine per-agent run counts — or delete it; leaving it is another live-looking decoy.
+  **INVESTIGATED 2026-08-03 19:45 — "wire or delete" is the wrong question; the data already exists and is thrown away.**
+  `agent_team.py:8692` builds `agent_tracking: {agent_name -> {posts, errors, channels, mode}}` and maintains it correctly
+  throughout the wave loop (lines 8728-8751). At line 8803 it is formatted into an "Employee Run Report" and posted to
+  `#engineering` — then **discarded**. Nothing writes it to `.github/state/agent_status.json`, which is why that file
+  reports `total_agents: 18, total_runs: 61` while **all 18 per-agent entries show `runs: 0`** (verified). Same pattern as
+  `review_employees_main`, which generates a 0-10 score per employee daily, posts it, and keeps no history.
+  So the fix is ~10 lines of persistence, not a 48-agent wiring job — and `SharedContext` is redundant with a tracker that
+  already works.
+- [ ] **[USER] But persisting it now would be a pipe to a closed tap — sequence this deliberately.** The wave that
+  populates `agent_tracking` runs ONLY from `auto-launch.yml`, whose triggers are `push` touching that workflow file plus
+  `workflow_dispatch` — **no schedule**. So the full 48-agent company essentially never runs autonomously, and persisting
+  per-agent counts would faithfully record a wave that almost never happens. Giving the wave a schedule is the real
+  prerequisite, and that is an operator call because it puts 48 agents' worth of posts into Discord on a cadence —
+  a noise decision, not a correctness one. Order: **decide the wave's cadence → persist `agent_tracking` → delete
+  `SharedContext`** (redundant once the working tracker is the source of truth).
 
 ## ✂ 2026-07-29 14:50 — the trimmer worked, and the workflow threw the answer away
 
