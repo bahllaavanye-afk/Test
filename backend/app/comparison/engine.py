@@ -15,7 +15,9 @@ from app.backtest.engine import run_backtest, BacktestMetrics
 from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stats
 from app.utils.logging import logger
 
-# Constants
+# ==============================
+# Configuration Constants
+# ==============================
 DEFAULT_INITIAL_EQUITY: float = 100_000
 MIN_SAMPLE_SIZE: int = 10
 IMPROVEMENT_THRESHOLD: float = 0.1
@@ -24,6 +26,10 @@ P_VALUE_ROUND: int = 4
 IMPROVEMENT_ROUND: int = 4
 T_STAT_ROUND: int = 4
 P_VAL_FINAL_ROUND: int = 6
+
+# Default statistical values
+DEFAULT_T_STAT: float = 0.0
+DEFAULT_P_VAL: float = 1.0
 
 # Log field names
 LOG_STRATEGY_FIELD: str = "strategy"
@@ -34,6 +40,10 @@ LOG_P_VALUE_FIELD: str = "p_value"
 # Additional constants for string literals
 LOG_COMPARISON_COMPLETE_MSG: str = "Comparison complete"
 ERROR_FETCH_BENCHMARK_MSG: str = "Failed to fetch benchmark curves"
+ERROR_COMMON_INDEX_MSG: str = "manual_signals, ml_signals, and prices must share at least one common index."
+ERROR_DATE_ORDER_MSG: str = "start_date cannot be later than end_date."
+ERROR_INITIAL_EQUITY_TYPE_MSG: str = "initial_equity must be a numeric type."
+ERROR_INITIAL_EQUITY_POSITIVE_MSG: str = "initial_equity must be a positive number."
 EQUITY_KEY: str = "equity"
 WINNER_ML: str = "ml"
 WINNER_MANUAL: str = "manual"
@@ -86,9 +96,9 @@ class StrategyComparisonEngine:
     @staticmethod
     def _validate_initial_equity(value: numbers.Number) -> None:
         if not isinstance(value, (int, float)):
-            raise ValueError("initial_equity must be a numeric type.")
+            raise ValueError(ERROR_INITIAL_EQUITY_TYPE_MSG)
         if value <= 0:
-            raise ValueError("initial_equity must be a positive number.")
+            raise ValueError(ERROR_INITIAL_EQUITY_POSITIVE_MSG)
 
     async def run_comparison(
         self,
@@ -117,15 +127,13 @@ class StrategyComparisonEngine:
         self._validate_date(start_date, "start_date")
         self._validate_date(end_date, "end_date")
         if start_date > end_date:
-            raise ValueError("start_date cannot be later than end_date.")
+            raise ValueError(ERROR_DATE_ORDER_MSG)
         self._validate_initial_equity(initial_equity)
 
         # Align series on common index
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
-            raise ValueError(
-                "manual_signals, ml_signals, and prices must share at least one common index."
-            )
+            raise ValueError(ERROR_COMMON_INDEX_MSG)
         manual_signals = manual_signals.loc[common_index]
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
@@ -152,7 +160,7 @@ class StrategyComparisonEngine:
         if min_len > MIN_SAMPLE_SIZE:
             t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
         else:
-            t_stat, p_val = 0.0, 1.0
+            t_stat, p_val = DEFAULT_T_STAT, DEFAULT_P_VAL
 
         improvement = ml_metrics.sharpe - manual_metrics.sharpe
         winner = WINNER_ML if ml_metrics.sharpe > manual_metrics.sharpe else WINNER_MANUAL

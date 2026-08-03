@@ -13,6 +13,14 @@ from app.models.user import User
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime, timezone
 
+# Constants
+MAX_EXPERIMENTS = 50
+STATUS_QUEUED = "queued"
+EXPERIMENT_NOT_FOUND = "Experiment not found"
+CONFIG_NOT_FOUND_TEMPLATE = "Config '{config_name}' not found. Available: {available}"
+CONFIGS_LIMIT_DISPLAY = 10
+CONFIGS_KEY = "configs"
+
 logger = logging.getLogger(__name__)
 
 CONFIGS_DIR = Path(__file__).parents[4] / "experiments" / "configs"
@@ -39,7 +47,7 @@ async def list_experiments(
     current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(Experiment).order_by(Experiment.started_at.desc()).limit(50)
+        select(Experiment).order_by(Experiment.started_at.desc()).limit(MAX_EXPERIMENTS)
     )
     return result.scalars().all()
 
@@ -57,8 +65,12 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
     try:
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, str(script), "--config", str(config_path),
-            "--experiment-id", experiment_id,
+            sys.executable,
+            str(script),
+            "--config",
+            str(config_path),
+            "--experiment-id",
+            experiment_id,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -84,10 +96,13 @@ async def trigger_training(
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
     if not config_path.exists():
         available = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
-        raise HTTPException(
-            404,
-            f"Config '{config_name}' not found. Available: {available[:10]}{'...' if len(available) > 10 else ''}",
+        display_list = available[:CONFIGS_LIMIT_DISPLAY]
+        suffix = "..." if len(available) > CONFIGS_LIMIT_DISPLAY else ""
+        message = CONFIG_NOT_FOUND_TEMPLATE.format(
+            config_name=config_name,
+            available=f"{display_list}{suffix}",
         )
+        raise HTTPException(404, message)
 
     experiment_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
@@ -96,7 +111,7 @@ async def trigger_training(
         id=experiment_id,
         name=f"{config_name}-{now.strftime('%Y%m%d%H%M%S')}",
         config={"config_name": config_name},
-        status="queued",
+        status=STATUS_QUEUED,
         started_at=now,
         created_at=now,
     )
@@ -108,7 +123,7 @@ async def trigger_training(
 
     return {
         "experiment_id": experiment_id,
-        "status": "queued",
+        "status": STATUS_QUEUED,
         "config_name": config_name,
     }
 
@@ -119,9 +134,9 @@ async def list_train_configs(
 ):
     """List available training config names."""
     if not CONFIGS_DIR.exists():
-        return {"configs": []}
+        return {CONFIGS_KEY: []}
     configs = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
-    return {"configs": configs}
+    return {CONFIGS_KEY: configs}
 
 
 @router.get("/{experiment_id}")
@@ -133,7 +148,7 @@ async def get_experiment(
     result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
     exp = result.scalar_one_or_none()
     if not exp:
-        raise HTTPException(404, "Experiment not found")
+        raise HTTPException(404, EXPERIMENT_NOT_FOUND)
     return {
         "id": exp.id,
         "name": exp.name,
