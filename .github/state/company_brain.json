@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785773695.7550635,
+    "last_updated": 1785776803.3077216,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 3,
     "macro_score": 3,
-    "vix": 15.63,
-    "market_scan_ts": 1785773695.723587,
+    "vix": 15.6,
+    "market_scan_ts": 1785776803.2782662,
     "sector_leaders": [
       "Energy",
       "Financials",
@@ -124,24 +124,24 @@
     "active_universe": [
       "AMZN",
       "MSFT",
-      "GOOGL",
       "ORCL",
+      "GOOGL",
       "NOW",
       "AAPL",
       "CRWD",
       "LLY",
+      "CMCSA",
+      "PANW",
       "META",
       "NVDA",
-      "MO",
       "TSLA",
       "SPY",
+      "MA",
       "CVX",
-      "INTU",
-      "XLV",
       "XLI",
-      "PANW",
       "QQQ",
-      "SLB"
+      "INTU",
+      "XLV"
     ],
     "top_momentum": [
       "MSFT",
@@ -155,13 +155,6 @@
     "last_brain_update": 1785767352.9006705
   },
   "episodic": [
-    {
-      "lesson": "Deployment failed due to Vercel free tier daily limit (100 deployments). This blocks all future deployments and requires either upgrading to a paid plan or reducing deployment frequency.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784760037.5950708
-    },
     {
       "lesson": "Multiple GitHub auto-fix attempts failed because issue descriptions lack concrete codebase details and failure points. This wastes CI resources and delays fixes; improve issue templates or require manual resolution.",
       "category": "code",
@@ -2072,6 +2065,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785773695.7607968
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Comm."
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785776803.3133671
     }
   ],
   "github_insights": [
