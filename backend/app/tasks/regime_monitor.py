@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -21,8 +22,9 @@ from app.utils.logging import logger
 
 try:
     from hmmlearn.hmm import GaussianHMM
+
     _HMM_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     _HMM_AVAILABLE = False
 
 
@@ -33,13 +35,20 @@ def _compute_features(returns: np.ndarray) -> np.ndarray:
     Parameters
     ----------
     returns: np.ndarray
-        Daily returns series.
+        Daily returns series. Must be a 1‑dimensional numeric array.
 
     Returns
     -------
     np.ndarray
         2‑column feature array.
     """
+    if not isinstance(returns, np.ndarray):
+        raise ValueError("returns must be a numpy.ndarray")
+    if returns.ndim != 1:
+        raise ValueError("returns must be a 1‑dimensional array")
+    if returns.size == 0:
+        raise ValueError("returns array cannot be empty")
+
     vol_20 = pd.Series(returns).rolling(20).std().bfill().values
     return np.column_stack([returns, vol_20])
 
@@ -52,13 +61,18 @@ def _fit_hmm(features: np.ndarray) -> np.ndarray | None:
     Parameters
     ----------
     features: np.ndarray
-        Feature matrix for the HMM.
+        Feature matrix for the HMM. Must be a 2‑column numeric array.
 
     Returns
     -------
     np.ndarray | None
         Predicted state indices, or ``None`` on error.
     """
+    if not isinstance(features, np.ndarray):
+        raise ValueError("features must be a numpy.ndarray")
+    if features.ndim != 2 or features.shape[1] != 2:
+        raise ValueError("features must be a 2‑dimensional array with shape (n, 2)")
+
     if not _HMM_AVAILABLE:
         return None
     try:
@@ -83,15 +97,27 @@ def _label_states(states: np.ndarray, features: np.ndarray) -> int:
     Parameters
     ----------
     states: np.ndarray
-        HMM state sequence.
+        HMM state sequence. Must be a 1‑dimensional integer array.
     features: np.ndarray
-        Feature matrix (first column is return).
+        Feature matrix (first column is return). Must have the same number of rows
+        as ``states`` and exactly two columns.
 
     Returns
     -------
     int
         Regime label for the most recent observation.
     """
+    if not isinstance(states, np.ndarray):
+        raise ValueError("states must be a numpy.ndarray")
+    if states.ndim != 1:
+        raise ValueError("states must be a 1‑dimensional array")
+    if not isinstance(features, np.ndarray):
+        raise ValueError("features must be a numpy.ndarray")
+    if features.ndim != 2 or features.shape[1] != 2:
+        raise ValueError("features must be a 2‑dimensional array with shape (n, 2)")
+    if len(states) != features.shape[0]:
+        raise ValueError("states length must match number of feature rows")
+
     # Compute mean return per state
     means = [features[states == s, 0].mean() for s in range(3)]
     # Order states by ascending mean return
@@ -108,13 +134,21 @@ def _heuristic_regime(returns: np.ndarray) -> int:
     Parameters
     ----------
     returns: np.ndarray
-        Daily returns series.
+        Daily returns series. Must be a 1‑dimensional numeric array with at
+        least 20 elements.
 
     Returns
     -------
     int
         Regime label (0, 1, or 2).
     """
+    if not isinstance(returns, np.ndarray):
+        raise ValueError("returns must be a numpy.ndarray")
+    if returns.ndim != 1:
+        raise ValueError("returns must be a 1‑dimensional array")
+    if returns.size < 20:
+        raise ValueError("returns array must contain at least 20 elements for heuristic")
+
     recent_vol = float(np.std(returns[-20:]))
     long_vol = float(np.std(returns[-252:]))
     vol_rank = recent_vol / max(long_vol, 1e-8)
@@ -137,14 +171,18 @@ def _fit_regime(returns: np.ndarray) -> int:
     Parameters
     ----------
     returns: np.ndarray
-        Daily returns series.
+        Daily returns series. Must be a 1‑dimensional numeric array.
 
     Returns
     -------
     int
         Regime label (0 = bear, 1 = sideways, 2 = bull).
     """
-    if len(returns) < 60:
+    if not isinstance(returns, np.ndarray):
+        raise ValueError("returns must be a numpy.ndarray")
+    if returns.ndim != 1:
+        raise ValueError("returns must be a 1‑dimensional array")
+    if returns.size < 60:
         return 1  # insufficient data → sideways
 
     features = _compute_features(returns)
@@ -160,6 +198,7 @@ def _fetch_spy_returns_sync() -> np.ndarray | None:
     """Sync yfinance fetch — must be called via run_in_executor."""
     try:
         import yfinance as yf  # type: ignore
+
         end = datetime.now(timezone.utc).date()
         start = end - timedelta(days=400)
         df = yf.download(
@@ -186,13 +225,18 @@ def _synthetic_spy_returns(n: int = 300) -> np.ndarray:
     Parameters
     ----------
     n: int, default 300
-        Number of synthetic daily returns to produce.
+        Number of synthetic daily returns to produce. Must be a positive integer.
 
     Returns
     -------
     np.ndarray
         Synthetic returns array.
     """
+    if not isinstance(n, int):
+        raise ValueError("n must be an integer")
+    if n <= 0:
+        raise ValueError("n must be a positive integer")
+
     seed = int(datetime.now(timezone.utc).strftime("%Y%m%d"))
     rng = np.random.default_rng(seed)
     daily_mu = 0.0003
@@ -206,8 +250,25 @@ async def _fetch_spy_returns() -> np.ndarray | None:
     return await loop.run_in_executor(None, _fetch_spy_returns_sync)
 
 
-async def run_once(redis_client) -> int | None:
-    """Fit regime, write to Redis, return regime int or None on failure."""
+async def run_once(redis_client: Any) -> int | None:
+    """
+    Fit regime, write to Redis, and return the regime integer.
+
+    Parameters
+    ----------
+    redis_client: Any
+        An asynchronous Redis client with a ``set`` coroutine method.
+
+    Returns
+    -------
+    int | None
+        Regime label on success, or ``None`` if the operation fails.
+    """
+    if redis_client is None:
+        raise ValueError("redis_client cannot be None")
+    if not hasattr(redis_client, "set"):
+        raise ValueError("redis_client must have a 'set' method")
+
     returns = await _fetch_spy_returns()
     if returns is None:
         logger.info(
@@ -237,9 +298,11 @@ class RegimeMonitor:
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
+        """Create and schedule the monitor loop."""
         self._task = asyncio.create_task(self._loop(), name="regime_monitor")
 
     def stop(self) -> None:
+        """Cancel the monitor loop if it is running."""
         if self._task:
             self._task.cancel()
 
