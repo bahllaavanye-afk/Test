@@ -9,6 +9,13 @@ from app.models.user import User
 from app.utils.security import decode_token
 from app.utils.exceptions import UnauthorizedError
 
+# Constants
+PAYLOAD_SUB_KEY = "sub"
+PAYLOAD_TYPE_KEY = "type"
+ACCESS_TOKEN_TYPE = "access"
+SUPERUSER_REQUIRED_MSG = "Superuser required"
+FORBIDDEN_STATUS_CODE = status.HTTP_403_FORBIDDEN
+
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -26,8 +33,8 @@ async def get_current_user(
     # Decode token and validate payload
     try:
         payload = decode_token(token)
-        user_id: str | None = payload.get("sub")
-        if not user_id or payload.get("type") != "access":
+        user_id: str | None = payload.get(PAYLOAD_SUB_KEY)
+        if not user_id or payload.get(PAYLOAD_TYPE_KEY) != ACCESS_TOKEN_TYPE:
             raise UnauthorizedError()
     except JWTError:
         raise UnauthorizedError()
@@ -47,5 +54,5 @@ async def get_current_user(
 
 async def get_current_active_superuser(current_user: User = Depends(get_current_user)) -> User:
     if not current_user.is_superuser:
-        raise HTTPException(status_code=403, detail="Superuser required")
+        raise HTTPException(status_code=FORBIDDEN_STATUS_CODE, detail=SUPERUSER_REQUIRED_MSG)
     return current_user
