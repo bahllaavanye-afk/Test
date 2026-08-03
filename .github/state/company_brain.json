@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785776803.3077216,
+    "last_updated": 1785779875.8394806,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 3,
     "macro_score": 3,
-    "vix": 15.6,
-    "market_scan_ts": 1785776803.2782662,
+    "vix": 15.78,
+    "market_scan_ts": 1785779875.8087234,
     "sector_leaders": [
       "Energy",
       "Financials",
@@ -126,21 +126,21 @@
       "MSFT",
       "ORCL",
       "GOOGL",
-      "NOW",
       "AAPL",
+      "NOW",
       "CRWD",
       "LLY",
       "CMCSA",
       "PANW",
-      "META",
       "NVDA",
-      "TSLA",
+      "META",
       "SPY",
-      "MA",
-      "CVX",
-      "XLI",
+      "TSLA",
       "QQQ",
-      "INTU",
+      "MA",
+      "IWM",
+      "SLB",
+      "CVX",
       "XLV"
     ],
     "top_momentum": [
@@ -148,20 +148,13 @@
       "AMZN",
       "INTU",
       "ADBE",
-      "CVX"
+      "COP"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785767352.9006705
   },
   "episodic": [
-    {
-      "lesson": "Multiple GitHub auto-fix attempts failed because issue descriptions lack concrete codebase details and failure points. This wastes CI resources and delays fixes; improve issue templates or require manual resolution.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784760037.601159
-    },
     {
       "lesson": "Only 2 of 60 generated signals survived the gate+topK funnel (3.3% conversion), placing just 2 orders. Extremely low throughput may indicate overly conservative filtering or model underperformance.",
       "category": "strategy",
@@ -2080,6 +2073,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785776803.3133671
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Comm."
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785779875.8451993
     }
   ],
   "github_insights": [
