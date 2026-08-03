@@ -34,15 +34,25 @@ def test_configure_logging_is_actually_called():
     reachability guard in test_risk_gate_wiring.
     """
     referenced = False
+    # Guard against APP being None or not existing
+    if not APP or not APP.exists():
+        pytest.fail(f"Application directory not found at {APP}")
+
     for path in APP.rglob("*.py"):
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))
-        except SyntaxError:
+        except (SyntaxError, UnicodeDecodeError):
+            # Skip files that cannot be parsed; they do not affect the call check
             continue
         for node in ast.walk(tree):
-            if (isinstance(node, ast.Call)
-                    and getattr(node.func, "id", "") == "configure_logging"):
+            if (
+                isinstance(node, ast.Call)
+                and getattr(node.func, "id", "") == "configure_logging"
+            ):
                 referenced = True
+                break  # No need to continue scanning once found
+        if referenced:
+            break
     assert referenced, (
         "configure_logging() is never called, so structlog runs on library "
         "defaults: console output instead of JSON, and no level filtering"
@@ -59,7 +69,9 @@ def test_importing_the_app_installs_the_configuration():
     import app.main  # noqa: F401 — import is the thing under test
 
     cfg = structlog.get_config()
-    assert cfg["processors"], "structlog has no processors — never configured"
+    # Defensive check for None or missing keys
+    processors = cfg.get("processors") if isinstance(cfg, dict) else None
+    assert processors, "structlog has no processors — never configured"
 
 
 def test_production_logs_are_machine_readable():
@@ -68,7 +80,11 @@ def test_production_logs_are_machine_readable():
 
     from app.config import settings
 
-    renderer = type(structlog.get_config()["processors"][-1]).__name__
+    cfg = structlog.get_config()
+    processors = cfg.get("processors") if isinstance(cfg, dict) else None
+    # Guard against empty processors list
+    assert processors, "structlog processors list is missing or empty"
+    renderer = type(processors[-1]).__name__
     expected = "ConsoleRenderer" if settings.debug else "JSONRenderer"
     assert renderer == expected, (
         f"with debug={settings.debug} the renderer must be {expected}, got "
@@ -82,13 +98,17 @@ def test_debug_logs_do_not_escape_into_production():
 
     from app.config import settings
 
-    wrapper = structlog.get_config()["wrapper_class"].__name__
+    cfg = structlog.get_config()
+    wrapper_class = cfg.get("wrapper_class") if isinstance(cfg, dict) else None
+    # Ensure wrapper_class is present
+    assert wrapper_class, "structlog wrapper_class is missing"
+    wrapper = wrapper_class.__name__
     assert "Notset" not in wrapper, (
         "BoundLoggerFilteringAtNotset filters nothing — every logger.debug() "
         f"in app/ reaches production output (wrapper_class={wrapper})"
     )
     if not settings.debug:
-        assert "Info" in wrapper or "Warning" in wrapper or "Error" in wrapper, (
+        assert any(level in wrapper for level in ("Info", "Warning", "Error")), (
             f"expected an INFO-or-higher filter outside debug mode, got {wrapper}"
         )
 
@@ -108,6 +128,7 @@ def test_a_debug_line_is_actually_suppressed(capsys):
 
     from app.utils.logging import logger
 
+    # Ensure any prior output is cleared
     capsys.readouterr()
     logger.debug("SENTINEL_DEBUG_MUST_NOT_APPEAR")
     logger.info("SENTINEL_INFO_MUST_APPEAR")
