@@ -32,6 +32,43 @@ Two causes:
   was **dormant, not dead**. The moment CI actually ran on main it fired on both
   desks — 06:43 and 07:45, both `success` on desk-trading.
 
+### ✅ TRADING IS WORKING — verified 2026-08-03 13:43
+Run `30818846913` (13:37 UTC, `workflow_dispatch` from the pacemaker, first one to
+land inside RTH): **`Done. 7 orders placed across 9 desks.`** The chain is closed:
+pacemaker survives its sleep → dispatches desk-trading → lands in market hours →
+real paper orders. Dispatch cadence is exact: 10:16, 11:07, 11:57, 12:47, 13:37,
+14:28 — every 50 minutes, no drift. Cron contributed **one** run all day (12:17).
+
+### 🔴 The merge gate is fine; VERCEL is blocking all 100 open PRs (found 14:37)
+`auto-merge.yml` now fires on both events — 3 `schedule` + 6 `workflow_dispatch`
+runs today, all `success`, all sweeping every open PR. **The backlog still did not
+move; it grew to 100.** The cause is not the triggers, the label rule, or CI.
+
+`#1358`: `automerge` label, not a draft, base `main`, all three REQUIRED_CHECKS
+green (`test`, `test-agents`, `frontend-build`), `mergeable_state: "unstable"`.
+Its combined commit status:
+```json
+{"state": "failure", "context": "Vercel",
+ "description": "Deployment rate limited — retry in 24 hours."}
+```
+The gate ends with `if (combined.state === 'failure' || combined.state === 'error') continue;`
+so **every bot PR is refused because a preview deploy could not run.** Closed loop:
+bot PR → Vercel preview → free-tier cap (100/day) exhausted → `failure` status →
+gate refuses → PRs pile up → more previews attempted.
+
+The gate is internally inconsistent about this: it already ignores Vercel for
+*check-runs* (`IGNORE = [..., 'Vercel Preview Comments']`, "Vercel comments are
+decorative. Neither gates correctness — only real CI jobs do") and then blocks on
+the Vercel *commit status*. Excluding the `Vercel` context from the combined-status
+check is consistent and safe — `frontend-build` is REQUIRED and is the real
+frontend gate.
+
+**That one-liner is deliberately NOT shipped.** It would auto-merge ~50 stale PRs
+in one sweep, which is the operator's open decision, and several are known-defective
+(`#1246`: false invariant in a SHARED test, a `position[idx-1]` on a `DatetimeIndex`
+that cannot run, an audit log that silently drops records). Cheaper fix is on the
+Vercel side: disable previews for `improver/**`.
+
 ### ✅ VERIFIED 2026-08-03 10:16 — the pacemaker dispatch works
 First-ever `workflow_dispatch` run on `desk-trading.yml`: run `30804944671`,
 triggered by `github-actions[bot]`, `desks_run=9`, conclusion `success`. So
