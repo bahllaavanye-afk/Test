@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -33,6 +33,7 @@ RESPONSE_MESSAGE_KEY = "message"
 
 # HTTP status codes
 HTTP_STATUS_INTERNAL_ERROR = 500
+HTTP_STATUS_BAD_REQUEST = 400
 
 router = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
 
@@ -41,22 +42,31 @@ def _load_health_report() -> Dict[str, Any]:
     """Load the health report JSON from disk.
 
     Returns a dictionary with the report contents. Raises HTTPException if the
-    file exists but cannot be parsed.
+    file exists but cannot be parsed. Handles empty files gracefully.
     """
     if not HEALTH_REPORT_PATH.exists():
         return {"status": DEFAULT_HEALTH_STATUS, "message": DEFAULT_HEALTH_MESSAGE}
     try:
-        return json.loads(HEALTH_REPORT_PATH.read_text())
+        raw_text = HEALTH_REPORT_PATH.read_text().strip()
+        if not raw_text:
+            # Empty file – treat as no report yet
+            return {"status": DEFAULT_HEALTH_STATUS, "message": DEFAULT_HEALTH_MESSAGE}
+        return json.loads(raw_text)
     except Exception as exc:
-        raise HTTPException(status_code=HTTP_STATUS_INTERNAL_ERROR, detail=HEALTH_REPORT_CORRUPTED_DETAIL) from exc
+        raise HTTPException(
+            status_code=HTTP_STATUS_INTERNAL_ERROR, detail=HEALTH_REPORT_CORRUPTED_DETAIL
+        ) from exc
 
 
 def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
     """Read the fix log file and return the most recent *limit* entries.
 
     The log is stored as newline‑delimited JSON. Empty or missing files result in
-    an empty list. Any parsing error raises an HTTPException.
+    an empty list. Any parsing error raises an HTTPException. Handles limit edge
+    cases (None, zero, negative) safely.
     """
+    if limit <= 0:
+        return []
     if not FIX_LOG_PATH.exists():
         return []
     try:
@@ -64,10 +74,15 @@ def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
         if not raw_text:
             return []
         lines = raw_text.splitlines()
-        recent_lines = lines[-limit:]
+        # Guard against limit > len(lines); slicing works, but ensure we don't
+        # unintentionally return the whole list when limit == 0 (handled above).
+        recent_lines = lines[-limit:] if limit < len(lines) else lines
         return [json.loads(line) for line in recent_lines]
     except Exception as exc:
-        raise HTTPException(status_code=HTTP_STATUS_INTERNAL_ERROR, detail=FIX_LOG_READ_ERROR_DETAIL.format(exc)) from exc
+        raise HTTPException(
+            status_code=HTTP_STATUS_INTERNAL_ERROR,
+            detail=FIX_LOG_READ_ERROR_DETAIL.format(exc),
+        ) from exc
 
 
 @router.get(ENDPOINT_HEALTH)
@@ -82,14 +97,26 @@ async def get_health_report():
 
 @router.get(ENDPOINT_FIXES)
 async def get_fix_log(
-    limit: int = DEFAULT_FIX_LOG_LIMIT,
+    limit: Optional[int] = None,
     current_user: User = Depends(get_current_user),
 ):
     """Recent auto‑fixes applied by the QA monitor (requires auth).
 
-    Returns the last *limit* entries from the fix log (newest last).
+    Returns the last *limit* entries from the fix log (newest last). If *limit*
+    is omitted, None, zero, or negative, an empty list is returned.
     """
-    return _read_fix_log(limit)
+    # Resolve default limit when None is provided
+    effective_limit = DEFAULT_FIX_LOG_LIMIT if limit is None else limit
+
+    if not isinstance(effective_limit, int):
+        raise HTTPException(
+            status_code=HTTP_STATUS_BAD_REQUEST,
+            detail="Limit must be an integer.",
+        )
+    if effective_limit <= 0:
+        return []
+
+    return _read_fix_log(effective_limit)
 
 
 @router.post(ENDPOINT_RUN_NOW)
