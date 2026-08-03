@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from json import JSONDecodeError
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -31,52 +32,106 @@ class AgentMemory:
 
     # ── Write ─────────────────────────────────────────────────────────────────
 
-    async def write(self, topic: str, data: dict) -> None:
-        """Append an observation to a topic list with a timestamp."""
-        payload = json.dumps({"ts": time.time(), **data})
-        key = f"{_PREFIX}{topic}"
+    async def write(self, topic: str | None, data: dict | None) -> None:
+        """Append an observation to a topic list with a timestamp.
+
+        Handles None or empty inputs gracefully.
+        """
+        if not topic:
+            logger.warning("AgentMemory.write called with empty or None topic")
+            return
+        if not data:
+            logger.warning("AgentMemory.write called with empty or None data for topic %s", topic)
+            return
         try:
+            payload = json.dumps({"ts": time.time(), **data})
+            key = f"{_PREFIX}{topic}"
             await self._r.lpush(key, payload)
+            # Ensure we keep at most _MAX_LIST_LEN items
             await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
         except Exception as e:
             logger.warning("AgentMemory.write failed for topic %s: %s", topic, e)
 
-    async def set_latest(self, topic: str, data: dict) -> None:
-        """Overwrite the latest value for a topic (single-value slot)."""
-        key = f"{_PREFIX}latest:{topic}"
-        payload = json.dumps({"ts": time.time(), **data})
+    async def set_latest(self, topic: str | None, data: dict | None) -> None:
+        """Overwrite the latest value for a topic (single-value slot).
+
+        Handles None or empty inputs gracefully.
+        """
+        if not topic:
+            logger.warning("AgentMemory.set_latest called with empty or None topic")
+            return
+        if not data:
+            logger.warning("AgentMemory.set_latest called with empty or None data for topic %s", topic)
+            return
         try:
+            payload = json.dumps({"ts": time.time(), **data})
+            key = f"{_PREFIX}latest:{topic}"
             await self._r.set(key, payload)
         except Exception as e:
             logger.warning("AgentMemory.set_latest failed for topic %s: %s", topic, e)
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
-    async def read_recent(self, topic: str, n: int = 50) -> list[dict]:
-        """Return up to n most-recent observations for a topic."""
-        key = f"{_PREFIX}{topic}"
+    async def read_recent(self, topic: str | None, n: int = 50) -> list[dict]:
+        """Return up to n most-recent observations for a topic.
+
+        Handles None/empty topics, non-positive n, and empty result sets.
+        """
+        if not topic:
+            logger.warning("AgentMemory.read_recent called with empty or None topic")
+            return []
+        if n <= 0:
+            logger.warning("AgentMemory.read_recent called with non-positive n=%s for topic %s", n, topic)
+            return []
         try:
+            key = f"{_PREFIX}{topic}"
             items = await self._r.lrange(key, 0, n - 1)
-            return [json.loads(i) for i in items]
+            if not items:
+                return []
+            # Guard against unexpected non‑string items
+            result: list[dict] = []
+            for i in items:
+                try:
+                    result.append(json.loads(i))
+                except JSONDecodeError:
+                    logger.warning("AgentMemory.read_recent received malformed JSON for topic %s", topic)
+            return result
         except Exception as e:
             logger.warning("AgentMemory.read_recent failed for topic %s: %s", topic, e)
             return []
 
-    async def get_latest(self, topic: str) -> dict | None:
-        """Return the latest single-value for a topic."""
-        key = f"{_PREFIX}latest:{topic}"
+    async def get_latest(self, topic: str | None) -> dict | None:
+        """Return the latest single-value for a topic.
+
+        Handles None/empty topics and malformed JSON.
+        """
+        if not topic:
+            logger.warning("AgentMemory.get_latest called with empty or None topic")
+            return None
         try:
+            key = f"{_PREFIX}latest:{topic}"
             val = await self._r.get(key)
-            return json.loads(val) if val else None
+            if not val:
+                return None
+            try:
+                return json.loads(val)
+            except JSONDecodeError:
+                logger.warning("AgentMemory.get_latest received malformed JSON for topic %s", topic)
+                return None
         except Exception as e:
             logger.warning("AgentMemory.get_latest failed for topic %s: %s", topic, e)
             return None
 
     async def read_all_topics(self) -> list[str]:
-        """List all memory topics currently stored."""
+        """List all memory topics currently stored.
+
+        Handles empty result sets gracefully.
+        """
         try:
             pattern = f"{_PREFIX}*"
             keys = await self._r.keys(pattern)
+            if not keys:
+                return []
             return [k.removeprefix(_PREFIX) for k in keys]
         except Exception as e:
             logger.warning("AgentMemory.read_all_topics failed: %s", e)
