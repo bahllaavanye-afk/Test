@@ -1,5 +1,33 @@
 # QuantEdge — Improvements & Task Tracker
 
+## ⚖️ 2026-08-03 04:40 — CORRECTION to the 02:40 entry: the mechanism was wrong, the fix is right
+I wrote that **every** trigger on `auto-merge.yml` is suppressed for bot PRs. Not true as stated.
+
+`auto-merge` **did** fire at 03:38 (`30782308923`, `event=pull_request_target`). Its entire output:
+```
+#232: base claude/advanced-trading-bot-d5Lmw != main
+```
+One PR evaluated, skipped, done. Because a `pull_request_target` event populates
+`context.payload.pull_request`, `candidates` gets exactly one entry, and the
+`candidates.size === 0` fallback — the branch that scans all open PRs — never runs.
+
+**So the accurate statement is:** the gate does wake, but only ever for the single PR whose event
+woke it. Nothing sweeps the backlog. The *effect* I described (90 PRs stranded) was right; the
+mechanism I gave ("all triggers suppressed") was not, and I asserted it more confidently than the
+evidence supported. Third time this session I have named a mechanism before confirming it.
+
+**The shipped fix is still the correct one** — a `schedule` is the only trigger that reaches the
+all-open-PRs scan, which is precisely the missing capability. Nothing to revert.
+
+**Not yet confirmed:** as of 04:40, 1h47m after the fix merged, `auto-merge.yml` has **zero** runs
+with `event=schedule`. That is inside the measured cron-starvation envelope for this repo
+(1h22m–3h12m late), so it is not yet evidence of failure — but it is not evidence of success either.
+Do not record the schedule as working until a run with `event=schedule` actually appears.
+
+**Open observation, not diagnosed:** `#1341` was green WITH the `automerge` label last tick and now
+has **no** label, still unmerged. Something removed it. Worth understanding before concluding
+anything about why the backlog is not clearing.
+
 ## 💤 2026-08-03 02:40 — the merge gate has not fired in three days
 
 Both earlier fixes verified live: the improver's dispatch logs `CI dispatched on improver/run-30773290001` instead of the 403, and improver PRs now get full CI. The stage *after* that is dead.
