@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Detect abnormal calls",
-    "Limit API retries",
-    "Test network latency",
-    "Apply type safety checks",
     "Log API errors",
     "Implement S4-LSTM",
     "Flush cache daily",
@@ -199,8 +195,12 @@
     "Check data feed latency",
     "Monitor system memory",
     "Test market data gaps",
-    "Bind API to proxies"
+    "Bind API to proxies",
+    "Log heartbeat packets",
+    "Detect deadlocks",
+    "Scan code for error patterns",
+    "Refactor redundant code"
   ],
-  "last_updated": "2026-08-03T22:05:13.668438+00:00",
+  "last_updated": "2026-08-03T23:34:10.914153+00:00",
   "total": 200
 }
