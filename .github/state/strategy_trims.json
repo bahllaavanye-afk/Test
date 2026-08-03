@@ -28,5 +28,15 @@
       "avg_return_pct": -1.8208,
       "total_return_pct": -20.0286
     }
+  },
+  "realized_vol_asymmetry": {
+    "trimmed_at": "2026-08-03T15:27:32.179276+00:00",
+    "reason": "cumulative return -23.7% \u2264 -5.0% over 10 trades",
+    "stats_at_trim": {
+      "trades": 10,
+      "win_rate": 0.3,
+      "avg_return_pct": -2.37,
+      "total_return_pct": -23.6997
+    }
   }
 }
