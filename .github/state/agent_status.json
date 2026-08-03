@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-08-03T17:50:11.814080+00:00",
+  "checked_at": "2026-08-03T21:01:24.525066+00:00",
   "total_agents": 18,
   "batch_checked": 6,
   "total_runs": 61,
@@ -8,44 +8,44 @@
   "skill_count": 200,
   "agent_statuses": [
     {
-      "agent": "investor_pipeline",
-      "emoji": "\ud83d\udcbc",
-      "reply": "I'm currently scanning the investor-pipeline data, specifically analyzing log files in `backend/logs/investor_pipeline.log` for errors to auto-advance stages. My next step will be to validate JSON schemas in `backend/api/schemas/investor_pipeline.json` to ensure data consistency.",
+      "agent": "continuous_improver",
+      "emoji": "\ud83d\udd27",
+      "reply": "I'm actively refactoring",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "run_experiments",
-      "emoji": "\ud83d\udd2c",
-      "reply": "I\u2019m currently scanning",
+      "agent": "signal_runner",
+      "emoji": "\ud83d\udce1",
+      "reply": "The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" Need to respond in first person, concise, 2 sentences max, referencing real file paths. As a signal_runner agent, I should describe current activity: scanning logs, generating signals, verifying trade limits, etc. Must be one sentence, but allowed up to 2 sentences. Should reference real file paths like \"/var/log/quantedge/signal_runner.log\" or \"/",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "algo_agent",
-      "emoji": "\ud83c\udfb0",
-      "reply": "The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" According to developer instructions, we must respond as the algo_agent, one sentence status update, first person, concise (2 sentences max). Also reference real file paths. The agent is a UCB1 bandit for strategy exploration, with stats 0 runs, 0 successes, last task: starting up. So currently, as per last instructions, we might be exploring strategies",
+      "agent": "quick_backtest",
+      "emoji": "\u26a1",
+      "reply": "I\u2019m currently parsing",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "self_improver",
-      "emoji": "\ud83d\udd04",
-      "reply": "I\u2019m currently scanning `backend/logs` for error patterns.",
-      "runs": 0,
-      "successes": 0
-    },
-    {
-      "agent": "research_scientist",
-      "emoji": "\ud83d\udd2d",
+      "agent": "peer_reviewer",
+      "emoji": "\ud83d\udc41\ufe0f",
       "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "modeling_engineer",
-      "emoji": "\u2699\ufe0f",
-      "reply": "We need to respond as modeling_engineer, 2 sentences max, referencing real file paths, state current activity. Should be concise. Provide one sentence? The user asks \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" So respond with one sentence, referencing file paths. Eg: \"I'm scanning backend/model/ drift logs and prepping S4 block insertion at src/pipelines/hybrid_s4_lstm.py.\" Provide in first person. Ensure",
+      "agent": "frontend_design",
+      "emoji": "\ud83c\udfa8",
+      "reply": "The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the frontend_design agent, we need to respond in first person, concise, two sentences max, referencing real file paths. So we should say something like: \"I'm currently refactoring the Bloomberg dark theme components in src/components/theme/DarkTheme.tsx to improve color contrast and accessibility.\" That references a file path. Keep it one sentence. Provide status. Should be concise",
+      "runs": 0,
+      "successes": 0
+    },
+    {
+      "agent": "token_monitor",
+      "emoji": "\ud83d\udcb0",
+      "reply": "The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The system: we are token_monitor agent. Must respond in first person, concise, 2 sentences max. Provide one sentence status update. Should mention what we are actively working on now: monitoring API usage and posting optimization suggestions, scanning logs, etc. Provide a one-sentence status update. Probably: \"I am currently scanning the latest API usage logs in /var/log",
       "runs": 0,
       "successes": 0
     }

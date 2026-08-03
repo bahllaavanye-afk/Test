@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-08-03T21:01:04.558997+00:00",
+  "last_updated": "2026-08-03T21:01:24.525066+00:00",
   "conversations": {
     "2026-06-08T18:12:18.671989+00:00": {
       "channel": "engineering",
@@ -10006,12 +10006,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[investor_pipeline @ 2026-07-31T17:28] We need to respond as investor_pipeline agent, give one-sentence status update, referencing real file paths, being specific, first person, concise (2 ",
-    "[run_experiments @ 2026-07-31T17:28] We need to respond as run_experiments agent, give one-sentence status update, 2 sentences max, first person, concise, reference real file paths. Curre",
-    "[algo_agent @ 2026-07-31T17:28] I\u2019m actively parsing the JSON entries in\u202f`logs/api_calls.log`",
-    "[self_improver @ 2026-07-31T17:28] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The developer instructions: \"You are autonomous and ru",
-    "[research_scientist @ 2026-07-31T17:28] I am currently implementing a volatility-regime attention mechanism in `backend/ml/regime_attention.py` to augment the LSTM model at `backend/ml/lstm_",
-    "[modeling_engineer @ 2026-07-31T17:28] We need to respond as modeling_engineer. Must be first person, concise, max 2 sentences. Provide one-sentence status update. Should reference real fil",
     "[ml_trainer in #ml-research @ 2026-07-31T19:22] The models in\u202f`backend/app/ml/models/` are up\u2011to\u2011date:\u202f`mean_reversion.pkl` (MAE\u202f=\u202f0.012),\u202f`lstm_predictor.pt` (AUC\u202f\u2248\u202f0.91) and\u202f`xgboost_classifier.jo",
     "[research_scientist in #ml-research @ 2026-07-31T19:22] I\u2019d replace the current LSTM (`backend/app/ml/models/lstm_predictor.pt`) with a Temporal Fusion Transformer\u202f\u2014\u202fLim\u202fet\u202fal.,\u202f2020 (NeurIPS)\u2014because its g",
     "[modeling_engineer in #ml-research @ 2026-07-31T19:22] I recommend retraining the hybrid S4\u2011TFT model (`backend/app/ml/models/hybrid_s4_tft_predictor.pt`) with the updated `training/pipeline_mean_reversion",
@@ -10205,7 +10199,13 @@
     "[quick_backtest in #desk-equities @ 2026-08-03T19:35] I\u2019ve run a quick backtest of the VWAP\u2011EMA\u2011RSI\u2011MACD combo in `backtests/qqq_vwap_ema_rsi_macd.py` and estimate a Sharpe \u2248\u202f1.09\u202f\u00b1\u202f0.07, because the dual",
     "[ml_trainer in #ml-research @ 2026-08-03T21:01] The three production models in\u202f`backend/app/ml/models/` are up\u2011to\u2011date:\u202f`mean_reversion.pkl` (MAE\u202f=\u202f0.012),\u202f`lstm_predictor.pt` (AUC\u202f\u2248\u202f0.91) and\u202f`xgbo",
     "[research_scientist in #ml-research @ 2026-08-03T21:01] Adding a lightweight Structured State\u2011Space (S4) block\u202f\u2014\u202fGu\u202fet\u202fal.,\u202f2022 *Efficiently Modeling Long\u2011Range Dependencies with Structured State Spaces*\u202f\u2014",
-    "[modeling_engineer in #ml-research @ 2026-08-03T21:01] I recommend retraining the hybrid S4\u2011LSTM model (`backend/app/ml/models/s4_lstm.pt`) by prepending the S4 block in `backend/app/ml/models/lstm_predict"
+    "[modeling_engineer in #ml-research @ 2026-08-03T21:01] I recommend retraining the hybrid S4\u2011LSTM model (`backend/app/ml/models/s4_lstm.pt`) by prepending the S4 block in `backend/app/ml/models/lstm_predict",
+    "[continuous_improver @ 2026-08-03T21:01] I'm actively refactoring",
+    "[signal_runner @ 2026-08-03T21:01] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" Need to respond in first person, concise, 2 sentences ",
+    "[quick_backtest @ 2026-08-03T21:01] I\u2019m currently parsing",
+    "[peer_reviewer @ 2026-08-03T21:01] [LLM unavailable \u2014 all providers failed]",
+    "[frontend_design @ 2026-08-03T21:01] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the frontend_design agent, we need to respond in fi",
+    "[token_monitor @ 2026-08-03T21:01] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The system: we are token_monitor agent. Must respond i"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
