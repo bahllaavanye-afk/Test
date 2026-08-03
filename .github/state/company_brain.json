@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785783144.2346797,
+    "last_updated": 1785785014.6245337,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 3,
     "macro_score": 3,
-    "vix": 15.75,
-    "market_scan_ts": 1785783144.2056174,
+    "vix": 15.77,
+    "market_scan_ts": 1785785014.5946338,
     "sector_leaders": [
       "Energy",
       "Financials",
@@ -126,8 +126,8 @@
       "MSFT",
       "ORCL",
       "GOOGL",
-      "AAPL",
       "CRWD",
+      "AAPL",
       "NOW",
       "LLY",
       "CMCSA",
@@ -137,31 +137,24 @@
       "TSLA",
       "QQQ",
       "META",
+      "SLB",
       "MA",
       "CVX",
-      "SLB",
-      "XLV",
-      "IWM"
+      "XLK",
+      "XLV"
     ],
     "top_momentum": [
       "MSFT",
       "AMZN",
       "INTU",
       "ADBE",
-      "VZ"
+      "BLK"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785767352.9006705
   },
   "episodic": [
-    {
-      "lesson": "FX desk placed only 1 of 8 high-confidence signals (\u22650.6) and skipped 2 due to existing positions. This suggests possible over-positioning in certain pairs or insufficient risk capacity for new entries.",
-      "category": "risk",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1784760037.610552
-    },
     {
       "source": "market_opinion",
       "regime": "neutral",
@@ -2096,6 +2089,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785783144.240204
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Comm."
+      ],
+      "gap_count": 8,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
+      "ts": 1785785014.6302605
     }
   ],
   "github_insights": [
