@@ -98,6 +98,20 @@ class CodeQualityLoop:
         except Exception as e:
             logger.warning("code_quality: failed to persist snapshot", error=str(e))
 
+    def _log_iteration_metrics(self, snapshot: dict, start_time: float) -> None:
+        """Log metrics for a single iteration of the loop."""
+        signal_count = snapshot.get("manual_strategies", 0) + snapshot.get("ml_strategies", 0)
+        execution_time = round(time.perf_counter() - start_time, 3)
+        pnl = snapshot.get("pnl")  # P&L not tracked here; will be None if absent
+
+        logger.info(
+            "code_quality: iteration metrics",
+            signal_count=signal_count,
+            execution_time=execution_time,
+            pnl=pnl,
+        )
+        logger.debug("Code quality snapshot", **snapshot)
+
     async def run(self) -> None:
         self._running = True
         logger.info("CodeQualityLoop started", interval=self.interval_seconds)
@@ -106,19 +120,7 @@ class CodeQualityLoop:
             try:
                 snapshot = await self._snapshot()
                 self._persist(snapshot)
-
-                # Compute key metrics for structured logging
-                signal_count = snapshot.get("manual_strategies", 0) + snapshot.get("ml_strategies", 0)
-                execution_time = round(time.perf_counter() - start_time, 3)
-                pnl = snapshot.get("pnl")  # P&L not tracked here; will be None if absent
-
-                logger.info(
-                    "code_quality: iteration metrics",
-                    signal_count=signal_count,
-                    execution_time=execution_time,
-                    pnl=pnl,
-                )
-                logger.debug("Code quality snapshot", **snapshot)
+                self._log_iteration_metrics(snapshot, start_time)
             except asyncio.CancelledError:
                 return
             except Exception as e:
