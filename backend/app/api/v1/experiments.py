@@ -3,7 +3,7 @@ import asyncio
 import logging
 import uuid
 from pathlib import Path
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
@@ -56,6 +56,45 @@ class TrainRequest(BaseModel):
     config_name: str  # e.g. "lstm_btc_1h"
 
 
+def _format_config_not_found_message(config_name: str, available: list[str]) -> str:
+    display_list = available[:CONFIGS_LIMIT_DISPLAY]
+    suffix = "..." if len(available) > CONFIGS_LIMIT_DISPLAY else ""
+    return CONFIG_NOT_FOUND_TEMPLATE.format(
+        config_name=config_name,
+        available=f"{display_list}{suffix}",
+    )
+
+
+def _validate_config_exists(config_name: str) -> Path:
+    """Ensure the YAML config exists; raise HTTPException if not."""
+    config_path = CONFIGS_DIR / f"{config_name}.yaml"
+    if config_path.exists():
+        return config_path
+    available = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
+    message = _format_config_not_found_message(config_name, available)
+    raise HTTPException(status_code=404, detail=message)
+
+
+async def _create_experiment_record(
+    db: AsyncSession,
+    config_name: str,
+) -> Experiment:
+    """Create and persist an Experiment record, returning the instance."""
+    experiment_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    exp = Experiment(
+        id=experiment_id,
+        name=f"{config_name}-{now.strftime('%Y%m%d%H%M%S')}",
+        config={"config_name": config_name},
+        status=STATUS_QUEUED,
+        started_at=now,
+        created_at=now,
+    )
+    db.add(exp)
+    await db.commit()
+    return exp
+
+
 async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
     """Background task: run the experiment script for the given config."""
     import subprocess
@@ -91,38 +130,15 @@ async def trigger_training(
     The training runs as a background asyncio task.
     """
     config_name = body.config_name.removesuffix(".yaml")
+    _validate_config_exists(config_name)
 
-    # Validate config exists
-    config_path = CONFIGS_DIR / f"{config_name}.yaml"
-    if not config_path.exists():
-        available = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
-        display_list = available[:CONFIGS_LIMIT_DISPLAY]
-        suffix = "..." if len(available) > CONFIGS_LIMIT_DISPLAY else ""
-        message = CONFIG_NOT_FOUND_TEMPLATE.format(
-            config_name=config_name,
-            available=f"{display_list}{suffix}",
-        )
-        raise HTTPException(404, message)
-
-    experiment_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc)
-
-    exp = Experiment(
-        id=experiment_id,
-        name=f"{config_name}-{now.strftime('%Y%m%d%H%M%S')}",
-        config={"config_name": config_name},
-        status=STATUS_QUEUED,
-        started_at=now,
-        created_at=now,
-    )
-    db.add(exp)
-    await db.commit()
+    exp = await _create_experiment_record(db, config_name)
 
     # Launch background training task (fire-and-forget)
-    asyncio.create_task(_run_experiment_async(config_name, experiment_id))
+    asyncio.create_task(_run_experiment_async(config_name, exp.id))
 
     return {
-        "experiment_id": experiment_id,
+        "experiment_id": exp.id,
         "status": STATUS_QUEUED,
         "config_name": config_name,
     }
@@ -148,7 +164,7 @@ async def get_experiment(
     result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
     exp = result.scalar_one_or_none()
     if not exp:
-        raise HTTPException(404, EXPERIMENT_NOT_FOUND)
+        raise HTTPException(status_code=404, detail=EXPERIMENT_NOT_FOUND)
     return {
         "id": exp.id,
         "name": exp.name,
