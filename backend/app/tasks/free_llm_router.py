@@ -5,6 +5,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -35,6 +36,27 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class LLMProvider:
+    """
+    Configuration for an LLM provider.
+
+    Attributes
+    ----------
+    name: str
+        Human‑readable name of the provider.
+    env_key: str
+        Environment variable name that holds the API key.
+    base_url: str
+        Base endpoint URL for the provider's API.
+    model: str
+        Model identifier to be used for completions.
+    max_tokens: int
+        Maximum number of tokens the provider allows per request.
+    timeout: float
+        HTTP timeout in seconds for the provider.
+    headers_extra: dict
+        Any additional headers required by the provider.
+    """
+
     name: str
     env_key: str
     base_url: str
@@ -44,7 +66,7 @@ class LLMProvider:
     headers_extra: dict = field(default_factory=dict)
 
 
-PROVIDERS: list[LLMProvider] = [
+PROVIDERS: List[LLMProvider] = [
     LLMProvider(
         name="gemini",
         env_key="GEMINI_API_KEY",
@@ -99,6 +121,21 @@ PROVIDERS: list[LLMProvider] = [
 
 @dataclass
 class LLMResponse:
+    """
+    Normalized response from an LLM provider.
+
+    Attributes
+    ----------
+    provider: str
+        Name of the provider that generated the response.
+    content: str
+        The textual content returned by the LLM.
+    latency_ms: float
+        Request latency in milliseconds.
+    tokens_used: int
+        Number of tokens reported as used for the request.
+    """
+
     provider: str
     content: str
     latency_ms: float
@@ -110,10 +147,29 @@ class LLMResponse:
 
 async def _call_provider(
     provider: LLMProvider,
-    messages: list[dict],
+    messages: List[Dict[str, Any]],
     temperature: float = DEFAULT_TEMPERATURE,
-    max_tokens: int | None = None,
-) -> LLMResponse | None:
+    max_tokens: Optional[int] = None,
+) -> Optional[LLMResponse]:
+    """
+    Perform a single request to the given LLM provider.
+
+    Parameters
+    ----------
+    provider : LLMProvider
+        The provider to query.
+    messages : List[Dict[str, Any]]
+        List of message dictionaries following the OpenAI chat format.
+    temperature : float, optional
+        Sampling temperature for the generation; defaults to ``DEFAULT_TEMPERATURE``.
+    max_tokens : int | None, optional
+        Maximum tokens to generate; if ``None`` the provider's default is used.
+
+    Returns
+    -------
+    LLMResponse | None
+        Normalized response on success, or ``None`` if the request fails or the API key is missing/disabled.
+    """
     api_key = os.getenv(provider.env_key, "")
     if not api_key or api_key in DISABLED_KEYS:
         return None
@@ -148,12 +204,30 @@ async def _call_provider(
 
 
 async def call_race(
-    messages: list[dict],
+    messages: List[Dict[str, Any]],
     temperature: float = DEFAULT_TEMPERATURE,
     max_tokens: int = DEFAULT_MAX_TOKENS_RACE,
     timeout: float = DEFAULT_TIMEOUT_RACE,
-) -> LLMResponse | None:
-    """Call all available providers in parallel; return the first successful response."""
+) -> Optional[LLMResponse]:
+    """
+    Query all configured providers in parallel and return the first successful response.
+
+    Parameters
+    ----------
+    messages : List[Dict[str, Any]]
+        Chat messages to send to each provider.
+    temperature : float, optional
+        Sampling temperature; defaults to ``DEFAULT_TEMPERATURE``.
+    max_tokens : int, optional
+        Maximum tokens to generate; defaults to ``DEFAULT_MAX_TOKENS_RACE``.
+    timeout : float, optional
+        Overall timeout for the race; defaults to ``DEFAULT_TIMEOUT_RACE`` seconds.
+
+    Returns
+    -------
+    LLMResponse | None
+        The first successful response, or ``None`` if no providers are available or all fail.
+    """
     tasks = {
         asyncio.create_task(_call_provider(p, messages, temperature, max_tokens)): p
         for p in PROVIDERS
@@ -180,12 +254,30 @@ async def call_race(
 
 
 async def call_consensus(
-    messages: list[dict],
+    messages: List[Dict[str, Any]],
     temperature: float = DEFAULT_TEMPERATURE,
     max_tokens: int = DEFAULT_MAX_TOKENS_CONSENSUS,
     timeout: float = DEFAULT_TIMEOUT_CONSENSUS,
-) -> list[LLMResponse]:
-    """Call all providers and return all successful responses for consensus analysis."""
+) -> List[LLMResponse]:
+    """
+    Query all configured providers and collect all successful responses.
+
+    Parameters
+    ----------
+    messages : List[Dict[str, Any]]
+        Chat messages to send to each provider.
+    temperature : float, optional
+        Sampling temperature; defaults to ``DEFAULT_TEMPERATURE``.
+    max_tokens : int, optional
+        Maximum tokens to generate; defaults to ``DEFAULT_MAX_TOKENS_CONSENSUS``.
+    timeout : float, optional
+        Overall timeout for the consensus operation; defaults to ``DEFAULT_TIMEOUT_CONSENSUS`` seconds.
+
+    Returns
+    -------
+    List[LLMResponse]
+        List of successful responses; empty if none succeed.
+    """
     tasks = [
         _call_provider(p, messages, temperature, max_tokens)
         for p in PROVIDERS
@@ -197,6 +289,13 @@ async def call_consensus(
     return [r for r in results if isinstance(r, LLMResponse)]
 
 
-def available_providers() -> list[str]:
-    """Return names of providers with configured API keys."""
+def available_providers() -> List[str]:
+    """
+    Retrieve the names of providers that have a valid API key configured.
+
+    Returns
+    -------
+    List[str]
+        Provider names with usable credentials.
+    """
     return [p.name for p in PROVIDERS if os.getenv(p.env_key, "") not in DISABLED_KEYS]

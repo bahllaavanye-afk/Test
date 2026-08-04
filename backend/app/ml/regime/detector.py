@@ -1,12 +1,14 @@
 """
-HMM-based market regime detector.
-Classifies current market into 3 states: TRENDING, MEAN_REVERTING, HIGH_VOL.
-Used to scale Kelly position sizing:
-  TRENDING    → 1.0x (full size)
-  MEAN_REVERTING → 0.85x
-  HIGH_VOL    → 0.5x (half size — protect capital)
+Market regime detection utilities.
+
+This module provides a Hidden Markov Model‑style detector that classifies
+the current market into one of three regimes: trending, mean‑reverting,
+or high volatility. The resulting regime is used to scale Kelly position
+sizing throughout the trading platform.
 """
+
 from __future__ import annotations
+
 import numpy as np
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -15,6 +17,7 @@ from typing import Optional
 
 
 class Regime(str, Enum):
+    """Enum representing possible market regimes."""
     TRENDING = "trending"
     MEAN_REVERTING = "mean_reverting"
     HIGH_VOL = "high_vol"
@@ -31,6 +34,24 @@ REGIME_SIZING_MULTIPLIER: dict[Regime, float] = {
 
 @dataclass
 class RegimeState:
+    """
+    Container for the current market regime and associated metrics.
+
+    Attributes
+    ----------
+    regime: Regime
+        The identified market regime.
+    confidence: float
+        Confidence in the classification (0‑1).
+    vol_20d: float
+        Realized 20‑day volatility, annualized (as a decimal).
+    hurst: float
+        Hurst exponent; >0.5 indicates trending, <0.5 mean‑reverting.
+    sizing_multiplier: float
+        Multiplier applied to Kelly sizing based on the regime.
+    updated_at: datetime
+        Timestamp of the most recent calculation.
+    """
     regime: Regime
     confidence: float       # 0-1
     vol_20d: float          # realized vol (annualized %)
@@ -39,6 +60,14 @@ class RegimeState:
     updated_at: datetime
 
     def to_dict(self) -> dict:
+        """
+        Convert the state to a JSON‑serialisable dictionary.
+
+        Returns
+        -------
+        dict
+            Dictionary containing human‑readable fields and a description.
+        """
         return {
             "regime": self.regime.value,
             "confidence": round(self.confidence, 3),
@@ -50,6 +79,14 @@ class RegimeState:
         }
 
     def _describe(self) -> str:
+        """
+        Generate a short textual description of the regime.
+
+        Returns
+        -------
+        str
+            Human‑readable description summarising the regime and sizing.
+        """
         if self.regime == Regime.TRENDING:
             return f"Trending market (Hurst={self.hurst:.2f}). Full position sizing."
         elif self.regime == Regime.MEAN_REVERTING:
@@ -61,10 +98,19 @@ class RegimeState:
 
 def _hurst_exponent(prices: np.ndarray, max_lag: int = 20) -> float:
     """
-    Hurst exponent via rescaled range (R/S) analysis.
-    H > 0.55 → trending (momentum works)
-    H < 0.45 → mean-reverting (reversion works)
-    H ≈ 0.5 → random walk
+    Estimate the Hurst exponent using rescaled range (R/S) analysis.
+
+    Parameters
+    ----------
+    prices : np.ndarray
+        Array of price values.
+    max_lag : int, optional
+        Maximum lag to consider when computing the rescaled range, by default 20.
+
+    Returns
+    -------
+    float
+        Estimated Hurst exponent, clipped to the interval [0.1, 0.9].
     """
     if len(prices) < 30:
         return 0.5
@@ -97,28 +143,43 @@ def _hurst_exponent(prices: np.ndarray, max_lag: int = 20) -> float:
 
 def detect_regime(prices: list[float], high_vol_threshold: float = 0.25) -> RegimeState:
     """
-    Classify market regime from a list of close prices (min 30 required).
+    Detect the market regime from a series of closing prices.
 
-    Args:
-        prices: List of close prices, most recent last.
-        high_vol_threshold: Annualized vol above this → HIGH_VOL regime.
+    The function requires at least 30 price points; otherwise it returns an
+    ``UNKNOWN`` regime with zero confidence.
+
+    Parameters
+    ----------
+    prices : list[float]
+        List of close prices, ordered from oldest to newest (most recent last).
+    high_vol_threshold : float, optional
+        Annualized volatility threshold above which the regime is considered
+        ``HIGH_VOL``, by default 0.25 (25 %).
+
+    Returns
+    -------
+    RegimeState
+        Structured result containing the identified regime and supporting metrics.
     """
     arr = np.array(prices, dtype=float)
     if len(arr) < 30:
         return RegimeState(
-            regime=Regime.UNKNOWN, confidence=0.0, vol_20d=0.0,
-            hurst=0.5, sizing_multiplier=REGIME_SIZING_MULTIPLIER[Regime.UNKNOWN],
+            regime=Regime.UNKNOWN,
+            confidence=0.0,
+            vol_20d=0.0,
+            hurst=0.5,
+            sizing_multiplier=REGIME_SIZING_MULTIPLIER[Regime.UNKNOWN],
             updated_at=datetime.now(timezone.utc),
         )
 
-    # 20-day realized volatility (annualized)
+    # 20‑day realized volatility (annualized)
     rets = np.diff(np.log(arr[-21:] + 1e-10))
     vol_20d = float(np.std(rets) * np.sqrt(252))
 
     # Hurst exponent on last 60+ bars
     hurst = _hurst_exponent(arr[-min(100, len(arr)):])
 
-    # Classify
+    # Classification logic
     if vol_20d > high_vol_threshold:
         regime = Regime.HIGH_VOL
         confidence = min(1.0, (vol_20d - high_vol_threshold) / high_vol_threshold + 0.6)
@@ -129,7 +190,7 @@ def detect_regime(prices: list[float], high_vol_threshold: float = 0.25) -> Regi
         regime = Regime.MEAN_REVERTING
         confidence = min(1.0, (0.5 - hurst) * 4)
     else:
-        # borderline — use vol to tiebreak
+        # Borderline case – use volatility to break the tie
         regime = Regime.TRENDING if vol_20d < 0.15 else Regime.MEAN_REVERTING
         confidence = 0.5
 
@@ -145,25 +206,78 @@ def detect_regime(prices: list[float], high_vol_threshold: float = 0.25) -> Regi
 
 class RegimeMonitor:
     """
-    Caches per-symbol regime states. Updated by PriceFeed task.
-    Consumed by RiskManager to scale Kelly sizing.
+    In‑memory cache of regime states per ticker symbol.
+
+    The monitor is updated by the price‑feed task and queried by the risk
+    manager to retrieve sizing multipliers.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         self._states: dict[str, RegimeState] = {}
 
     def update(self, symbol: str, prices: list[float]) -> RegimeState:
+        """
+        Compute and store the regime for a given symbol.
+
+        Parameters
+        ----------
+        symbol : str
+            Ticker symbol.
+        prices : list[float]
+            Recent price series for the symbol.
+
+        Returns
+        -------
+        RegimeState
+            The newly calculated regime state.
+        """
         state = detect_regime(prices)
         self._states[symbol] = state
         return state
 
-    def get(self, symbol: str) -> RegimeState | None:
+    def get(self, symbol: str) -> Optional[RegimeState]:
+        """
+        Retrieve the cached regime state for a symbol.
+
+        Parameters
+        ----------
+        symbol : str
+            Ticker symbol.
+
+        Returns
+        -------
+        Optional[RegimeState]
+            Cached state if present, otherwise ``None``.
+        """
         return self._states.get(symbol)
 
     def get_multiplier(self, symbol: str) -> float:
+        """
+        Obtain the sizing multiplier for a symbol.
+
+        Returns a default multiplier of 0.75 when the regime is unknown.
+
+        Parameters
+        ----------
+        symbol : str
+            Ticker symbol.
+
+        Returns
+        -------
+        float
+            Sizing multiplier associated with the current regime.
+        """
         state = self._states.get(symbol)
         return state.sizing_multiplier if state else 0.75
 
     def all_states(self) -> dict[str, dict]:
+        """
+        Export all cached regime states as dictionaries.
+
+        Returns
+        -------
+        dict[str, dict]
+            Mapping from symbol to its regime state dictionary.
+        """
         return {sym: state.to_dict() for sym, state in self._states.items()}
 
 

@@ -2,7 +2,7 @@ import base64
 import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Dict
 
 import bcrypt
 from cryptography.fernet import Fernet
@@ -10,27 +10,45 @@ from jose import jwt
 
 from app.config import settings
 
-# Use the bcrypt library directly rather than passlib's bcrypt backend: passlib 1.7.4
-# cannot read the version of bcrypt >= 4.1 (`module 'bcrypt' has no attribute '__about__'`)
-# and crashes password hashing. The output is still a standard ``$2b$`` hash, so any
-# hashes previously produced by passlib continue to verify unchanged.
-
 
 def _bcrypt_bytes(password: str) -> bytes:
-    """Encode a password for bcrypt, honoring its 72-byte input limit.
+    """Encode a password for bcrypt, respecting its 72‑byte input limit.
 
-    bcrypt only considers the first 72 bytes of the input, and bcrypt >= 5 raises if
-    given more, so we truncate to 72 bytes — semantically identical to bcrypt's own
-    behavior and the standard way to handle long passwords.
+    bcrypt only processes the first 72 bytes of the input. Newer versions raise an
+    exception if more than 72 bytes are supplied, so we truncate to match bcrypt's
+    intrinsic behavior.
+
+    Args:
+        password: The plain‑text password to encode.
+
+    Returns:
+        The UTF‑8 encoded password truncated to 72 bytes.
     """
     return password.encode("utf-8")[:72]
 
 
 def hash_password(password: str) -> str:
+    """Hash a plain‑text password using bcrypt.
+
+    Args:
+        password: The password to hash.
+
+    Returns:
+        The bcrypt hash as a UTF‑8 string.
+    """
     return bcrypt.hashpw(_bcrypt_bytes(password), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
+    """Verify a password against a stored bcrypt hash.
+
+    Args:
+        plain: The plain‑text password to verify.
+        hashed: The stored bcrypt hash.
+
+    Returns:
+        True if the password matches the hash, otherwise False.
+    """
     try:
         return bcrypt.checkpw(_bcrypt_bytes(plain), hashed.encode("utf-8"))
     except (ValueError, TypeError):
@@ -38,13 +56,35 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(subject: str | Any, expires_delta: timedelta | None = None) -> str:
+    """Create a JWT access token.
+
+    Args:
+        subject: Identifier for the token's subject (e.g., user ID).
+        expires_delta: Optional custom expiration timedelta. If omitted,
+            the default from settings is used.
+
+    Returns:
+        A signed JWT access token string.
+    """
     expire = datetime.now(UTC) + (
         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
     )
-    return jwt.encode({"sub": str(subject), "exp": expire, "type": "access"}, settings.secret_key, algorithm=settings.algorithm)
+    return jwt.encode(
+        {"sub": str(subject), "exp": expire, "type": "access"},
+        settings.secret_key,
+        algorithm=settings.algorithm,
+    )
 
 
 def create_refresh_token(subject: str | Any) -> str:
+    """Create a JWT refresh token with a unique identifier.
+
+    Args:
+        subject: Identifier for the token's subject.
+
+    Returns:
+        A signed JWT refresh token string.
+    """
     expire = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
     payload = {
         "sub": str(subject),
@@ -55,23 +95,49 @@ def create_refresh_token(subject: str | Any) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
-def decode_token(token: str) -> dict:
+def decode_token(token: str) -> Dict[str, Any]:
+    """Decode a JWT token without verifying its type.
+
+    Args:
+        token: The JWT token string to decode.
+
+    Returns:
+        The payload dictionary extracted from the token.
+    """
     return jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
 
 
 def _fernet_key() -> bytes:
-    """Derive a stable Fernet key from the secret_key."""
+    """Derive a stable Fernet key from the application's secret key.
+
+    Returns:
+        A 32‑byte URL‑safe base64‑encoded key suitable for Fernet.
+    """
     digest = hashlib.sha256(settings.secret_key.encode()).digest()
     return base64.urlsafe_b64encode(digest)
 
 
 def encrypt_secret(value: str) -> str:
-    """AES-256 encrypt a broker API secret for storage."""
+    """Encrypt a broker API secret for secure storage.
+
+    Args:
+        value: The plain‑text secret to encrypt.
+
+    Returns:
+        The encrypted secret as a UTF‑8 string.
+    """
     f = Fernet(_fernet_key())
     return f.encrypt(value.encode()).decode()
 
 
 def decrypt_secret(encrypted: str) -> str:
-    """Decrypt a stored broker API secret."""
+    """Decrypt a previously encrypted broker API secret.
+
+    Args:
+        encrypted: The encrypted secret string.
+
+    Returns:
+        The original plain‑text secret.
+    """
     f = Fernet(_fernet_key())
     return f.decrypt(encrypted.encode()).decode()
