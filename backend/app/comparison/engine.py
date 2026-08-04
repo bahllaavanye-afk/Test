@@ -44,6 +44,7 @@ ERROR_COMMON_INDEX_MSG: str = "manual_signals, ml_signals, and prices must share
 ERROR_DATE_ORDER_MSG: str = "start_date cannot be later than end_date."
 ERROR_INITIAL_EQUITY_TYPE_MSG: str = "initial_equity must be a numeric type."
 ERROR_INITIAL_EQUITY_POSITIVE_MSG: str = "initial_equity must be a positive number."
+ERROR_DATE_RANGE_MSG: str = "{name} index does not cover the requested date range."
 EQUITY_KEY: str = "equity"
 WINNER_ML: str = "ml"
 WINNER_MANUAL: str = "manual"
@@ -100,6 +101,14 @@ class StrategyComparisonEngine:
         if value <= 0:
             raise ValueError(ERROR_INITIAL_EQUITY_POSITIVE_MSG)
 
+    @staticmethod
+    def _validate_series_date_range(series: pd.Series, start_date: date, end_date: date, name: str) -> None:
+        """Ensure that the series index covers the requested date range."""
+        idx_min = series.index.min()
+        idx_max = series.index.max()
+        if idx_min > pd.Timestamp(start_date) or idx_max < pd.Timestamp(end_date):
+            raise ValueError(ERROR_DATE_RANGE_MSG.format(name=name))
+
     async def run_comparison(
         self,
         manual_signals: pd.Series,
@@ -129,6 +138,11 @@ class StrategyComparisonEngine:
         if start_date > end_date:
             raise ValueError(ERROR_DATE_ORDER_MSG)
         self._validate_initial_equity(initial_equity)
+
+        # Ensure each series spans the requested date range
+        self._validate_series_date_range(manual_signals, start_date, end_date, "manual_signals")
+        self._validate_series_date_range(ml_signals, start_date, end_date, "ml_signals")
+        self._validate_series_date_range(prices, start_date, end_date, "prices")
 
         # Align series on common index
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
