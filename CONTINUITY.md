@@ -130,6 +130,26 @@ the clock. It is still an operator decision — the naive fix trades noise (see 
 `backend/tests/unit/test_desk_confidence_gate_is_reachable.py`) and a real one needs a walk-forward backtest — but
 the value of making it is now measured rather than assumed.
 
+### ⚠️ CORRECTION 2026-08-04 00:45 — the Vercel block is a TIME lottery, and the status is never refreshed
+The 18:40 note below said backend-only PRs are exempt because the ignore step skips them. **That is wrong.** Two PRs,
+same `automerge` label, 22 minutes apart:
+```
+#1376  mine, docs-only, 23:39  ->  failure  "Deployment rate limited — retry in 24 hours."
+#1377  improver, 5 commits, 00:11  ->  success  "Canceled by Ignored Build Step"   -> merged normally
+```
+My docs-only PR was rate-limited while a 5-commit improver PR sailed through the ignore step. So the discriminator is
+**not** what the PR touches — it is whether the account was over its rolling 100/day cap at the instant Vercel stamped
+the sha. When over, Vercel rejects before the ignore step can even run.
+
+**The consequence that matters: a commit status is immutable per sha.** Once a PR is stamped `failure`, nothing
+re-posts it — Vercel only publishes a new status on a new deployment trigger, i.e. a new commit. So every PR stamped
+during a saturated window is blocked **permanently**, long after the cap frees. They will never self-clear; they need a
+push (or a manual redeploy) to get a fresh status.
+
+That is why the backlog sits at 100 while individual PRs still merge: new PRs stamped during a free window go through,
+old ones stamped `failure` are frozen forever. Fixing the ignoreCommand stops NEW PRs being stamped, but does nothing
+for the ~100 already carrying a stale `failure`.
+
 ### 🔴 The merge gate is fine; VERCEL is blocking all 100 open PRs (found 14:37)
 `auto-merge.yml` now fires on both events — 3 `schedule` + 6 `workflow_dispatch`
 runs today, all `success`, all sweeping every open PR. **The backlog still did not
