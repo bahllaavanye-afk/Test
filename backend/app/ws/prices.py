@@ -28,6 +28,15 @@ async def _handle_ws(
         topic: Subscription topic for the manager.
         symbol: Optional symbol name for logging context.
     """
+    # Edge‑case handling: ensure a valid topic is provided
+    if not topic:
+        logger.error(
+            "WebSocket connection attempted with empty topic",
+            extra={"symbol": symbol, "topic": topic},
+        )
+        await websocket.close()
+        return
+
     try:
         await manager.connect(websocket, topic)
     except Exception as exc:  # pragma: no cover
@@ -70,5 +79,23 @@ async def prices_ws_all(websocket: WebSocket) -> None:
 @router.websocket("/ws/prices/{symbol}")
 async def prices_ws(websocket: WebSocket, symbol: str) -> None:
     """Subscribe to price updates for a specific symbol."""
+    # Edge‑case handling: reject empty or None symbols
+    if not symbol:
+        logger.error(
+            "Attempted to subscribe with empty symbol",
+            extra={"symbol": symbol},
+        )
+        await websocket.close()
+        return
+
     topic = f"prices:{symbol}"
+    # Guard against off‑by‑one errors that could produce an empty topic suffix
+    if not topic.strip():
+        logger.error(
+            "Generated empty topic for symbol subscription",
+            extra={"symbol": symbol},
+        )
+        await websocket.close()
+        return
+
     await _handle_ws(websocket, topic, symbol)
