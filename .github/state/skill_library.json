@@ -1,8 +1,5 @@
 {
   "skills": [
-    "As `ml_trainer` and `self_improver`, I will update `scripts/respond_to_user_input.py` to improve responsiveness and clarity, and review `backend/api/health_check.py` for validation improvements.",
-    "* We have confirmation of system health, with all health-check endpoints in `backend/api/health_check.py` returning 200 OK, and `/v1/status` reporting a latency of 12 ms.",
-    "Implement S4-augment",
     "Verify dependencies",
     "Limit DB queries",
     "Scan code for error patterns",
@@ -199,8 +196,11 @@
     "Check SSL cert",
     "Verify DB conn",
     "Test thread limits",
-    "Validate user IDs"
+    "Validate user IDs",
+    "Check CPU load",
+    "Monitor RAM usage",
+    "Check file locks"
   ],
-  "last_updated": "2026-08-04T08:02:33.414509+00:00",
+  "last_updated": "2026-08-04T11:02:16.983648+00:00",
   "total": 200
 }
