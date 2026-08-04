@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional
+from typing import Any, Callable, Optional
 
 import numpy as np
 import pandas as pd
@@ -28,21 +28,24 @@ import app.ml.features.pandas_ta_compat as ta
 _logger = logging.getLogger(__name__)
 
 
-def _safe_apply(func, *args, **kwargs) -> Optional[pd.DataFrame]:
+def _safe_apply(func: Callable[..., pd.DataFrame], *args: Any, **kwargs: Any) -> Optional[pd.DataFrame]:
     """
-    Helper to execute a function safely.
+    Execute a pandas‑ta function safely, catching common errors.
 
     Parameters
     ----------
-    func : callable
-        The function to execute.
-    *args, **kwargs :
-        Arguments passed to ``func``.
+    func : Callable[..., pd.DataFrame]
+        The pandas‑ta function to invoke.
+    *args : Any
+        Positional arguments passed to ``func``.
+    **kwargs : Any
+        Keyword arguments passed to ``func``.
 
     Returns
     -------
     Optional[pd.DataFrame]
-        The result of ``func`` if successful, otherwise ``None``.
+        The result of ``func`` if it succeeds; otherwise ``None`` and an
+        error is logged.
     """
     try:
         return func(*args, **kwargs)
@@ -62,6 +65,11 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     Compute a suite of technical indicators and append them as new columns
     to a copy of the input DataFrame.
 
+    The function adds a range of common technical features, normalising
+    values where appropriate to keep them on a comparable scale. Features
+    that cannot be computed due to missing data or other errors are omitted,
+    and the failure is logged.
+
     Parameters
     ----------
     df : pd.DataFrame
@@ -73,9 +81,8 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        A new DataFrame containing the original columns plus the technical
-        feature columns. If a particular indicator cannot be computed,
-        its column is omitted and the error is logged.
+        A new DataFrame containing the original columns plus the computed
+        technical feature columns.
     """
     if "close" not in df.columns:
         raise ValueError("Input DataFrame must contain a 'close' column.")
