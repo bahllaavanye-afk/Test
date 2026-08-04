@@ -8,11 +8,92 @@ import asyncio
 import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 
 from app.utils.logging import logger
+
+# --------------------------------------------------------------------------- #
+# Pydantic Schemas
+# --------------------------------------------------------------------------- #
+
+
+class RetrainConfig(BaseModel):
+    """Configuration for a single model retraining run."""
+
+    model_name: str = Field(
+        ...,
+        description="Name of the model architecture to train (e.g., 'lstm').",
+        example="lstm",
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol for the asset to be used in training.",
+        example="BTC-USD",
+    )
+    interval: str = Field(
+        DEFAULT_INTERVAL,
+        description="Data granularity (e.g., '1h', '1d').",
+        example="1h",
+    )
+
+    @validator("interval")
+    def validate_interval(cls, v: str) -> str:
+        """Accept typical pandas‑compatible intervals (e.g., 1m, 5m, 1h, 1d)."""
+        if not re.fullmatch(r"\d+[smhd]", v):
+            raise ValueError(
+                f"Interval '{v}' is invalid; expected pattern like '1h', '30m', etc."
+            )
+        return v
+
+    @validator("symbol")
+    def validate_symbol(cls, v: str) -> str:
+        """Very light validation – symbols must be non‑empty and contain only alphanumerics, hyphens, or dots."""
+        if not v or not re.fullmatch(r"[A-Z0-9.\-]+", v.upper()):
+            raise ValueError(f"Symbol '{v}' is not a valid ticker")
+        return v.upper()
+
+
+class RetrainResult(BaseModel):
+    """Result payload returned from a single model retraining attempt."""
+
+    status: str = Field(
+        ...,
+        description="Overall status of the retraining attempt.",
+        example="success",
+    )
+    model: str = Field(
+        ...,
+        description="Model architecture that was trained.",
+        example="lstm",
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol used for training.",
+        example="BTC-USD",
+    )
+    retrained_at: str | None = Field(
+        None,
+        description="ISO‑8601 timestamp when the model was retrained.",
+        example="2024-08-04T12:34:56Z",
+    )
+    reason: str | None = Field(
+        None,
+        description="Human‑readable explanation if the run was skipped.",
+        example="insufficient data",
+    )
+    error: str | None = Field(
+        None,
+        description="Error message if the run failed.",
+        example="Network timeout",
+    )
+    # Additional metrics can be added dynamically (e.g., sharpe, loss) – they are
+    # allowed via extra fields.
+    class Config:
+        extra = "allow"
+
 
 # --------------------------------------------------------------------------- #
 # Constants
@@ -22,7 +103,7 @@ MIN_HIST_LENGTH: int = 200
 MAX_EPOCHS: int = 30
 DEFAULT_TRAIN_DAYS: int = 730
 CONFIGS_DIR: Path = Path(__file__).parents[3] / "experiments" / "configs"
-DEFAULT_RETRAIN_CONFIGS: list[tuple[str, str, str]] = [
+DEFAULT_RETRAIN_CONFIGS: List[Tuple[str, str, str]] = [
     ("lstm", "BTC-USD", "1h"),
     ("lstm", "ETH-USD", "1h"),
     ("lstm", "SPY", "1d"),
@@ -139,15 +220,15 @@ async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_IN
         return {"status": "error", "error": str(e)}
 
 
-def _load_retrain_configs() -> list[tuple[str, str, str]]:
+def _load_retrain_configs() -> List[Tuple[str, str, str]]:
     """
     Discover retrain targets dynamically from experiment configs (*.yaml).
     Falls back to a minimal default set if no configs exist or yaml is unavailable.
     Returns list of (model_name, symbol, interval).
     """
     configs_dir = CONFIGS_DIR
-    seen: set[tuple[str, str, str]] = set()
-    results: list[tuple[str, str, str]] = []
+    seen: set[Tuple[str, str, str]] = set()
+    results: List[Tuple[str, str, str]] = []
 
     for cfg_path in sorted(configs_dir.glob("*.yaml")):
         try:
