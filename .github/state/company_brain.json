@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785866146.2538898,
+    "last_updated": 1785868815.9233654,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 4,
     "macro_score": 3,
-    "vix": 16.55,
-    "market_scan_ts": 1785866146.2244964,
+    "vix": 16.52,
+    "market_scan_ts": 1785868815.892898,
     "sector_leaders": [
       "Energy",
       "Financials",
@@ -122,46 +122,39 @@
       "Utilities"
     ],
     "active_universe": [
-      "PLD",
-      "MSFT",
       "AMZN",
+      "MSFT",
       "ORCL",
+      "AMD",
       "XLK",
       "QQQ",
       "LLY",
-      "AVGO",
       "GOOGL",
+      "INTC",
       "PANW",
+      "AVGO",
       "XLV",
       "CRWD",
       "XLI",
       "AAPL",
       "SPY",
-      "MS",
       "NVDA",
+      "MS",
       "CVX",
-      "TSLA",
-      "MRK"
+      "TSLA"
     ],
     "top_momentum": [
       "MSFT",
       "AMZN",
       "AVGO",
-      "ORCL",
-      "MPC"
+      "MPC",
+      "ORCL"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785863510.2886014
   },
   "episodic": [
-    {
-      "lesson": "Multiple auto-fix failures indicate systematic issue with automated patching pipeline. Investigate root cause to prevent recurring code instability.",
-      "category": "code",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784904717.394951
-    },
     {
       "source": "market_opinion",
       "regime": "bull",
@@ -2080,6 +2073,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785866146.259491
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Tech"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785868815.9292283
     }
   ],
   "github_insights": [
