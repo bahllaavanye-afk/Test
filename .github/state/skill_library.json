@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Based on the agent learnings, the following are the most important and actionable takeaways:",
-    "Flush error queues",
-    "Monitor drift metrics",
     "Monitor API limits",
     "Based on the recent agent learnings, here are the 3 concise bullet points of the most important and actionable knowledge:",
     "Log API response codes",
@@ -199,8 +196,11 @@
     "Check DNS resolve",
     "Test network latency",
     "Validate config files",
-    "Optimize cache usage"
+    "Optimize cache usage",
+    "Verify DB connections",
+    "Scan for malware",
+    "Improve type safety"
   ],
-  "last_updated": "2026-08-04T15:53:28.255803+00:00",
+  "last_updated": "2026-08-04T17:43:32.321275+00:00",
   "total": 200
 }
