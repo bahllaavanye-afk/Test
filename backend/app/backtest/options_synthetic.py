@@ -234,3 +234,46 @@ IRON_CONDOR = [
 ]
 BULL_PUT_SPREAD = [SpreadLeg(PUT, SELL, 0.96), SpreadLeg(PUT, BUY, 0.92)]
 BEAR_CALL_SPREAD = [SpreadLeg(CALL, SELL, 1.04), SpreadLeg(CALL, BUY, 1.08)]
+
+# ----------------------------------------------------------------------
+# Unit tests for edge‑case coverage
+# ----------------------------------------------------------------------
+if __name__ == "__main__":
+    import unittest
+
+    class TestOptionsSyntheticEdgeCases(unittest.TestCase):
+        def test_bs_price_zero_time_returns_intrinsic(self):
+            spot = 100.0
+            strike = 105.0
+            price = bs_price(spot, strike, t_years=0.0, sigma=0.2, kind="CALL")
+            expected_intrinsic = max(spot - strike, 0.0)
+            self.assertAlmostEqual(price, expected_intrinsic, places=8)
+
+        def test_bs_price_negative_sigma_returns_intrinsic(self):
+            spot = 100.0
+            strike = 95.0
+            price = bs_price(spot, strike, t_years=0.5, sigma=-0.1, kind="PUT")
+            expected_intrinsic = max(strike - spot, 0.0)
+            self.assertAlmostEqual(price, expected_intrinsic, places=8)
+
+        def test_price_spread_empty_legs(self):
+            spot = 100.0
+            value = price_spread(spot, [], [], t_years=0.1, sigma=0.2)
+            self.assertEqual(value, 0.0)
+
+        def test_backtest_spread_no_entries(self):
+            # Create a minimal DataFrame with 30 days of close prices
+            dates = pd.date_range(start="2023-01-01", periods=30, freq="D")
+            close_prices = pd.Series(100 + np.arange(30), index=dates)
+            df = pd.DataFrame({"close": close_prices})
+
+            # Entry mask that never selects a date
+            entry_mask = pd.Series(False, index=dates)
+
+            result = backtest_spread(df, legs=BULL_PUT_SPREAD, entry_mask=entry_mask)
+            self.assertEqual(result.trades, 0)
+            self.assertIsNone(result.win_rate)
+            self.assertEqual(result.total_pnl, 0.0)
+            self.assertEqual(result.pnl_series, [])
+
+    unittest.main(argv=["first-arg-is-ignored"], exit=False)

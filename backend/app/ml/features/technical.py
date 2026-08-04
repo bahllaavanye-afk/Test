@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import time
+import unittest
 from typing import Any, Callable, Optional
 
 import numpy as np
@@ -207,3 +208,47 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     return df
+
+
+class TestAddTechnicalFeatures(unittest.TestCase):
+    """Edge‑case unit tests for ``add_technical_features``."""
+
+    def test_missing_close_raises(self):
+        """Function must raise when the required ``close`` column is absent."""
+        df = pd.DataFrame({"high": [1, 2, 3]})
+        with self.assertRaises(ValueError):
+            add_technical_features(df)
+
+    def test_empty_dataframe_returns_empty(self):
+        """An empty DataFrame with a ``close`` column should return an empty result."""
+        df = pd.DataFrame({"close": pd.Series([], dtype=float)})
+        result = add_technical_features(df)
+        self.assertTrue(result.empty)
+        self.assertIn("close", result.columns)
+
+    def test_single_row_no_lookahead(self):
+        """
+        With a single row, look‑ahead dependent features must be NaN.
+        Returns_1, volatility, and any rolling calculations should be NaN.
+        """
+        df = pd.DataFrame(
+            {"close": [100.0]},
+            index=[pd.Timestamp("2023-01-01")]
+        )
+        result = add_technical_features(df)
+
+        # Returns should be NaN because there is no previous price
+        self.assertTrue(np.isnan(result["returns_1"].iloc[0]))
+
+        # Volatility rolling windows require at least two observations
+        self.assertTrue(np.isnan(result["vol_5"].iloc[0]))
+
+        # EMA difference should be zero (close - ema) where ema equals close on first row
+        self.assertAlmostEqual(result["ema_9_diff"].iloc[0], 0.0, places=6)
+
+        # Volume ratio should be 1 because rolling mean of a single 1 is 1
+        self.assertAlmostEqual(result["volume_ratio"].iloc[0], 1.0, places=6)
+
+
+if __name__ == "__main__":
+    unittest.main()
