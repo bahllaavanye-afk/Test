@@ -95,7 +95,7 @@ class StrategyComparisonEngine:
 
     @staticmethod
     def _validate_initial_equity(value: numbers.Number) -> None:
-        if not isinstance(value, (int, float)):
+        if not isinstance(value, numbers.Number):
             raise ValueError(ERROR_INITIAL_EQUITY_TYPE_MSG)
         if value <= 0:
             raise ValueError(ERROR_INITIAL_EQUITY_POSITIVE_MSG)
