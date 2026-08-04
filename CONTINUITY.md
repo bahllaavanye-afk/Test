@@ -228,6 +228,48 @@ load; registry-driven `StrategyRunner` loops are the exposure. Do not overstate 
 **USER ACTION (~30s):** suspend or delete the `quantedge-api-agb8` service in the Render dashboard. Nothing in the repo
 can reach it — this cannot be fixed from code.
 
+### 💡 WHY CRYPTO CANNOT TRADE: the equity desks spend the cash it needs (found 2026-08-04 17:45)
+A second, independent blocker on the crypto desk — one that operates **even when signals clear the 0.60 gate**.
+This is a capital-allocation interaction, not a bug: every component is individually correct.
+
+Live evidence, run `30930093709` (16:45, 12 orders):
+```
+*QuantEdge Desk Run* (16:45 UTC)  equity=$21,968.66  cash=$-2,554.56  buying_power=$49,855.63  regime=bull/calm
+funnel: 48 generated → 18 survived gate+topK (3 exploration) → 12 placed
+execution: avg slippage +1.2 bps · worst +10.0 bps · 10/12 measured (2 unmeasured)
+⚠️ 5 dropped before placement — 3 no order path · 2 insufficient cash
+⚠️ *Crypto*: 2 signal(s) fired, **0 placed** — 2 insufficient cash
+```
+**The mechanism.** `cash_capped_notional` (line ~791) sizes against a DIFFERENT field per asset class, correctly,
+because Alpaca crypto is cash-only and cannot use margin:
+```python
+field = "non_marginable_buying_power" if is_crypto else "buying_power"
+avail = float(account.get(field, 0) or 0) * 0.95
+if avail < MIN_ORDER_USD:   # $25
+    return 0.0              # -> caller logs "insufficient available cash"
+```
+So: equity desks buy **marginable** equities → cash goes negative and
+`non_marginable_buying_power` goes to ~0 **by construction** → crypto's `avail` falls under $25 → every crypto order
+is sized to 0 and skipped. Equities meanwhile keep trading happily on $49.8k of buying power.
+
+**Crypto is therefore starved whenever the equity book is levered, independent of signal quality.** Today 2 crypto
+signals passed the confidence gate and still could not fill. That is a materially better explanation of the crypto
+desk's idleness than the confidence-ceiling story alone, which I have been leaning on since 08-03.
+
+**Stated as inference where it is one:** `non_marginable_buying_power` is not printed, so its value is inferred — the
+observed combination (crypto skipped for cash while equities placed 12 orders on bp=$49,855) is only consistent with
+nmbp < $25. `recover_negative_cash` reaching its `bp > 0` branch requires `nmbp <= 0` too.
+
+**Nothing here is malfunctioning.** `recover_negative_cash` correctly declines to flatten (`bp > 0` → "MARGIN DEBIT,
+not orphaned notional"), and that restraint is load-bearing: the 2026-07-27 incident recorded in that function shows
+flattening a levered book realised losses, tripped the daily loss cap, and froze all trading until session rollover.
+
+**[USER] The fix is an allocation policy, not a patch.** `CLAUDE.md` specifies risk buckets (70% arbitrage / 30%
+ML-directional) but nothing reserves NON-MARGINABLE cash for the only always-open desk. Options: hold a cash floor
+(e.g. keep `non_marginable_buying_power` above some multiple of MIN_ORDER_USD before equity desks size up), or cap
+aggregate equity margin usage, or accept that crypto trades only when the equity book is flat. This is a
+capital-allocation decision and is deliberately not made here.
+
 ### ⏰ MEASURED 2026-08-03 23:40 — the platform trades ~27% of the clock, not 24/7
 Today's full day, from run logs:
 - **Inside US market hours (13:30-20:00 UTC):** 11 runs, **7-9 orders each**. Working well.
