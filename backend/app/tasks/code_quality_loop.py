@@ -10,6 +10,7 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from app.utils.logging import logger
 
@@ -73,11 +74,14 @@ def _count_tests(root: Path) -> dict:
 
 
 class CodeQualityLoop:
+    """Periodic task that gathers code‑base metrics and persists them."""
+
     def __init__(self, interval_seconds: int = 3600):
         self.interval_seconds = interval_seconds
-        self._running = False
+        self._running: bool = False
 
     async def _snapshot(self) -> dict:
+        """Collect a snapshot of code‑quality related metrics."""
         loop = asyncio.get_running_loop()
         loc = await loop.run_in_executor(None, _count_loc, BACKEND_ROOT)
         strat = await loop.run_in_executor(None, _count_strategies, BACKEND_ROOT)
@@ -90,15 +94,24 @@ class CodeQualityLoop:
         }
 
     def _persist(self, snapshot: dict) -> None:
+        """Append the snapshot to the rolling history file."""
         try:
-            history = json.loads(QUALITY_FILE.read_text()) if QUALITY_FILE.exists() else []
+            if QUALITY_FILE.exists():
+                try:
+                    history: List[Dict[str, Any]] = json.loads(QUALITY_FILE.read_text())
+                except json.JSONDecodeError:
+                    history = []
+            else:
+                history = []
             history.append(snapshot)
+            # keep only the most recent 200 entries
             history = history[-200:]
             QUALITY_FILE.write_text(json.dumps(history, indent=2))
         except Exception as e:
             logger.warning("code_quality: failed to persist snapshot", error=str(e))
 
     async def run(self) -> None:
+        """Start the infinite monitoring loop."""
         self._running = True
         logger.info("CodeQualityLoop started", interval=self.interval_seconds)
         while self._running:
@@ -107,10 +120,10 @@ class CodeQualityLoop:
                 snapshot = await self._snapshot()
                 self._persist(snapshot)
 
-                # Compute key metrics for structured logging
+                # Key metrics for structured logging
                 signal_count = snapshot.get("manual_strategies", 0) + snapshot.get("ml_strategies", 0)
                 execution_time = round(time.perf_counter() - start_time, 3)
-                pnl = snapshot.get("pnl")  # P&L not tracked here; will be None if absent
+                pnl = snapshot.get("pnl")  # Not tracked; will be None if absent
 
                 logger.info(
                     "code_quality: iteration metrics",
@@ -120,15 +133,17 @@ class CodeQualityLoop:
                 )
                 logger.debug("Code quality snapshot", **snapshot)
             except asyncio.CancelledError:
-                return
+                break
             except Exception as e:
                 logger.warning("Quality snapshot failed", error=str(e))
             await asyncio.sleep(self.interval_seconds)
 
     async def stop(self) -> None:
+        """Signal the loop to stop after the current iteration."""
         self._running = False
 
-    def latest(self) -> dict | None:
+    def latest(self) -> Optional[dict]:
+        """Return the most recent snapshot, or None if unavailable."""
         if not QUALITY_FILE.exists():
             return None
         try:
