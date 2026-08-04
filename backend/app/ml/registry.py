@@ -6,7 +6,7 @@ Each registered model is recorded in a JSON index file with:
 
 Usage:
     registry = ModelRegistry()
-    registry.register("my_tft", model, metrics, artifact_path="models/tft_v1.pt")
+    registry.register("my_tft", "tft", "models/tft_v1.pt", val_sharpe=1.2)
     registry.get_best("tft", metric="val_sharpe")
     registry.compare_models(["tft_v1", "lgbm_v2"])
 """

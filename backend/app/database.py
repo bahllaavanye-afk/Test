@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 from app.config import settings
 
 _is_sqlite = settings.database_url.startswith("sqlite")
@@ -7,9 +8,8 @@ _is_sqlite = settings.database_url.startswith("sqlite")
 if _is_sqlite:
     # NullPool: each session gets a fresh connection — avoids cross-connection
     # visibility issues where pooled connections cache an empty schema.
-    from sqlalchemy.pool import NullPool as _NullPool
     _engine_kwargs: dict = {
-        "poolclass": _NullPool,
+        "poolclass": NullPool,
         "connect_args": {"check_same_thread": False},
     }
 else:
@@ -65,7 +65,7 @@ async def ensure_database_alive(probe_timeout: float = 10.0):
     Returns the live engine. Never raises.
     """
     global engine, db_fallback_active, db_primary_error
-    import asyncio as _asyncio
+    import asyncio
 
     from sqlalchemy import text as _text
 
@@ -74,7 +74,7 @@ async def ensure_database_alive(probe_timeout: float = 10.0):
             async with engine.connect() as conn:
                 await conn.execute(_text("SELECT 1"))
 
-        await _asyncio.wait_for(_probe(), timeout=probe_timeout)
+        await asyncio.wait_for(_probe(), timeout=probe_timeout)
         return engine
     except Exception as exc:  # noqa: BLE001 — any connect failure means "dead"
         db_primary_error = str(exc)[:300]
@@ -91,12 +91,10 @@ async def ensure_database_alive(probe_timeout: float = 10.0):
         error=db_primary_error,
     )
 
-    from sqlalchemy.pool import NullPool as _NullPool
-
     old_engine = engine
     engine = create_async_engine(
         FALLBACK_SQLITE_URL,
-        poolclass=_NullPool,
+        poolclass=NullPool,
         connect_args={"check_same_thread": False},
     )
     AsyncSessionLocal.configure(bind=engine)
@@ -122,4 +120,4 @@ async def get_db():
             await session.rollback()
             raise
         finally:
-            await session.close()
+            await session.close
