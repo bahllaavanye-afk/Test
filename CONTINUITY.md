@@ -256,9 +256,16 @@ is sized to 0 and skipped. Equities meanwhile keep trading happily on $49.8k of 
 signals passed the confidence gate and still could not fill. That is a materially better explanation of the crypto
 desk's idleness than the confidence-ceiling story alone, which I have been leaning on since 08-03.
 
-**Stated as inference where it is one:** `non_marginable_buying_power` is not printed, so its value is inferred — the
-observed combination (crypto skipped for cash while equities placed 12 orders on bp=$49,855) is only consistent with
-nmbp < $25. `recover_negative_cash` reaching its `bp > 0` branch requires `nmbp <= 0` too.
+**~~Stated as inference~~ NOW DIRECTLY MEASURED (2026-08-04 19:41).** The field is reported since #1407, and the
+last in-hours run of the day, `30943960438`, reads it out:
+```
+equity=$21,964.00  cash=$-29,912.20  buying_power=$6,010.55  crypto_bp=$0.00  regime=bull/calm
+⚠️ *Crypto*: 2 signal(s) fired, **0 placed** — 2 insufficient cash
+```
+`crypto_bp=$0.00` — exactly zero, no longer deduced. The interaction also visibly TIGHTENS through a session: cash
+went from −$2,554.56 at 16:45 to −$29,912.20 at 19:41 as the equity desks levered further, while equities still had
+$6,010.55 of margin buying power to trade on and crypto had none. Equities placed 12 orders in both runs; crypto
+placed zero in both, with signals that had already cleared the 0.60 gate.
 
 **Nothing here is malfunctioning.** `recover_negative_cash` correctly declines to flatten (`bp > 0` → "MARGIN DEBIT,
 not orphaned notional"), and that restraint is load-bearing: the 2026-07-27 incident recorded in that function shows
