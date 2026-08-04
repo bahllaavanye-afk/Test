@@ -4,9 +4,10 @@ compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
 
+import numbers
+import time
 from dataclasses import dataclass, field
 from datetime import date
-import numbers
 
 import pandas as pd
 from scipy import stats
@@ -36,6 +37,11 @@ LOG_STRATEGY_FIELD: str = "strategy"
 LOG_MANUAL_SHARPE_FIELD: str = "manual_sharpe"
 LOG_ML_SHARPE_FIELD: str = "ml_sharpe"
 LOG_P_VALUE_FIELD: str = "p_value"
+LOG_MANUAL_SIGNAL_COUNT: str = "manual_signal_count"
+LOG_ML_SIGNAL_COUNT: str = "ml_signal_count"
+LOG_EXECUTION_TIME: str = "execution_time_seconds"
+LOG_MANUAL_PNL: str = "manual_pnl"
+LOG_ML_PNL: str = "ml_pnl"
 
 # Additional constants for string literals
 LOG_COMPARISON_COMPLETE_MSG: str = "Comparison complete"
@@ -138,6 +144,9 @@ class StrategyComparisonEngine:
             raise ValueError(ERROR_DATE_ORDER_MSG)
         self._validate_initial_equity(initial_equity)
 
+        # Start timing for monitoring
+        start_time = time.perf_counter()
+
         # Align series on common index
         common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
         if common_index.empty:
@@ -175,6 +184,11 @@ class StrategyComparisonEngine:
         if abs(improvement) < IMPROVEMENT_THRESHOLD:
             winner = WINNER_NEITHER
 
+        # Compute monitoring metrics
+        execution_time = time.perf_counter() - start_time
+        manual_pnl = manual_eq.iloc[-1] - initial_equity if not manual_eq.empty else 0.0
+        ml_pnl = ml_eq.iloc[-1] - initial_equity if not ml_eq.empty else 0.0
+
         logger.info(
             LOG_COMPARISON_COMPLETE_MSG,
             **{
@@ -182,6 +196,11 @@ class StrategyComparisonEngine:
                 LOG_MANUAL_SHARPE_FIELD: manual_metrics.sharpe,
                 LOG_ML_SHARPE_FIELD: ml_metrics.sharpe,
                 LOG_P_VALUE_FIELD: round(p_val, P_VALUE_ROUND),
+                LOG_MANUAL_SIGNAL_COUNT: len(manual_signals),
+                LOG_ML_SIGNAL_COUNT: len(ml_signals),
+                LOG_EXECUTION_TIME: round(execution_time, 4),
+                LOG_MANUAL_PNL: round(manual_pnl, 2),
+                LOG_ML_PNL: round(ml_pnl, 2),
             },
         )
 
