@@ -749,7 +749,22 @@ bot scheduler dead since Jul 5, only 2 bots ever ran). FIXED this session: CI no
 `deploy` job (green main → Render deploy → poll to live → page on failure) and bot
 seeding is ADDITIVE (new templates become site bots on next boot). Remaining from the
 evidence:
-- [ ] **[P0] Verify post-deploy revival chain** — after the first auto-deploy: /health shows the new build; 57 bots on site; bot last_run_at advancing (scheduler alive); paper orders → check_bot_exits → Trades rows → leaderboard non-empty → perf weighting/pruning engage. Each link was dead on the old build.
+- [~] **[P0] Verify post-deploy revival chain — VERIFIED 2026-08-04 04:40, links 1-3 alive; link 4 is Supabase-blocked.**
+  Checked each link that can be checked without auth:
+  - **new build deploys** ✅ — proven this session: the `artifacts_on_disk` field added to `ml_models` appeared in
+    production `/health/detailed` right after PR #1360 merged. `autoDeploy` works.
+  - **bots on site** ✅ — `scheduler: {jobs_total: 73, bot_jobs: 64}`. The entry expected 57; there are 64, because
+    `bots/factory.py` generates `[gen]` variants once the static templates are exhausted.
+  - **scheduler alive / last_run_at advancing** ✅ — the strongest evidence. Sampled at 04:37 UTC, three bot jobs
+    carried `next_run` of `04:38:52`, `04:38:59`, `04:39:02` — i.e. firing within the next minute, staggered.
+    Also `background_tasks: 13/13 running`, `algo_agent: ok`, `strategies: 116`.
+  - **paper orders → check_bot_exits → Trade rows → leaderboard → perf weighting/pruning** ❌ **BLOCKED** — this tail
+    cannot complete while `database_primary` is down. Trades land in ephemeral sqlite and are wiped on every
+    redeploy, so the leaderboard cannot stay non-empty and attribution-weight pruning stays inert. `/trades` and
+    `/leaderboard` also require auth, so an anonymous probe cannot confirm even a transient non-empty state.
+  **Net:** the revival this P0 was written to check DID happen — the deploy chain, the bot fleet and the scheduler
+  are all live. What remains is not a revival problem; it is the single Supabase dependency already tracked above.
+  Original entry: — — after the first auto-deploy: /health shows the new build; 57 bots on site; bot last_run_at advancing (scheduler alive); paper orders → check_bot_exits → Trades rows → leaderboard non-empty → perf weighting/pruning engage. Each link was dead on the old build.
 - [x] **[P0] Discord empty — agent chat posted only to Slack (dead token)** — DIAGNOSED 2026-07-19 from live run logs: `multi_agent_discussion.py` and the desk's `_post_slack` delivered ONLY to Slack (invalid_auth), never Discord — so every conversation and desk P&L vanished. FIXED: both now deliver via `notify.discord_post` (bot-token→channel routing, same helper other flows use). Discussions post the opening + real LLM replies to the matching #channel; the desk posts P&L/fills to #desk-*. Remaining: the ~1s discussion runtime shows the **free-LLM keys are unset** → no real replies; the script now posts ONE actionable Discord notice ("add GROQ_API_KEY_1/GEMINI_API_KEY_1/DEEPSEEK_API_KEY") instead of silence. **User action: add any one free-LLM key** to turn on real conversations. Same Slack-only audit still TODO for team-lead-issues + daily-employee-review + employee-conversations.
 
 - [x] **[P1] Move completely off Slack → Discord** (user directive 2026-07-19) — **DONE 2026-07-25.** The whole long-tail is converted: no script calls slack.com/api, none reads a Slack token, the 11 slack-*.yml workflows and 6 slack-only scripts are deleted, SLACK_BOT_TOKEN is stripped from all 65 workflows, and the backend Slack notifier is replaced by `app/notifications/discord.py`. See the 2026-07-25 deep-review section at the top for the silent-message-loss defects this uncovered.
