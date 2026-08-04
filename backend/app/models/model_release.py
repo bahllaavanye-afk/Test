@@ -1,11 +1,13 @@
 """ModelRelease ORM — tracks every trained model artifact through its serving lifecycle."""
 import uuid
+import logging
 from datetime import datetime
 from sqlalchemy import String, Float, Integer, Text, DateTime, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 from app.models.base import TimestampMixin
 
+logger = logging.getLogger(__name__)
 
 class ModelRelease(Base, TimestampMixin):
     """
@@ -54,3 +56,33 @@ class ModelRelease(Base, TimestampMixin):
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Who registered this release (email or "system")
     created_by: Mapped[str] = mapped_column(String(128), nullable=False, default="system")
+
+    def log_metrics(self, signal_count: int, execution_time: float, pnl: float) -> None:
+        """
+        Log key runtime metrics for this model release.
+
+        Parameters
+        ----------
+        signal_count: int
+            Number of trading signals generated during the interval.
+        execution_time: float
+            Total execution time in seconds for the interval.
+        pnl: float
+            Profit & loss realized for the interval.
+
+        The log is emitted at INFO level with a structured payload to facilitate
+        downstream aggregation and monitoring.
+        """
+        logger.info(
+            "model_release_metrics",
+            extra={
+                "model_release_id": self.id,
+                "model_name": self.model_name,
+                "version": self.version,
+                "signal_count": signal_count,
+                "execution_time_seconds": execution_time,
+                "pnl": pnl,
+                "status": self.status,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+            },
+        )
