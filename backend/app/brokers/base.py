@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, List
 
 
 @dataclass(slots=True)
@@ -38,6 +38,36 @@ class QuoteResult:
     volume: float | None = None
 
 
+def _filter_none(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a copy of *data* with keys whose values are ``None`` removed."""
+    return {k: v for k, v in data.items() if v is not None}
+
+
+def order_request_to_dict(request: OrderRequest) -> Dict[str, Any]:
+    """
+    Convert an :class:`OrderRequest` into a plain ``dict`` suitable for
+    serialisation or broker API payloads.
+
+    Fields with a value of ``None`` are omitted to keep the payload compact.
+    """
+    return _filter_none(asdict(request))
+
+
+def order_result_from_dict(data: Dict[str, Any]) -> OrderResult:
+    """
+    Create an :class:`OrderResult` from a mapping. Missing optional fields are
+    defaulted according to the dataclass definition.
+    """
+    return OrderResult(**data)
+
+
+def quote_result_from_dict(data: Dict[str, Any]) -> QuoteResult:
+    """
+    Create a :class:`QuoteResult` from a mapping.
+    """
+    return QuoteResult(**data)
+
+
 class AbstractBroker(ABC):
     """Interface that all brokers must implement."""
 
@@ -54,7 +84,7 @@ class AbstractBroker(ABC):
         """Get current status of an order."""
 
     @abstractmethod
-    async def get_positions(self) -> list[dict]:
+    async def get_positions(self) -> List[dict]:
         """Return all open positions."""
 
     @abstractmethod
@@ -68,5 +98,5 @@ class AbstractBroker(ABC):
     @abstractmethod
     async def get_historical(
         self, symbol: str, interval: str, limit: int = 500
-    ) -> list[dict]:
+    ) -> List[dict]:
         """Return OHLCV bars. Each dict: {ts, open, high, low, close, volume}."""
