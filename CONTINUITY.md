@@ -136,6 +136,39 @@ something I had not seen:
    **Next step:** read the desk's `Account equity=$… cash=$… buying_power=$…` line (stage 2 of any run, early in the
    log) during market hours to see the actual cash position.
 
+### 🔁 The improver watchdog is tautological — it can never fire (found 2026-08-04 10:45)
+`system_watchdog.py:133-137`:
+```python
+age_hours = (now - commits[0].committer.date) / 3600      # LATEST COMMIT FROM ANYONE
+if age_hours > 2:
+    return False, f"last commit {age_hours:.1f}h ago — improver may be down"
+```
+It claims to detect a dead improver, but it reads the newest commit **by any author**. Measured over the last 24h,
+`main` took **104 commits, ~82 of them state-bots**:
+```
+12  watchdog: auto-heal state files      6  status: agent roll call
+11  chore(health): heartbeat             6  chore(status): refresh SYSTEM_STATUS.md
+10  learn: distill skills                5  chore: company brain sync
+ 9  discuss: peer learnings updated      5  autopilot: strategy exploration run
+ 7  scan: market scanner state update    ... and 1 (one) actual improve() commit
+```
+So the 2-hour window is satisfied permanently — **including by the watchdog's own commit**. Its diff is literally
+`"detail": "last commit 40m ago"` → `"last commit 30m ago"`: it resets the metric by measuring it.
+
+Two of those bots are pure bookkeeping, same shape as the OA scout fixed in #1394:
+- `chore(health): heartbeat` — increments `health_check_count: 381 → 382` and bumps `last_health_check`. Nothing else.
+- `watchdog: auto-heal state files` — bumps `last_updated` / `last_watchdog_run` and the self-referential detail above.
+
+**Why this matters now:** exactly one `improve()` commit landed in 24h, because improver PRs are frozen behind the stale
+Vercel `failure` status. The improver IS effectively down, and the watchdog built to say so has been reporting healthy
+the entire time.
+
+**NOT fixed here, deliberately.** The correct fix is to count only improver commits (message prefix `improve(`) rather
+than any commit — but that would immediately and repeatedly alert Discord about something already known and already
+tracked (the Vercel freeze), and the 2h threshold was calibrated against "any commit" so it needs re-picking too.
+Adding a loud recurring alarm for a known, decided-upon condition is noise, not signal. Sequence: unfreeze the PR
+backlog first, then narrow this check and choose a threshold against observed improver cadence.
+
 ### 🚨 LIVE: a SECOND backend is running against the same Alpaca paper account (verified 2026-08-04 02:45)
 `IMPROVEMENTS.md` has carried this as `[P1] agb8 double-execution hazard` for days. **It is still live.**
 `GET https://quantedge-api-agb8.onrender.com/health/detailed` → HTTP 200:
