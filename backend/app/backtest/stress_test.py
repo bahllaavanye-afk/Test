@@ -22,6 +22,7 @@ DEFAULT_INITIAL_EQUITY: float = 100_000.0
 DEFAULT_COMMISSION_PCT: float = 0.001
 DEFAULT_SLIPPAGE_PCT: float = 0.0005
 MIN_DATA_POINTS: int = 5
+ZERO_DATA_POINTS: int = 0
 
 # Percentage conversion constants for summary output
 PCT_MULTIPLIER: float = 100.0
@@ -158,7 +159,7 @@ def run_stress_tests(
                     scenario=scenario,
                     metrics=None,
                     period_covered=False,
-                    data_points=0,
+                    data_points=ZERO_DATA_POINTS,
                 )
             )
             continue
@@ -174,7 +175,7 @@ def run_stress_tests(
                     scenario=scenario,
                     metrics=None,
                     period_covered=False,
-                    data_points=len(s_prices) if s_prices is not None else 0,
+                    data_points=len(s_prices) if s_prices is not None else ZERO_DATA_POINTS,
                 )
             )
             continue
