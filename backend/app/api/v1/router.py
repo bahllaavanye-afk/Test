@@ -1,5 +1,7 @@
 """API v1 router — mounts all sub-routers."""
 import logging
+from typing import Iterable, Tuple, Any
+
 from fastapi import APIRouter
 
 from app.api.v1 import (
@@ -39,18 +41,29 @@ logger = logging.getLogger(__name__)
 
 api_router = APIRouter()
 
-def _include(router_obj, name: str):
+
+def _include(router_obj: Any, name: str) -> None:
     """Safely include a sub‑router, handling None or invalid inputs."""
+    if not name:
+        logger.warning("Router name is empty; skipping inclusion.")
+        return
     if router_obj is None:
         logger.warning("Router %s is None and will be skipped.", name)
+        return
+    # Basic type guard: FastAPI routers should be instances of APIRouter
+    if not isinstance(router_obj, APIRouter):
+        logger.warning(
+            "Router %s is not an APIRouter instance (%s); skipping.", name, type(router_obj)
+        )
         return
     try:
         api_router.include_router(router_obj)
     except Exception as exc:  # pragma: no cover
         logger.error("Failed to include router %s: %s", name, exc)
 
+
 # List of (router, name) tuples for systematic inclusion
-_routers = [
+_routers: Iterable[Tuple[Any, str]] = [
     (auth.router, "auth"),
     (accounts.router, "accounts"),
     (orders.router, "orders"),
@@ -83,5 +96,13 @@ _routers = [
     (webhooks_router, "webhooks"),
 ]
 
-for r, n in _routers:
-    _include(r, n)
+if not _routers:
+    logger.warning("No routers defined for inclusion; API will have no endpoints.")
+else:
+    for entry in _routers:
+        # Guard against malformed entries (e.g., not a tuple of length 2)
+        if not isinstance(entry, tuple) or len(entry) != 2:
+            logger.warning("Malformed router entry %s; expected (router, name) tuple.", entry)
+            continue
+        router_obj, name = entry
+        _include(router_obj, name)
