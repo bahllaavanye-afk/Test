@@ -112,6 +112,24 @@ this was NOT changed here.** Operator options, both one-liners in that file:
 - Or compare the whole PR range instead of the tip commit, so the decision reflects
   the PR's actual frontend diff.
 
+### ⏰ MEASURED 2026-08-03 23:40 — the platform trades ~27% of the clock, not 24/7
+Today's full day, from run logs:
+- **Inside US market hours (13:30-20:00 UTC):** 11 runs, **7-9 orders each**. Working well.
+- **Outside them:** run `30860193311` (22:51) logged `[stage] ✓ Place orders — 0.01s  orders_placed=0`.
+  The **0.01s** is the tell — nothing reached the placement stage at all, so this is not the loss cap and not a
+  broker error. No signal cleared its gate.
+
+Cause is already documented above: Crypto is the ONLY `always_open=True` desk, its only strategy still producing
+signals is `crypto_adaptive_trend`, and that strategy's confidence ceiling is `0.40/(2·rv_21)` — **0.40 at 50% vol,
+0.26 at 65%** — against a 0.60 order gate and a 0.45 exploration floor. So outside RTH the whole fleet is
+structurally idle. US RTH is 6.5h of 24, so **~73% of every day has zero trading capability**, and 100% of
+Saturday and Sunday.
+
+This reframes the crypto recalibration from a nice-to-have into the single change that would unlock two thirds of
+the clock. It is still an operator decision — the naive fix trades noise (see the xfail tests in
+`backend/tests/unit/test_desk_confidence_gate_is_reachable.py`) and a real one needs a walk-forward backtest — but
+the value of making it is now measured rather than assumed.
+
 ### 🔴 The merge gate is fine; VERCEL is blocking all 100 open PRs (found 14:37)
 `auto-merge.yml` now fires on both events — 3 `schedule` + 6 `workflow_dispatch`
 runs today, all `success`, all sweeping every open PR. **The backlog still did not
