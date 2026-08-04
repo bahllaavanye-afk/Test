@@ -82,11 +82,38 @@ def _load_from(path: Path) -> set:
 # ── the shipped state file ───────────────────────────────────────────────────
 
 def test_the_shipped_denylist_parses_and_contains_the_confirmed_asset():
+    """The shipped file must still carry the confirmed case — but NOT assert it
+    is currently *honoured*.
+
+    This used to call `dop._denylisted_assets()` and assert "MKR/USD" was in the
+    result. That is a TIME-DEPENDENT fact. Entries expire after
+    DENYLIST_TTL_DAYS by design, so the assertion was true when written on
+    2026-07-28 and became false exactly seven days later — measured 2026-08-04
+    at 23:39 UTC, the entry was 7 days 1 hour old against a 7-day TTL, so it had
+    expired roughly an hour earlier.
+
+    Nothing was broken when it failed: the TTL did precisely what this module's
+    own docstring says it exists to do ("Entries EXPIRE ... a denylist nobody
+    re-confirms is exactly how a permanently-stale exclusion happens"). The test
+    was asserting the ABSENCE of the expiry it was written to protect.
+
+    The cost was disproportionate: `test-agents` runs pytest with `-x`, so this
+    single assertion halted the suite ("1 failed, 74 passed") and blocked every
+    PR — mine and the improver's — on a required check, for a non-defect.
+
+    What IS durable is that the file still carries the entry with its evidence.
+    Whether an entry is currently honoured belongs to the TTL, and that is
+    already covered against synthetic dates by `test_a_fresh_entry_is_honoured`
+    and `test_a_stale_entry_expires_so_a_reversal_self_heals` below.
+    """
     assert _STATE.is_file(), f"missing {_STATE}"
-    loaded = dop._denylisted_assets()
-    assert "MKR/USD" in loaded, (
-        "MKR/USD is the confirmed case; without it the desk keeps burning a slot"
+    raw = json.loads(_STATE.read_text())
+    assert "MKR/USD" in raw, (
+        "MKR/USD is the confirmed 422 case; dropping it from the file loses the "
+        "evidence that the desk was burning a top-K slot on a guaranteed reject."
     )
+    # The loader must still work on the shipped file, whatever the entry's age.
+    assert isinstance(dop._denylisted_assets(), set)
 
 
 def test_every_shipped_entry_carries_dated_evidence():
