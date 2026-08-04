@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Refactor logging code",
-    "Refactor Python modules",
-    "Test market data gaps",
-    "Check DB connections",
     "Check disk space",
     "Track system resources",
     "The `research_scientist` is having trouble with LLM availability, and the `frontend_design` and `run_experiments` agents require response updates according to their specific instructions.",
@@ -199,8 +195,12 @@
     "Verify thread counts",
     "Refactor error handling.",
     "Retrain hybrid models.",
-    "Monitor model performance."
+    "Monitor model performance.",
+    "Implement circuit breakers",
+    "Use retry mechanisms",
+    "Lock dependencies",
+    "Prepend S4 blocks"
   ],
-  "last_updated": "2026-08-04T20:51:52.889857+00:00",
+  "last_updated": "2026-08-04T22:08:04.327096+00:00",
   "total": 200
 }
