@@ -47,9 +47,9 @@ class Settings(BaseSettings):
         url = values.get("database_url", "")
         if isinstance(url, str):
             if url.startswith("postgres://"):
-                url = "postgresql+asyncpg://" + url[len("postgres://"):]
+                url = "postgresql+asyncpg://" + url[len("postgres://") :]
             elif url.startswith("postgresql://"):
-                url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+                url = "postgresql+asyncpg://" + url[len("postgresql://") :]
             values["database_url"] = url
         return values
 
