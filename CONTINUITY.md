@@ -112,6 +112,30 @@ this was NOT changed here.** Operator options, both one-liners in that file:
 - Or compare the whole PR range instead of the tip commit, so the decision reflects
   the PR's actual frontend diff.
 
+### 💵 NEW BLOCKER + a correction to the "27% of the clock" claim (2026-08-04 07:40)
+Run `30885806270` (06:56, on `f5800e2e`) shows the crypto desk reaching order placement and being stopped by
+something I had not seen:
+```
+[stage] ✓ Apply confidence threshold + top-K filter — passed=12  filtered=39  explored=1
+· crypto_adaptive_trend/LTC/USD skipped — insufficient available cash (< $25; frees as pending closes fill)
+```
+**Two things follow.**
+
+1. **CORRECTION to the 23:40 entry.** I wrote that outside RTH "the whole fleet is structurally idle" because the
+   crypto confidence ceiling sits under the 0.60 gate. Too absolute. That was inferred from ONE run (`30860193311`,
+   which showed `Place orders — 0.01s` and nothing reaching placement). Here **12 signals passed the gate** and a
+   crypto signal reached placement. The ceiling analysis still holds as arithmetic — high realized vol caps the score —
+   but vol varies, so crypto signals DO clear the gate some of the time. "Structurally idle" overstates it; "idle most
+   of the time, and the gate is the usual reason" is accurate.
+
+2. **A different blocker is now binding: the paper account is out of free cash.** `< $25 available` means no new
+   position can be opened regardless of signal quality. Yesterday the same desk placed 7-9 orders per run totalling
+   ~$3.5k, so this is recent — the book is now fully deployed.
+   **This plausibly connects to the agb8 hazard below:** a second backend trading the same account consumes the same
+   buying power. Not proven, and worth not asserting — but it is the first candidate to check.
+   **Next step:** read the desk's `Account equity=$… cash=$… buying_power=$…` line (stage 2 of any run, early in the
+   log) during market hours to see the actual cash position.
+
 ### 🚨 LIVE: a SECOND backend is running against the same Alpaca paper account (verified 2026-08-04 02:45)
 `IMPROVEMENTS.md` has carried this as `[P1] agb8 double-execution hazard` for days. **It is still live.**
 `GET https://quantedge-api-agb8.onrender.com/health/detailed` → HTTP 200:
