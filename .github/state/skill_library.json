@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Parse log files for insights",
-    "Monitor NAV exposure",
-    "Check timestamp sync",
-    "Retrain hybrid models",
-    "Handle SSL errors",
     "* The algo_agent is currently initializing the UCB1 bandit.",
     "Verify config files",
     "Optimize model training",
@@ -199,8 +194,13 @@
     "Log exception stacks",
     "Use heartbeat pings",
     "Bind CPU cores",
-    "Review agent memory"
+    "Review agent memory",
+    "Validate input feeds",
+    "Check DB connections",
+    "Rate limit API calls",
+    "Set thread timeouts",
+    "Use UUID identifiers"
   ],
-  "last_updated": "2026-08-04T23:32:06.039999+00:00",
+  "last_updated": "2026-08-04T23:44:20.369949+00:00",
   "total": 200
 }
