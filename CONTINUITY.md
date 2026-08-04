@@ -17,7 +17,7 @@ each independently "found" after already being documented.
 
 | # | Action | Effort | Unblocks |
 |---|--------|--------|----------|
-| 1 | **Suspend/delete the `quantedge-api-agb8` Render service** | ~30s | A second backend (paper mode, Alpaca-connected, 11 background tasks, dead DB) is trading the SAME account as `9jz0`. Contaminates equity/buying-power/position reads the desk uses for Kelly sizing, the loss cap and `is_risk_reducing`, plus the new slippage attribution. Prime suspect for the `< $25 available cash` block. |
+| 1 | **Suspend/delete the `quantedge-api-agb8` Render service** | ~30s | A second backend (paper mode, Alpaca-connected, 11 background tasks, dead DB) is trading the SAME account as `9jz0`. Contaminates equity/buying-power/position reads the desk uses for Kelly sizing, the loss cap and `is_risk_reducing`, plus the new slippage attribution — it can also place duplicate orders. ~~Prime suspect for the `< $25 available cash` block.~~ **That justification is withdrawn 2026-08-04 13:50** — the cash block cleared on its own at the open (11 orders placed), which a draining second backend would not do. Still worth shutting down for the duplicate-order and attribution reasons; the cash argument does not support it. |
 | 2 | **Unpause Supabase `vexzwnfbmznvxoxxktax`** | ~1min | Nothing persists. Trades land in ephemeral sqlite and are wiped on every redeploy → empty leaderboard, inert attribution pruning, no per-strategy TCA history. Also the last open link of the post-deploy revival P0. |
 | 3 | **Vercel: fix `ignoreCommand` + clear the stale-failure PRs** | ~5min | ~100 PRs frozen. Two separable actions: prepend `case "$VERCEL_GIT_COMMIT_REF" in improver/*) exit 0;; esac` to stop NEW PRs being stamped, and push/redeploy/close the existing ones — a commit status is immutable per sha, so they never self-clear. (`frontend/vercel.json` is under "Do NOT Modify", so this is yours by policy too.) |
 | 4 | **Crypto confidence recalibration** (needs a walk-forward backtest) | hours | The only always-open desk. `confidence = |raw| · (target_vol/rv) / 2` caps at 0.40 @50% vol vs a 0.60 gate, so overnight trading is rare. The naive fix scores 0.83–0.94 on a ZERO-DRIFT random walk — it trades noise — so this is a strategy decision, not a patch. `xfail(strict=True)` tests flip to failure when it is done. |
@@ -132,6 +132,17 @@ this was NOT changed here.** Operator options, both one-liners in that file:
   Directly ends the cap burn and unfreezes the backlog.
 - Or compare the whole PR range instead of the tip commit, so the decision reflects
   the PR's actual frontend diff.
+
+### ✅ RESOLVED: the cash "blocker" was transient (2026-08-04 13:50) — and a correction to the "27% of the clock" claim
+**The cash block cleared by itself.** First in-hours run after the open, `30915083852` (13:41):
+`Done. 11 orders placed across 9 desks.` — more than the 7-9 of the previous session.
+So `insufficient available cash (< $25; frees as pending closes fill)` meant exactly what it said: a
+temporarily fully-deployed book overnight, not a locked account. **Two things I got wrong and am correcting
+rather than quietly dropping:** (a) I flagged it as a possible new *binding* constraint — it was not;
+(b) I named agb8 the prime suspect for consuming the buying power — if a second backend were draining the
+account, cash would not recover cleanly at the open, so that specific argument is withdrawn (agb8 still
+warrants shutdown on duplicate-order and attribution grounds).
+Original entry follows.
 
 ### 💵 NEW BLOCKER + a correction to the "27% of the clock" claim (2026-08-04 07:40)
 Run `30885806270` (06:56, on `f5800e2e`) shows the crypto desk reaching order placement and being stopped by
