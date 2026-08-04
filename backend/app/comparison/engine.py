@@ -49,6 +49,14 @@ WINNER_ML: str = "ml"
 WINNER_MANUAL: str = "manual"
 WINNER_NEITHER: str = "neither"
 
+# Validation messages
+MSG_MUST_BE_PANDAS_SERIES: str = "must be a pandas Series."
+MSG_SERIES_CANNOT_BE_EMPTY: str = "series cannot be empty."
+MSG_SERIES_CONTAINS_NAN: str = "series contains NaN values."
+MSG_INDEX_MUST_BE_MONOTONIC: str = "index must be monotonic increasing."
+MSG_SERIES_MUST_BE_NUMERIC: str = "series must contain numeric values."
+MSG_STRING_NON_EMPTY: str = "must be a non‑empty string."
+MSG_DATE_TYPE: str = "must be a datetime.date instance."
 
 @dataclass
 class ComparisonResult:
@@ -73,25 +81,25 @@ class StrategyComparisonEngine:
     def _validate_series(series: pd.Series, name: str) -> None:
         """Validate that a pandas Series is suitable for backtesting."""
         if not isinstance(series, pd.Series):
-            raise ValueError(f"{name} must be a pandas Series.")
+            raise ValueError(f"{name} {MSG_MUST_BE_PANDAS_SERIES}")
         if series.empty:
-            raise ValueError(f"{name} series cannot be empty.")
+            raise ValueError(f"{name} {MSG_SERIES_CANNOT_BE_EMPTY}")
         if series.isnull().any():
-            raise ValueError(f"{name} series contains NaN values.")
+            raise ValueError(f"{name} {MSG_SERIES_CONTAINS_NAN}")
         if not series.index.is_monotonic_increasing:
-            raise ValueError(f"{name} index must be monotonic increasing.")
+            raise ValueError(f"{name} {MSG_INDEX_MUST_BE_MONOTONIC}")
         if not pd.api.types.is_numeric_dtype(series):
-            raise ValueError(f"{name} series must contain numeric values.")
+            raise ValueError(f"{name} {MSG_SERIES_MUST_BE_NUMERIC}")
 
     @staticmethod
     def _validate_string(value: str, name: str) -> None:
         if not isinstance(value, str) or not value.strip():
-            raise ValueError(f"{name} must be a non‑empty string.")
+            raise ValueError(f"{name} {MSG_STRING_NON_EMPTY}")
 
     @staticmethod
     def _validate_date(value: date, name: str) -> None:
         if not isinstance(value, date):
-            raise ValueError(f"{name} must be a datetime.date instance.")
+            raise ValueError(f"{name} {MSG_DATE_TYPE}")
 
     @staticmethod
     def _validate_initial_equity(value: numbers.Number) -> None:
