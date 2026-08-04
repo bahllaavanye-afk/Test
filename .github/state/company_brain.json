@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785859528.8945928,
+    "last_updated": 1785859714.0487294,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,59 +109,52 @@
     },
     "opinion_score": 4,
     "macro_score": 3,
-    "vix": 15.86,
-    "market_scan_ts": 1785790650.0773022,
+    "vix": 16.32,
+    "market_scan_ts": 1785859714.0190485,
     "sector_leaders": [
       "Energy",
       "Financials",
-      "Comm."
+      "Real Estate"
     ],
     "sector_laggards": [
-      "Tech",
+      "Industrials",
       "Materials",
       "Utilities"
     ],
     "active_universe": [
-      "AMZN",
       "MSFT",
+      "AMZN",
       "ORCL",
+      "XLK",
       "GOOGL",
+      "QQQ",
+      "AVGO",
+      "PANW",
+      "XLV",
       "CRWD",
       "AAPL",
-      "PANW",
-      "CMCSA",
+      "MS",
       "LLY",
-      "NOW",
-      "NVDA",
-      "BRK-B",
-      "SPY",
-      "META",
-      "QQQ",
       "XLI",
-      "TSLA",
-      "INTU",
+      "NVDA",
+      "SPY",
       "CVX",
-      "MRK"
+      "TSLA",
+      "MRK",
+      "GS"
     ],
     "top_momentum": [
       "MSFT",
       "AMZN",
-      "INTU",
-      "ADBE",
-      "COP"
+      "AVGO",
+      "CRWD",
+      "MPC"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785857124.7372046
   },
   "episodic": [
-    {
-      "lesson": "Crypto desk aggressively bought UNI, AAVE, YFI with confidence >88%. Validate these signals against current market conditions and position sizing limits.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784904717.379458
-    },
     {
       "lesson": "Two autonomous PRs modifying protected model files were automerge-revoked, and three auto-fixes failed. Human review required; risk of introducing bugs into model layer.",
       "category": "code",
@@ -2056,6 +2049,21 @@
       },
       "lesson": "[LLM unavailable \u2014 all providers failed]",
       "ts": 1785859528.9001098
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Real Estate"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785859714.05433
     }
   ],
   "github_insights": [
