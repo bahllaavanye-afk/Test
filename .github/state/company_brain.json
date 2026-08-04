@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785859714.0487294,
+    "last_updated": 1785862184.1771324,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,45 +109,45 @@
     },
     "opinion_score": 4,
     "macro_score": 3,
-    "vix": 16.32,
-    "market_scan_ts": 1785859714.0190485,
+    "vix": 16.21,
+    "market_scan_ts": 1785862184.1485822,
     "sector_leaders": [
       "Energy",
       "Financials",
       "Real Estate"
     ],
     "sector_laggards": [
-      "Industrials",
+      "Healthcare",
       "Materials",
       "Utilities"
     ],
     "active_universe": [
+      "PLD",
       "MSFT",
       "AMZN",
       "ORCL",
       "XLK",
       "GOOGL",
       "QQQ",
-      "AVGO",
-      "PANW",
       "XLV",
+      "PANW",
+      "AVGO",
+      "LLY",
       "CRWD",
       "AAPL",
-      "MS",
-      "LLY",
       "XLI",
-      "NVDA",
+      "MS",
       "SPY",
+      "NVDA",
       "CVX",
-      "TSLA",
       "MRK",
-      "GS"
+      "TSLA"
     ],
     "top_momentum": [
       "MSFT",
       "AMZN",
       "AVGO",
-      "CRWD",
+      "ORCL",
       "MPC"
     ],
     "risk_flags": [],
@@ -155,13 +155,6 @@
     "last_brain_update": 1785857124.7372046
   },
   "episodic": [
-    {
-      "lesson": "Two autonomous PRs modifying protected model files were automerge-revoked, and three auto-fixes failed. Human review required; risk of introducing bugs into model layer.",
-      "category": "code",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1784904717.3846834
-    },
     {
       "lesson": "Signal funnel conversion: 51 generated \u2192 12 placed (23.5%) with 0 exploration. Evaluate whether exploration parameter should be increased to improve signal diversity.",
       "category": "strategy",
@@ -2064,6 +2057,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785859714.05433
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Real Estate"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785862184.1825807
     }
   ],
   "github_insights": [
