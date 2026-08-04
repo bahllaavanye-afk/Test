@@ -1848,6 +1848,7 @@ async def main() -> None:
         equity = 0.0
         cash   = 0.0
         buying = 0.0
+        nmbp   = 0.0
         with tracker.stage(DATA_FETCH, "Fetch account and market bars"):
             account = await _get_account()
             if account is None:
@@ -1859,7 +1860,16 @@ async def main() -> None:
                 equity = float(account.get("equity",       0))
                 cash   = float(account.get("cash",         0))
                 buying = float(account.get("buying_power", 0))
-                print(f"  Account equity=${equity:.2f}  cash=${cash:.2f}  buying_power=${buying:.2f}", flush=True)
+                # The field that actually gates CRYPTO. cash_capped_notional picks
+                # `non_marginable_buying_power` for crypto and `buying_power` for
+                # equities, because Alpaca crypto is cash-only. Buying marginable
+                # equities drives this to ~0 by construction, so the crypto desk
+                # starves while equities trade on ample buying power — and until
+                # now the value was never reported, so on 2026-08-04 it had to be
+                # INFERRED from a skip message rather than read.
+                nmbp   = float(account.get("non_marginable_buying_power", 0) or 0)
+                print(f"  Account equity=${equity:.2f}  cash=${cash:.2f}  "
+                      f"buying_power=${buying:.2f}  non_marginable_bp=${nmbp:.2f}", flush=True)
                 # Daily loss circuit breaker (stateless — uses the broker's own
                 # prior-close equity): if the account is down more than the cap
                 # since yesterday's close, place NO new orders this run. Signals
@@ -2444,6 +2454,7 @@ async def main() -> None:
             # them, so they belong in the message a human actually reads.
             summary  = (f"*QuantEdge Desk Run* ({now_str})  equity=${equity:,.2f}  "
                         f"cash=${cash:,.2f}  buying_power=${buying:,.2f}  "
+                        f"crypto_bp=${nmbp:,.2f}  "
                         f"regime={_regime_lbl}/{vol_regime}\n")
             summary += (f"funnel: {_gen} generated → {_survivors} survived gate+topK "
                         f"({_explored} exploration) → {len(all_orders)} placed\n")
