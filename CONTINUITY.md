@@ -6,7 +6,28 @@
 > lost. Keep it current: when you finish or start something material, update this file in
 > the same commit.
 
-_Last updated: 2026-08-03._
+_Last updated: 2026-08-04._
+
+## 🎯 OPERATOR DECISIONS — everything now blocked on a human, ranked
+Nothing below can be done from code. Each line says what it unblocks, so it can be
+triaged without reading the 2,600 lines under it. Detail for every item is further
+down this file; this index exists because findings were being **rediscovered** —
+the torch-free ML path, the Polymarket no-order-path and the CI-bypass item were
+each independently "found" after already being documented.
+
+| # | Action | Effort | Unblocks |
+|---|--------|--------|----------|
+| 1 | **Suspend/delete the `quantedge-api-agb8` Render service** | ~30s | A second backend (paper mode, Alpaca-connected, 11 background tasks, dead DB) is trading the SAME account as `9jz0`. Contaminates equity/buying-power/position reads the desk uses for Kelly sizing, the loss cap and `is_risk_reducing`, plus the new slippage attribution. Prime suspect for the `< $25 available cash` block. |
+| 2 | **Unpause Supabase `vexzwnfbmznvxoxxktax`** | ~1min | Nothing persists. Trades land in ephemeral sqlite and are wiped on every redeploy → empty leaderboard, inert attribution pruning, no per-strategy TCA history. Also the last open link of the post-deploy revival P0. |
+| 3 | **Vercel: fix `ignoreCommand` + clear the stale-failure PRs** | ~5min | ~100 PRs frozen. Two separable actions: prepend `case "$VERCEL_GIT_COMMIT_REF" in improver/*) exit 0;; esac` to stop NEW PRs being stamped, and push/redeploy/close the existing ones — a commit status is immutable per sha, so they never self-clear. (`frontend/vercel.json` is under "Do NOT Modify", so this is yours by policy too.) |
+| 4 | **Crypto confidence recalibration** (needs a walk-forward backtest) | hours | The only always-open desk. `confidence = |raw| · (target_vol/rv) / 2` caps at 0.40 @50% vol vs a 0.60 gate, so overnight trading is rare. The naive fix scores 0.83–0.94 on a ZERO-DRIFT random walk — it trades noise — so this is a strategy decision, not a patch. `xfail(strict=True)` tests flip to failure when it is done. |
+| 5 | **ML: pick a path** | decision | Either add an XGBoost/LightGBM trainer (torch-free — runtime, model class and loader all already exist on Render; only the trainer is missing) **or** host inference where torch fits. Until then every LSTM item is unreachable work: torch is deliberately excluded from Render (`pyproject.toml:54-56`). |
+| 6 | **Agent-wave cadence** | decision | `auto-launch.yml` has no schedule, so the 48-agent company essentially never runs autonomously. Per-agent metrics already exist (`agent_tracking`) and are posted-then-discarded; persisting them is ~10 lines but pointless until the wave runs. It is a Discord-noise decision. |
+| 7 | **Polymarket: wire py-clob-client, or retire the desk** | decision | 8 strategies producing up to conf=1.00 with no venue route. Now reported honestly as `NO ORDER PATH` rather than "closed" (#1385), but still unexecutable. |
+| 8 | **Set `OA_SESSION_COOKIE`** | ~1min | The OA scout is auth-walled and has found 0 bots in 56 runs. It no longer spams commits (#1394), but stays a no-op without this. |
+| 9 | **Cap the `/notifications/discord/cto-review` endpoint** | small | Only uncapped paid-Claude path: calls `claude-haiku-4-5` directly, no free-tier attempt, no cascade, no budget cap. |
+| 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
+
 
 ## 🔴 WHY THERE ARE NO TRADES — answered 2026-08-03, full writeup in `docs/REVIEW_2026-08-03_WHY_NO_TRADES.md`
 
