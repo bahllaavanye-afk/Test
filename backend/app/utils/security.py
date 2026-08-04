@@ -1,6 +1,10 @@
 import base64
 import hashlib
 import uuid
+import logging
+import json
+import time
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Any, Dict
 
@@ -9,6 +13,30 @@ from cryptography.fernet import Fernet
 from jose import jwt
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+_call_counters = defaultdict(int)
+
+
+def _monitor(func):
+    """Decorator to log execution metrics for security utilities."""
+    def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        result = func(*args, **kwargs)
+        duration_ms = (time.perf_counter() - start) * 1000
+        _call_counters[func.__name__] += 1
+        signal_count = _call_counters[func.__name__]
+        pnl = result if isinstance(result, (int, float)) else None
+        log_payload = {
+            "function": func.__name__,
+            "signal_count": signal_count,
+            "duration_ms": round(duration_ms, 3),
+            "pnl": pnl,
+        }
+        logger.info(json.dumps(log_payload))
+        return result
+    return wrapper
 
 
 def _bcrypt_bytes(password: str) -> bytes:
@@ -27,6 +55,7 @@ def _bcrypt_bytes(password: str) -> bytes:
     return password.encode("utf-8")[:72]
 
 
+@_monitor
 def hash_password(password: str) -> str:
     """Hash a plain‑text password using bcrypt.
 
@@ -39,6 +68,7 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(_bcrypt_bytes(password), bcrypt.gensalt()).decode("utf-8")
 
 
+@_monitor
 def verify_password(plain: str, hashed: str) -> bool:
     """Verify a password against a stored bcrypt hash.
 
@@ -55,6 +85,7 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
+@_monitor
 def create_access_token(subject: str | Any, expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token.
 
@@ -76,6 +107,7 @@ def create_access_token(subject: str | Any, expires_delta: timedelta | None = No
     )
 
 
+@_monitor
 def create_refresh_token(subject: str | Any) -> str:
     """Create a JWT refresh token with a unique identifier.
 
@@ -95,6 +127,7 @@ def create_refresh_token(subject: str | Any) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
+@_monitor
 def decode_token(token: str) -> Dict[str, Any]:
     """Decode a JWT token without verifying its type.
 
@@ -117,6 +150,7 @@ def _fernet_key() -> bytes:
     return base64.urlsafe_b64encode(digest)
 
 
+@_monitor
 def encrypt_secret(value: str) -> str:
     """Encrypt a broker API secret for secure storage.
 
@@ -130,6 +164,7 @@ def encrypt_secret(value: str) -> str:
     return f.encrypt(value.encode()).decode()
 
 
+@_monitor
 def decrypt_secret(encrypted: str) -> str:
     """Decrypt a previously encrypted broker API secret.
 
