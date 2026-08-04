@@ -45,6 +45,31 @@ class ActivityTracker:
         self._events: deque[TrackedEvent] = deque(maxlen=max_size)
         self._counts: dict[str, int] = {}
 
+    def _log_event(self, event: TrackedEvent) -> None:
+        """
+        Emit a structured log record for a tracked event.
+
+        Includes key metrics (signal_count, execution_time, pnl) even if they are absent,
+        defaulting to zero values.
+        """
+        base_payload: dict[str, Any] = {
+            "timestamp": event.timestamp.isoformat(),
+            "event_type": event.event_type,
+            "category": event.category,
+            "summary": event.summary,
+        }
+
+        # Ensure key metrics are always present
+        metrics = {
+            "signal_count": event.metadata.get("signal_count", 0),
+            "execution_time": event.metadata.get("execution_time", 0),
+            "pnl": event.metadata.get("pnl", 0.0),
+        }
+        base_payload.update(metrics)
+
+        # Attach the payload under a distinct attribute to avoid clashes with LogRecord fields
+        logger.info("Tracked event recorded", extra={"event": base_payload})
+
     def record(
         self, event_type: str | None, category: str | None, summary: str | None, **metadata
     ) -> TrackedEvent:
@@ -70,19 +95,8 @@ class ActivityTracker:
         key = f"{category}.{event_type}"
         self._counts[key] = self._counts.get(key, 0) + 1
 
-        # Structured logging of key metrics at INFO level
-        log_payload: dict[str, Any] = {
-            "timestamp": event.timestamp.isoformat(),
-            "event_type": event_type,
-            "category": category,
-            "summary": summary,
-        }
-        # Include optional metrics if present
-        for metric in ("signal_count", "execution_time", "pnl"):
-            if metric in metadata:
-                log_payload[metric] = metadata[metric]
-
-        logger.info("Tracked event recorded", extra=log_payload)
+        # Structured logging of the event
+        self._log_event(event)
 
         return event
 
