@@ -2434,7 +2434,17 @@ async def main() -> None:
             _survivors = len(approved_signals)
             _explored = locals().get("explored", 0)
             _regime_lbl = _REGIME_NAMES.get(current_regime, str(current_regime))
-            summary  = f"*QuantEdge Desk Run* ({now_str})  equity=${equity:,.2f}  regime={_regime_lbl}/{vol_regime}\n"
+            # equity alone cannot explain a zero-order run. `cash_capped_notional`
+            # rejects every order once available cash drops under MIN_ORDER_USD,
+            # and that showed up on 2026-08-04 as
+            #   · crypto_adaptive_trend/LTC/USD skipped — insufficient available cash
+            # buried in the Actions log while Discord reported only a healthy
+            # equity figure. A fully-deployed book and a quiet market produce the
+            # same "0 orders" headline; cash and buying power are what separate
+            # them, so they belong in the message a human actually reads.
+            summary  = (f"*QuantEdge Desk Run* ({now_str})  equity=${equity:,.2f}  "
+                        f"cash=${cash:,.2f}  buying_power=${buying:,.2f}  "
+                        f"regime={_regime_lbl}/{vol_regime}\n")
             summary += (f"funnel: {_gen} generated → {_survivors} survived gate+topK "
                         f"({_explored} exploration) → {len(all_orders)} placed\n")
             # The gap between "survived" and "placed" is where every silent
