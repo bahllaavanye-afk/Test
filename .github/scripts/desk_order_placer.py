@@ -2504,6 +2504,24 @@ async def main() -> None:
                 )
             summary += "\n".join(desk_summaries)
             summary += f"\n\nTotal orders placed: *{len(all_orders)}*"
+            # Print BEFORE posting. This summary is the densest artifact the desk
+            # produces — funnel counts, per-desk drop reasons, execution slippage,
+            # equity/cash/buying_power — and until now it existed ONLY in Discord.
+            # A `notify` failure, a rotated bot token, a rate limit, or simply
+            # nobody reading #pnl-daily and the whole diagnostic picture is gone,
+            # while the Actions log keeps only the raw per-signal lines it was
+            # synthesised from.
+            #
+            # Found 2026-08-04 trying to verify the cash/buying_power fields added
+            # earlier the same day: they could not be confirmed from any run log,
+            # because the line carrying them is never written to stdout. A change
+            # whose output cannot be observed is indistinguishable from one that
+            # did not ship — the pattern this repo keeps paying for.
+            #
+            # Ordered first so the record survives even if _post_chat raises.
+            print("\n" + "─" * 60, flush=True)
+            print(summary, flush=True)
+            print("─" * 60, flush=True)
             _post_chat("#pnl-daily", summary)
 
             # Graphical companion (user: "show me more graphical"): orders-per-desk
