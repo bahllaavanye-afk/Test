@@ -1,38 +1,14 @@
 {
-  "generated_at": "2026-08-04T03:30:09.247961+00:00",
+  "generated_at": "2026-08-04T08:51:48.480364+00:00",
   "period_days": 30,
   "strategies": {
-    "options_pc": {
-      "trades": 14,
-      "wins": 14,
-      "win_rate": 1.0,
-      "avg_return_pct": 1.7162,
-      "total_return_pct": 24.0265,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
-    },
-    "time_series_momentum": {
-      "trades": 15,
-      "wins": 10,
-      "win_rate": 0.6667,
-      "avg_return_pct": 0.3032,
-      "total_return_pct": 4.5479,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
-    },
-    "realized_vol_asymmetry": {
-      "trades": 10,
+    "gamma_expo": {
+      "trades": 3,
       "wins": 3,
-      "win_rate": 0.3,
-      "avg_return_pct": -2.37,
-      "total_return_pct": -23.6997,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
-    },
-    "time_serie": {
-      "trades": 18,
-      "wins": 13,
-      "win_rate": 0.7222,
-      "avg_return_pct": 2.3894,
-      "total_return_pct": 43.0084,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
+      "win_rate": 1.0,
+      "avg_return_pct": 1.9789,
+      "total_return_pct": 5.9367,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
     },
     "low_volati": {
       "trades": 7,
@@ -40,15 +16,7 @@
       "win_rate": 0.2857,
       "avg_return_pct": -0.2394,
       "total_return_pct": -1.6757,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
-    },
-    "sector_rotation": {
-      "trades": 5,
-      "wins": 0,
-      "win_rate": 0.0,
-      "avg_return_pct": -0.2839,
-      "total_return_pct": -1.4195,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
     },
     "poly_time_": {
       "trades": 2,
@@ -56,23 +24,15 @@
       "win_rate": 0.0,
       "avg_return_pct": -1.5747,
       "total_return_pct": -3.1493,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
     },
-    "analyst_re": {
-      "trades": 9,
-      "wins": 4,
-      "win_rate": 0.4444,
-      "avg_return_pct": -1.0201,
-      "total_return_pct": -9.1808,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
-    },
-    "stat_arb_e": {
-      "trades": 21,
-      "wins": 0,
-      "win_rate": 0.0,
-      "avg_return_pct": -1.7701,
-      "total_return_pct": -37.1719,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
+    "stat_arb_etf": {
+      "trades": 27,
+      "wins": 25,
+      "win_rate": 0.9259,
+      "avg_return_pct": 1.0055,
+      "total_return_pct": 27.1477,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
     },
     "sector_rot": {
       "trades": 10,
@@ -80,47 +40,23 @@
       "win_rate": 1.0,
       "avg_return_pct": 0.8514,
       "total_return_pct": 8.514,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
     },
-    "vol_of_vol": {
-      "trades": 10,
+    "options_pcr_reversal": {
+      "trades": 11,
       "wins": 2,
-      "win_rate": 0.2,
-      "avg_return_pct": -0.2286,
-      "total_return_pct": -2.2857,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
+      "win_rate": 0.1818,
+      "avg_return_pct": -0.9673,
+      "total_return_pct": -10.6405,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
     },
-    "avellaneda_stoikov_mm": {
-      "trades": 10,
-      "wins": 9,
-      "win_rate": 0.9,
-      "avg_return_pct": 5.3481,
-      "total_return_pct": 53.481,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
-    },
-    "put_call_ratio_contrarian": {
-      "trades": 3,
-      "wins": 1,
-      "win_rate": 0.3333,
-      "avg_return_pct": -0.5163,
-      "total_return_pct": -1.5489,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
-    },
-    "low_volatility": {
-      "trades": 4,
-      "wins": 4,
+    "options_pc": {
+      "trades": 14,
+      "wins": 14,
       "win_rate": 1.0,
-      "avg_return_pct": 0.4414,
-      "total_return_pct": 1.7654,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
-    },
-    "wheel": {
-      "trades": 1,
-      "wins": 0,
-      "win_rate": 0.0,
-      "avg_return_pct": -0.7431,
-      "total_return_pct": -0.7431,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
+      "avg_return_pct": 1.7162,
+      "total_return_pct": 24.0265,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
     },
     "put_call_r": {
       "trades": 1,
@@ -128,47 +64,7 @@
       "win_rate": 1.0,
       "avg_return_pct": 1.2281,
       "total_return_pct": 1.2281,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
-    },
-    "stat_arb_etf": {
-      "trades": 24,
-      "wins": 22,
-      "win_rate": 0.9167,
-      "avg_return_pct": 0.9842,
-      "total_return_pct": 23.62,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
-    },
-    "options_pcr_reversal": {
-      "trades": 9,
-      "wins": 2,
-      "win_rate": 0.2222,
-      "avg_return_pct": -0.8243,
-      "total_return_pct": -7.4183,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
-    },
-    "gamma_expo": {
-      "trades": 3,
-      "wins": 3,
-      "win_rate": 1.0,
-      "avg_return_pct": 1.9789,
-      "total_return_pct": 5.9367,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
-    },
-    "vol_of_vol_timing": {
-      "trades": 5,
-      "wins": 4,
-      "win_rate": 0.8,
-      "avg_return_pct": 0.3521,
-      "total_return_pct": 1.7607,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
-    },
-    "analyst_revision_momentum": {
-      "trades": 1,
-      "wins": 1,
-      "win_rate": 1.0,
-      "avg_return_pct": 0.4001,
-      "total_return_pct": 0.4001,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
     },
     "avellaneda": {
       "trades": 34,
@@ -176,7 +72,111 @@
       "win_rate": 0.5294,
       "avg_return_pct": -0.8441,
       "total_return_pct": -28.6984,
-      "last_updated": "2026-08-04T03:30:09.247961+00:00"
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
+    },
+    "vol_of_vol_timing": {
+      "trades": 5,
+      "wins": 4,
+      "win_rate": 0.8,
+      "avg_return_pct": 0.3521,
+      "total_return_pct": 1.7607,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
+    },
+    "realized_vol_asymmetry": {
+      "trades": 12,
+      "wins": 5,
+      "win_rate": 0.4167,
+      "avg_return_pct": -1.0431,
+      "total_return_pct": -12.5174,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
+    },
+    "avellaneda_stoikov_mm": {
+      "trades": 10,
+      "wins": 9,
+      "win_rate": 0.9,
+      "avg_return_pct": 5.3481,
+      "total_return_pct": 53.481,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
+    },
+    "time_serie": {
+      "trades": 18,
+      "wins": 13,
+      "win_rate": 0.7222,
+      "avg_return_pct": 2.3894,
+      "total_return_pct": 43.0084,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
+    },
+    "analyst_re": {
+      "trades": 9,
+      "wins": 4,
+      "win_rate": 0.4444,
+      "avg_return_pct": -1.0201,
+      "total_return_pct": -9.1808,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
+    },
+    "put_call_ratio_contrarian": {
+      "trades": 3,
+      "wins": 1,
+      "win_rate": 0.3333,
+      "avg_return_pct": -0.5163,
+      "total_return_pct": -1.5489,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
+    },
+    "wheel": {
+      "trades": 2,
+      "wins": 0,
+      "win_rate": 0.0,
+      "avg_return_pct": -1.486,
+      "total_return_pct": -2.9721,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
+    },
+    "stat_arb_e": {
+      "trades": 21,
+      "wins": 0,
+      "win_rate": 0.0,
+      "avg_return_pct": -1.7701,
+      "total_return_pct": -37.1719,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
+    },
+    "low_volatility": {
+      "trades": 7,
+      "wins": 7,
+      "win_rate": 1.0,
+      "avg_return_pct": 0.4688,
+      "total_return_pct": 3.2814,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
+    },
+    "sector_rotation": {
+      "trades": 5,
+      "wins": 0,
+      "win_rate": 0.0,
+      "avg_return_pct": -0.2839,
+      "total_return_pct": -1.4195,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
+    },
+    "analyst_revision_momentum": {
+      "trades": 3,
+      "wins": 3,
+      "win_rate": 1.0,
+      "avg_return_pct": 0.5556,
+      "total_return_pct": 1.6668,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
+    },
+    "time_series_momentum": {
+      "trades": 22,
+      "wins": 16,
+      "win_rate": 0.7273,
+      "avg_return_pct": 0.4146,
+      "total_return_pct": 9.1207,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
+    },
+    "vol_of_vol": {
+      "trades": 10,
+      "wins": 2,
+      "win_rate": 0.2,
+      "avg_return_pct": -0.2286,
+      "total_return_pct": -2.2857,
+      "last_updated": "2026-08-04T08:51:48.480364+00:00"
     }
   },
   "tracked_order_ids": [
@@ -190,6 +190,7 @@
     "13f3e24e-b0c3-4b92-a206-29705729cd0f",
     "15f283ff-d0ef-470e-b230-aaff6651ffb6",
     "16ccb54a-38df-4976-90e7-4bf96968ac0a",
+    "1a34e2ca-58d2-4bce-aea7-ab35713084b0",
     "1aea445c-5f63-4f8b-8471-159c72396c92",
     "1af377a0-5cd1-4dd9-a67a-17169a4c303c",
     "1c57f626-ad5e-4704-a2b6-69642c73d434",
@@ -199,6 +200,7 @@
     "23998d4f-24e8-4b01-9ea4-369639e790d5",
     "23d65e49-76fa-4005-ad5a-47c72f5f9d07",
     "23f02d6c-e46e-4fc7-9d4b-241b3ed04083",
+    "2433943b-c62d-4623-8ee0-50616e32066f",
     "24fd52aa-4746-4615-a916-3dea46d7d18e",
     "2575a540-27d5-4c9e-9a5a-8df89895f617",
     "28432b1f-da78-41be-bdf8-13c4713753f7",
@@ -216,6 +218,7 @@
     "384411e1-29e2-4bd1-a33c-4b3c98a7a7c1",
     "38816c04-7089-4d0d-a7bb-1206116b4206",
     "3aee6894-5023-4a88-a11b-faca076cb874",
+    "3af31962-aaf5-4681-919f-82f27bc65108",
     "3b2a9a5b-cab2-452e-a831-19bb8cdadf95",
     "3d0a08c1-a0c6-4969-a5d1-412851b5247c",
     "3ef5ee22-4501-4c56-90dd-c6b2afdd894d",
@@ -223,7 +226,9 @@
     "3f76eb46-34da-4a96-a05e-4502ec0105ec",
     "3fec1538-3c30-46c0-918c-7cc78527fde3",
     "41e173a8-de3a-4248-83ec-812f9a9f7ca4",
+    "423e04cf-3d15-4f92-b71f-de94d63eff83",
     "4464a1d7-1fea-41e1-b0e2-295e2a5a1b06",
+    "46b09a09-7a12-4901-be17-03046ed22cf6",
     "470bf544-7914-4d8b-91df-9bc4d5137c2b",
     "48a56cb3-320b-4da0-9edb-58ad8e8c8ec1",
     "48db3c70-ad85-44eb-9cef-1a21feb953d7",
@@ -235,6 +240,7 @@
     "4e471044-8822-400a-a74e-75ad8a3ab3d2",
     "4fd00d80-a33a-4a37-a951-5ea522ba47ba",
     "50f3e57a-8e7e-4bf3-820e-bf4386cfdf9b",
+    "52e40dee-1ba7-4fc4-92f5-d4630e8838de",
     "52fdc7ab-509a-4582-aaae-f7b70e77e13a",
     "55beffa1-a60a-4a75-9de9-59706ba6888e",
     "56497297-fc8e-4c5c-8411-5e7dd34180f1",
@@ -255,8 +261,11 @@
     "63279498-1b69-4181-9986-54f3fcc16770",
     "64caaa3a-6aaf-4ece-8654-45f28cddb44b",
     "65e6cc0a-9ca4-4979-9522-4b94a19bd2c5",
+    "666521f3-3b82-4b62-aa0f-8b0f0a05e7c7",
+    "66755b3f-9803-4fe3-ba96-d62e7b223539",
     "673deea4-31be-4113-a829-cb3589126437",
     "676450d4-68a9-4b21-80d7-a8fee15a473b",
+    "67fd4c3c-94a3-4a92-bcdd-ae9f715aeb73",
     "67fdf346-044a-4562-93d2-292b83d9d702",
     "684152fc-abdc-4a76-8b23-d76584d1c157",
     "69ce9918-9855-41fb-9c7b-82d8f39f6d90",
@@ -267,7 +276,9 @@
     "6d149e0d-9ff2-4547-b85f-ea8f5fdaad97",
     "6d9d9395-677b-458d-a4e9-aa90de1f5c83",
     "6dae8818-6c92-4f49-9445-53d2a5a46bc5",
+    "6f709362-9419-41db-9a04-bf884900ac22",
     "6fee0e59-b4e2-4c5a-87f2-f65c8b718536",
+    "704aa1c7-4816-40bb-b6d6-9d4e37d48cf5",
     "7140f428-9efc-4e09-bf6e-6dfa8520bf50",
     "72ab59eb-273c-4bdd-ae2b-a81c60b13b56",
     "75d61df1-586a-4871-8163-d59798808a5d",
@@ -297,6 +308,7 @@
     "91044a23-4d79-41e8-851b-887a3ad92fac",
     "913e30ad-1ba4-40ae-a51e-abcad32bc0e5",
     "927f287e-ad09-4514-b395-53da899cedf1",
+    "928683fd-e5d9-4f55-b07a-5265e00ad75f",
     "92ee2268-ae05-4c65-9fb1-ba8f01b8c463",
     "95997d65-ef18-4d97-a157-1bdcde490103",
     "95fe3e21-3cef-4308-86d5-21865bc34764",
@@ -311,16 +323,19 @@
     "a1148f5e-cc40-4c1f-a378-a7275d39fb1a",
     "a1384be3-eed8-4573-a2cf-eecfb1c83eed",
     "a17cf5b5-6c3f-44ae-9290-5de95cef4f08",
+    "a1a18920-9800-4c53-bcca-adf1ae04566a",
     "a1a7756c-f3d9-4071-a628-f4dfd9da5451",
     "a329febb-00d3-4e5f-9a80-b1b45fc91070",
     "a48f7e29-338e-4235-85be-d9453035448d",
     "a4e6ed7f-da7c-4e38-9666-7acc55c55638",
+    "a6e9b8f5-0761-4b1e-b4ad-d245272c83fd",
     "a8d439c6-6e70-4571-bc70-25a1ec34ec13",
     "ab70c119-8077-4883-a604-370af019c9c3",
     "abafb30e-79c6-4f0c-919b-74d744e2ed02",
     "ac0a906a-5a36-4abb-80f2-beb486293d6d",
     "afb8df0a-72bd-4b57-92fb-745792e5f40e",
     "b126e15c-f591-45dd-b9e5-a3af3396043e",
+    "b20e16f9-94ea-4afc-8e82-be83255e83d8",
     "b23b30c7-d17b-4e23-b9b8-9f838ec02f25",
     "b480c0af-eed8-47ba-92bb-0657d5a43b2f",
     "b5c060a6-7706-48ef-b06b-38545b282ff3",
@@ -332,14 +347,17 @@
     "badd3b7d-ee89-4c33-987f-83d63f1015ce",
     "bb068632-1368-4f26-9db5-db1723bf1467",
     "bb729cea-fe86-4865-a3ba-d373101824f9",
+    "bc24242d-72e0-4f57-93a5-135efa56113e",
     "bce1f6e6-ac8e-45f3-8483-857a030a6f2e",
     "bd7a4705-58bf-4c6f-a50e-fbbe0d803717",
     "be5d603c-f081-48ef-bfb7-148bdd5ff9e8",
     "bfc846b0-fdf2-44da-bc1f-06586ea68ef8",
+    "bfd66fcd-2d39-4f49-a862-e69d1623d694",
     "c1017e96-ab10-4d1b-83bd-2760d4602979",
     "c11335ca-30bb-43a4-8c42-b2a41dd06b6e",
     "c1f7a1bc-4a95-4c25-b138-4401a8f6d9eb",
     "c2d715a1-1708-47b9-8d1c-e867ef7f763c",
+    "c3176b96-3a50-4b67-b9cf-3134f34bb82f",
     "c3494d27-976b-436a-a15e-206ac13669fd",
     "c35b327e-2328-4377-ba05-240e9ded8a57",
     "c442096b-4f71-4782-ab1e-15b7b66a02b0",
@@ -347,6 +365,7 @@
     "c6e5ba51-0aa0-472e-8d4f-d449df3ed7ce",
     "c71fd568-3fcc-451c-99a5-3a70b6d946c5",
     "c738861b-0391-4caf-8dfd-5d12ceedbdd0",
+    "c75bdad3-e07a-4660-a6c7-bc00877b6861",
     "c86e80a6-d31b-458a-b51d-4177d78cc473",
     "c99fa79c-361e-4857-8ff4-b006b57ab761",
     "c9fae182-e81a-4ee5-95dd-ebfceef3e082",
@@ -387,6 +406,7 @@
     "f5092a3f-78ab-4194-917e-ebf28faca1b0",
     "f523e6a3-b65d-4620-9df3-17b2f7d12294",
     "f6154808-236b-4f67-b1da-084d81892b64",
+    "f866348f-b414-4a05-80d2-34fb82f4ae31",
     "f8e0a5ac-411a-4188-b54b-3df5b5dc4514",
     "fb469b02-9301-4948-b26c-133c899e13e3",
     "fb954025-3d05-429b-bc9c-11e0e3f54011",
