@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Verify dependencies",
-    "Limit DB queries",
-    "Scan code for error patterns",
     "Analyze signal confidence",
     "Check for null pointers",
     "Validate input types",
@@ -199,8 +196,11 @@
     "Validate user IDs",
     "Check CPU load",
     "Monitor RAM usage",
-    "Check file locks"
+    "Check file locks",
+    "Check firewall rules",
+    "Refactor error handling",
+    "Improve log consistency"
   ],
-  "last_updated": "2026-08-04T11:02:16.983648+00:00",
+  "last_updated": "2026-08-04T13:14:42.283838+00:00",
   "total": 200
 }
