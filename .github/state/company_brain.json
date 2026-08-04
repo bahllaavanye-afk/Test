@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785874914.317805,
+    "last_updated": 1785875225.6411567,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -110,67 +110,52 @@
     },
     "opinion_score": 4,
     "macro_score": 3,
-    "vix": 16.41,
-    "market_scan_ts": 1785871391.9090369,
+    "vix": 16.48,
+    "market_scan_ts": 1785875225.6119816,
     "sector_leaders": [
       "Energy",
       "Financials",
-      "Tech"
+      "Real Estate"
     ],
     "sector_laggards": [
-      "Materials",
       "Healthcare",
+      "Materials",
       "Utilities"
     ],
     "active_universe": [
       "MSFT",
       "AMZN",
-      "ORCL",
       "AMD",
-      "XLK",
+      "ORCL",
       "PANW",
       "LLY",
-      "QQQ",
+      "AVGO",
+      "XLK",
       "INTC",
       "GOOGL",
-      "AVGO",
-      "XLV",
       "CRWD",
-      "XLI",
+      "QQQ",
       "AAPL",
+      "XLV",
+      "XLI",
       "SPY",
       "NVDA",
       "MS",
-      "TSLA",
-      "MRK"
+      "MRK",
+      "UNH"
     ],
     "top_momentum": [
       "MSFT",
       "AMZN",
       "AVGO",
       "CRWD",
-      "ORCL"
+      "PANW"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785874914.3163018
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Energy",
-        "Healthcare",
-        "Financials"
-      ],
-      "gap_count": 5,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 5, Breakouts: 0, Risk flags: 0.",
-      "ts": 1784906504.3486722
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -2092,6 +2077,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785871391.949056
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Real Estate"
+      ],
+      "gap_count": 8,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
+      "ts": 1785875225.6468563
     }
   ],
   "github_insights": [
