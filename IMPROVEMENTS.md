@@ -1,5 +1,24 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔇 2026-08-04 09:50 — the OA scout committed 56 times having never found anything
+- [x] **Fixed: no-op runs no longer commit.** `oa_library.json` has read `{"known": []}` since it was created — every OA
+  page redirects to a login and `OA_SESSION_COOKIE` has never been set, so the scout is a no-op by construction until a
+  human supplies that secret. It still produced a commit on **every** run, because it rewrote `last_run`, a timestamp
+  that moves each run and that **nothing reads** (written in `main()`, defaulted in `_load_state()`, and that is its
+  entire lifetime). The file therefore always differed, so the workflow's `git diff --cached --quiet || commit` guard was
+  never satisfied: **56 commits whose whole content was "the clock moved"**, stacked onto main, reading like progress.
+- [x] **This is the inverse of the usual bug here.** The pattern this file keeps recording is work that succeeds and
+  produces nothing. This is *nothing* dressed as work — arguably worse, because anyone scanning `git log` sees a scout
+  that appears to be actively harvesting.
+- [x] **Fix:** bump `last_run` only alongside a real change to `known` or `auth_wall`, so a no-op run leaves the file
+  byte-identical and the existing guard suppresses the commit. Verified functionally: with the live state file and an
+  auth-walled scrape, `changed == False` and the bytes are unmodified. Nothing is concealed — the workflow already pipes
+  stdout into `$GITHUB_STEP_SUMMARY` (every run leaves a record in the Actions UI) and the auth-wall case posts to
+  Discord asking for the cookie. 6 tests, mutation-checked; a first-run/missing-file case is covered so the 'skip when
+  unchanged' logic can still create the file.
+- [ ] **[USER] Still the actual blocker:** set `OA_SESSION_COOKIE` (Cookie header from a logged-in OA session) or the
+  scout stays a no-op — now a quiet one instead of a noisy one.
+
 ## 🫀 2026-08-03 05:40 — the merge gate now rides the pacemaker, not just cron
 
 The `schedule` added at 02:40 has produced **zero runs in 2h47m**. That is the same starvation the pacemaker exists to route around — its own header says *"GitHub starves free-tier schedules under load"* — so relying on cron for the merge sweep was betting on the one mechanism this repo has already measured as unreliable.
