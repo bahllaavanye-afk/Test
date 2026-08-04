@@ -1,8 +1,11 @@
 import uuid
+import logging
 from datetime import datetime
 from sqlalchemy import String, Numeric, DateTime, Boolean, Integer, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
+
+logger = logging.getLogger(__name__)
 
 
 class MLModel(Base):
@@ -26,6 +29,27 @@ class MLModel(Base):
     trained_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     predictions: Mapped[list["MLPrediction"]] = relationship("MLPrediction", back_populates="model")
+
+    def log_prediction_metrics(self, signal_count: int, execution_time: float, pnl: float) -> None:
+        """
+        Emit structured log entry with key performance metrics for the model.
+
+        Args:
+            signal_count: Number of signals generated for the current run.
+            execution_time: Time taken (seconds) to generate predictions.
+            pnl: Profit and loss realized from the predictions.
+        """
+        logger.info(
+            "model_prediction_metrics",
+            extra={
+                "model_id": self.id,
+                "model_name": self.name,
+                "signal_count": signal_count,
+                "execution_time_sec": execution_time,
+                "pnl": pnl,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+            },
+        )
 
 
 class MLPrediction(Base):
