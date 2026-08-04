@@ -63,6 +63,22 @@ class DeskConfig(NamedTuple):
     # clock gated ALL desks for weeks — the "Crypto 24/7" workflow ran nights
     # and weekends only to print "market closed" and exit with 0 orders.
     always_open:     bool = False
+    # False when this desk has NO route to a venue, so its signals can never
+    # become orders however good they are.
+    #
+    # Polymarket is the case: `desk_order_placer` references `brokers` ZERO
+    # times — every order is a POST to Alpaca `/v2/orders` — while
+    # `backend/app/brokers/polymarket.py` exists and is never imported here.
+    # py-clob-client signing is unwired (see IMPROVEMENTS "[P1] Polymarket desk
+    # is signal-only").
+    #
+    # Without this flag those signals were dropped with "(Polymarket closed)",
+    # which is wrong twice over: prediction markets never close, and even open
+    # the desk has nowhere to send an order. That message cost real diagnostic
+    # time on 2026-08-03 — the obvious "fix" of setting always_open=True would
+    # have sent `PM:Will Tucker Carlson win the 2028 Republi…` to Alpaca and
+    # failed. Say the true reason instead.
+    executable:      bool = True
 
 
 DESKS: list[DeskConfig] = [
@@ -166,6 +182,8 @@ DESKS: list[DeskConfig] = [
     DeskConfig(
         name="Polymarket",
         chat_channel="#desk-polymarket",
+        # No CLOB order path wired — see `executable` on DeskConfig.
+        executable=False,
         symbols=["SPY"],   # proxy for market regime
         strategy_names=[
             "polymarket_sentiment_momentum", "poly_binary_arb",
@@ -2233,6 +2251,19 @@ async def main() -> None:
                 signal   = item["signal"]
                 conf     = item["confidence"]
                 desk_signals[desk.name] += 1
+
+                # Checked BEFORE the clock: a desk with no venue route is not
+                # "closed", and reporting it that way hides a permanent gap
+                # behind a message that reads as a temporary one.
+                if not desk.executable:
+                    print(
+                        f"  · {strategy.name}/{symbol} signal={signal.side.upper()} "
+                        f"conf={conf:.2f} — NO ORDER PATH ({desk.name} has no venue "
+                        f"route; signal cannot become an order)",
+                        flush=True,
+                    )
+                    _drop("no order path", desk.name)
+                    continue
 
                 desk_open = is_open or desk.always_open
                 if not desk_open:
