@@ -65,6 +65,21 @@ def _validate_signal(data: dict) -> bool:
     return True
 
 
+def _log_monitoring_metrics(category: str, duration: float) -> None:
+    """
+    Emit structured INFO‑level logs containing the accumulated count,
+    total P&L and the duration of the most recent archiving operation.
+    """
+    stats = _stats[category]
+    logger.info(
+        "Archive metrics",
+        category=category,
+        total_count=int(stats["count"]),
+        total_pnl=stats["pnl"],
+        last_duration=duration,
+    )
+
+
 async def archive_event(category: str, data: dict) -> None:
     """
     category: 'orders' | 'fills' | 'signals' | 'decisions' | 'risk'
@@ -93,13 +108,8 @@ async def archive_event(category: str, data: dict) -> None:
                 stats["pnl"] += float(pnl)
 
         duration = time.monotonic() - start
-        logger.info(
-            "Archived event",
-            category=category,
-            count=_stats[category]["count"],
-            duration=duration,
-            pnl=_stats[category]["pnl"],
-        )
+        # Structured logging of key metrics
+        _log_monitoring_metrics(category, duration)
     except Exception as e:
         logger.warning("Archive failed", category=category, error=str(e))
 
@@ -130,3 +140,11 @@ def list_archives() -> dict[str, list[str]]:
         category, date_str = f.stem.rsplit("_", 1)
         result.setdefault(category, []).append(date_str)
     return result
+
+
+def get_monitoring_stats() -> dict[str, dict[str, float]]:
+    """
+    Return a shallow copy of the internal monitoring statistics.
+    Useful for external health‑checks or dashboards.
+    """
+    return {cat: stats.copy() for cat, stats in _stats.items()}
