@@ -112,6 +112,33 @@ this was NOT changed here.** Operator options, both one-liners in that file:
 - Or compare the whole PR range instead of the tip commit, so the decision reflects
   the PR's actual frontend diff.
 
+### 🚨 LIVE: a SECOND backend is running against the same Alpaca paper account (verified 2026-08-04 02:45)
+`IMPROVEMENTS.md` has carried this as `[P1] agb8 double-execution hazard` for days. **It is still live.**
+`GET https://quantedge-api-agb8.onrender.com/health/detailed` → HTTP 200:
+```
+mode: paper   version: 2.0.0
+alpaca:           {"ok": true, "note": "connected"}      <-- same paper account as 9jz0
+background_tasks: {"ok": true, "running": 11, "total": 11}
+strategies:       {"ok": true, "count": 113}
+scheduler:        {"ok": true}
+database:         {"ok": false, "error": "[Errno -2] Name or service not known"}
+```
+So an OLD build, with a **dead database**, is running 11 background tasks and a live scheduler while **connected to the
+same Alpaca paper account** as the keeper `9jz0`. Per `backend/CLAUDE.md`, those tasks include `StrategyRunner` — "one
+asyncio task per (strategy, symbol), runs 24/7".
+
+**Why this matters beyond duplicate orders.** The desk reads LIVE Alpaca state for three separate decisions:
+`_kelly_notional` (equity), `daily_loss_cap_hit` (equity vs last_equity), and `is_risk_reducing` (position map). If a
+second service is trading the same account, all three are computed against a book this desk does not fully own — and
+the slippage measurements added 2026-08-03 attribute fills to desk decisions that another actor may have moved.
+
+**Proven:** the service is up, in paper mode, Alpaca-connected, with live background tasks and 113 strategies.
+**Not proven:** that it has actually placed an order today. Its DB is dead, so DB-backed bot definitions likely fail to
+load; registry-driven `StrategyRunner` loops are the exposure. Do not overstate it as confirmed duplicate execution.
+
+**USER ACTION (~30s):** suspend or delete the `quantedge-api-agb8` service in the Render dashboard. Nothing in the repo
+can reach it — this cannot be fixed from code.
+
 ### ⏰ MEASURED 2026-08-03 23:40 — the platform trades ~27% of the clock, not 24/7
 Today's full day, from run logs:
 - **Inside US market hours (13:30-20:00 UTC):** 11 runs, **7-9 orders each**. Working well.
