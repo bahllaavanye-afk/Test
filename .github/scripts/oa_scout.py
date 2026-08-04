@@ -139,13 +139,40 @@ def main() -> int:
     for name, source in new_finds[:10]:  # bounded per run
         _file_issue(name, source)
 
-    state.update({
-        "known": sorted(known),
-        "last_run": datetime.now(timezone.utc).isoformat(),
-        "auth_wall": auth_walled == len(WATCH_URLS),
-    })
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    STATE_FILE.write_text(json.dumps(state, indent=1))
+    # Persist ONLY when something meaningful changed.
+    #
+    # `last_run` is a timestamp that moves on every single run and that nothing
+    # anywhere reads — it is written here and defaulted in _load_state(), and
+    # that is all. Because it always changed, the workflow's
+    # `git diff --cached --quiet || commit` guard was never satisfied, so the
+    # scout committed to main on EVERY run: 56 commits to date, and `known` has
+    # been `[]` in every one of them. Every OA page is behind a login and
+    # OA_SESSION_COOKIE is unset, so the scout is a no-op by construction until
+    # a human supplies that secret — while its commit history read like work.
+    #
+    # Bumping `last_run` only alongside a real change makes the file
+    # byte-identical on a no-op run, so the existing guard does the right thing
+    # and main stops accruing daily noise. Nothing is hidden by this: the
+    # workflow already pipes this script's stdout into $GITHUB_STEP_SUMMARY, so
+    # every run leaves a visible record in the Actions UI, and the auth-wall
+    # case additionally posts to Discord asking for the cookie.
+    now_wall = auth_walled == len(WATCH_URLS)
+    changed = (
+        known != set(state.get("known") or [])
+        or now_wall != state.get("auth_wall")
+        or not STATE_FILE.exists()
+    )
+    if changed:
+        state.update({
+            "known": sorted(known),
+            "last_run": datetime.now(timezone.utc).isoformat(),
+            "auth_wall": now_wall,
+        })
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        STATE_FILE.write_text(json.dumps(state, indent=1))
+        print("state changed — persisted")
+    else:
+        print("state unchanged — not rewriting (no commit; see summary above)")
 
     summary = (f"🔭 **OA Scout**: {len(new_finds)} new bot(s) found"
                + (f" — {', '.join(n for n, _ in new_finds[:5])}" if new_finds else "")
