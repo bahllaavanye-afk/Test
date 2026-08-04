@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Check disk space",
-    "Track system resources",
-    "The `research_scientist` is having trouble with LLM availability, and the `frontend_design` and `run_experiments` agents require response updates according to their specific instructions.",
-    "Augment LSTM with S4",
-    "Log heartbeat packets",
     "Parse log files for insights",
     "Monitor NAV exposure",
     "Check timestamp sync",
@@ -199,8 +194,13 @@
     "Implement circuit breakers",
     "Use retry mechanisms",
     "Lock dependencies",
-    "Prepend S4 blocks"
+    "Prepend S4 blocks",
+    "Check disk quotas",
+    "Log exception stacks",
+    "Use heartbeat pings",
+    "Bind CPU cores",
+    "Review agent memory"
   ],
-  "last_updated": "2026-08-04T22:08:04.327096+00:00",
+  "last_updated": "2026-08-04T23:32:06.039999+00:00",
   "total": 200
 }
