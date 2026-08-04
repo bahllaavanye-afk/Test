@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Analyze signal confidence",
-    "Check for null pointers",
-    "Validate input types",
-    "* Given the current market conditions and risk status, we recommend using position sizing guidelines based on the 70/30 arbitrage/directional allocation ratio, as discussed in the #risk channel.",
     "Based on the agent learnings, the following are the most important and actionable takeaways:",
     "Flush error queues",
     "Monitor drift metrics",
@@ -199,8 +195,12 @@
     "Check file locks",
     "Check firewall rules",
     "Refactor error handling",
-    "Improve log consistency"
+    "Improve log consistency",
+    "Check DNS resolve",
+    "Test network latency",
+    "Validate config files",
+    "Optimize cache usage"
   ],
-  "last_updated": "2026-08-04T13:14:42.283838+00:00",
+  "last_updated": "2026-08-04T15:53:28.255803+00:00",
   "total": 200
 }
