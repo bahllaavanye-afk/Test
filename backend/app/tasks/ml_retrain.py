@@ -17,19 +17,33 @@ from app.utils.logging import logger
 # --------------------------------------------------------------------------- #
 # Constants
 # --------------------------------------------------------------------------- #
+# General defaults
 DEFAULT_INTERVAL: str = "1h"
+DEFAULT_TRAIN_DAYS: int = 730
+DEFAULT_MODEL: str = "lstm"
+DEFAULT_SYMBOL: str = "SPY"
+DEFAULT_FALLBACK_INTERVAL: str = "1d"
+
+# Training parameters
 MIN_HIST_LENGTH: int = 200
 MAX_EPOCHS: int = 30
-DEFAULT_TRAIN_DAYS: int = 730
-CONFIGS_DIR: Path = Path(__file__).parents[3] / "experiments" / "configs"
-DEFAULT_RETRAIN_CONFIGS: list[tuple[str, str, str]] = [
-    ("lstm", "BTC-USD", "1h"),
-    ("lstm", "ETH-USD", "1h"),
-    ("lstm", "SPY", "1d"),
-]
 MAX_RETRAIN_PER_NIGHT: int = 10
+
+# Formatting
 DATE_FORMAT: str = "%Y%m%d"
 REGEX_EXTRACT_PATTERN: str = r"^\s{2}(model|symbol|interval):\s*['\"]?([^\s'\"#]+)"
+
+# Status / reason strings
+STATUS_SKIPPED: str = "skipped"
+STATUS_ERROR: str = "error"
+REASON_INSUFFICIENT_DATA: str = "insufficient data"
+
+# Default retrain configurations (model, symbol, interval)
+DEFAULT_RETRAIN_CONFIGS: list[tuple[str, str, str]] = [
+    (DEFAULT_MODEL, "BTC-USD", DEFAULT_INTERVAL),
+    (DEFAULT_MODEL, "ETH-USD", DEFAULT_INTERVAL),
+    (DEFAULT_MODEL, DEFAULT_SYMBOL, DEFAULT_FALLBACK_INTERVAL),
+]
 
 # --------------------------------------------------------------------------- #
 # Global in‑process cache for downloaded price data.
@@ -113,7 +127,7 @@ async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_IN
 
         hist = await _download_hist(symbol, interval, start, end)
         if hist is None:
-            return {"status": "skipped", "reason": "insufficient data"}
+            return {"status": STATUS_SKIPPED, "reason": REASON_INSUFFICIENT_DATA}
 
         from app.ml.training.train_lstm import train
 
@@ -136,7 +150,7 @@ async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_IN
             symbol=symbol,
             error=str(e),
         )
-        return {"status": "error", "error": str(e)}
+        return {"status": STATUS_ERROR, "error": str(e)}
 
 
 def _load_retrain_configs() -> list[tuple[str, str, str]]:
@@ -168,9 +182,9 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
                         }
                     }
             exp = cfg.get("experiment", {})
-            model = exp.get("model", "lstm")
-            symbol = exp.get("symbol", "SPY")
-            interval = exp.get("interval", "1d")
+            model = exp.get("model", DEFAULT_MODEL)
+            symbol = exp.get("symbol", DEFAULT_SYMBOL)
+            interval = exp.get("interval", DEFAULT_FALLBACK_INTERVAL)
             key = (model, symbol, interval)
             if key not in seen:
                 seen.add(key)
@@ -199,7 +213,7 @@ async def nightly_retrain() -> None:
         *(retrain_model(m, s, i) for m, s, i in retrain_configs),
         return_exceptions=True,
     )
-    successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
+    successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != STATUS_ERROR)
     logger.info(
         "Nightly retrain complete",
         total=len(retrain_configs),
