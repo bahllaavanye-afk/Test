@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, List, Dict
+
 
 @dataclass(slots=True)
 class OrderRequest:
@@ -17,6 +18,64 @@ class OrderRequest:
     strategy_id: str | None = None
     risk_bucket: str = "directional"   # for risk manager routing
     execution_algo: str = "limit_first"  # market|limit_first|twap|vwap
+
+    def __post_init__(self) -> None:
+        # Symbol must be a non‑empty string
+        if not isinstance(self.symbol, str) or not self.symbol.strip():
+            raise ValueError("symbol must be a non‑empty string")
+
+        # Side must be either 'buy' or 'sell'
+        if self.side not in {"buy", "sell"}:
+            raise ValueError("side must be either 'buy' or 'sell'")
+
+        # Order type validation
+        valid_order_types = {"market", "limit", "stop", "bracket"}
+        if self.order_type not in valid_order_types:
+            raise ValueError(
+                f"order_type must be one of {valid_order_types}, got '{self.order_type}'"
+            )
+
+        # Quantity must be a non‑negative number
+        if not isinstance(self.quantity, (int, float)):
+            raise ValueError("quantity must be a numeric type")
+        if self.quantity < 0:
+            raise ValueError("quantity cannot be negative")
+
+        # Price fields, if provided, must be positive numbers
+        for price_name, price_value in (
+            ("limit_price", self.limit_price),
+            ("stop_price", self.stop_price),
+            ("stop_loss", self.stop_loss),
+            ("take_profit", self.take_profit),
+        ):
+            if price_value is not None:
+                if not isinstance(price_value, (int, float)):
+                    raise ValueError(f"{price_name} must be a numeric type")
+                if price_value <= 0:
+                    raise ValueError(f"{price_name} must be positive")
+
+        # Time in force must be a non‑empty string
+        if not isinstance(self.time_in_force, str) or not self.time_in_force.strip():
+            raise ValueError("time_in_force must be a non‑empty string")
+
+        # Account ID can be empty but must be a string
+        if not isinstance(self.account_id, str):
+            raise ValueError("account_id must be a string")
+
+        # Strategy ID, if provided, must be a string
+        if self.strategy_id is not None and not isinstance(self.strategy_id, str):
+            raise ValueError("strategy_id must be a string if provided")
+
+        # Risk bucket must be a non‑empty string
+        if not isinstance(self.risk_bucket, str) or not self.risk_bucket.strip():
+            raise ValueError("risk_bucket must be a non‑empty string")
+
+        # Execution algorithm validation
+        valid_algos = {"market", "limit_first", "twap", "vwap"}
+        if self.execution_algo not in valid_algos:
+            raise ValueError(
+                f"execution_algo must be one of {valid_algos}, got '{self.execution_algo}'"
+            )
 
 
 @dataclass(slots=True)
@@ -76,6 +135,7 @@ class AbstractBroker(ABC):
 # ----------------------------------------------------------------------
 import unittest
 import asyncio
+
 
 class DummyBroker(AbstractBroker):
     """A minimal concrete broker used solely for unit testing."""
