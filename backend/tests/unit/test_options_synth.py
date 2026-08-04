@@ -2,7 +2,12 @@
 import math
 
 from app.backtest.options_synth import (
-    backtest_template, bs_delta, bs_price, norm_ppf, strike_from_delta,
+    backtest_template,
+    bs_delta,
+    bs_price,
+    norm_cdf,
+    norm_ppf,
+    strike_from_delta,
 )
 
 
@@ -14,7 +19,6 @@ def test_put_call_parity():
 
 
 def test_norm_ppf_roundtrip():
-    from app.backtest.options_synth import norm_cdf
     for p in (0.05, 0.16, 0.5, 0.84, 0.99):
         assert abs(norm_cdf(norm_ppf(p)) - p) < 1e-6
 
