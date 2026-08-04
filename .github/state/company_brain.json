@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785857124.738248,
+    "last_updated": 1785859528.8945928,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -62,38 +62,38 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-08-03T16:13:19.829156+00:00",
+      "generated_at": "2026-08-04T16:04:50.017833+00:00",
       "signals": {
         "vix": {
-          "value": 15.63,
+          "value": 16.23,
           "trend": "falling"
         },
         "spy": {
-          "price": 755.89,
-          "sma50": 744.55,
-          "sma200": 697.9,
+          "price": 768.75,
+          "sma50": 745.15,
+          "sma200": 698.46,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0059,
-          "median": 1.0517,
+          "ratio": 1.0106,
+          "median": 1.0506,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 1.645,
+          "hyg_lqd_momentum_20d": 0.922,
           "signal": "tightening"
         },
         "breadth": {
-          "sectors_above_sma20": 7,
+          "sectors_above_sma20": 8,
           "total_sectors": 11,
-          "breadth_pct": 63.6
+          "breadth_pct": 72.7
         },
         "btc": {
-          "price": 63663,
-          "24h_pct": 0.96
+          "price": 64046,
+          "24h_pct": 0.37
         }
       },
-      "score": 3,
+      "score": 4,
       "regime": "bull",
       "strategy_gates": {
         "directional": true,
@@ -107,7 +107,7 @@
       "min_confidence": 0.6,
       "size_multiplier": 1.0
     },
-    "opinion_score": 3,
+    "opinion_score": 4,
     "macro_score": 3,
     "vix": 15.86,
     "market_scan_ts": 1785790650.0773022,
@@ -155,13 +155,6 @@
     "last_brain_update": 1785857124.7372046
   },
   "episodic": [
-    {
-      "lesson": "Options desk placed high-confidence short orders on QQQ and SPY. Monitor for concentrated short exposure in major ETFs during sideways regime.",
-      "category": "risk",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1784904717.3739507
-    },
     {
       "lesson": "Crypto desk aggressively bought UNI, AAVE, YFI with confidence >88%. Validate these signals against current market conditions and position sizing limits.",
       "category": "strategy",
@@ -2051,6 +2044,18 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1785857120.720171
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 4,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1785859528.9001098
     }
   ],
   "github_insights": [
