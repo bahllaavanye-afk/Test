@@ -80,7 +80,17 @@ SERVICES = [
         "name": "Polymarket CLOB",
         "url": "https://clob.polymarket.com/",
         "method": "GET",
-        "expected_status": [200, 404],
+        # 404 removed 2026-08-05. It was there on the assumption that the root
+        # has no route — measured, the root returns **200 "OK"** and /markets
+        # returns 1.8MB of live market data. So accepting 404 bought nothing
+        # and would have called a real outage healthy.
+        #
+        # The rule the other entries follow, and this one now does: a non-2xx
+        # is acceptable only when it PROVES the host answered — 401/403 for an
+        # authenticated API probed without credentials, 451 for Binance
+        # geo-blocking the runner region. A "resource missing" code from a host
+        # whose root is known to answer 200 proves nothing.
+        "expected_status": [200],
         "headers": {},
         "critical": True,
         "chat_channel": "#desk-polymarket",

@@ -97,3 +97,53 @@ def test_the_dead_render_host_is_not_a_documented_url():
     for line in guide.splitlines():
         if "URL:" in line:
             assert "quantedge-api.onrender.com" not in line, f"stale host in: {line.strip()}"
+
+
+# ── Every other monitor entry, held to the same rule ─────────────────────────
+#
+# The Vercel entry accepted 404 as healthy AND pointed at a stub, so it could
+# not fail. Auditing the rest found five more entries accepting a 4xx — and
+# five of them are CORRECT, which is the point of writing this down rather than
+# "fixing" them: a non-2xx is legitimate when it PROVES the host answered.
+# Polymarket's was the odd one out (its root returns 200, measured) and is gone.
+
+JUSTIFIED_NON_200 = {
+    ("Alpaca Paper API", "401"):  "unauthenticated probe of an authenticated API — 401 IS reachability",
+    ("Alpaca Data API", "401"):   "same",
+    ("Alpaca Data API", "403"):   "free-tier data entitlement, not an outage",
+    ("Binance REST API", "451"):  "geo-blocked from the runner region; the API is up",
+    ("Binance Futures API", "451"): "same",
+    ("Anthropic API", "401"):     "unauthenticated probe — 401 IS reachability",
+}
+
+
+def _monitor_entries() -> list[tuple[str, list[str]]]:
+    import re as _re
+    src = _text(".github/scripts/third_party_monitor.py")
+    out = []
+    for m in _re.finditer(
+            r'"name":\s*"([^"]+)".*?"expected_status":\s*\[([^\]]*)\]', src, _re.S):
+        codes = [c.strip() for c in m.group(2).split(",") if c.strip()]
+        out.append((m.group(1), codes))
+    return out
+
+
+def test_every_accepted_error_code_is_justified_in_writing():
+    """Forces the next person adding a 4xx to say why. An unexamined permissive
+    code is how a monitor quietly stops being able to fail."""
+    entries = _monitor_entries()
+    assert entries, "the monitor's SERVICES list could not be parsed"
+    unjustified = [
+        (name, c) for name, codes in entries for c in codes
+        if c.startswith(("4", "5")) and (name, c) not in JUSTIFIED_NON_200
+    ]
+    assert not unjustified, (
+        f"these accept an error code as healthy with no recorded justification: {unjustified}")
+
+
+def test_the_polymarket_root_is_not_allowed_to_404():
+    """Measured 2026-08-05: `clob.polymarket.com/` returns 200 "OK" and
+    `/markets` returns 1.8MB of live data. There is no reason for this host to
+    404, so accepting one could only ever hide an outage."""
+    codes = dict(_monitor_entries()).get("Polymarket CLOB")
+    assert codes == ["200"], f"Polymarket CLOB accepts {codes}"

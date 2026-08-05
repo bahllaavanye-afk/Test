@@ -33,6 +33,40 @@ each independently "found" after already being documented.
 | 14 | **Set `ANGELONE_API_KEY` / `_CLIENT_ID` / `_PASSWORD` / `_TOTP_SECRET`** | ~5min | Turns the India work from research into execution. AngelOne SmartAPI is free and TOTP-derivable, so it is the only broker that can log in unattended — **Zerodha cannot** (browser redirect, daily token, ₹2,000/mo). `india_broker.py` reports what is missing; nothing places an Indian order until these exist. |
 
 
+## 🚨 2026-08-05 19:10 — 10% OF THE BOOK HAS NO OWNER, AND NOTHING CAN SAY WHOSE IT IS
+
+`audit_order_origins()` shipped at 19:00 and fired on its first live desk run (`31037485632`):
+
+    ⚠️ ORDER-ORIGIN AUDIT: 5 of 50 recent orders were NOT placed by this desk
+       19:02:24 USO  buy [filled]   19:01:51 NVDA buy [filled]   19:01:42 QQQ buy [filled]
+       18:38:52 NVDA buy [filled]   17:58:46 AAPL buy [filled]
+
+All five are FILLED BUYS inside 65 minutes, all carrying bare UUIDs — the id Alpaca generates when the caller
+supplies none. Broker auto-liquidation is ruled out: that sells.
+
+**The root cause: NO backend order path sets a `client_order_id` — zero occurrences in all four files**
+(`brokers/alpaca.py`, `brokers/alpaca_orders.py`, `bots/engine.py`, `api/v1/orders.py`). A first pass blamed
+`submit_alpaca_order` alone; that is the *least* likely source, since it is reached only from the HTTP endpoint.
+The background-task path is `AlpacaBroker.place_order` (`brokers/alpaca.py:157`), equally untagged.
+
+**Narrowing that does hold, from the code:** `position_monitor` is the only order-placing background task and
+it places **exits** — these are all buys, so not it. `bot_runner._run_bot()` does a `select(Bot)` before every
+run and **agb8's DB is `ok: false` with no sqlite fallback**, so its bot path cannot complete one. That points
+at `9jz0`'s own bots (legitimate) rather than agb8 — an inference from code, not proof.
+
+**Both candidates produce identical evidence:**
+- `9jz0` runs `bot_jobs: 64`, firing every 1-2 min → the orders would be **legitimate**.
+- `agb8` runs 11 background tasks, Alpaca connected, dead DB → the orders would be **rogue duplicates**.
+
+That ambiguity matters more than the count: **nobody can currently answer "did our platform place this
+trade?" about 10% of its own book**, and operator item #1 cannot be settled either way without it.
+
+**The fix is a `qb-` tag at BOTH submission points** — `AlpacaBroker.place_order` and
+`submit_alpaca_order` — mirroring the desk's working `qe-` scheme, which `desk_trade_sync` already parses.
+`backend/app/brokers/*.py` is Do-Not-Modify and this is the live order-submission path, so it needs a human.
+Once tagged the audit names the writer, operator item #1 settles either way, and desk_trade_sync gains
+attribution for the 10% of the book it currently skips.
+
 ## ✅ 2026-08-05 19:00 — THE STRATEGY TRIMMER IS LIVE (pending verification since 07-29, now closed)
 
 Both of today's desk runs log the line the item asked for:
