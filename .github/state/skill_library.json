@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Track thread timeouts",
-    "Bind API to proxies",
     "Prepend new model blocks",
     "Test DB connections",
     "Log GPU temps",
@@ -199,8 +197,10 @@
     "Monitor thread counts",
     "Log trade sequences",
     "* A variant strategy, \"SPY EMA-VWAP-MACD-ATR Momentum (5-min)\", has been proposed and is estimated to have a Sharpe ratio of 1.15 \u00b1 0.15, with entry long positions triggered above the 20-period VWAP.",
-    "Prepend S4 block to LSTM pipeline"
+    "Prepend S4 block to LSTM pipeline",
+    "Test database conn",
+    "Run mypy --strict"
   ],
-  "last_updated": "2026-08-05T05:17:45.888473+00:00",
+  "last_updated": "2026-08-05T05:28:27.297603+00:00",
   "total": 200
 }
