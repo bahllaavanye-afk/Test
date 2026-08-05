@@ -1,10 +1,15 @@
 """Options flow scanner — unusual activity detection."""
 from __future__ import annotations
+
 import asyncio
 import random
+import time
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone, date, timedelta
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -23,11 +28,16 @@ class OptionsFlow:
 
     def to_dict(self) -> dict:
         return {
-            "ticker": self.ticker, "expiry": self.expiry.isoformat(),
-            "strike": self.strike, "option_type": self.option_type,
-            "premium": self.premium, "volume": self.volume,
-            "open_interest": self.open_interest, "iv_percentile": self.iv_percentile,
-            "sentiment": self.sentiment, "is_unusual": self.is_unusual,
+            "ticker": self.ticker,
+            "expiry": self.expiry.isoformat(),
+            "strike": self.strike,
+            "option_type": self.option_type,
+            "premium": self.premium,
+            "volume": self.volume,
+            "open_interest": self.open_interest,
+            "iv_percentile": self.iv_percentile,
+            "sentiment": self.sentiment,
+            "is_unusual": self.is_unusual,
             "timestamp": self.timestamp.isoformat(),
         }
 
@@ -39,19 +49,42 @@ class OptionsFlowScanner:
     For demo/paper trading: generates realistic simulated flow data.
     """
 
-    WATCHLIST = ["AAPL", "TSLA", "SPY", "QQQ", "NVDA", "MSFT", "AMZN", "META", "GOOGL"]
+    WATCHLIST = [
+        "AAPL", "TSLA", "SPY", "QQQ", "NVDA",
+        "MSFT", "AMZN", "META", "GOOGL"
+    ]
 
     def __init__(self):
         self._cache: list[OptionsFlow] = []
         self._last_refresh = datetime.min.replace(tzinfo=timezone.utc)
 
     async def scan(self, refresh_seconds: int = 60) -> list[OptionsFlow]:
-        now = datetime.now(timezone.utc)
-        if (now - self._last_refresh).total_seconds() < refresh_seconds and self._cache:
-            return self._cache
-        self._cache = self._generate_flow()
-        self._last_refresh = now
-        return self._cache
+        start_time = time.monotonic()
+        try:
+            now = datetime.now(timezone.utc)
+            if (now - self._last_refresh).total_seconds() < refresh_seconds and self._cache:
+                result = self._cache
+            else:
+                self._cache = self._generate_flow()
+                self._last_refresh = now
+                result = self._cache
+
+            exec_ms = int((time.monotonic() - start_time) * 1000)
+            signal_count = len(result)
+            total_pnl = sum(f.premium for f in result)
+
+            logger.info(
+                "OptionsFlow scan completed",
+                extra={
+                    "signal_count": signal_count,
+                    "execution_time_ms": exec_ms,
+                    "total_pnl_usd": total_pnl,
+                },
+            )
+            return result
+        except Exception:
+            logger.exception("Unexpected error during OptionsFlow scan")
+            raise
 
     def _generate_flow(self) -> list[OptionsFlow]:
         """Generate simulated options flow for demo (replace with live data feed)."""
@@ -61,9 +94,11 @@ class OptionsFlowScanner:
             for _ in range(random.randint(3, 8)):
                 days_out = random.choice([7, 14, 21, 30, 45, 60])
                 expiry = today + timedelta(days=days_out)
-                base_price = {"SPY": 450, "QQQ": 380, "AAPL": 185, "TSLA": 250,
-                              "NVDA": 800, "MSFT": 415, "AMZN": 185, "META": 500,
-                              "GOOGL": 175}.get(ticker, 100)
+                base_price = {
+                    "SPY": 450, "QQQ": 380, "AAPL": 185, "TSLA": 250,
+                    "NVDA": 800, "MSFT": 415, "AMZN": 185, "META": 500,
+                    "GOOGL": 175,
+                }.get(ticker, 100)
                 strike_pct = random.uniform(0.90, 1.15)
                 strike = round(base_price * strike_pct, 0)
                 oi = random.randint(1000, 50000)
@@ -78,12 +113,21 @@ class OptionsFlowScanner:
                     sentiment = "bearish"
                 else:
                     sentiment = "neutral"
-                flows.append(OptionsFlow(
-                    ticker=ticker, expiry=expiry, strike=strike, option_type=opt_type,
-                    premium=premium, volume=vol, open_interest=oi,
-                    iv_percentile=round(iv_pct, 1), sentiment=sentiment,
-                    is_unusual=is_unusual, timestamp=datetime.now(timezone.utc),
-                ))
+                flows.append(
+                    OptionsFlow(
+                        ticker=ticker,
+                        expiry=expiry,
+                        strike=strike,
+                        option_type=opt_type,
+                        premium=premium,
+                        volume=vol,
+                        open_interest=oi,
+                        iv_percentile=round(iv_pct, 1),
+                        sentiment=sentiment,
+                        is_unusual=is_unusual,
+                        timestamp=datetime.now(timezone.utc),
+                    )
+                )
         # Sort unusual first
         flows.sort(key=lambda f: (not f.is_unusual, -f.premium))
         return flows[:50]
@@ -94,7 +138,18 @@ class OptionsFlowScanner:
         calls = sum(f.volume for f in self._cache if f.option_type == "call")
         puts = sum(f.volume for f in self._cache if f.option_type == "put")
         ratio = round(puts / max(calls, 1), 2)
-        return {"ratio": ratio, "calls": calls, "puts": puts, "sentiment": "bearish" if ratio > 1.2 else "bullish" if ratio < 0.8 else "neutral"}
+        sentiment = (
+            "bearish"
+            if ratio > 1.2
+            else "bullish"
+            if ratio < 0.8
+            else "neutral"
+        )
+        logger.info(
+            "Put/Call ratio computed",
+            extra={"ratio": ratio, "calls": calls, "puts": puts, "sentiment": sentiment},
+        )
+        return {"ratio": ratio, "calls": calls, "puts": puts, "sentiment": sentiment}
 
 
 scanner = OptionsFlowScanner()

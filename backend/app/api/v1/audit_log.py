@@ -7,6 +7,8 @@ records.
 """
 
 from typing import List, Optional
+import logging
+import time
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +22,7 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 
 router = APIRouter(prefix="/audit-log", tags=["audit-log"])
+logger = logging.getLogger(__name__)
 
 
 class AuditLogOut(BaseModel):
@@ -98,6 +101,7 @@ async def list_audit_log(
     if limit < 1 or limit > 500:
         raise ValueError(f"limit must be between 1 and 500, got {limit}")
 
+    start_time = time.time()
     result = await db.execute(
         select(AuditLog)
         .where(AuditLog.user_id == current_user.id)
@@ -105,4 +109,16 @@ async def list_audit_log(
         .limit(limit)
     )
     rows = result.scalars().all()
+    execution_time = time.time() - start_time
+
+    # Structured logging of key metrics
+    logger.info(
+        "Fetched audit log entries",
+        extra={
+            "audit_count": len(rows),
+            "execution_time_seconds": execution_time,
+            "pnl": None,  # Not applicable for audit logs
+        },
+    )
+
     return rows
