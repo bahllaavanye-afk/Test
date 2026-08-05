@@ -8,6 +8,7 @@ if _is_sqlite:
     # NullPool: each session gets a fresh connection — avoids cross-connection
     # visibility issues where pooled connections cache an empty schema.
     from sqlalchemy.pool import NullPool as _NullPool
+
     _engine_kwargs: dict = {
         "poolclass": _NullPool,
         "connect_args": {"check_same_thread": False},
@@ -76,7 +77,7 @@ async def ensure_database_alive(probe_timeout: float = 10.0):
 
         await _asyncio.wait_for(_probe(), timeout=probe_timeout)
         return engine
-    except Exception as exc:  # noqa: BLE001 — any connect failure means "dead"
+    except Exception as exc:
         db_primary_error = str(exc)[:300]
 
     if _is_sqlite or not settings.db_fallback_to_sqlite:
@@ -103,7 +104,7 @@ async def ensure_database_alive(probe_timeout: float = 10.0):
     db_fallback_active = True
     try:
         await old_engine.dispose()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
     # Alembic never ran against this file — create the schema right now.
