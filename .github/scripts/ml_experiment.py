@@ -17,6 +17,13 @@ from __future__ import annotations
 import json
 import os
 import sys
+from pathlib import Path
+
+_REPO = Path(__file__).resolve().parents[2]
+# Rolling history of walk-forward runs. Enough to see a trend across weeks
+# without the file becoming another unbounded state blob (see the 2026-08-05
+# agent_memory.json entry — 47% of the git repo).
+_HISTORY_KEEP = 60
 from datetime import datetime, timedelta, timezone
 
 import numpy as np
@@ -161,6 +168,31 @@ def main() -> int:
         "results": results,
     }
     print(json.dumps(payload, indent=2))
+
+    # Persist. Until 2026-08-05 this function's entire output was a print: the
+    # walk-forward ran on real bars every time, produced real out-of-sample
+    # numbers, and threw them away. There was no history, so nothing could
+    # answer "is the ML edge improving or decaying?" — the one question a
+    # weekly experiment exists to answer.
+    #
+    # Same failure the attribution file had (computed in an ephemeral runner,
+    # never committed) and the same fix: write it where a consumer can read it.
+    # Rolling window, newest last, so the file stays bounded.
+    try:
+        hist_path = _REPO / ".github" / "state" / "ml_experiments.json"
+        hist_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            history = json.loads(hist_path.read_text())
+            if not isinstance(history, list):
+                history = []
+        except Exception:  # noqa: BLE001 — a corrupt file must not lose this run
+            history = []
+        history.append(payload)
+        hist_path.write_text(json.dumps(history[-_HISTORY_KEEP:], indent=2))
+        print(f"[ml_experiment] appended to {hist_path} ({len(history[-_HISTORY_KEEP:])} runs kept)",
+              flush=True)
+    except Exception as exc:  # noqa: BLE001 — never fail the experiment over bookkeeping
+        print(f"[ml_experiment] could not persist results: {exc}", flush=True)
 
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:

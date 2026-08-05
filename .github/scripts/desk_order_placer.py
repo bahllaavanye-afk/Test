@@ -2429,6 +2429,24 @@ async def main() -> None:
                         desk_summaries.append(
                             f"⚠️ *{desk.name}*: {n_sig} signal(s) fired, **0 placed** — {why}"
                         )
+                        # …and say it in the DESK's OWN channel, not only in the
+                        # aggregate. Until now a desk posted here only when it
+                        # PLACED something, so a desk that fired signals and had
+                        # every one dropped was indistinguishable from a desk that
+                        # never ran. Measured 2026-08-05: buying power sat at
+                        # $0–$206 for seven hours, the desks generated 51 signals
+                        # in the 07:56 run alone and placed none, and every
+                        # #desk-* channel was silent the whole time. Silence is
+                        # the one thing a monitoring channel must never mean.
+                        #
+                        # Only when signals actually fired: a genuinely quiet
+                        # market still says nothing, so this cannot become noise
+                        # on a market-closed weekend.
+                        _post_chat(
+                            desk.chat_channel,
+                            f"*{desk.name} Desk* — {n_sig} signal(s) fired, **0 orders placed**\n"
+                            f"reason: {why}"
+                        )
                     else:
                         desk_summaries.append(f"💤 *{desk.name}*: no signals fired")
 
