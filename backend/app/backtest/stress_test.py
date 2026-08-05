@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from typing import Iterable, List
 
 import pandas as pd
 
@@ -50,7 +51,7 @@ class StressScenario:
 
 
 # Canonical crisis windows used by institutional risk teams
-STRESS_SCENARIOS: list[StressScenario] = [
+STRESS_SCENARIOS: List[StressScenario] = [
     StressScenario(
         "gfc",
         "GFC 2008",
@@ -111,19 +112,38 @@ class StressResult:
     data_points: int
 
 
-def _slice_series(
-    series: pd.Series | None,
-    start: pd.Timestamp,
-    end: pd.Timestamp,
-) -> pd.Series | None:
-    """Slice a Series using .loc; returns None if input is None."""
+def _validate_series(series: pd.Series | None, name: str, allow_none: bool = False) -> None:
+    """Validate that a pandas Series is provided (or optionally None)."""
     if series is None:
-        return None
-    try:
-        return series.loc[start:end]
-    except Exception:
-        mask = (series.index >= start) & (series.index <= end)
-        return series.loc[mask]
+        if not allow_none:
+            raise ValueError(f"'{name}' must be a pandas Series, not None.")
+        return
+    if not isinstance(series, pd.Series):
+        raise ValueError(f"'{name}' must be a pandas Series, got {type(series).__name__}.")
+
+
+def _validate_float(value: float, name: str, min_value: float = 0.0, max_value: float | None = None) -> None:
+    """Validate that a numeric value is within the optional bounds."""
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"'{name}' must be a number, got {type(value).__name__}.")
+    if value < min_value:
+        raise ValueError(f"'{name}' must be >= {min_value}, got {value}.")
+    if max_value is not None and value > max_value:
+        raise ValueError(f"'{name}' must be <= {max_value}, got {value}.")
+
+
+def _validate_scenarios(scenarios: Iterable[StressScenario] | None) -> List[StressScenario]:
+    """Validate that scenarios is an iterable of StressScenario objects."""
+    if scenarios is None:
+        return STRESS_SCENARIOS
+    if not isinstance(scenarios, Iterable):
+        raise ValueError("scenarios must be an iterable of StressScenario instances.")
+    validated: List[StressScenario] = []
+    for idx, s in enumerate(scenarios):
+        if not isinstance(s, StressScenario):
+            raise ValueError(f"scenarios[{idx}] is not a StressScenario instance.")
+        validated.append(s)
+    return validated
 
 
 def run_stress_tests(
@@ -142,13 +162,21 @@ def run_stress_tests(
     Only scenarios where the price series has ≥ MIN_DATA_POINTS data points are evaluated;
     others return period_covered=False with metrics=None.
     """
-    if scenarios is None:
-        scenarios = STRESS_SCENARIOS
+    # Input validation
+    _validate_series(signals, "signals")
+    _validate_series(prices, "prices")
+    _validate_series(opens, "opens", allow_none=True)
+    _validate_series(volume, "volume", allow_none=True)
+    _validate_float(initial_equity, "initial_equity", min_value=0.0)
+    _validate_float(commission_pct, "commission_pct", min_value=0.0, max_value=1.0)
+    _validate_float(slippage_pct, "slippage_pct", min_value=0.0, max_value=1.0)
+
+    validated_scenarios = _validate_scenarios(scenarios)
 
     results: list[StressResult] = []
     price_index = prices.index
 
-    for scenario in scenarios:
+    for scenario in validated_scenarios:
         start_ts = pd.Timestamp(scenario.start)
         end_ts = pd.Timestamp(scenario.end)
 
@@ -209,6 +237,12 @@ def stress_summary(results: list[StressResult]) -> dict:
     Returns per‑scenario max_drawdown, total_return, and sharpe.
     Only includes scenarios where period_covered=True.
     """
+    if not isinstance(results, list):
+        raise ValueError("results must be a list of StressResult objects.")
+    for idx, r in enumerate(results):
+        if not isinstance(r, StressResult):
+            raise ValueError(f"results[{idx}] is not a StressResult instance.")
+
     out: dict = {}
     for r in results:
         if not r.period_covered or r.metrics is None:
