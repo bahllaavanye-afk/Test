@@ -33,6 +33,32 @@ each independently "found" after already being documented.
 | 14 | **Set `ANGELONE_API_KEY` / `_CLIENT_ID` / `_PASSWORD` / `_TOTP_SECRET`** | ~5min | Turns the India work from research into execution. AngelOne SmartAPI is free and TOTP-derivable, so it is the only broker that can log in unattended — **Zerodha cannot** (browser redirect, daily token, ₹2,000/mo). `india_broker.py` reports what is missing; nothing places an Indian order until these exist. |
 
 
+## 🔬 2026-08-05 18:50 — "THE ML MODEL LOSES TO BUY-AND-HOLD" WAS AN ARTEFACT OF AN UNSTABLE WINDOW
+
+**Correcting an earlier claim in this file.** The model's record depends entirely on which data window a run
+happened to get, and until this morning nothing persisted enough to notice.
+
+Alpaca's free **IEX** feed returns ~940 usable rows; yfinance returns **1399**. `main()` used Alpaca and fell
+back only on a *total* failure, so a transient error silently swapped the evaluation period — per symbol.
+Four runs in one day alternated `oos_days` 688 / 1147 on identical params.
+
+The strategy Sharpe was stable across runs. **The benchmark was not** — SPY buy-and-hold read 1.482 on the
+short window and 0.789 on the long one, because the long one reaches into the 2022 bear market.
+
+| | short (≈940 rows) | long (1399 rows, incl. 2022) |
+|---|---|---|
+| QQQ | 1.118 vs 1.325 loses | **1.128 vs 0.736 beats** |
+| NVDA | 0.949 vs 1.487 loses | **1.227 vs 1.119 beats** |
+| SPY | 0.932 vs 1.482 loses | 0.645 vs 0.789 loses |
+
+Expected shape for a defensive model (`time_in_market` ≈ 0.5): gives up upside in a bull run, earns its keep in
+a drawdown. **Do not replace "it loses" with "it wins"** — the honest claim is that the window decides, and
+`ml_experiment.py` now pins one: longest-history source, both ends clamped to what every symbol covers, and
+`first_date`/`last_date` in the payload. Confirmation is the next scheduled run, **Sundays 04:17 UTC**.
+
+Still true and unchanged: **no ML output reaches a trade.** `ml_signal` / `ml_enhanced` remain 0 references in
+`desk_order_placer.py`. Wiring it is a decision, not an oversight — and it should wait for one reproducible run.
+
 ## 🇮🇳 2026-08-05 18:10 — NSE NOW FEEDS THE US-LISTED INDIA ORDERS (the `[P2]` play, shipped)
 
 PR #1473 merged (the time-bomb fix; `test` green). This is the next item off IMPROVEMENTS.md.
