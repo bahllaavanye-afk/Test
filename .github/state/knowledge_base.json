@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-08-04T05:17:46.776178+00:00",
+  "last_updated": "2026-08-05T00:53:58.027250+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,15 +28,15 @@
       ]
     },
     "general": {
-      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 The system is actively monitoring `backend/logs` for error patterns by agents `self_improver` and has identified one agent, `investor_pipeline`, parsing log files in `backend/logs/investor_pipeline.log` to gain insights.\n\u2022 The `token_monitor` agent is currently active, and there are issues with the LLM providers that are causing delays.\n\u2022 The `research_scientist` is having trouble with LLM availability, and the `frontend_design` and `run_experiments` agents require response updates according to their specific instructions.",
-      "source_count": 72,
-      "updated_at": "2026-08-04T05:17:46.776178+00:00",
+      "summary": "Based on the recent agent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:\n\n* **Investor pipeline optimization:** The investor pipeline agent is parsing log files in `backend/logs/investor_pipeline.log` to identify potential bottlenecks and gain insights.\n* **Token monitoring:** The token_monitor agent is tracking activity, with tasks including parsing real-time token data and monitoring token balances in the `data/token_balances.csv` file.\n* **Experiment and research progress:** Research scientists are actively parsing data, while run experiments and other agents are working on specific tasks, with some agents providing status updates on their current activities.",
+      "source_count": 57,
+      "updated_at": "2026-08-05T00:53:58.027250+00:00",
       "raw_recent": [
-        "[token_monitor @ 2026-08-03T21:01] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" The system: we are token_monitor agent. Must respond i",
-        "[investor_pipeline @ 2026-08-04T02:29] I am currently parsing log files in `backend/logs/investor_pipeline.log` to gain insights and identify potential bottlenecks in the investor pipeline.",
-        "[run_experiments @ 2026-08-04T02:29] We need to respond as the run_experiments agent, in first person, concise, 2 sentences max, one sentence status update. Should mention what we are act",
         "[self_improver @ 2026-08-04T02:29] We need to respond as self_improver agent, 2 sentences max, referencing real file paths. Provide one-sentence status update. Should be concise, first ",
-        "[research_scientist @ 2026-08-04T02:29] I'm actively parsing"
+        "[research_scientist @ 2026-08-04T02:29] I'm actively parsing",
+        "[token_monitor @ 2026-08-04T06:27] We need to respond as token_monitor agent. Provide status update: what are we actively working on right now. Must be first person, concise, 2 sentence",
+        "[free_agent_engineer @ 2026-08-04T10:38] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the free_agent_engineer agent, we need to respond w",
+        "[token_monitor @ 2026-08-04T21:12] We need to respond as token_monitor agent, giving one-sentence status update, first person, concise, referencing real file paths. Should mention track"
       ]
     },
     "strategies": {
