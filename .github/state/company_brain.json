@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785941088.2951562,
+    "last_updated": 1785945183.8484073,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -62,25 +62,25 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-08-04T16:04:50.017833+00:00",
+      "generated_at": "2026-08-05T15:52:51.576571+00:00",
       "signals": {
         "vix": {
-          "value": 16.23,
+          "value": 16.33,
           "trend": "falling"
         },
         "spy": {
-          "price": 768.75,
-          "sma50": 745.15,
-          "sma200": 698.46,
+          "price": 771.18,
+          "sma50": 745.75,
+          "sma200": 699.05,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0106,
+          "ratio": 1.0129,
           "median": 1.0506,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 0.922,
+          "hyg_lqd_momentum_20d": 0.745,
           "signal": "tightening"
         },
         "breadth": {
@@ -89,8 +89,8 @@
           "breadth_pct": 72.7
         },
         "btc": {
-          "price": 64046,
-          "24h_pct": 0.37
+          "price": 64451,
+          "24h_pct": 0.5
         }
       },
       "score": 4,
@@ -100,7 +100,7 @@
         "min_confidence": 0.6,
         "size_multiplier": 1.0
       },
-      "summary": "[LLM unavailable \u2014 all providers failed]"
+      "summary": "The tape is bullish with strong SPY momentum, tightening credit spreads, and broad sector participation, while a falling VIX and flat yield curve support risk-on positioning. Favor long gamma or trend-following strategies today to capture continued upside without fighting the VIX compression."
     },
     "strategy_gates": {
       "directional": true,
@@ -155,13 +155,6 @@
     "last_brain_update": 1785935519.1691177
   },
   "episodic": [
-    {
-      "lesson": "Bandit security scan found high-severity CWE-327 (weak hashing) in .github/scripts/agent_team.py:229. Remediate to avoid potential credential or integrity compromises.",
-      "category": "code",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1785274207.9699934
-    },
     {
       "lesson": "Equities desk had 2 signals but 0 placed due to market closed. Review order timing logic or add pre-market checks to avoid wasted signal generation.",
       "category": "execution",
@@ -1889,6 +1882,18 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Tech. Gaps: 6, Breakouts: 0, Risk flags: 0.",
       "ts": 1785941088.3006418
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 4,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "The tape is bullish with strong SPY momentum, tightening credit spreads, and broad sector participation, while a falling VIX and flat yield curve support risk-on positioning. Favor long gamma or trend-following strategies today to capture continued upside without fighting the VIX compression.",
+      "ts": 1785945183.8528922
     }
   ],
   "github_insights": [
