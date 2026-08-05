@@ -29,6 +29,18 @@ BACKTEST_DAYS = 730
 MIN_HISTORY_LENGTH = 60
 MIN_SIGNALS_LENGTH = 30
 
+# Logging message constants
+LOG_EVAL_FAILURE = "Self-improver eval failed"
+LOG_PROMOTED = "Self-improver PROMOTED params"
+LOG_PERSIST_FAILURE = "self_improver persist failed"
+LOG_STARTED = "SelfImprover started"
+LOG_ITERATION = "SelfImprover iteration"
+LOG_TARGET_FAILED = "Self-improver target failed"
+
+# External service constants
+YF_INTERVAL = "1d"
+
+# File paths
 RESULTS_FILE = Path(__file__).parents[3] / "experiments" / "results" / "self_improver.json"
 RESULTS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
@@ -99,7 +111,7 @@ class SelfImprover:
                     symbol,
                     start=str(start.date()),
                     end=str(end.date()),
-                    interval="1d",
+                    interval=YF_INTERVAL,
                     auto_adjust=True,
                     progress=False,
                 ),
@@ -126,7 +138,7 @@ class SelfImprover:
             metrics = run_backtest(sig_series, close)
             return float(metrics.sharpe)
         except Exception as e:
-            logger.debug("Self-improver eval failed", strategy=strategy, error=str(e))
+            logger.debug(LOG_EVAL_FAILURE, strategy=strategy, error=str(e))
             return 0.0
 
     async def _improve_strategy(self, strategy: str, symbol: str) -> dict | None:
@@ -169,7 +181,7 @@ class SelfImprover:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             self._persist(promotion)
-            logger.info("Self-improver PROMOTED params", **promotion)
+            logger.info(LOG_PROMOTED, **promotion)
             return promotion
         return None
 
@@ -180,7 +192,7 @@ class SelfImprover:
             history = history[-MAX_HISTORY_LENGTH:]
             RESULTS_FILE.write_text(json.dumps(history, indent=2))
         except Exception as exc:
-            logger.debug("self_improver persist failed", error=str(exc))
+            logger.debug(LOG_PERSIST_FAILURE, error=str(exc))
 
     def get_best_params(self, strategy: str, symbol: str) -> dict | None:
         return self._best_params.get(f"{strategy}:{symbol}")
@@ -195,11 +207,11 @@ class SelfImprover:
 
     async def run(self) -> None:
         self._running = True
-        logger.info("SelfImprover started", interval=self.interval_seconds)
+        logger.info(LOG_STARTED, interval=self.interval_seconds)
 
         while self._running:
             self._iteration += 1
-            logger.info("SelfImprover iteration", n=self._iteration)
+            logger.info(LOG_ITERATION, n=self._iteration)
             for strategy, symbol in TARGETS:
                 try:
                     await self._improve_strategy(strategy, symbol)
@@ -207,7 +219,7 @@ class SelfImprover:
                     return
                 except Exception as e:
                     logger.warning(
-                        "Self-improver target failed",
+                        LOG_TARGET_FAILED,
                         strategy=strategy,
                         symbol=symbol,
                         error=str(e),

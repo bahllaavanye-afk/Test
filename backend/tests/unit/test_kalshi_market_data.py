@@ -8,31 +8,21 @@ import pytest
 
 from app.api.v1 import market_data as md
 
+# --------------------------------------------------------------------------- #
+# Constants
+# --------------------------------------------------------------------------- #
+DEFAULT_FILTER = ""
+DEFAULT_SORT = "volume"
+DEFAULT_LIMIT = 50
+DEFAULT_USER = None
 
-class _FakeResp:
-    def __init__(self, payload, status=200):
-        self._payload = payload
-        self.status_code = status
+HTTP_STATUS_OK = 200
+HTTP_STATUS_ERROR = 503
 
-    def json(self):
-        return self._payload
+CATEGORY_POLITICS = "politics"
+CATEGORY_CRYPTO = "crypto"
 
-
-class _FakeClient:
-    def __init__(self, resp):
-        self._resp = resp
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *a):
-        return False
-
-    async def get(self, url, params=None):
-        return self._resp
-
-
-_SAMPLE = {
+SAMPLE_DATA = {
     "markets": [
         {
             "ticker": "POTUS-2028",
@@ -61,14 +51,46 @@ _SAMPLE = {
 }
 
 
-def _patch(monkeypatch, payload, status=200):
-    monkeypatch.setattr(md.httpx, "AsyncClient", lambda *a, **k: _FakeClient(_FakeResp(payload, status)))
+class _FakeResp:
+    def __init__(self, payload, status=HTTP_STATUS_OK):
+        self._payload = payload
+        self.status_code = status
+
+    def json(self):
+        return self._payload
+
+
+class _FakeClient:
+    def __init__(self, resp):
+        self._resp = resp
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def get(self, url, params=None):
+        return self._resp
+
+
+def _patch(monkeypatch, payload, status=HTTP_STATUS_OK):
+    monkeypatch.setattr(
+        md.httpx,
+        "AsyncClient",
+        lambda *a, **k: _FakeClient(_FakeResp(payload, status)),
+    )
 
 
 @pytest.mark.asyncio
 async def test_kalshi_normalizes_dollar_fields(monkeypatch):
-    _patch(monkeypatch, _SAMPLE)
-    out = await md.get_kalshi_markets(filter="", sort="volume", limit=50, current_user=None)
+    _patch(monkeypatch, SAMPLE_DATA)
+    out = await md.get_kalshi_markets(
+        filter=DEFAULT_FILTER,
+        sort=DEFAULT_SORT,
+        limit=DEFAULT_LIMIT,
+        current_user=DEFAULT_USER,
+    )
     assert len(out) == 2
     top = out[0]  # sorted by volume desc → POTUS (1500) first
     assert top["id"] == "POTUS-2028"
@@ -76,30 +98,45 @@ async def test_kalshi_normalizes_dollar_fields(monkeypatch):
     assert top["no_price"] == round(1 - 0.42, 4)
     assert top["volume_24h"] == 1500.0
     assert top["liquidity"] == 9000.0
-    assert top["category"] == "politics"
+    assert top["category"] == CATEGORY_POLITICS
     assert top["active"] is True and top["closed"] is False
 
 
 @pytest.mark.asyncio
 async def test_kalshi_uses_bidask_mid_when_no_last(monkeypatch):
-    _patch(monkeypatch, _SAMPLE)
-    out = await md.get_kalshi_markets(filter="", sort="volume", limit=50, current_user=None)
+    _patch(monkeypatch, SAMPLE_DATA)
+    out = await md.get_kalshi_markets(
+        filter=DEFAULT_FILTER,
+        sort=DEFAULT_SORT,
+        limit=DEFAULT_LIMIT,
+        current_user=DEFAULT_USER,
+    )
     btc = next(m for m in out if m["id"] == "BTC-100K")
     assert btc["yes_price"] == 0.61                  # (0.60 + 0.62) / 2
-    assert btc["category"] == "crypto"
+    assert btc["category"] == CATEGORY_CRYPTO
 
 
 @pytest.mark.asyncio
 async def test_kalshi_filter_matches_title(monkeypatch):
-    _patch(monkeypatch, _SAMPLE)
-    out = await md.get_kalshi_markets(filter="bitcoin", sort="volume", limit=50, current_user=None)
+    _patch(monkeypatch, SAMPLE_DATA)
+    out = await md.get_kalshi_markets(
+        filter="bitcoin",
+        sort=DEFAULT_SORT,
+        limit=DEFAULT_LIMIT,
+        current_user=DEFAULT_USER,
+    )
     assert len(out) == 1 and out[0]["id"] == "BTC-100K"
 
 
 @pytest.mark.asyncio
 async def test_kalshi_non_200_returns_empty(monkeypatch):
-    _patch(monkeypatch, {}, status=503)
-    out = await md.get_kalshi_markets(filter="", sort="volume", limit=50, current_user=None)
+    _patch(monkeypatch, {}, status=HTTP_STATUS_ERROR)
+    out = await md.get_kalshi_markets(
+        filter=DEFAULT_FILTER,
+        sort=DEFAULT_SORT,
+        limit=DEFAULT_LIMIT,
+        current_user=DEFAULT_USER,
+    )
     assert out == []
 
 
@@ -107,6 +144,12 @@ async def test_kalshi_non_200_returns_empty(monkeypatch):
 async def test_kalshi_upstream_error_returns_empty(monkeypatch):
     def _boom(*a, **k):
         raise RuntimeError("network down")
+
     monkeypatch.setattr(md.httpx, "AsyncClient", _boom)
-    out = await md.get_kalshi_markets(filter="", sort="volume", limit=50, current_user=None)
+    out = await md.get_kalshi_markets(
+        filter=DEFAULT_FILTER,
+        sort=DEFAULT_SORT,
+        limit=DEFAULT_LIMIT,
+        current_user=DEFAULT_USER,
+    )
     assert out == []

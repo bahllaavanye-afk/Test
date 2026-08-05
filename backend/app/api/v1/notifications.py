@@ -8,12 +8,11 @@ live in .github/scripts (channel_monitor, multi_agent_discussion).
 """
 from __future__ import annotations
 
+import os
+from datetime import datetime, timezone
 from typing import Any
 
 import structlog
-
-logger = structlog.get_logger()
-
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
@@ -22,6 +21,40 @@ from app.models.user import User
 from app.notifications.tracker import tracker
 from app.notifications.discord import discord
 
+# ── Constants ─────────────────────────────────────────────────────────────
+DEFAULT_ACTIVITY_LIMIT = 100
+MAX_ACTIVITY_LIMIT = 500
+
+DISCORD_TEST_MESSAGE = "QuantEdge Discord notifications are working ✓"
+
+DISCORD_SYSTEM_CHANNEL = "system"
+DISCORD_SYSTEM_USERNAME = "system"
+DISCORD_EMPLOYEE_REPORT_TITLE = "📋 Employee Status Report"
+
+EMPLOYEE_STATUS_STATIC_LINES = [
+    "*👤 RegimeMonitor*: running (5min HMM cycle)",
+    "*👤 SelfImprover*: parameter sweep active",
+    "*👤 BacktestWorker*: polling queue every 30s",
+    "*👤 StrategyRunner*: regime-gated 24/7",
+    "*👤 PriceFeed*: 2s poll cycle (stub mode — no broker keys)",
+    "*👤 Scheduler*: hourly snapshots + nightly retrain",
+    "*👤 CorrelationMonitor*: 6-symbol cluster watch",
+]
+
+EMPLOYEE_STATUS_FOOTER = "_All employees supervised by `_supervised()` with exponential backoff restart._"
+
+CLAUDE_MODEL = "claude-haiku-4-5-20251001"
+CLAUDE_MAX_TOKENS = 400
+CTA_SYSTEM_PROMPT = """You are the AI CTO of QuantEdge, an institutional quantitative trading platform.
+Your role: review employee messages, give concise technical guidance, assign follow-up tasks.
+Keep replies under 4 sentences. Be direct, technical, and action-oriented."""
+
+ANTHROPIC_API_KEY_ERROR = "ANTHROPIC_API_KEY not configured"
+
+QA_HEALTH_REPORT_ENV = "QA_HEALTH_REPORT_PATH"
+DEFAULT_QA_REPORT_FILE = "qa_health_report.json"
+
+# ── Router ────────────────────────────────────────────────────────────────
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 # ── Models ───────────────────────────────────────────────────────────────
@@ -35,7 +68,7 @@ class ReviewRequest(BaseModel):
 
 @router.get("/activity")
 async def get_activity(
-    limit: int = Query(100, le=500),
+    limit: int = Query(DEFAULT_ACTIVITY_LIMIT, le=MAX_ACTIVITY_LIMIT),
     category: str | None = None,
     current_user: User = Depends(get_current_user),
 ):
@@ -50,7 +83,7 @@ async def get_stats(current_user: User = Depends(get_current_user)):
 @router.post("/discord/test")
 async def discord_test(current_user: User = Depends(get_current_user)):
     """Send a test message to confirm Discord delivery is configured."""
-    ok = await discord.notify_system("QuantEdge Discord notifications are working ✓", level="info")
+    ok = await discord.notify_system(DISCORD_TEST_MESSAGE, level="info")
     return {"sent": ok, "enabled": discord._enabled}
 
 
@@ -106,9 +139,7 @@ async def post_employee_report(current_user: User = Depends(get_current_user)):
     try:
         import json
         from pathlib import Path
-        # Relative to the backend working dir (env-overridable) — this was a
-        # hardcoded dev-machine absolute path that could never exist on Render.
-        report_path = Path(os.getenv("QA_HEALTH_REPORT_PATH", "qa_health_report.json"))
+        report_path = Path(os.getenv(QA_HEALTH_REPORT_ENV, DEFAULT_QA_REPORT_FILE))
         if report_path.exists():
             rpt = json.loads(report_path.read_text())
             passed = rpt.get("tests_passed", 0)
@@ -121,22 +152,16 @@ async def post_employee_report(current_user: User = Depends(get_current_user)):
     except Exception:
         lines.append("*👤 QAMonitor*: report unavailable")
 
-    lines.extend([
-        "*👤 RegimeMonitor*: running (5min HMM cycle)",
-        "*👤 SelfImprover*: parameter sweep active",
-        "*👤 BacktestWorker*: polling queue every 30s",
-        "*👤 StrategyRunner*: regime-gated 24/7",
-        "*👤 PriceFeed*: 2s poll cycle (stub mode — no broker keys)",
-        "*👤 Scheduler*: hourly snapshots + nightly retrain",
-        "*👤 CorrelationMonitor*: 6-symbol cluster watch",
-        "",
-        "_All employees supervised by `_supervised()` with exponential backoff restart._",
-    ])
+    lines.extend(EMPLOYEE_STATUS_STATIC_LINES + ["", EMPLOYEE_STATUS_FOOTER])
 
     report_text = "\n".join(lines)
 
-    ok = await discord.send("system", "system", "📋 Employee Status Report",
-                          text=report_text)
+    ok = await discord.send(
+        DISCORD_SYSTEM_CHANNEL,
+        DISCORD_SYSTEM_USERNAME,
+        DISCORD_EMPLOYEE_REPORT_TITLE,
+        text=report_text,
+    )
     return {"sent": ok, "enabled": discord._enabled, "report": report_text}
 
 
@@ -157,22 +182,18 @@ async def cto_manual_review(
 
         api_key = getattr(settings, "anthropic_api_key", "") or ""
         if not api_key:
-            return {"error": "ANTHROPIC_API_KEY not configured", "review": None}
+            return {"error": ANTHROPIC_API_KEY_ERROR, "review": None}
 
         client = anthropic.Anthropic(api_key=api_key)
-
-        system_prompt = """You are the AI CTO of QuantEdge, an institutional quantitative trading platform.
-Your role: review employee messages, give concise technical guidance, assign follow-up tasks.
-Keep replies under 4 sentences. Be direct, technical, and action-oriented."""
 
         content = payload.message
         if payload.context:
             content = f"Context: {payload.context}\n\nMessage: {payload.message}"
 
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=400,
-            system=system_prompt,
+            model=CLAUDE_MODEL,
+            max_tokens=CLAUDE_MAX_TOKENS,
+            system=CTA_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": content}],
         )
         review = response.content[0].text if response.content else ""
@@ -181,7 +202,8 @@ Keep replies under 4 sentences. Be direct, technical, and action-oriented."""
         sent = False
         if review:
             sent = await discord.send(
-                payload.channel, "system",
+                payload.channel,
+                DISCORD_SYSTEM_USERNAME,
                 f"🤖 CTO Review: {payload.channel}",
                 text=review,
             )
@@ -190,5 +212,3 @@ Keep replies under 4 sentences. Be direct, technical, and action-oriented."""
 
     except Exception as e:
         return {"error": str(e), "review": None}
-
-
