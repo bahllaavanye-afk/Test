@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785900654.2864316,
+    "last_updated": 1785910305.0424423,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,84 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1785900654.2850673
+    "last_brain_update": 1785910305.041094
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Energy",
-        "Healthcare",
-        "Financials"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1785174608.2269156
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Energy",
-        "Financials",
-        "Healthcare"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1785176784.2697644
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Energy",
-        "Healthcare",
-        "Financials"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1785179869.6405416
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Energy",
-        "Financials",
-        "Healthcare"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1785183837.026715
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Energy",
-        "Financials",
-        "Healthcare"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1785186304.6341355
-    },
     {
       "lesson": "Loss cap is active\u2014new exposure blocked, only risk-reducing orders permitted. Immediate risk review required.",
       "category": "risk",
@@ -2006,14 +1931,44 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1785900652.2275722
+    },
+    {
+      "lesson": "Equity desk funnel is collapsing: 48 signals \u2192 0 orders placed, primarily due to market closures and insufficient cash. Regime is bull/calm but no equity exposure being captured.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1785910298.6661592
+    },
+    {
+      "lesson": "Autonomous agents are completely idle (0 tasks, 0% success). Human engineers are productive but doing cleanup and docstrings, not generating alpha.",
+      "category": "strategy",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1785910298.673382
+    },
+    {
+      "lesson": "Recurring Bandit CWE-327 (insecure hash) in agent_team.py:229 \u2014 multiple identical findings suggest the fix hasn't been deployed or was rolled back.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1785910298.6792011
+    },
+    {
+      "lesson": "Equity backtest shows Sharpe ~1.09 using VWAP/EMA/RSI/MACD combo \u2014 worth validating out-of-sample on 2022-2023 data before considering live deployment.",
+      "category": "ml",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1785910298.6848843
+    },
+    {
+      "lesson": "FX desk placed only 1 of 9 signals \u22650.6; 2 skipped due to existing positions. Low capture rate may indicate stale signals or overly tight position limits.",
+      "category": "risk",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1785910298.6905878
     }
   ],
   "github_insights": [
-    {
-      "summary": "The automated fix was skipped because it was too complex, specifically related to implementing an LLM-brain, and another attempt failed to apply a patch to the file.",
-      "item_count": 20,
-      "ts": 1784711300.9237988
-    },
     {
       "summary": "The discussions report that automated fixes were skipped due to complexity when implementing a new concept and an LLM-brain, while one fix failed because the patch could not be applied to the file.",
       "item_count": 20,
@@ -2508,6 +2463,11 @@
       "summary": "The automated bot repeatedly failed to apply its patch fixes to the file, indicating a persistent issue with the auto-fix mechanism for that particular code change.",
       "item_count": 20,
       "ts": 1785900654.2726955
+    },
+    {
+      "summary": "Automated weekly security scans using Bandit have flagged high-severity issues in the codebase that require immediate attention and remediation.",
+      "item_count": 20,
+      "ts": 1785910305.0285287
     }
   ],
   "experiment_results": [
@@ -2594,48 +2554,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "desk-commodities",
-      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $200 conf=100%  id=`66755b3f\u2026`\n\ud83d\udfe2 `time_series_momentum/CPER` BUY $350 conf=98%  id=`6d6796ea\u2026`\n\ud83d\udd34 `time_series_momentum/UNG` SELL $220 conf=91%  id=`3af31962\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785710323.6849895
-    },
-    {
-      "channel": "desk-polymarket",
-      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785710323.690545
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (23:03 UTC)  equity=$21,430.44  regime=sideways/calm\nfunnel: 16 generated \u2192 0 survived gate+topK (0 exploration) \u2192 0 placed\n\ud83d\udca4 *Crypto*: no signals fired\n\nTotal orders placed: *0*",
-      "source": "desk_run_summary",
-      "ts": 1785714057.010129
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 1 order(s) placed of 9 signal(s) \u2265 0.6: USD_JPY BUY@157.43400, USD_CAD BUY@1.40136, GBP_USD SELL@1.34838 | 2 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1785714057.0176413
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Sunday August 02, 2026*\n\n- Autonomous agents are still warming up: 0 tasks completed, 0% success\u2014focus on debugging automation scripts (41 failure traces) ASAP.  \n- Our \u201cquick\u2011win\u201d bots are delivering: cleanup, docstrings, and optimization each logged 10 tasks today\u2014keep the m",
-      "source": "desk_run_summary",
-      "ts": 1785714057.0233247
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Sunday August 02, 2026*\n\n- Autonomous agents are still warming up: 0 tasks completed, 0% success\u2014focus on debugging automation scripts (41 failure traces) ASAP.  \n- Our \u201cquick\u2011win\u201d bots are delivering: cleanup, docstrings, and optimization each logged 10 tasks today\u2014keep the m",
-      "source": "desk_run_summary",
-      "ts": 1785714057.028894
-    },
-    {
-      "channel": "desk-options",
-      "summary": "*Options Desk* \u2014 2 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/IWM` SELL $1026 conf=85%  id=`b20e16f9\u2026`\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1080 conf=80%  id=`20a73f8f\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785714057.0344684
-    },
     {
       "channel": "desk-commodities",
       "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $200 conf=100%  id=`66755b3f\u2026`\n\ud83d\udfe2 `time_series_momentum/CPER` BUY $350 conf=98%  id=`6d6796ea\u2026`\n\ud83d\udd34 `time_series_momentum/UNG` SELL $220 conf=91%  id=`3af31962\u2026`",
@@ -3193,6 +3111,48 @@
       "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
       "source": "desk_run_summary",
       "ts": 1785900652.2667994
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (05:15 UTC)  equity=$21,969.62  cash=$-33,401.86  buying_power=$101.23  crypto_bp=$0.00  regime=bull/calm\nfunnel: 48 generated \u2192 17 survived gate+topK (3 exploration) \u2192 0 placed\n\u26a0\ufe0f 17 dropped before placement \u2014 13 market closed \u00b7 3 no order path \u00b7 1 insufficient cash\n\u26a0\ufe0f *Equitie",
+      "source": "desk_run_summary",
+      "ts": 1785910298.6962965
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 9 signal(s) \u2265 0.6: USD_JPY BUY@157.74600, USD_CAD BUY@1.40614, EUR_USD SELL@1.15324 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1785910298.7019625
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Tuesday August 04, 2026*\n\n- Autonomous agents are idle:\u202f0 tasks completed,\u202f0% success\u202f\u2014 we need to unlock their pipelines and get them running.  \n- Human engineers are delivering:\u202fcleanup\u202f(10\u202ftasks),\u202fdocstrings\u202f(10\u202ftasks),\u202foptimization\u202f(10\u202ftasks)\u202f\u2014 30\u202ftasks completed today.  \n",
+      "source": "desk_run_summary",
+      "ts": 1785910298.7079768
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "Running a quick backtest in `backtests/spy_aapl_qqq_5min_ema_vwap_rsi_macd.py` suggests a Sharpe \u2248\u202f1.09\u202f\u00b1\u202f0.07, thanks to the VWAP\u202f+\u202fEMA filter curbing volatility while the RSI\u202f>\u202f55 and MACD bullish crossover boost upside capture. I\u2019d validate it out\u2011of\u2011sample on the 2022\u201101\u201101\u202f\u2192\u202f2023\u201112\u201131 window t",
+      "source": "desk_run_summary",
+      "ts": 1785910298.713636
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `gamma_exposure/IWM` BUY $866 conf=94%  id=`46984497\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785910298.719442
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $210 conf=100%  id=`62d4561c\u2026`\n\ud83d\udd34 `time_series_momentum/UNG` SELL $220 conf=92%  id=`22c681d8\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785910298.7252219
+    },
+    {
+      "channel": "desk-polymarket",
+      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785910298.7309494
     }
   ]
 }
