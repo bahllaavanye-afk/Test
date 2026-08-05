@@ -38,6 +38,12 @@ jobs:
         id: smoke
         env:
           SMOKE_BASE_URL: ${{ vars.RENDER_API_URL || 'https://quantedge-api-9jz0.onrender.com' }}
+          # A degraded primary DB FAILS the post-deploy run (push) — that is the
+          # "catch the next Supabase pause at deploy time" gate. On the 30-min
+          # schedule it is reported but non-fatal: the pause is a known,
+          # operator-blocked condition, and paging #ci-failures 48×/day for it
+          # would bury the failures that ARE actionable.
+          SMOKE_FAIL_ON_DEGRADED_DB: ${{ github.event_name == 'push' && '1' || '' }}
         run: python .github/scripts/smoke_test_live.py
 
       # Runs EVERY smoke: proves whether Discord delivery works and prints
