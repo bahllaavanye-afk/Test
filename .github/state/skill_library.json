@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Monitor API rate limits",
-    "Use retry mechanisms",
-    "Use retry decorators",
     "* A trading strategy with a potential Sharpe ratio of 1.15 \u00b1 0.15 is implemented in `/strategies/equities.py` and uses a VWAP-EMA-RSI triple filter.",
     "Based on the recent learnings, here are 3 concise bullet points of the most important, actionable knowledge:",
     "* The `run_experiments` agent and `token_monitor` agent do not have detailed status updates available in the recent learnings.",
@@ -199,8 +196,11 @@
     "Log market closures",
     "Check CPU usage",
     "Verify data feeds",
-    "Implement timeouts"
+    "Implement timeouts",
+    "Handle API rate limits",
+    "Test for division by zero",
+    "Catch SSL exceptions"
   ],
-  "last_updated": "2026-08-05T22:09:14.401521+00:00",
+  "last_updated": "2026-08-05T23:28:11.833862+00:00",
   "total": 200
 }
