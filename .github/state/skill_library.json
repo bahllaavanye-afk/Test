@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Test DB connections",
-    "Log GPU temps",
-    "Validate API keys",
     "Verify trade limits",
     "Log latency metrics",
     "Log API timeouts",
@@ -199,8 +196,11 @@
     "Prepend S4 block to LSTM pipeline",
     "Test database conn",
     "Run mypy --strict",
-    "Check data feeds"
+    "Check data feeds",
+    "Check disk space",
+    "Test internet conn",
+    "Restart on crash"
   ],
-  "last_updated": "2026-08-05T08:02:43.708543+00:00",
+  "last_updated": "2026-08-05T10:59:07.099452+00:00",
   "total": 200
 }
