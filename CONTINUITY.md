@@ -29,6 +29,44 @@ each independently "found" after already being documented.
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
 
 
+## 💔 2026-08-05 05:40 — THE PACEMAKER'S CI CASCADE HAS NEVER REACHED THE FLEET (fixed)
+
+**This corrects the central claim of `pacemaker.yml` and of the 08-03 entries below.** The design is: 36
+workflows chain off `workflow_run: workflows: ["CI"]`, so dispatching CI every 50 minutes revives all of
+them. Measured 2026-08-05, dispatching CI revives **none** of them.
+
+```
+CI on main, dispatched by the pacemaker — 01:26, 02:16, 04:21, 05:11, all success,
+  triggering_actor = github-actions[bot]
+Downstream workflow_run events from those four completions:  ZERO
+
+Last real cascade: 01:01 — Peer Review + Desk Trading + Fill Tracker +
+  employee-conversations + multi-agent-discussion, all at once.
+  triggering_actor = bahllaavanye-afk (User)  ← a PR merge
+```
+
+**Cause: GitHub's recursion guard.** "Events triggered by the GITHUB_TOKEN will not create a new workflow
+run." `workflow_dispatch` is the documented exception that lets the pacemaker *start* CI — and that part
+demonstrably works. But the CI run it starts is itself GITHUB_TOKEN-triggered, so **its** `completed` event
+cascades to nothing. **The exception covers the dispatch, not the descendants.**
+
+**So the pacemaker only keeps alive what it dispatches DIRECTLY** — CI, the merge gate, desk-trading. The
+agent fleet has been running on free-tier cron alone the whole time: `employee-conversations`
+(`cron: '5 * * * *'`, i.e. hourly) actually ran at 20:36, 22:16, 00:09, 04:14 — **four times in eight
+hours**. That is exactly the symptom the pacemaker was built to cure: *"Discord is only active when this
+chat resumes"* — because a human merging a PR is the only thing that cascades.
+
+**Fixed** by dispatching `employee-conversations.yml` and `multi-agent-discussion.yml` directly, the way
+desk-trading already is. Deliberately a short list, not all 36: dispatching every chained workflow every 50
+minutes is a large, unmeasured change in free-tier minutes. Both set `cancel-in-progress: false`, so a
+dispatch overlapping a cron run queues instead of clobbering it. The crypto desk stays excluded — see the
+measured collision in the desk-trading comment.
+
+**The step that claimed otherwise was renamed.** It was "Dispatch CI to drive the 36 downstream workflows";
+it is now "Dispatch CI (heartbeat — does NOT cascade to the fleet)". Three findings this session were
+independently re-derived because a correction lived somewhere other than the claim it corrected. **Fix the
+label, not just the docs.**
+
 ## 👥 2026-08-05 04:40 — THE HOURLY EMPLOYEE-CONVERSATIONS WORKFLOW HAS NEVER RUN (fixed)
 
 47 employee personas, hourly, green every time, `Responded: 0/47` posted to `#engineering`. Production log,
