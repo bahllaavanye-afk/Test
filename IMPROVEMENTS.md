@@ -1,5 +1,35 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🧰 2026-08-05 19:35 — A GREEN LOCAL RUN CARRIES NO INFORMATION ABOUT CI, AND THAT COST TWO RED PRs TODAY
+
+    morning   test_backtest_covers_crypto.py   ModuleNotFoundError: requests
+    evening   test_order_origin_audit.py       async def functions are not natively
+                                               supported  (pytest-asyncio absent)
+
+- [x] **Same cause both times, and it is not "I forgot".** The dev container has a fat Python environment and
+  CI installs five packages on purpose. Nothing compared the two, so the only detector was a red PR — after the
+  push, after the wait. `test_ci_installs_what_the_tests_import.py` is that comparison, run locally.
+- [x] **The first draft of the guard missed the exact case it was written for, and mutation testing is what
+  caught it.** The morning break came from `test_backtest_covers_crypto.py` importing `quick_backtest_runner`
+  — a *local* module that imports `requests` at module scope. The test file itself names nothing third-party,
+  so a guard reading only test files sees nothing while CI ERRORs at collection. It now follows local imports
+  transitively and blames the test file, which is what a reader has to go and change.
+- [x] **The two failures need two different detectors.** `pytest-asyncio` is demanded by a *marker in a file*;
+  `pytest-timeout` is demanded by `--timeout=30` *on the command line* and by no marker anywhere. A
+  marker-only check passes happily while the run command needs a plugin nobody installed — that mutation
+  survived the first pass too.
+- [x] **The guard found a third case on its first run:** `test_vol_target_sizing.py` imports `numpy` directly
+  while CI only received it transitively via pandas. It never broke and it was never declared. Now explicit —
+  *if a test imports it, the install line installs it* — rather than special-cased in the guard, because a
+  guard with an exceptions list stops being one.
+- [x] **Resolution chosen for the async tests: `asyncio.run()` in sync tests, not a new CI dependency.** Mine
+  was the only file using the marker, and `pytest-asyncio` additionally needs `asyncio_mode` configured — a
+  second failure surface for four tests. `test_the_agent_tests_run_without_pytest_asyncio` pins the decision
+  and *skips itself* if someone later adds the plugin properly, so it constrains the mistake rather than the
+  choice.
+- [x] **6 mutations, 6 caught** — dropping each of `requests`, `pandas`, `numpy`, `pytest-timeout` from the
+  install line, and re-adding `@pytest.mark.asyncio` to either async test.
+
 ## 👥 2026-08-05 19:15 — THE SECOND WRITER ON THE ALPACA ACCOUNT IS NOW REPORTED EVERY RUN
 
 Operator item #1 has been "re-verified still live" by hand in three separate sessions. Re-verified again just

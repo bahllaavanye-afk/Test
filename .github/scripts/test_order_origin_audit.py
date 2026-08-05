@@ -23,6 +23,7 @@ fallback, which is where it has been all week.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 from pathlib import Path
@@ -87,42 +88,38 @@ def test_the_sample_is_bounded():
 
 # ── The audit ────────────────────────────────────────────────────────────────
 
-@pytest.mark.asyncio
-async def test_the_audit_speaks_on_the_CLEAN_path_too(monkeypatch, capsys):
+def test_the_audit_speaks_on_the_CLEAN_path_too(monkeypatch, capsys):
     """A guard that only prints when it fires is indistinguishable from a guard
     that stopped running. This codebase has shipped that mistake repeatedly."""
     async def fake_get(path, params=None):
         return [_o("qe-momentum-SPY-1")]
     monkeypatch.setattr(dop, "_alpaca_get", fake_get)
-    ours, foreign, _ = await dop.audit_order_origins()
+    ours, foreign, _ = asyncio.run(dop.audit_order_origins())
     assert (ours, foreign) == (1, 0)
     assert "order-origin audit" in capsys.readouterr().out
 
 
-@pytest.mark.asyncio
-async def test_a_second_writer_is_named_loudly(monkeypatch, capsys):
+def test_a_second_writer_is_named_loudly(monkeypatch, capsys):
     async def fake_get(path, params=None):
         return [_o("qe-momentum-SPY-1"), _o("agb8-runner-7", "TSLA")]
     monkeypatch.setattr(dop, "_alpaca_get", fake_get)
-    _, foreign, _ = await dop.audit_order_origins()
+    _, foreign, _ = asyncio.run(dop.audit_order_origins())
     out = capsys.readouterr().out
     assert foreign == 1
     assert "second writer" in out
     assert "TSLA" in out and "agb8-runner-7" in out
 
 
-@pytest.mark.asyncio
-async def test_a_broker_failure_cannot_take_the_desk_down(monkeypatch, capsys):
+def test_a_broker_failure_cannot_take_the_desk_down(monkeypatch, capsys):
     """Diagnostic only. It must never be the reason a trading run dies."""
     async def boom(path, params=None):
         raise RuntimeError("429 rate limited")
     monkeypatch.setattr(dop, "_alpaca_get", boom)
-    assert await dop.audit_order_origins() == (0, 0, [])
+    assert asyncio.run(dop.audit_order_origins()) == (0, 0, [])
     assert "unavailable" in capsys.readouterr().out
 
 
-@pytest.mark.asyncio
-async def test_it_asks_for_all_orders_not_just_closed_ones(monkeypatch):
+def test_it_asks_for_all_orders_not_just_closed_ones(monkeypatch):
     """`_report_recent_closes` uses status=closed, which is right for its
     question and wrong for this one: a second writer's *open* orders are the
     ones about to move the book."""
@@ -132,7 +129,7 @@ async def test_it_asks_for_all_orders_not_just_closed_ones(monkeypatch):
         seen.update(params or {})
         return []
     monkeypatch.setattr(dop, "_alpaca_get", fake_get)
-    await dop.audit_order_origins()
+    asyncio.run(dop.audit_order_origins())
     assert seen.get("status") == "all"
 
 

@@ -74,7 +74,13 @@ jobs:
           # requests happens to exist) and failed CI with ModuleNotFoundError.
           # The agent scripts' import surface is what this job must satisfy, not
           # the dev container's.
-          uv pip install --system pytest pytest-timeout pandas pyyaml requests
+          # numpy: imported directly by test_vol_target_sizing.py. It arrived
+          # transitively via pandas and so never broke, but "it happens to be
+          # pulled in" is not a dependency declaration — if a test imports it,
+          # this line installs it. Found 2026-08-05 by
+          # test_ci_installs_what_the_tests_import.py, which exists because
+          # `requests` and `pytest-asyncio` both reached CI red the hard way.
+          uv pip install --system pytest pytest-timeout pandas numpy pyyaml requests
 
       - name: Run agent script tests
         # .github/scripts/test_*.py (agent team, strategy gate/trimmer, and the
