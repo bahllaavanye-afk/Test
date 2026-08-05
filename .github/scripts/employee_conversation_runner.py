@@ -104,6 +104,27 @@ def _run_budget_seconds() -> float:
         return 1080.0
 
 
+def _keyed_providers() -> list[tuple[str, int]]:
+    """(provider name, declared rpm_free) for every provider `_has_key` accepts.
+
+    Exists to answer a question run 30986127682 raised and could not settle: the
+    pacer computed 1.0s spacing, which means it saw a provider declaring
+    `rpm_free: 60`, while all 101 errors in that log were `[gemini-key]`. Some
+    60-rpm key is present and never called — invalid, or not on the path
+    `_llm_waterfall` takes — and the log named neither the provider nor the
+    disagreement.
+
+    Printing this makes the next run answer it without a code change. Diagnosing
+    it took reading a spacing number and inferring backwards; that is exactly
+    the kind of inference this repo keeps paying for.
+    """
+    try:
+        from llm_common import _PROVIDERS, _has_key
+        return [(p.get("name", "?"), p.get("rpm_free", 0)) for p in _PROVIDERS if _has_key(p)]
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def _call_spacing_seconds() -> float:
     """Seconds to wait between employees, derived from the provider's own limit.
 
@@ -222,8 +243,11 @@ def main() -> None:
     started = time.monotonic()
     backoff = 1.0
     skipped: list[str] = []
+    keyed = _keyed_providers()
     print(f"[employee_runner] {len(emp_keys)} employees, {spacing:.1f}s base spacing, "
           f"{budget_s/60:.0f} min budget", flush=True)
+    print(f"[employee_runner] providers with a key: "
+          f"{', '.join(f'{n}({r}rpm)' for n, r in keyed) or 'NONE'}", flush=True)
 
     for i, emp_key in enumerate(emp_keys):
         task = topics[i % len(topics)]
