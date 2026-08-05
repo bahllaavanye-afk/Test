@@ -121,7 +121,11 @@ jobs:
         if: steps.killswitch.outputs.run == 'true'
         run: sleep 3000
 
-      - name: Dispatch CI to drive the 36 downstream workflows
+      # NOT "drive the 36 downstream workflows" — that was the original claim and
+      # it is false; see the fleet-dispatch step below for the measurement. This
+      # dispatch keeps the pacemaker's own heartbeat alive (CI completion
+      # re-triggers this workflow) and feeds the merge/deploy path.
+      - name: Dispatch CI (heartbeat — does NOT cascade to the fleet)
         if: steps.killswitch.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -239,6 +243,58 @@ jobs:
             echo "::error::$wf dispatch failed (HTTP $code): $(cat /tmp/desk.txt)"
             echo "⚠️ $wf NOT dispatched (HTTP $code) — desk falls back to starved cron" >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      # ── THE CI CASCADE NEVER REACHES THE AGENT FLEET ────────────────────────
+      #
+      # This workflow's header says 36 workflows are chained off
+      # `workflow_run: workflows: ["CI"]` and that dispatching CI revives them.
+      # **It does not.** Measured 2026-08-05:
+      #
+      #   CI on main, dispatched from here, succeeded at 01:26, 02:16, 04:21,
+      #   05:11 — actor github-actions[bot]. Downstream workflow_run events from
+      #   those four completions: ZERO.
+      #
+      #   The last real cascade was 01:01 (Peer Review, Desk Trading, Fill
+      #   Tracker, employee-conversations, multi-agent-discussion all at once).
+      #   Its triggering_actor was `bahllaavanye-afk (User)` — a PR merge.
+      #
+      # GitHub's recursion guard: "events triggered by the GITHUB_TOKEN will not
+      # create a new workflow run." `workflow_dispatch` is the exception that
+      # lets us START CI (documented in the header, and it works). But the CI run
+      # that results is itself GITHUB_TOKEN-triggered, so ITS `completed` event
+      # cascades to nothing. The exception covers the dispatch, not the descendants.
+      #
+      # Net effect, and exactly the symptom the pacemaker was built to cure: the
+      # fleet wakes when a human merges a PR and is otherwise left to free-tier
+      # cron. employee-conversations (cron '5 * * * *') actually ran at 20:36,
+      # 22:16, 00:09, 04:14 — four times in eight hours.
+      #
+      # So the fleet workflows must be dispatched DIRECTLY, the way desk-trading
+      # already is. Deliberately a short, explicit list rather than every workflow
+      # that declares the CI trigger: dispatching all 36 every 50 minutes is a
+      # large, unmeasured change in free-tier minutes. These two are the agent
+      # liveness path — they are what makes Discord active between sessions.
+      # Both set `cancel-in-progress: false`, so a dispatch overlapping a cron run
+      # queues rather than clobbering it.
+      - name: Dispatch the agent fleet (the CI cascade cannot reach it)
+        if: steps.killswitch.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for wf in employee-conversations.yml multi-agent-discussion.yml; do
+            code=$(curl -sS -o /tmp/fleet.txt -w '%{http_code}' \
+              -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$wf/dispatches" \
+              -d '{"ref":"main"}')
+            if [ "$code" = "204" ]; then
+              echo "✅ dispatched $wf" | tee -a "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::$wf dispatch failed (HTTP $code): $(cat /tmp/fleet.txt)"
+              echo "⚠️ $wf NOT dispatched (HTTP $code) — falls back to starved cron" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
 
       # If the dispatch fails the chain dies silently, which is the exact class
       # of failure this repo keeps getting bitten by. Say so where it is seen.
