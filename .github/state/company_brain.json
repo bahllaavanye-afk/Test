@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785919614.1736348,
+    "last_updated": 1785920682.099094,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,52 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1785910305.041094
+    "last_brain_update": 1785920682.0976844
   },
   "episodic": [
-    {
-      "lesson": "Loss cap is active\u2014new exposure blocked, only risk-reducing orders permitted. Immediate risk review required.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1785200024.7419019
-    },
-    {
-      "lesson": "Options desk placed three high-confidence SELL orders (QQQ, SPY, IWM) despite loss cap. Confirm these are risk-reducing and monitor for unintended directional bias.",
-      "category": "execution",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1785200024.7486906
-    },
-    {
-      "lesson": "Vercel deployment failed due to free-tier daily limit (100 deploys). Upgrade plan or throttle deployment frequency to avoid blocking CI/CD.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1785200024.7541869
-    },
-    {
-      "lesson": "Auto-fix on GitHub failed to apply patch\u2014manual intervention needed to resolve deployment issues and prevent backlog.",
-      "category": "code",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1785200024.759674
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "neutral",
-      "score": 1,
-      "sector_leaders": [
-        "Energy",
-        "Financials",
-        "Healthcare"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=neutral (score=1). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1785236300.3850188
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -1966,14 +1923,44 @@
       "priority": 3,
       "source": "company_brain_synthesis",
       "ts": 1785910298.6905878
+    },
+    {
+      "lesson": "Equity desk generated 47 signals but placed 0 orders due to market closures, no order paths, and cash constraints \u2014 funnel efficiency is 0%.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1785920680.563835
+    },
+    {
+      "lesson": "Cash balance is negative (-$33,402) across desks, causing crypto and equity orders to fail due to insufficient cash \u2014 margin or liquidity issue.",
+      "category": "risk",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1785920680.5712762
+    },
+    {
+      "lesson": "High-severity Bandit CWE-327 vulnerability in agent_team.py:229 \u2014 insecure hash function usage must be remediated immediately.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1785920680.576736
+    },
+    {
+      "lesson": "Vercel deployment failed due to free-tier daily limit (100 deployments) \u2014 blocks CI/CD pipeline and feature releases.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1785920680.5821173
+    },
+    {
+      "lesson": "Options desk placed a high-confidence (94%) IWM gamma exposure buy \u2014 the only successful order across all desks this run.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1785920680.5875049
     }
   ],
   "github_insights": [
-    {
-      "summary": "The discussions report that automated fixes were skipped due to complexity when implementing a new concept and an LLM-brain, while one fix failed because the patch could not be applied to the file.",
-      "item_count": 20,
-      "ts": 1784719166.9788222
-    },
     {
       "summary": "The Slack agent-team run failed due to a `message_limit_exceeded` quota, indicating posts are not reaching the workspace, and an automated fix was skipped because the issue was too complex to resolve.",
       "item_count": 20,
@@ -2468,6 +2455,11 @@
       "summary": "Automated weekly security scans using Bandit have flagged high-severity issues in the codebase that require immediate attention and remediation.",
       "item_count": 20,
       "ts": 1785910305.0285287
+    },
+    {
+      "summary": "The automated weekly security scan flagged high-severity issues in Bandit, while a deployment failure occurred due to resource limits, advising a retry after 24 hours.",
+      "item_count": 20,
+      "ts": 1785920682.0847661
     }
   ],
   "experiment_results": [
@@ -2554,48 +2546,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "desk-commodities",
-      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $200 conf=100%  id=`66755b3f\u2026`\n\ud83d\udfe2 `time_series_momentum/CPER` BUY $350 conf=98%  id=`6d6796ea\u2026`\n\ud83d\udd34 `time_series_momentum/UNG` SELL $220 conf=91%  id=`3af31962\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785714057.039998
-    },
-    {
-      "channel": "desk-polymarket",
-      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785714057.0456567
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (07:51 UTC)  equity=$21,374.56  regime=sideways/calm\nfunnel: 56 generated \u2192 14 survived gate+topK (1 exploration) \u2192 0 placed\n\u26a0\ufe0f 14 dropped before placement \u2014 14 market closed\n\u26a0\ufe0f *Equities*: 3 signal(s) fired, **0 placed** \u2014 3 market closed\n\ud83d\udca4 *Crypto*: no signals fired\n\u26a0\ufe0f *Option",
-      "source": "desk_run_summary",
-      "ts": 1785745481.9081557
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 1 order(s) placed of 9 signal(s) \u2265 0.6: USD_JPY BUY@157.43400, USD_CAD BUY@1.40136, GBP_USD SELL@1.34838 | 2 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1785745481.9139245
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Sunday August 02, 2026*\n\n- Autonomous agents are still warming up: 0 tasks completed, 0% success\u2014focus on debugging automation scripts (41 failure traces) ASAP.  \n- Our \u201cquick\u2011win\u201d bots are delivering: cleanup, docstrings, and optimization each logged 10 tasks today\u2014keep the m",
-      "source": "desk_run_summary",
-      "ts": 1785745481.9199014
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "We need to respond as quick_backtest autonomous agent, 2 sentences max, first person, referencing file paths. Should comment on proposed strategy, estimate Sharpe, why, suggest out-of-sample period. Must reference real file paths, likely the backtest file used. The strategy described uses VWAP, EMA,",
-      "source": "desk_run_summary",
-      "ts": 1785745481.9262805
-    },
-    {
-      "channel": "desk-options",
-      "summary": "*Options Desk* \u2014 2 order(s) placed\n\ud83d\udd34 `options_pcr_reversal/IWM` SELL $1026 conf=85%  id=`b20e16f9\u2026`\n\ud83d\udd34 `options_pcr_reversal/SPY` SELL $1080 conf=80%  id=`20a73f8f\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785745481.9319048
-    },
     {
       "channel": "desk-commodities",
       "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $200 conf=100%  id=`66755b3f\u2026`\n\ud83d\udfe2 `time_series_momentum/CPER` BUY $350 conf=98%  id=`6d6796ea\u2026`\n\ud83d\udd34 `time_series_momentum/UNG` SELL $220 conf=91%  id=`3af31962\u2026`",
@@ -3153,6 +3103,48 @@
       "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
       "source": "desk_run_summary",
       "ts": 1785910298.7309494
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (08:57 UTC)  equity=$22,013.53  cash=$-33,402.14  buying_power=$292.20  crypto_bp=$0.00  regime=bull/calm\nfunnel: 47 generated \u2192 15 survived gate+topK (3 exploration) \u2192 0 placed\n\u26a0\ufe0f 15 dropped before placement \u2014 13 market closed \u00b7 1 no order path \u00b7 1 insufficient cash\n\u26a0\ufe0f *Equitie",
+      "source": "desk_run_summary",
+      "ts": 1785920680.5928967
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 9 signal(s) \u2265 0.6: USD_JPY BUY@157.74600, USD_CAD BUY@1.40614, EUR_USD SELL@1.15324 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1785920680.5982869
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 1 signal(s) fired, **0 orders placed**\nreason: 1 insufficient cash",
+      "source": "desk_run_summary",
+      "ts": 1785920680.603822
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*International Desk* \u2014 4 signal(s) fired, **0 orders placed**\nreason: 4 market closed",
+      "source": "desk_run_summary",
+      "ts": 1785920680.609092
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `gamma_exposure/IWM` BUY $866 conf=94%  id=`46984497\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785920680.6144273
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 2 signal(s) fired, **0 orders placed**\nreason: 2 market closed",
+      "source": "desk_run_summary",
+      "ts": 1785920680.619691
+    },
+    {
+      "channel": "desk-polymarket",
+      "summary": "*Polymarket Desk* \u2014 1 signal(s) fired, **0 orders placed**\nreason: 1 no order path",
+      "source": "desk_run_summary",
+      "ts": 1785920680.6249259
     }
   ]
 }
