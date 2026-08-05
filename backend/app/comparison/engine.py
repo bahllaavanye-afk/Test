@@ -55,6 +55,7 @@ MSG_SERIES_CANNOT_BE_EMPTY: str = "series cannot be empty."
 MSG_SERIES_CONTAINS_NAN: str = "series contains NaN values."
 MSG_INDEX_MUST_BE_MONOTONIC: str = "index must be monotonic increasing."
 MSG_SERIES_MUST_BE_NUMERIC: str = "series must contain numeric values."
+MSG_INDEX_NOT_DATETIME: str = "index must be a pandas DatetimeIndex."
 MSG_STRING_NON_EMPTY: str = "must be a non‑empty string."
 MSG_DATE_TYPE: str = "must be a datetime.date instance."
 
@@ -90,6 +91,8 @@ class StrategyComparisonEngine:
             raise ValueError(f"{name} {MSG_INDEX_MUST_BE_MONOTONIC}")
         if not pd.api.types.is_numeric_dtype(series):
             raise ValueError(f"{name} {MSG_SERIES_MUST_BE_NUMERIC}")
+        if not pd.api.types.is_datetime64_any_dtype(series.index):
+            raise ValueError(f"{name} {MSG_INDEX_NOT_DATETIME}")
 
     @staticmethod
     def _validate_string(value: str, name: str) -> None:
