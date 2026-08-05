@@ -57,7 +57,16 @@ def fetch_crypto_ohlcv(symbol: str = "BTCUSDT", interval: str = "1d", limit: int
             timeout=10
         )
         if resp.status_code != 200:
-            return None
+            # SAY SO. A bare `return None` here meant the caller's `continue`
+            # dropped the symbol with no output at all: measured 2026-08-05,
+            # Binance answers **HTTP 451** (geo-blocked) and NO crypto backtest
+            # has ever produced a result, while the workflow — named "Run
+            # backtests across all desks" — reported success and wrote
+            # desks=['equity'] every run.
+            print(f"  Binance {symbol}: HTTP {resp.status_code}"
+                  f"{' (geo-blocked from this runner)' if resp.status_code == 451 else ''}"
+                  f" — falling back to yfinance", flush=True)
+            return _crypto_via_yfinance(symbol)
         data = resp.json()
         return {
             "close":  [float(c[4]) for c in data],
@@ -66,8 +75,17 @@ def fetch_crypto_ohlcv(symbol: str = "BTCUSDT", interval: str = "1d", limit: int
             "volume": [float(c[5]) for c in data],
         }
     except Exception as e:
-        print(f"Binance OHLCV error {symbol}: {e}")
+        print(f"Binance OHLCV error {symbol}: {e} — falling back to yfinance", flush=True)
+        return _crypto_via_yfinance(symbol)
+
+
+def _crypto_via_yfinance(binance_symbol: str) -> dict | None:
+    """BTCUSDT -> BTC-USD. yfinance already powers the equity backtests here,
+    so it is reachable from the runner even when Binance is not."""
+    base = binance_symbol.upper().replace("USDT", "").replace("USD", "")
+    if not base:
         return None
+    return fetch_ohlcv(f"{base}-USD")
 
 
 def compute_metrics(returns: list[float]) -> dict:
