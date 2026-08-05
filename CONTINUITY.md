@@ -27,6 +27,10 @@ each independently "found" after already being documented.
 | 8 | **Set `OA_SESSION_COOKIE`** | ~1min | The OA scout is auth-walled and has found 0 bots in 56 runs. It no longer spams commits (#1394), but stays a no-op without this. |
 | 9 | **Cap the `/notifications/discord/cto-review` endpoint** | small | Only uncapped paid-Claude path: calls `claude-haiku-4-5` directly, no free-tier attempt, no cascade, no budget cap. |
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
+| 11 | **Add a second free-tier LLM key** (`GROQ_API_KEY_1` / `DEEPSEEK_API_KEY_1` / `TOGETHER_API_KEY_1`) | ~2min | **Measured ceiling: 5 of 47 employees respond.** One Gemini key is the whole fleet's capacity. Key presence is not capacity — `_has_key()` reported a 60-rpm provider the cascade never actually called. |
+| 12 | **Reset the Alpaca paper account** | ~1min | Cash is −$22,179.98 (margin debit); the book is levered ~1.6×. Not currently blocking equity (bp $34,713, 13 fills at 17:43 today), but it is what keeps **crypto at exactly zero orders** — see 13. `MARGIN_FLOOR_PCT` is now in place so the freeze does not recur after the reset. |
+| 13 | **Crypto cash reserve — an allocation decision, deliberately not shipped** | decision | Crypto sizes against `non_marginable_buying_power` = settled cash, and cannot use margin at all. Cash is negative, so crypto is at **$0.00 capacity and has placed nothing**. The only fix caps the equity desks at `cash − X`, i.e. **stops equity using margin** near the reserve. Crypto is the sole `always_open=True` desk, so today the platform's overnight coverage is zero orders, not "quiet". Your call on the trade-off; I would not make it unattended. |
+| 14 | **Set `ANGELONE_API_KEY` / `_CLIENT_ID` / `_PASSWORD` / `_TOTP_SECRET`** | ~5min | Turns the India work from research into execution. AngelOne SmartAPI is free and TOTP-derivable, so it is the only broker that can log in unattended — **Zerodha cannot** (browser redirect, daily token, ₹2,000/mo). `india_broker.py` reports what is missing; nothing places an Indian order until these exist. |
 
 
 ## 🇮🇳 2026-08-05 18:10 — NSE NOW FEEDS THE US-LISTED INDIA ORDERS (the `[P2]` play, shipped)
@@ -85,6 +89,13 @@ the NSE tilt above now feeds exactly this order path.
 
 Cash is still a −$22k margin debit and the book is levered ~1.6×, so **"reset the paper account" stays on the
 operator list** — but it is no longer blocking, and the floor is in place to stop the freeze recurring.
+
+**Crypto is still at zero and it is structural, not a bug.** `non_marginable_bp = $0.00` because cash is a
+margin debit, and Alpaca crypto cannot use margin at all. The margin floor cannot help — it reserves buying
+power, which crypto cannot spend. The only fix is a *cash* reserve, which caps the equity desks at `cash − X`
+and therefore stops them using margin; that is an allocation trade-off, so it is on the operator list rather
+than shipped unattended. Consequence worth stating plainly: crypto is the only `always_open=True` desk, so
+while cash is negative the platform's **overnight coverage is zero orders, not "quiet"**.
 
 ## ✅ 2026-08-05 09:15 — BACKTESTS PERSIST FOR THE FIRST TIME, and a margin floor now stops the freeze recurring
 
