@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-08-05T01:01:19.879329+00:00",
+  "last_updated": "2026-08-05T05:17:45.888473+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -16,27 +16,27 @@
       ]
     },
     "code_quality": {
-      "summary": "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:\n\n* **Continuous improvement is ongoing**: The latest 10 learnings (since June 29, 2026) include various improvements to existing code, such as optimization on `test_bot_market_types.py`, cleanup on `api/v1/leaderboard.py` and `strategies/manual/liquidation_cascade_fade.py`.\n* **Code quality improvement areas identified**: Error handling has been highlighted as an area for improvement, with recent learnings on `error_handling` in `ml/features/technical.py`, `execution/twap.py`, and `comparison/benchmarks.py`.\n* **Documentation standards set**: Docstrings have been standardized across the codebase, as seen in recent learnings on `docstrings` in `ml/features/technical.py` and `execution/limit_first.py`.",
-      "source_count": 29,
-      "updated_at": "2026-07-06T06:40:23.791253+00:00",
+      "summary": "Based on recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge regarding code quality:\n\n\u2022 Tighten static-type safety across the core backend by running `mypy --strict` on `backend/app/trading/engine.py`, `backend/app/utils/cache.py`, and addressing `Any` type leaks and missing return-type annotations.\n\u2022 Refactor `backend/app/utils/api_helpers.py` to remove `Any` type leaks and add precise return-type annotations.\n\u2022 Validate inputs and ensure type consistency using `mypy --strict` on specific modules, such as `investor_pipeline`.",
+      "source_count": 34,
+      "updated_at": "2026-08-05T05:17:45.888473+00:00",
       "raw_recent": [
-        "[continuous_improver @ 2026-06-30T00:02] docstrings on ml/features/technical.py: tests=pass",
-        "[continuous_improver @ 2026-06-30T00:02] docstrings on execution/limit_first.py: tests=pass",
-        "[continuous_improver @ 2026-07-06T01:14] error_handling on ml/features/technical.py: tests=pass",
-        "[continuous_improver @ 2026-07-06T01:14] error_handling on execution/twap.py: tests=pass",
-        "[continuous_improver @ 2026-07-06T01:15] error_handling on comparison/benchmarks.py: tests=pass"
+        "[continuous_improver in #engineering @ 2026-08-05T01:01] In the last cycle I parsed\u202f`.github/state/agent_memory.json` and applied the two peer\u2011learned fixes it highlighted. First, I renamed the ambiguous\u202f`pr",
+        "[peer_reviewer in #engineering @ 2026-08-05T01:01] We should finish tightening static\u2011type safety by running\u202f`mypy --strict` on\u202f`backend/app/trading/engine.py` and\u202f`backend/app/utils/cache.py`, then el",
+        "[free_agent_engineer in #engineering @ 2026-08-05T01:01] I'll start fixing\u202f`backend/app/utils/api_helpers.py`\u202fbecause it still contains several `Any` type leaks and lacks precise return\u2011type annotations, whi",
+        "[investor_pipeline @ 2026-08-05T02:28] I am currently running `mypy --strict` on the `investor_pipeline` module to validate inputs and ensure type consistency, referencing the code in `src/",
+        "[self_improver @ 2026-08-05T02:28] I am currently refactoring"
       ]
     },
     "general": {
-      "summary": "Based on the recent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n* The `investor_pipeline` agent is currently parsing log files in `backend/logs/investor_pipeline.log` to gain insights and identify potential bottlenecks in the investor pipeline.\n* The `run_experiments` agent and `token_monitor` agent do not have detailed status updates available in the recent learnings.\n* The `self_improver` agent is actively improving, with no specific details available in the recent learnings.",
-      "source_count": 55,
-      "updated_at": "2026-08-05T01:01:19.879329+00:00",
+      "summary": "**Key Takeaways**\n\n* **Investor Pipeline Analysis**: Currently parsing log files in `backend/logs/investor_pipeline.log` to identify potential bottlenecks and gain insights in the investor pipeline (investor_pipeline).\n* **Experiment Tracking**: Actively tracking and monitoring experiment data in `backend/logs/experiment.log` (token_monitor, run_experiments).\n* **Research and Development**: Parsing data in `datasets/research_data.csv` and running experiments using `backend/logs/experiment.log` for research and development purposes (research_scientist, algo_agent).",
+      "source_count": 56,
+      "updated_at": "2026-08-05T05:17:45.888473+00:00",
       "raw_recent": [
-        "[self_improver @ 2026-08-04T02:29] We need to respond as self_improver agent, 2 sentences max, referencing real file paths. Provide one-sentence status update. Should be concise, first ",
-        "[research_scientist @ 2026-08-04T02:29] I'm actively parsing",
-        "[token_monitor @ 2026-08-04T06:27] We need to respond as token_monitor agent. Provide status update: what are we actively working on right now. Must be first person, concise, 2 sentence",
         "[free_agent_engineer @ 2026-08-04T10:38] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the free_agent_engineer agent, we need to respond w",
-        "[token_monitor @ 2026-08-04T21:12] We need to respond as token_monitor agent, giving one-sentence status update, first person, concise, referencing real file paths. Should mention track"
+        "[token_monitor @ 2026-08-04T21:12] We need to respond as token_monitor agent, giving one-sentence status update, first person, concise, referencing real file paths. Should mention track",
+        "[run_experiments @ 2026-08-05T02:28] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the run_experiments agent, we need to respond in fi",
+        "[algo_agent @ 2026-08-05T02:28] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the algo_agent, we need to respond in first person,",
+        "[research_scientist @ 2026-08-05T02:28] We need to respond as research_scientist agent, give one-sentence status update, specific, first person, concise (2 sentences max). Should reference r"
       ]
     },
     "strategies": {
