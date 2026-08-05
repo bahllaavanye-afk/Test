@@ -199,26 +199,45 @@ def _spacing(monkeypatch, **env):
     return runner._call_spacing_seconds()
 
 
-def test_spacing_matches_geminis_declared_free_rpm(monkeypatch):
+def test_spacing_leaves_headroom_below_geminis_declared_rpm(monkeypatch):
     """The first real run fired 47 calls in ~20s and got 1 response.
 
     llm_common declares `"rpm_free": 15` for Gemini — 47 calls in 20s is
     ~140/min against it, so the 429 wall was arithmetic, not an outage.
+
+    But `60/15 = 4.0s` is exactly 100% of the quota, which assumes this workflow
+    is the only consumer. 42 workflows map `secrets.GEMINI_API_KEY_1` and a
+    dozen run on schedules, so the quota is fleet-wide: a 100%-utilisation plan
+    walks straight back into 429s the moment anything else fires.
     """
-    assert _spacing(monkeypatch) == pytest.approx(4.0), (
-        "spacing no longer matches 60/15 for a Gemini-only key set. 47 "
-        "employees would again outrun the only provider that has a key."
+    spacing = _spacing(monkeypatch)
+    assert spacing == pytest.approx(60.0 / (15 * 0.6)), (
+        f"expected 60/(15*0.6)=6.67s for a Gemini-only key set, got {spacing}. "
+        "Either the derivation changed or the fleet-quota margin was dropped."
+    )
+    assert spacing > 60.0 / 15, (
+        "spacing is at or below 100% of the declared RPM, leaving nothing for "
+        "the dozen other scheduled workflows sharing this key."
     )
 
 
 def test_spacing_widens_when_only_a_slower_provider_is_available(monkeypatch):
     """It must be derived, not hardcoded — that is the whole point."""
     fast = _spacing(monkeypatch, TOGETHER_API_KEY="x")   # rpm_free 60
-    assert fast == pytest.approx(1.0), (
-        f"expected 60/60=1.0s with Together available, got {fast}. The interval "
-        "is not being derived from llm_common's rpm_free table."
+    assert fast == pytest.approx(60.0 / (60 * 0.6)), (
+        f"expected 60/(60*0.6)=1.67s with Together available, got {fast}. The "
+        "interval is not being derived from llm_common's rpm_free table."
     )
     assert fast < _spacing(monkeypatch), "more headroom must mean less waiting"
+
+
+def test_the_quota_share_is_a_real_margin_not_a_no_op(monkeypatch):
+    """Guards the specific mutation of setting the share back to 1.0."""
+    import employee_conversation_runner as runner
+    assert 0 < runner._QUOTA_SHARE < 1.0, (
+        f"_QUOTA_SHARE={runner._QUOTA_SHARE} does not reserve any quota for the "
+        "rest of the fleet."
+    )
 
 
 def test_a_keyless_environment_still_paces(monkeypatch):
@@ -228,7 +247,7 @@ def test_a_keyless_environment_still_paces(monkeypatch):
     for k in _PROVIDER_ENVS:
         monkeypatch.delenv(k, raising=False)
     monkeypatch.delenv("EMPLOYEE_CALL_SPACING_S", raising=False)
-    assert runner._call_spacing_seconds() == pytest.approx(4.0), (
+    assert runner._call_spacing_seconds() == pytest.approx(60.0 / (15 * 0.6)), (
         "with no keys visible the spacing collapsed. A zero interval reproduces "
         "the 1/47 run."
     )
@@ -239,7 +258,7 @@ def test_the_override_wins(monkeypatch):
 
 
 def test_a_malformed_override_falls_back_instead_of_crashing(monkeypatch):
-    assert _spacing(monkeypatch, EMPLOYEE_CALL_SPACING_S="fast") == pytest.approx(4.0)
+    assert _spacing(monkeypatch, EMPLOYEE_CALL_SPACING_S="fast") == pytest.approx(60.0 / (15 * 0.6))
 
 
 def test_a_negative_override_cannot_go_below_zero(monkeypatch):
