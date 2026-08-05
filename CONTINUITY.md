@@ -29,6 +29,36 @@ each independently "found" after already being documented.
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
 
 
+## ✅ 2026-08-05 06:30 — THREE FIXES VERIFIED IN PRODUCTION (one still unverified — say which)
+
+Run `multi-agent-discussion` at 06:26, commit `bb2a9092`. All three landed together because they ride the
+same producer.
+
+**1. `conversations` cap executed.** `915 → exactly 300` entries; `agent_memory.json` **933,178 → 523,990
+bytes, 44% smaller**. It had been merged for over three hours without running — nothing was wrong with it;
+no producer had written.
+
+**2. Attribution injection (#814) executed.** Six lines, and the construction held:
+```
+[attribution @ 2026-08-05T06:27] avellaneda_stoikov_mm: 10 trades, 90% win rate, +53.48% ...
+[attribution @ 2026-08-05T06:27] stat_arb_e: 21 trades, 0% win rate, -37.17% total return ...
+```
+Five best plus **the worst performer**, which is the whole point — `stat_arb_e` ranks last by total return
+and would be cropped by any top-N.
+
+**3. Echo filter executed.** 13 entries written by that run, **0 echoes**. The newest surviving echo is
+timestamped `2026-08-05T02:28`, before the filter merged. 51 historical echoes remain in the rolling
+200-window and will age out; they are not evidence of a leak.
+
+**NOT verified: the pacemaker fleet dispatch.** The 06:26 run was `event=schedule` — free-tier cron, not
+the new dispatch. That fix still needs a pacemaker cycle carrying the new step. **Do not read this entry as
+verifying it.**
+
+**The pattern worth keeping.** Each of the last three fixes was blocked from verification by a deeper one
+underneath: the `conversations` cap could not run because `employee-conversations` exited at its key guard;
+that workflow barely ran because the pacemaker's cascade never reached it. Three layers, and the top only
+surfaced because "the unit tests pass" was refused as proof of execution.
+
 ## 💔 2026-08-05 05:40 — THE PACEMAKER'S CI CASCADE HAS NEVER REACHED THE FLEET (fixed)
 
 **This corrects the central claim of `pacemaker.yml` and of the 08-03 entries below.** The design is: 36
