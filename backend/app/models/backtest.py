@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from sqlalchemy import String, ForeignKey, Numeric, DateTime, Date, Integer, JSON, Text, create_engine
 from sqlalchemy.orm import Mapped, mapped_column, relationship, sessionmaker
 from app.database import Base
@@ -69,7 +69,7 @@ class TestBacktestModels(unittest.TestCase):
             interval="1d",
             start_date=date(2023, 1, 1),
             end_date=date(2023, 12, 31),
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         session.add(run)
         session.commit()
@@ -89,7 +89,7 @@ class TestBacktestModels(unittest.TestCase):
             interval="1h",
             start_date=same_day,
             end_date=same_day,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         session.add(run)
         session.commit()
@@ -107,7 +107,7 @@ class TestBacktestModels(unittest.TestCase):
             interval="5m",
             start_date=date(2022, 1, 1),
             end_date=date(2022, 1, 31),
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         session.add(run)
         session.flush()  # obtain run.id without committing

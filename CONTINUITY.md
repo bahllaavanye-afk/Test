@@ -90,6 +90,23 @@ time and accepts the previous session inside its 30h window, so a late producer 
 rather than no read, and logs which it used. Desks running after the late arrival get today's. Worst case is
 absorbed; best case is just not guaranteed.
 
+## 🚨 2026-08-06 00:05 — A GUARD THAT HAS NEVER RUN IN CI (and the violation it should have caught)
+
+`test_no_datetime_utcnow_in_source` fails locally and passes in CI. I recorded that as a path discrepancy
+earlier today. It is a **dead guard**: it hardcodes `Path("/home/user/Test/backend/app")`, which does not exist
+on a runner, so `rglob` yields nothing and `assert violations == []` is vacuously true. Both
+`TestDeprecatedAPIRegression` tests do this.
+
+`backend/app/models/backtest.py` used `datetime.utcnow()` three times the whole time.
+
+**The rule, because this is the second instance today in mirror image:** a test that locates source by path
+must derive it from `__file__`. A *relative* path broke the improver tests outside the repo root this morning;
+an *absolute* path silently disabled these inside CI tonight.
+
+Fixed: paths derived from `__file__` with `assert backend_dir.is_dir()` so a future move fails loudly, and the
+three `utcnow()` calls replaced. Injecting a violation into `models/ml_model.py` now turns the test red, so the
+guard is real. The sibling `get_event_loop` scan comes back clean on 0 files.
+
 ## ✅ 2026-08-05 19:00 — THE STRATEGY TRIMMER IS LIVE (pending verification since 07-29, now closed)
 
 Both of today's desk runs log the line the item asked for:

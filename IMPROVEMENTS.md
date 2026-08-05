@@ -1,5 +1,36 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🚨 2026-08-06 00:05 — TWO REGRESSION GUARDS HAVE NEVER RUN IN CI, AND ONE HAD A LIVE VIOLATION
+
+`test_no_datetime_utcnow_in_source` failed the local backend suite tonight while CI stayed green. I had noted
+that as "a local/CI path discrepancy" earlier today and moved on. It is not a discrepancy — it is a dead guard.
+
+```python
+backend_dir = Path("/home/user/Test/backend/app")        # hardcoded ABSOLUTE path
+for py_file in backend_dir.rglob("*.py"):                # no such dir on a runner
+    ...
+assert violations == []                                  # vacuously true
+```
+
+- [x] **On a CI runner that path does not exist, so `rglob` yields nothing and the assertion passes on an empty
+  list.** Both `TestDeprecatedAPIRegression` guards do this — `get_event_loop` and `utcnow` — so **neither has
+  ever checked anything in the only place they are enforced.**
+- [x] **And one of them had a real violation the whole time.** `backend/app/models/backtest.py` used
+  `datetime.utcnow()` three times. The guard existed, the violation existed, and they never met.
+- [x] **The mirror image of this morning's improver-test bug, which is why it is worth stating as a rule.**
+  There, *relative* paths broke the test outside the repo root. Here, an *absolute* path silently disabled it
+  inside CI. **A test that locates source by path must derive that path from `__file__`** — anything else
+  passes or fails for reasons unrelated to what it checks.
+- [x] **Fixed both:** paths derived via `Path(__file__).resolve().parents[3]`, with
+  `assert backend_dir.is_dir()` so a future move fails loudly instead of silently re-emptying the scan; and the
+  three `datetime.utcnow()` calls replaced with `datetime.now(timezone.utc)`.
+- [x] **Verified the guard can now fail:** injecting `datetime.utcnow()` into `models/ml_model.py` produces
+  `utcnow() still used in: ['backend/app/models/ml_model.py']` and a red test. The `get_event_loop` scan comes
+  back clean on 0 files, so making it live costs nothing.
+- [x] **Worth noting where the violation lived:** `models/backtest.py` contains a `sessionmaker`-based test
+  class inside an app module. pytest never collects it (the filename is not `test_*.py`), so it is dead test
+  code in the model layer — the same manufacturing pattern as the 23:45 entry above.
+
 ## 🤖 2026-08-05 23:45 — A LIVE SAMPLE OF THE IMPROVER'S DEAD CODE, WHICH THE 813 FIGURE ASKED FOR
 
 The 11:30 entry measured 813 unreferenced functions, rejected a gate built on it, and left one open item:
