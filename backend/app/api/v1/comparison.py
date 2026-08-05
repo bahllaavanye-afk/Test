@@ -70,3 +70,109 @@ async def list_comparisons(
     )
     rows = result.scalars().all()
     return [ComparisonOut.from_model(r) for r in rows]
+
+
+# --------------------------- Unit Tests ---------------------------------
+import pytest
+
+# Helper mock model mimicking the ORM entity
+class _MockComparisonModel:
+    def __init__(
+        self,
+        id: str,
+        strategy_name: str,
+        symbol: str,
+        manual_sharpe: float | None = None,
+        ml_sharpe: float | None = None,
+        is_significant: bool | None = None,
+        winner: str | None = None,
+        spy_sharpe: float | None = None,
+    ):
+        self.id = id
+        self.strategy_name = strategy_name
+        self.symbol = symbol
+        self.manual_sharpe = manual_sharpe
+        self.ml_sharpe = ml_sharpe
+        self.is_significant = is_significant
+        self.winner = winner
+        self.spy_sharpe = spy_sharpe
+
+
+@pytest.mark.parametrize(
+    "manual, ml, expected_pct",
+    [
+        (0.0, 0.2, round((0.2 - 0.0) / MIN_MANUAL_SHARPE, IMPROVEMENT_PRECISION)),
+        (None, None, None),
+        (0.5, 0.75, round((0.75 - 0.5) / 0.5, IMPROVEMENT_PRECISION)),
+    ],
+)
+def test_comparison_out_improvement_calculation(manual, ml, expected_pct):
+    """Verify ml_improvement_pct calculation, especially when manual_sharpe is zero or None."""
+    model = _MockComparisonModel(
+        id="test",
+        strategy_name="test_strat",
+        symbol="TEST",
+        manual_sharpe=manual,
+        ml_sharpe=ml,
+        is_significant=True,
+        winner="ml",
+        spy_sharpe=0.3,
+    )
+    out = ComparisonOut.from_model(model)
+    assert out.ml_improvement_pct == expected_pct
+    # Ensure manual_sharpe and ml_sharpe are correctly typed or None
+    if manual is None:
+        assert out.manual_sharpe is None
+    else:
+        assert out.manual_sharpe == float(manual)
+    if ml is None:
+        assert out.ml_sharpe is None
+    else:
+        assert out.ml_sharpe == float(ml)
+
+
+@pytest.mark.asyncio
+async def test_list_comparisons_respects_default_limit(monkeypatch):
+    """Ensure list_comparisons returns at most DEFAULT_LIMIT items even if DB yields more."""
+    # Create more mock rows than DEFAULT_LIMIT
+    mock_rows = [
+        _MockComparisonModel(
+            id=f"id_{i}",
+            strategy_name="strat",
+            symbol="SYM",
+            manual_sharpe=0.1 + i * 0.01,
+            ml_sharpe=0.2 + i * 0.01,
+            is_significant=False,
+            winner="ml",
+            spy_sharpe=0.3,
+        )
+        for i in range(DEFAULT_LIMIT + 5)
+    ]
+
+    class _MockResult:
+        def scalars(self):
+            class _Scalars:
+                def all(self):
+                    return mock_rows
+            return _Scalars()
+
+    class _MockAsyncSession:
+        async def execute(self, *_args, **_kwargs):
+            return _MockResult()
+
+    async def _mock_get_current_user():
+        return User(id=1, username="test")  # type: ignore
+
+    # Patch dependencies
+    monkeypatch.setattr("app.api.deps.get_current_user", lambda: _mock_get_current_user())
+    monkeypatch.setattr("app.database.get_db", lambda: _MockAsyncSession())
+
+    # Call the endpoint directly
+    result = await list_comparisons(db=_MockAsyncSession(), current_user=await _mock_get_current_user())
+    assert isinstance(result, list)
+    assert len(result) == DEFAULT_LIMIT
+    # Verify ordering by checking the first element corresponds to the last inserted (highest created_at)
+    # Since we mock without timestamps, we just ensure the list contains the expected IDs.
+    expected_ids = [row.id for row in mock_rows[:DEFAULT_LIMIT]]
+    actual_ids = [item.id for item in result]
+    assert actual_ids == expected_ids
