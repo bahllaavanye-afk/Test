@@ -136,3 +136,65 @@ class CodeQualityLoop:
             return history[-1] if history else None
         except Exception:
             return None
+
+
+# ----------------------------------------------------------------------
+# Unit tests for edge cases of the helper functions.
+# ----------------------------------------------------------------------
+import unittest
+import tempfile
+import os
+import stat
+
+
+class TestCodeQualityHelpers(unittest.TestCase):
+    def test_count_loc_empty_directory(self):
+        """When the directory contains no .py files, all counts should be zero."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            result = _count_loc(root)
+            expected = {
+                "files": 0,
+                "total_lines": 0,
+                "code_lines": 0,
+                "comment_lines": 0,
+                "blank_lines": 0,
+                "comment_ratio": 0.0,
+            }
+            self.assertEqual(result, expected)
+
+    def test_count_loc_comments_and_blanks_only(self):
+        """Files with only comments and blank lines should correctly compute comment_ratio."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            file_path = root / "sample.py"
+            content = "# comment line 1\n\n# comment line 2\n   \n# comment line 3\n"
+            file_path.write_text(content)
+            result = _count_loc(root)
+            self.assertEqual(result["files"], 1)
+            self.assertEqual(result["comment_lines"], 3)
+            self.assertEqual(result["blank_lines"], 2)
+            self.assertEqual(result["code_lines"], 0)
+            # comment_ratio = comment_lines / max(code_lines, 1) => 3 / 1 = 3.0, rounded to 3 decimals
+            self.assertEqual(result["comment_ratio"], 3.0)
+
+    def test_count_loc_unreadable_file_is_skipped(self):
+        """Unreadable files should be ignored without raising an exception."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            readable = root / "readable.py"
+            unreadable = root / "unreadable.py"
+            readable.write_text("print('ok')\n")
+            unreadable.write_text("print('fail')\n")
+            # Remove read permissions
+            unreadable.chmod(stat.S_IWUSR | stat.S_IXUSR)  # write & execute only
+            result = _count_loc(root)
+            # Only the readable file should be counted
+            self.assertEqual(result["files"], 1)
+            self.assertEqual(result["code_lines"], 1)
+            self.assertEqual(result["comment_lines"], 0)
+            self.assertEqual(result["blank_lines"], 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
