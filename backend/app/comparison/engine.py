@@ -201,3 +201,108 @@ class StrategyComparisonEngine:
             is_significant=p_val < SIGNIFICANCE_LEVEL,
             winner=winner,
         )
+
+
+# -------------------------------------------------------------------------
+# Unit Tests for Edge Cases
+# -------------------------------------------------------------------------
+import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
+import datetime
+import asyncio
+
+
+class TestStrategyComparisonEngine(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        # Minimal viable BacktestMetrics mock
+        self.mock_metrics = MagicMock(spec=BacktestMetrics)
+        self.mock_metrics.sharpe = 1.0
+        self.mock_metrics.equity_curve = [{"equity": 100_000}, {"equity": 101_000}, {"equity": 102_500}]
+
+    async def test_empty_manual_signals_raises(self):
+        engine = StrategyComparisonEngine()
+        empty_series = pd.Series(dtype=float)
+        ml_series = pd.Series([1, 0, 1], index=[0, 1, 2])
+        price_series = pd.Series([100, 101, 102], index=[0, 1, 2])
+
+        with self.assertRaises(ValueError) as ctx:
+            await engine.run_comparison(
+                manual_signals=empty_series,
+                ml_signals=ml_series,
+                prices=price_series,
+                strategy_name="test",
+                symbol="TEST",
+                interval="1d",
+                start_date=date(2023, 1, 1),
+                end_date=date(2023, 1, 31),
+            )
+        self.assertIn("manual_signals series cannot be empty", str(ctx.exception))
+
+    async def test_start_date_after_end_date_raises(self):
+        engine = StrategyComparisonEngine()
+        series = pd.Series([1, 0, 1], index=[0, 1, 2])
+        with self.assertRaises(ValueError) as ctx:
+            await engine.run_comparison(
+                manual_signals=series,
+                ml_signals=series,
+                prices=series,
+                strategy_name="test",
+                symbol="TEST",
+                interval="1d",
+                start_date=date(2023, 2, 1),
+                end_date=date(2023, 1, 31),
+            )
+        self.assertIn("start_date cannot be later than end_date", str(ctx.exception))
+
+    async def test_insufficient_common_index_raises(self):
+        engine = StrategyComparisonEngine()
+        manual = pd.Series([1, 0], index=[0, 1])
+        ml = pd.Series([1, 0], index=[2, 3])  # no overlap
+        prices = pd.Series([100, 101], index=[0, 1])
+
+        with self.assertRaises(ValueError) as ctx:
+            await engine.run_comparison(
+                manual_signals=manual,
+                ml_signals=ml,
+                prices=prices,
+                strategy_name="test",
+                symbol="TEST",
+                interval="1d",
+                start_date=date(2023, 1, 1),
+                end_date=date(2023, 1, 31),
+            )
+        self.assertIn("must share at least one common index", str(ctx.exception))
+
+    async def test_t_statistic_fallback_when_data_short(self):
+        engine = StrategyComparisonEngine()
+
+        # Create short series (5 points) to trigger fallback
+        idx = pd.date_range(start="2023-01-01", periods=5, freq="D")
+        manual = pd.Series([1, 0, 1, 0, 1], index=idx)
+        ml = pd.Series([0, 1, 0, 1, 0], index=idx)
+        prices = pd.Series([100, 101, 102, 103, 104], index=idx)
+
+        # Patch backtest and benchmark calls
+        with patch("app.backtest.engine.run_backtest", return_value=self.mock_metrics), \
+             patch("app.comparison.benchmarks.fetch_benchmark_curves", new_callable=AsyncMock) as mock_fetch, \
+             patch("app.comparison.benchmarks.get_benchmark_stats", return_value={"dummy": 0}):
+
+            mock_fetch.return_value = {"benchmark": []}
+            result = await engine.run_comparison(
+                manual_signals=manual,
+                ml_signals=ml,
+                prices=prices,
+                strategy_name="short_test",
+                symbol="SHORT",
+                interval="1d",
+                start_date=date(2023, 1, 1),
+                end_date=date(2023, 1, 31),
+            )
+
+        self.assertEqual(result.t_statistic, 0.0)
+        self.assertEqual(result.p_value, 1.0)
+        self.assertFalse(result.is_significant)
+
+
+if __name__ == "__main__":
+    unittest.main()
