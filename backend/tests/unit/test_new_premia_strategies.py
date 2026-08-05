@@ -6,7 +6,6 @@ import asyncio
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from app.strategies.manual.double_seven import DoubleSevenStrategy
 from app.strategies.manual.gap_fill_fade import GapFillFadeStrategy
@@ -18,10 +17,16 @@ def _df(closes, opens=None, start="2025-01-01", freq="B"):
     opens = np.asarray(opens, dtype=float) if opens is not None else closes.copy()
     idx = pd.bdate_range(start, periods=len(closes)) if freq == "B" else \
         pd.date_range(start, periods=len(closes), freq=freq)
-    return pd.DataFrame({"open": opens, "close": closes,
-                         "high": np.maximum(opens, closes) * 1.001,
-                         "low": np.minimum(opens, closes) * 0.999,
-                         "volume": [1e6] * len(closes)}, index=idx)
+    return pd.DataFrame(
+        {
+            "open": opens,
+            "close": closes,
+            "high": np.maximum(opens, closes) * 1.001,
+            "low": np.minimum(opens, closes) * 0.999,
+            "volume": [1e6] * len(closes),
+        },
+        index=idx,
+    )
 
 
 # ── turn_of_month ─────────────────────────────────────────────────────────────
@@ -39,14 +44,18 @@ def test_tom_fires_only_in_window():
     closes = np.linspace(100, 105, 60)
     # index ending on the first trading day of a month → in window
     idx = pd.bdate_range(end="2025-07-01", periods=60)
-    df = pd.DataFrame({"open": closes, "close": closes, "high": closes,
-                       "low": closes, "volume": [1e6] * 60}, index=idx)
+    df = pd.DataFrame(
+        {"open": closes, "close": closes, "high": closes, "low": closes, "volume": [1e6] * 60},
+        index=idx,
+    )
     sig = asyncio.run(TurnOfMonthStrategy().analyze(df, "SPY"))
     assert sig is not None and sig.side == "buy" and 0.6 <= sig.confidence <= 0.8
     # mid-month → None
     idx2 = pd.bdate_range(end="2025-07-16", periods=60)
-    df2 = pd.DataFrame({"open": closes, "close": closes, "high": closes,
-                        "low": closes, "volume": [1e6] * 60}, index=idx2)
+    df2 = pd.DataFrame(
+        {"open": closes, "close": closes, "high": closes, "low": closes, "volume": [1e6] * 60},
+        index=idx2,
+    )
     assert asyncio.run(TurnOfMonthStrategy().analyze(df2, "SPY")) is None
 
 
@@ -72,7 +81,8 @@ def test_gap_fade_skips_noise_news_and_crisis():
     assert asyncio.run(GapFillFadeStrategy().analyze(_df(closes, opens), "SPY")) is None
     rs = np.random.RandomState(1)                          # crisis vol regime
     crisis = 100 * np.exp(np.cumsum(rs.normal(0, 0.05, 40)))
-    o = crisis.copy(); o[-1] = crisis[-2] * 0.99
+    o = crisis.copy()
+    o[-1] = crisis[-2] * 0.99
     assert asyncio.run(GapFillFadeStrategy().analyze(_df(crisis, o), "SPY")) is None
 
 
