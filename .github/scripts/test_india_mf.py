@@ -231,12 +231,19 @@ def test_the_workflow_runs_daily_not_on_the_desk_beat():
 
 
 def test_the_discord_post_says_something_when_there_is_no_ranking():
-    """A silent channel and a broken fetch must not look identical."""
+    """A silent channel and a broken fetch must not look identical.
+
+    Asserts the BEHAVIOUR (an explicit empty-case branch that still posts) rather
+    than the exact sentence — an earlier version pinned the wording and broke
+    when the message was reworded, which says nothing about whether the guard
+    still works.
+    """
     wf = (Path(__file__).resolve().parents[1] / "workflows" / "india-mf.yml").read_text()
-    assert "no ranking produced this run" in wf, (
-        "the Discord step posts nothing when the ranking is empty — the failure "
-        "this repo keeps rediscovering, in a brand-new channel."
+    assert "if not body.strip():" in wf, (
+        "the empty-payload branch is gone — a failed run posts nothing and a "
+        "broken fetch looks like a quiet day."
     )
+    assert "notify.post(" in wf, "the empty case no longer reaches Discord at all"
 
 
 # ── category-relative ranking, and AMFI's truncated IDCW ──────────────────────
@@ -325,4 +332,45 @@ def test_the_state_records_the_category_leaders():
     assert "categories_ranked" in src and "category_leaders" in src, (
         "the per-run state no longer carries the category ranking, so the "
         "committed history cannot answer 'was this manager consistently ahead?'"
+    )
+
+
+def test_the_discord_payload_is_produced_by_the_script_not_scraped():
+    """The workflow matched log lines by leading character and captured 0 of 114.
+
+    Adding the category section — whose lines start with "#1/8" — broke a filter
+    that keyed on "1"-"9" or "-" plus the word NAV, in the same commit that added
+    the section. The most important half of the output would have been silently
+    dropped on the first run. A structured artifact cannot drift from its own
+    producer the way a log scraper can.
+    """
+    src = (Path(__file__).resolve().parent / "india_mf.py").read_text()
+    assert "DISCORD_FILE" in src and "DISCORD_FILE.write_text" in src, (
+        "india_mf.py no longer writes a Discord payload, so the workflow is back "
+        "to parsing stdout by leading character."
+    )
+    wf = (Path(__file__).resolve().parents[1] / "workflows" / "india-mf.yml").read_text()
+    assert "india_mf_discord.md" in wf, "the workflow does not read the payload file"
+    assert 'startswith(("1"' not in wf, (
+        "the leading-character log filter is back — it captured 0 of 114 "
+        "category lines the last time the output format changed."
+    )
+
+
+def test_the_payload_carries_the_category_leaders(tmp_path, monkeypatch):
+    """Guards the content, not just the mechanism."""
+    src = (Path(__file__).resolve().parent / "india_mf.py").read_text()
+    body = src[src.index("DISCORD_FILE.write_text") - 1400:src.index("DISCORD_FILE.write_text")]
+    assert "Category leaders" in body, "the payload no longer includes category leaders"
+    assert "sector rotation" in body, (
+        "the absolute list is no longer labelled as sector rotation — it reads "
+        "as a fund-quality ranking, which is the misreading this exists to stop."
+    )
+
+
+def test_the_workflow_says_something_when_the_payload_is_missing():
+    wf = (Path(__file__).resolve().parents[1] / "workflows" / "india-mf.yml").read_text()
+    assert "produced no payload" in wf, (
+        "a failed run would post nothing, so a broken fetch and a quiet day "
+        "look identical in the channel."
     )

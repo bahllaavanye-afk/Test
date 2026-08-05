@@ -1,5 +1,19 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🧪 2026-08-05 11:30 — A DEAD-CODE SCAN, MEASURED AND REJECTED
+
+- [x] **Not shippable — 813 of 1,710 module-level functions in `.github/scripts` are never referenced
+  anywhere** (48%), even after resolving `from X import orig as alias`. A gate that flags half the codebase
+  cannot gate anything and will be ignored. **Do not build this**; the measurement is recorded so the idea is
+  not re-attempted from scratch.
+- [x] **What works instead, at the right granularity:** a per-feature call-site guard living next to the
+  feature — `test_main_actually_uses_the_category_ranking`, `test_the_diagnostic_is_actually_printed`,
+  `test_main_actually_calls_it`. Used three times on 2026-08-05 after making the identical mistake three
+  times. Precise, cheap, and it fails for a reason the reader can act on.
+- [ ] **[P2] The 813 figure is worth a look on its own terms** — with a coarse-scan caveat, it suggests real
+  dead code in the agent scripts. Sample before believing it: some are workflow entry points invoked by
+  `python -c`, some are called from `backend/`, some are referenced by string.
+
 ## 🇮🇳 2026-08-05 10:10 — INDIAN MUTUAL FUNDS LIVE (data), and why Zerodha cannot be the bot
 
 ### ✅ Mutual funds — real data, no credentials needed

@@ -41,6 +41,9 @@ from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[2]
 STATE_FILE = _REPO / ".github" / "state" / "india_mf.json"
+# Ready-to-post Discord body, written by main() so the workflow never has
+# to parse stdout (see the note in main()).
+DISCORD_FILE = Path("/tmp/india_mf_discord.md")
 
 NAV_ALL_URL = "https://portal.amfiindia.com/spages/NAVAll.txt"
 NAV_HIST_URL = ("https://portal.amfiindia.com/DownloadNAVHistoryReport_Po.aspx"
@@ -364,6 +367,32 @@ def main() -> int:
         "categories_ranked": len(by_cat),
         "category_leaders": {c: r[:1] for c, r in list(by_cat.items())[:12]},
     })
+    # Write the Discord message HERE rather than letting the workflow scrape
+    # stdout. The workflow matched lines by leading character ("1"-"9" or "-")
+    # plus the word NAV; adding the category section — whose lines start with
+    # "#1/8" — produced 114 lines of which the filter captured ZERO. The most
+    # important half of the output would have been silently dropped on the very
+    # first run, by a format change made in the same commit that added it.
+    # A structured artifact cannot drift from its own producer.
+    try:
+        lines = [f"🇮🇳 **India Mutual Funds** — NAV as of {as_of}",
+                 f"{len(universe):,} investable Direct-Growth schemes across {len(amcs)} AMCs"]
+        if by_cat:
+            lines.append(f"\n**Category leaders** ({len(by_cat)} categories)")
+            for cat, rows in list(by_cat.items())[:8]:
+                label = cat.split("(")[-1].rstrip(")") if "(" in cat else cat
+                best = rows[0]
+                lines.append(f"• `{label[:38]}` — {best['return_pct']:+.2f}% "
+                             f"#{best['rank']}/{best['peers']}  {best['name'][:44]}")
+        if top:
+            lines.append("\n**Highest absolute 90d return** (reads as sector rotation)")
+            for r in top[:5]:
+                lines.append(f"• {r['return_pct']:+.2f}%  {r['name'][:52]}")
+        DISCORD_FILE.write_text("\n".join(lines))
+        print(f"[india_mf] Discord payload -> {DISCORD_FILE}", flush=True)
+    except Exception as exc:  # noqa: BLE001 — never fail the run over formatting
+        print(f"[india_mf] could not write the Discord payload: {exc}", flush=True)
+
     state["runs"] = runs
     state["as_of"] = as_of
     state["investable"] = len(universe)
