@@ -37,26 +37,35 @@ class ComparisonOut(BaseModel):
 
     @classmethod
     def from_model(cls, m) -> "ComparisonOut":
+        """Create a ComparisonOut from a ComparisonModel handling edge cases."""
+        if m is None:
+            raise ValueError("Comparison model instance cannot be None")
+
         improvement = None
+        # Ensure both sharpe values are present before computing improvement
         if m.manual_sharpe is not None and m.ml_sharpe is not None:
-            base = float(m.manual_sharpe) or MIN_MANUAL_SHARPE
+            # Guard against zero or falsy manual_sharpe to avoid division by zero
+            base = float(m.manual_sharpe) if float(m.manual_sharpe) != 0 else MIN_MANUAL_SHARPE
             improvement = (float(m.ml_sharpe) - float(m.manual_sharpe)) / abs(base)
+
         return cls(
             id=m.id,
             strategy_name=m.strategy_name,
             symbol=m.symbol,
-            manual_sharpe=float(m.manual_sharpe) if m.manual_sharpe else None,
-            ml_sharpe=float(m.ml_sharpe) if m.ml_sharpe else None,
+            manual_sharpe=float(m.manual_sharpe) if m.manual_sharpe is not None else None,
+            ml_sharpe=float(m.ml_sharpe) if m.ml_sharpe is not None else None,
             is_significant=m.is_significant,
             winner=m.winner,
-            spy_sharpe=float(m.spy_sharpe) if m.spy_sharpe else None,
-            ml_improvement_pct=round(improvement, IMPROVEMENT_PRECISION) if improvement else None,
+            spy_sharpe=float(m.spy_sharpe) if m.spy_sharpe is not None else None,
+            ml_improvement_pct=round(improvement, IMPROVEMENT_PRECISION) if improvement is not None else None,
         )
 
 
 @router.get(ENDPOINT_BENCHMARKS)
 async def get_benchmarks():
-    return get_benchmark_stats()
+    """Return benchmark statistics, defaulting to an empty dict if None."""
+    stats = get_benchmark_stats()
+    return stats if stats is not None else {}
 
 
 @router.get(ENDPOINT_RESULTS, response_model=list[ComparisonOut])
@@ -65,8 +74,12 @@ async def list_comparisons(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """List recent comparison results, safely handling empty query results."""
+    # Ensure a sensible limit; fallback to DEFAULT_LIMIT if invalid
+    limit = DEFAULT_LIMIT if isinstance(DEFAULT_LIMIT, int) and DEFAULT_LIMIT > 0 else 20
+
     result = await db.execute(
-        select(ComparisonModel).order_by(ComparisonModel.created_at.desc()).limit(DEFAULT_LIMIT)
+        select(ComparisonModel).order_by(ComparisonModel.created_at.desc()).limit(limit)
     )
-    rows = result.scalars().all()
+    rows = result.scalars().all() or []
     return [ComparisonOut.from_model(r) for r in rows]
