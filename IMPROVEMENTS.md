@@ -1,5 +1,78 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🇮🇳 2026-08-05 10:10 — INDIAN MUTUAL FUNDS LIVE (data), and why Zerodha cannot be the bot
+
+### ✅ Mutual funds — real data, no credentials needed
+- [x] **AMFI feed built and verified**: `14,237` schemes across `52` AMCs, of which **3,156 are investable**
+  (Direct + Growth). Free, unauthenticated, daily. `india_mf.py` — snapshot, history, universe filter,
+  momentum ranking, bounded state.
+- [x] **Two traps pinned by tests, both cost real debugging:**
+  - `www.amfiindia.com` **302-redirects** to `portal.amfiindia.com`. Unfollowed, the payload is a 169-byte HTML
+    stub that parses to zero schemes — an empty universe that reads as "no funds today", not a broken fetch.
+  - **Ranking the raw history returns the same fund four times.** Direct/Regular × Growth/IDCW track one
+    portfolio and post near-identical returns. Measured on Axis (`mf=53`), the unfiltered top 5 was: Axis IT ETF,
+    then Nifty IT Index Fund as Direct-Growth, Direct-IDCW, Regular-Growth, Regular-IDCW — four slots for one
+    fund, two of them the strictly-worse Regular plan. Filtered gives five distinct funds.
+- [x] **Universe is Direct + Growth deliberately.** Direct plans carry no distributor commission (~0.5-1.0%
+  lower expense ratio); IDCW options pay out of NAV, so their series has discontinuities that look exactly like
+  negative returns.
+- [ ] **[P1] Next:** daily workflow + `#desk-india-mf` channel, and category-relative ranking (a top-quartile
+  large-cap fund is a different claim from a sector fund that happened to run).
+
+### 🔴 [USER] Zerodha cannot be the automated bot — pick AngelOne or Dhan
+- [ ] **Kite Connect issues `request_token` only via a browser redirect a human completes, and `access_token`
+  expires daily (~06:00 IST).** A Kite-backed desk would place orders only on days somebody logged in by hand.
+  It also costs ₹2,000/month. Automating it means scripting a login page — against their terms, and it breaks
+  silently whenever the page changes.
+
+  | broker | cost | unattended? |
+  |---|---|---|
+  | **AngelOne SmartAPI** | free | **yes** — TOTP from a stored seed |
+  | **Dhan** | free | **yes** — long-lived token |
+  | Upstox | free tier | no — daily OAuth redirect |
+  | Zerodha Kite | ₹2,000/mo | no — daily interactive login |
+- [ ] **To enable Indian execution, set four secrets:** `ANGELONE_API_KEY`, `ANGELONE_CLIENT_ID`,
+  `ANGELONE_PASSWORD`, `ANGELONE_TOTP_SECRET`. `india_broker.status_line()` reports what is missing, and
+  selection prefers unattended brokers over configured-but-manual ones.
+- [x] **Deliberately no order routing yet.** `india_broker.py` is a capability/spec module — a test fails if
+  `urlopen`/`place_order` appears in it. Routing live orders into a real Indian brokerage account moves real
+  money and is not a change to make unsupervised.
+
+## 🇮🇳 2026-08-05 09:40 — INDIA COVERAGE ADDED (tradeable today), and the limit on it
+
+- [x] **The desk layer covered 19 countries and not India** — the world's 5th-largest equity market. Japan,
+  China, Korea, Taiwan, Brazil, Mexico, Canada, UK, Germany, France, South Africa, Indonesia, Vietnam,
+  Australia, Singapore, Thailand, Poland, Argentina, Malaysia — no India. (Macro/FX already held INDA/EPI/SMIN;
+  nothing else did.)
+- [x] **Added, all US-listed so they route through the existing Alpaca path — no new broker, no new venue code:**
+  | desk | instruments |
+  |---|---|
+  | International | `INDA` (MSCI India), `EPI` (earnings-weighted), `SMIN` (small-cap), `INDY` (Nifty 50) |
+  | Equities | `INFY`, `HDB`, `IBN`, `WIT`, `RDY`, `MMYT` — India ADRs, single-name exposure ETFs cannot express |
+  | StatArb | `INDA`/`EPI` (same market, different weighting → mean-reverting spread), `INFY`/`WIT` (IT-services pair) |
+  | TV Indicators | `INDA`, `INFY` |
+  All eleven live-verified 2026-08-05: 5/5 daily bars and a live price each. `PIN` dropped — returned no close data.
+  Symbol count 89 → 105 distinct, which is one extra batched bar request per run (5 → 6).
+
+### [USER] Native NSE/BSE needs a broker — deliberately NOT faked
+- [ ] **Data works; execution does not.** `RELIANCE.NS`, `TCS.NS`, `HDFCBANK.NS`, `INFY.NS`, `^NSEI` all resolve
+  through yfinance (verified — INR, `Asia/Kolkata`). **Alpaca has no route to NSE or BSE**, so a native India desk
+  would generate confident signals that can never become orders — exactly the Polymarket situation already carried
+  here. One such desk is a known limitation; two is a pattern. A test now fails if a `.NS`/`.BO`/`^` symbol is
+  added to any desk, because the data resolving makes it *look* correct while every order fails.
+- [ ] **To trade Indian equities natively, wire a real broker** — Zerodha Kite, Upstox, or ICICI Direct. That is
+  an operator decision (account + API credentials); no code change can create the venue.
+- [ ] **[P2] The stronger intermediate play:** use NSE data as a *signal input* for the India ETFs/ADRs that CAN
+  execute. NSE trades 03:45–10:00 UTC — the window US RTH never reaches, and the platform is measured at ~27% of
+  the clock. A RELIANCE.NS/Nifty move informs an INDA or INFY order that is actually placeable. This gets India
+  signal quality without an unexecutable desk.
+
+### Deliberately excluded
+- [x] **Options desk** — its eight underlyings are mega-liquid by design. INDA/INFY have listed options but thin
+  chains, and the desk sizes real spreads; thin chains mean bad fills, not more coverage.
+- [x] **Commodities** — India's gold demand is enormous but expressed through instruments the desk already trades
+  (`GLD`). Nothing India-specific to add. **Crypto** is already global; **Polymarket** has no venue at all.
+
 ## 🩺 2026-08-05 08:15 — DEEP REVIEW: desks, trades, Discord, and every web page
 
 Full sweep against the LIVE system, not the repo. Everything below is measured; run ids and figures included so

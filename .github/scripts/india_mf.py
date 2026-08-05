@@ -1,0 +1,242 @@
+"""Indian mutual funds — AMFI NAV feed, investable universe, momentum ranking.
+
+WHY MUTUAL FUNDS ARE NOT A NORMAL DESK
+--------------------------------------
+Indian MFs price once a day at NAV. There is no intraday quote, no bid/ask, no
+partial fill. An order placed before the cutoff transacts at that day's NAV and
+settles T+1 (equity) or T+2. So the 50-minute desk cadence is meaningless here:
+this runs **once daily** and its output is a ranked list, not a market order.
+
+That also makes a signal-only start honest, unlike the Polymarket desk. A ranked
+MF list is directly actionable by a human or by a broker API added later; it is
+not a confident signal for an instrument that can never be traded.
+
+DATA (free, no credentials)
+---------------------------
+AMFI publishes every scheme's NAV daily. Both endpoints verified 2026-08-05:
+
+  https://portal.amfiindia.com/spages/NAVAll.txt          14,238 schemes, 52 AMCs
+  .../DownloadNAVHistoryReport_Po.aspx?frmdt=&todt=&mf=   35 dates for one AMC
+
+Note the `www.amfiindia.com` host 302-redirects to `portal.amfiindia.com`; the
+redirect must be followed or the payload is a 169-byte HTML stub.
+
+UNIVERSE
+--------
+Direct + Growth only, deliberately:
+  * **Direct** plans carry no distributor commission — typically 0.5-1.0% lower
+    expense ratio than the Regular plan of the same scheme. Ranking both would
+    fill the list with strictly-worse duplicates.
+  * **Growth** option only: IDCW (dividend) options pay out of NAV, so their NAV
+    series has discontinuities that look exactly like negative returns.
+"""
+from __future__ import annotations
+
+import json
+import re
+import urllib.request
+from dataclasses import dataclass, asdict
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+_REPO = Path(__file__).resolve().parents[2]
+STATE_FILE = _REPO / ".github" / "state" / "india_mf.json"
+
+NAV_ALL_URL = "https://portal.amfiindia.com/spages/NAVAll.txt"
+NAV_HIST_URL = ("https://portal.amfiindia.com/DownloadNAVHistoryReport_Po.aspx"
+                "?frmdt={frm}&todt={to}&mf={mf}")
+_TIMEOUT = 90
+_UA = {"User-Agent": "Mozilla/5.0 (compatible; QuantEdge/1.0)"}
+
+# Keep the persisted history bounded — see the 2026-08-05 agent_memory.json
+# entry, where an uncapped state file became 47% of the git repository.
+HISTORY_KEEP = 120
+
+
+@dataclass
+class Scheme:
+    code: str
+    name: str
+    isin: str
+    nav: float
+    date: str
+    amc: str
+
+    @property
+    def is_direct(self) -> bool:
+        return bool(re.search(r"\bdirect\b", self.name, re.I))
+
+    @property
+    def is_growth(self) -> bool:
+        """Growth option — excludes IDCW/dividend variants.
+
+        Matching on the ABSENCE of IDCW/dividend rather than the presence of
+        'growth': many schemes name the growth option implicitly, and requiring
+        the word drops them.
+        """
+        return not re.search(r"\bIDCW\b|\bdividend\b|\bdiv\b", self.name, re.I)
+
+
+def _get(url: str) -> str:
+    req = urllib.request.Request(url, headers=_UA)
+    with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
+        return r.read().decode("utf-8", errors="ignore")
+
+
+def parse_navall(text: str) -> list[Scheme]:
+    """Parse AMFI's NAVAll.txt.
+
+    Format is sectioned: AMC name on a bare line, then `;`-delimited scheme rows
+    beneath it, with blank lines and a 'Open Ended Schemes(...)' category header
+    interleaved. The AMC has to be tracked as state while scanning — it is not
+    on the scheme row.
+    """
+    out: list[Scheme] = []
+    amc = "?"
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if ";" not in s:
+            # Category headers are noise; AMC lines are what we want to keep.
+            if not s.lower().startswith("open ended") and not s.lower().startswith("close ended"):
+                amc = s
+            continue
+        parts = s.split(";")
+        if len(parts) < 6 or parts[0].strip().lower().startswith("scheme code"):
+            continue
+        try:
+            nav = float(parts[4])
+        except (ValueError, IndexError):
+            continue          # 'N.A.' for schemes that did not price that day
+        out.append(Scheme(code=parts[0].strip(), name=parts[3].strip(),
+                          isin=parts[1].strip(), nav=nav,
+                          date=parts[5].strip(), amc=amc))
+    return out
+
+
+def investable_universe(schemes: list[Scheme]) -> list[Scheme]:
+    """Direct + Growth only, and priced. See the module docstring for why."""
+    return [s for s in schemes if s.is_direct and s.is_growth and s.nav > 0]
+
+
+def parse_history(text: str) -> dict[str, list[tuple[str, float]]]:
+    """scheme_code -> [(date, nav)], oldest first."""
+    hist: dict[str, list[tuple[str, float]]] = {}
+    for line in text.splitlines():
+        parts = line.split(";")
+        if len(parts) < 8 or parts[0].strip().lower().startswith("scheme code"):
+            continue
+        try:
+            nav = float(parts[4])
+        except ValueError:
+            continue
+        hist.setdefault(parts[0].strip(), []).append((parts[-1].strip(), nav))
+    for k in hist:
+        hist[k].sort(key=lambda x: datetime.strptime(x[0], "%d-%b-%Y"))
+    return hist
+
+
+def fetch_nav_history(amc_code: int, days: int = 90) -> dict[str, list[tuple[str, float]]]:
+    to = datetime.now(timezone.utc)
+    frm = to - timedelta(days=days)
+    url = NAV_HIST_URL.format(frm=frm.strftime("%d-%b-%Y"),
+                              to=to.strftime("%d-%b-%Y"), mf=amc_code)
+    return parse_history(_get(url))
+
+
+def total_return_pct(series: list[tuple[str, float]]) -> float | None:
+    """Simple NAV-to-NAV return. None when the series cannot support one.
+
+    Growth-option NAV is already total return: no distributions come out of it,
+    which is exactly why the universe excludes IDCW variants.
+    """
+    if len(series) < 2:
+        return None
+    first, last = series[0][1], series[-1][1]
+    if first <= 0:
+        return None
+    return (last / first - 1.0) * 100.0
+
+
+def rank_by_momentum(hist: dict[str, list[tuple[str, float]]],
+                     names: dict[str, str],
+                     min_points: int = 15,
+                     top_n: int = 10,
+                     investable: set[str] | None = None) -> list[dict]:
+    """Rank schemes by trailing NAV return over the fetched window.
+
+    `min_points` guards against a scheme with two stale prints looking like a
+    top performer — the same class of error as ranking on a two-trade sample.
+
+    `investable` is not optional in practice. Ranking the raw history returns
+    the SAME fund up to four times — Direct/Regular x Growth/IDCW all track one
+    portfolio, so they post near-identical returns. Measured on Axis (mf=53),
+    the unfiltered top 5 was: Axis IT ETF, then Nifty IT Index Fund as
+    Direct-Growth, Direct-IDCW, Regular-Growth and Regular-IDCW — four slots for
+    one fund, and two of them the strictly-worse Regular plan. Pass the
+    investable code set to get five distinct funds.
+    """
+    rows = []
+    for code, series in hist.items():
+        if investable is not None and code not in investable:
+            continue
+        if len(series) < min_points:
+            continue
+        ret = total_return_pct(series)
+        if ret is None:
+            continue
+        rows.append({"code": code, "name": names.get(code, "?"),
+                     "points": len(series), "return_pct": round(ret, 2),
+                     "nav": series[-1][1], "as_of": series[-1][0]})
+    rows.sort(key=lambda r: r["return_pct"], reverse=True)
+    return rows[:top_n]
+
+
+def load_state() -> dict:
+    try:
+        d = json.loads(STATE_FILE.read_text())
+        return d if isinstance(d, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def save_state(state: dict) -> None:
+    runs = state.get("runs")
+    if isinstance(runs, list):
+        state["runs"] = runs[-HISTORY_KEEP:]
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STATE_FILE.write_text(json.dumps(state, indent=2))
+
+
+def main() -> int:
+    text = _get(NAV_ALL_URL)
+    schemes = parse_navall(text)
+    universe = investable_universe(schemes)
+    amcs = sorted({s.amc for s in universe})
+    print(f"[india_mf] {len(schemes)} schemes, {len(universe)} investable "
+          f"(Direct+Growth) across {len(amcs)} AMCs", flush=True)
+    if not universe:
+        print("[india_mf] EMPTY universe — AMFI format may have changed", flush=True)
+        return 1
+
+    as_of = universe[0].date
+    state = load_state()
+    runs = state.get("runs") or []
+    runs.append({
+        "ran_at": datetime.now(timezone.utc).isoformat(),
+        "as_of": as_of,
+        "schemes_total": len(schemes),
+        "investable": len(universe),
+        "amcs": len(amcs),
+    })
+    state["runs"] = runs
+    state["as_of"] = as_of
+    state["investable"] = len(universe)
+    save_state(state)
+    print(f"[india_mf] NAV as of {as_of} — state written to {STATE_FILE}", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

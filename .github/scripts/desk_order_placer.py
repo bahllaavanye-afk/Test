@@ -89,6 +89,9 @@ DESKS: list[DeskConfig] = [
         # sectors. Bars come batched (comma-separated symbols=, chunk 20), so
         # more symbols costs one extra API call, not 20.
         symbols=["SPY", "QQQ", "IWM", "DIA",
+        # India ADRs (added 2026-08-05) — NYSE/Nasdaq listed, Alpaca-tradeable,
+        # single-name India exposure the ETFs cannot express. Live-verified.
+        "INFY", "HDB", "IBN", "WIT", "RDY", "MMYT",
                  "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "JPM",
                  "AMD", "AVGO", "NFLX", "CRM", "COST", "UNH", "XOM", "CVX",
                  "JNJ", "PG", "HD", "BAC", "WMT", "DIS", "V", "MA", "LLY", "ORCL"],
@@ -222,7 +225,11 @@ DESKS: list[DeskConfig] = [
         chat_channel="#desk-stat-arb",
         symbols=["SPY", "QQQ", "IWM", "GLD", "TLT",
                  # 2026-07-15 scale-up: sector/region ETFs widen the pair pool
-                 "XLF", "XLK", "XLE", "EFA", "EEM", "DIA", "MDY"],
+                 "XLF", "XLK", "XLE", "EFA", "EEM", "DIA", "MDY",
+                 # India pairs (2026-08-05): INDA/EPI track the same market
+                 # with different weightings (cap- vs earnings-weighted), so
+                 # the spread mean-reverts; INFY/WIT are both India IT ADRs.
+                 "INDA", "EPI", "INFY", "WIT"],
         strategy_names=[
             "pairs_trading", "pca_stat_arb", "kalman_pairs",
             "triangular_arb", "stablecoin_depeg_arb",
@@ -264,7 +271,10 @@ DESKS: list[DeskConfig] = [
         # the registry, contract-tested, SOTA-upgraded on a schedule... and
         # wired to no desk. Liquid megacap subset; bars are shared with the
         # Equities desk fetch (same batch), so this desk adds no API cost.
-        symbols=["SPY", "QQQ", "IWM", "AAPL", "MSFT", "NVDA", "TSLA", "AMD", "META", "AMZN"],
+        symbols=["SPY", "QQQ", "IWM", "AAPL", "MSFT", "NVDA", "TSLA", "AMD", "META", "AMZN",
+                 # India (2026-08-05) — the two most liquid India names on US
+                 # venues, so the indicator suite runs on more than US mega-cap.
+                 "INDA", "INFY"],
         strategy_names=[
             "ema_stack_tv", "squeeze_pro_tv", "wave_trend_tv", "hull_suite_tv",
             "supertrend_rsi_tv", "kama_roc_tv", "vwap_bands_tv",
@@ -279,7 +289,15 @@ DESKS: list[DeskConfig] = [
         chat_channel="#desk-equities",
         # Country-ETF rotation (docs/research/COUNTRY_DESKS_2026.md): documented
         # country momentum/reversal premia, tradable on Alpaca US-listed ETFs.
-        symbols=["EWJ", "FXI", "EWY", "EWT", "EWZ", "EWW", "EWC",
+        symbols=[# INDIA (added 2026-08-05). The desk covered 19 countries including
+        # Vietnam, Argentina and Malaysia but not the world's 5th-largest
+        # equity market. All four are US-listed, so they route through the
+        # existing Alpaca path with no new broker: INDA (MSCI India, Cboe US),
+        # EPI (earnings-weighted, NYSEArca), SMIN (small-cap, Cboe US),
+        # INDY (Nifty 50, NasdaqGM). Live-verified 2026-08-05 — 5/5 daily bars
+        # and a live price on each.
+        "INDA", "EPI", "SMIN", "INDY",
+        "EWJ", "FXI", "EWY", "EWT", "EWZ", "EWW", "EWC",
                  "EWU", "EWG", "EWQ", "EZA", "EIDO", "VNM",
                  # 2026-07-15 scale-up: AU, SG, TH, PL, AR, MY
                  "EWA", "EWS", "THD", "EPOL", "ARGT", "EWM"],
