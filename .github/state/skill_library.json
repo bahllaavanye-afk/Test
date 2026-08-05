@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Sync system clocks",
-    "Implement S4-TFT predictors",
-    "Refactor redundant code",
-    "Monitor latency metrics",
-    "Set timeout thresholds",
     "Monitor API rate limits",
     "Use retry mechanisms",
     "Use retry decorators",
@@ -199,8 +194,13 @@
     "**Statistical Arbitrage (Stat Arb) ETF Strategy**: This strategy has shown promising results with a 93% win rate and +31.89% total return over a 30-day period, averaging +1.06% per day.",
     "Prevent stale drift",
     "Monitor model drift",
-    "Use retry on timeouts"
+    "Use retry on timeouts",
+    "Validate API keys",
+    "Log market closures",
+    "Check CPU usage",
+    "Verify data feeds",
+    "Implement timeouts"
   ],
-  "last_updated": "2026-08-05T20:16:11.652978+00:00",
+  "last_updated": "2026-08-05T22:09:14.401521+00:00",
   "total": 200
 }
