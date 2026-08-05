@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -56,6 +55,42 @@ class MonteCarloResult:
             raise ValueError("num_simulations must be a positive integer.")
 
 
+def _validate_inputs(
+    daily_returns: pd.Series,
+    n_simulations: int,
+    n_years: int | float,
+    risk_free_daily: float,
+) -> None:
+    """Validate function inputs and raise ValueError with logging on failure."""
+    try:
+        if not isinstance(daily_returns, pd.Series):
+            raise ValueError("daily_returns must be a pandas Series.")
+        if daily_returns.empty:
+            raise ValueError("daily_returns series cannot be empty.")
+        if not np.issubdtype(daily_returns.dtype, np.number):
+            raise ValueError("daily_returns must contain numeric values.")
+        if not np.isfinite(daily_returns.dropna()).all():
+            raise ValueError("daily_returns contains non‑finite values (NaN or Inf).")
+        if not isinstance(n_simulations, int) or n_simulations <= 0:
+            raise ValueError("n_simulations must be a positive integer.")
+        if not isinstance(n_years, (int, float)) or n_years <= 0:
+            raise ValueError("n_years must be a positive number.")
+        if not isinstance(risk_free_daily, numbers.Real):
+            raise ValueError("risk_free_daily must be a real number.")
+    except ValueError as exc:
+        logger.error(
+            "Input validation failed for monte_carlo_simulation",
+            extra={
+                "daily_returns_type": type(daily_returns),
+                "n_simulations": n_simulations,
+                "n_years": n_years,
+                "risk_free_daily": risk_free_daily,
+                "error": str(exc),
+            },
+        )
+        raise
+
+
 def monte_carlo_simulation(
     daily_returns: pd.Series,
     n_simulations: int = 1000,
@@ -87,21 +122,8 @@ def monte_carlo_simulation(
     MonteCarloError
         If an unexpected error occurs during the simulation.
     """
-    # Input validation
-    if not isinstance(daily_returns, pd.Series):
-        raise ValueError("daily_returns must be a pandas Series.")
-    if daily_returns.empty:
-        raise ValueError("daily_returns series cannot be empty.")
-    if not np.issubdtype(daily_returns.dtype, np.number):
-        raise ValueError("daily_returns must contain numeric values.")
-    if not np.isfinite(daily_returns.dropna()).all():
-        raise ValueError("daily_returns contains non‑finite values (NaN or Inf).")
-    if not isinstance(n_simulations, int) or n_simulations <= 0:
-        raise ValueError("n_simulations must be a positive integer.")
-    if not isinstance(n_years, (int, float)) or n_years <= 0:
-        raise ValueError("n_years must be a positive number.")
-    if not isinstance(risk_free_daily, numbers.Real):
-        raise ValueError("risk_free_daily must be a real number.")
+    # Input validation with structured logging on failure
+    _validate_inputs(daily_returns, n_simulations, n_years, risk_free_daily)
 
     n_days = int(n_years * 252)
     returns_array = daily_returns.dropna().values
@@ -129,6 +151,12 @@ def monte_carlo_simulation(
             max_dds.append(max_dd)
             if equity[-1] > 100_000:
                 positive += 1
+    except (MemoryError, ValueError, TypeError) as exc:
+        logger.exception(
+            "Known error during Monte Carlo simulation",
+            extra={"n_simulations": n_simulations, "n_years": n_years, "error_type": type(exc).__name__},
+        )
+        raise MonteCarloError(f"Monte Carlo simulation failed due to {type(exc).__name__}") from exc
     except Exception as exc:  # pragma: no cover
         logger.exception(
             "Unexpected error during Monte Carlo simulation",
