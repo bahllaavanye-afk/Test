@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Validate user inputs",
-    "Verify data schemas",
-    "Track DB connections",
-    "* We have confirmation of system health, with all health-check endpoints in `backend/api/health_check.py` returning 200 OK, and `/v1/status` reporting a latency of 12 ms.",
     "Handle SSL timeouts",
     "Analyze TFT models",
     "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
@@ -199,8 +195,12 @@
     "Use retry decorators",
     "Apply peer-learned fixes",
     "Check firewall rules",
-    "Test retry mechanisms"
+    "Test retry mechanisms",
+    "Validate inputs",
+    "Set timeout thresholds",
+    "Run mypy --strict",
+    "Prepend new model blocks"
   ],
-  "last_updated": "2026-08-05T01:01:19.879329+00:00",
+  "last_updated": "2026-08-05T02:07:40.180822+00:00",
   "total": 200
 }
