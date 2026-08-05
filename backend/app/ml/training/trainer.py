@@ -2,10 +2,12 @@
 Generic PyTorch Lightning Trainer wrapper with MLflow experiment tracking.
 Supports LSTM, Transformer, and any nn.Module wrapped as a LightningModule.
 """
+
 from __future__ import annotations
+
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 import torch
 import torch.nn as nn
@@ -15,14 +17,16 @@ try:
     import lightning as L
     from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
     from lightning.pytorch.loggers import MLFlowLogger
+
     HAS_LIGHTNING = True
-except ImportError:
+except ImportError:  # pragma: no cover
     HAS_LIGHTNING = False
 
 try:
     import mlflow
+
     HAS_MLFLOW = True
-except ImportError:
+except ImportError:  # pragma: no cover
     HAS_MLFLOW = False
 
 from app.utils.logging import logger
@@ -32,9 +36,21 @@ ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class TradingLightningModule(L.LightningModule if HAS_LIGHTNING else object):
-    """Wraps any nn.Module for PyTorch Lightning training."""
+    """LightningModule wrapper for an arbitrary ``nn.Module``.
 
-    def __init__(self, model: nn.Module, lr: float = 1e-3, weight_decay: float = 1e-4):
+    This class adapts a regular PyTorch model to the Lightning training
+    interface, adding a binary‑cross‑entropy loss and simple accuracy metric.
+    It is deliberately lightweight and can be used with any model that
+    accepts a tensor input and returns a tensor output.
+
+    Args:
+        model: The underlying ``nn.Module`` to be trained.
+        lr: Learning rate for the optimizer. Defaults to ``1e-3``.
+        weight_decay: Weight decay (L2 regularisation) for the optimizer.
+            Defaults to ``1e-4``.
+    """
+
+    def __init__(self, model: nn.Module, lr: float = 1e-3, weight_decay: float = 1e-4) -> None:
         if HAS_LIGHTNING:
             super().__init__()
         self.model = model
@@ -42,10 +58,22 @@ class TradingLightningModule(L.LightningModule if HAS_LIGHTNING else object):
         self.weight_decay = weight_decay
         self.criterion = nn.BCEWithLogitsLoss()
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass delegated to the wrapped model."""
         return self.model(x)
 
-    def _step(self, batch, stage: str):
+    def _step(self, batch: Tuple[torch.Tensor, torch.Tensor], stage: str) -> torch.Tensor:
+        """Common logic for training and validation steps.
+
+        Computes loss and binary accuracy, logs both metrics, and returns the loss.
+
+        Args:
+            batch: Tuple ``(features, targets)`` where both are tensors.
+            stage: Identifier used for logging (e.g., ``"train"`` or ``"val"``).
+
+        Returns:
+            The computed loss tensor.
+        """
         x, y = batch
         pred = self(x).squeeze(-1)
         loss = self.criterion(pred, y.float())
@@ -54,13 +82,16 @@ class TradingLightningModule(L.LightningModule if HAS_LIGHTNING else object):
         self.log(f"{stage}_acc", acc, prog_bar=True)
         return loss
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> torch.Tensor:
+        """Lightning training step."""
         return self._step(batch, "train")
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> torch.Tensor:
+        """Lightning validation step."""
         return self._step(batch, "val")
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> Dict[str, Any]:
+        """Configure optimizer and learning‑rate scheduler for Lightning."""
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
@@ -75,11 +106,26 @@ def train_with_lightning(
     patience: int = 10,
     lr: float = 1e-3,
     mlflow_uri: str = "mlruns",
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """
-    Train model with PyTorch Lightning + MLflow logging.
-    Returns dict with val_loss, val_acc, best_checkpoint_path.
-    Falls back to manual training loop if Lightning not installed.
+    Train a model using PyTorch Lightning with optional MLflow tracking.
+
+    The function prefers the Lightning training loop; if Lightning is not
+    available it falls back to a minimal manual training loop.
+
+    Args:
+        model: The ``nn.Module`` to be trained.
+        train_loader: DataLoader providing the training dataset.
+        val_loader: DataLoader providing the validation dataset.
+        experiment_name: Name of the MLflow experiment (also used for artifact storage).
+        max_epochs: Maximum number of epochs to train. Defaults to ``100``.
+        patience: Early‑stopping patience based on validation loss. Defaults to ``10``.
+        lr: Learning rate for the optimizer. Defaults to ``1e-3``.
+        mlflow_uri: URI for the MLflow tracking server. Defaults to ``"mlruns"``.
+
+    Returns:
+        A dictionary containing ``val_loss``, ``val_acc``, ``best_model_path``,
+        and ``epochs_trained``.
     """
     if not HAS_LIGHTNING:
         logger.warning("PyTorch Lightning not installed — using fallback training loop")
@@ -93,7 +139,7 @@ def train_with_lightning(
                 tracking_uri=mlflow_uri,
                 run_name=experiment_name,
             )
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover
             logger.debug("MLflow logger init failed — proceeding without tracking", error=str(exc))
 
     lightning_module = TradingLightningModule(model, lr=lr)
@@ -129,15 +175,40 @@ def train_with_lightning(
     return results
 
 
-def _fallback_train(model, train_loader, val_loader, max_epochs, lr, patience):
-    """Minimal training loop when Lightning is unavailable."""
+def _fallback_train(
+    model: nn.Module,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    max_epochs: int,
+    lr: float,
+    patience: int,
+) -> Dict[str, Any]:
+    """
+    Minimal training loop used when PyTorch Lightning is unavailable.
+
+    This fallback implements a simple epoch loop with early stopping based on
+    validation loss. It mirrors the essential behavior of the Lightning trainer
+    without requiring the Lightning dependency.
+
+    Args:
+        model: The ``nn.Module`` to train.
+        train_loader: DataLoader for the training data.
+        val_loader: DataLoader for the validation data.
+        max_epochs: Maximum number of epochs to run.
+        lr: Learning rate for the AdamW optimizer.
+        patience: Number of consecutive epochs without improvement before stopping.
+
+    Returns:
+        A dictionary with keys ``val_loss``, ``val_acc``, ``best_model_path`` (empty
+        string in this mode), and ``epochs_trained``.
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
     criterion = nn.BCEWithLogitsLoss()
     best_val_loss = float("inf")
     patience_count = 0
-    best_state = None
+    best_state: Dict[str, torch.Tensor] | None = None
 
     for epoch in range(max_epochs):
         model.train()
@@ -151,7 +222,8 @@ def _fallback_train(model, train_loader, val_loader, max_epochs, lr, patience):
             optimizer.step()
 
         model.eval()
-        val_losses, val_accs = [], []
+        val_losses: List[float] = []
+        val_accs: List[float] = []
         with torch.no_grad():
             for x, y in val_loader:
                 x, y = x.to(device), y.to(device)
@@ -173,4 +245,9 @@ def _fallback_train(model, train_loader, val_loader, max_epochs, lr, patience):
 
     if best_state:
         model.load_state_dict(best_state)
-    return {"val_loss": best_val_loss, "val_acc": val_acc, "best_model_path": "", "epochs_trained": epoch + 1}
+    return {
+        "val_loss": best_val_loss,
+        "val_acc": val_acc,
+        "best_model_path": "",
+        "epochs_trained": epoch + 1,
+    }
