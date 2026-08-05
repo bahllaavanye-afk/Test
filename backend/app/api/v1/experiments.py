@@ -3,15 +3,17 @@ import asyncio
 import logging
 import uuid
 from pathlib import Path
-from fastapi import APIRouter, Body, Depends, HTTPException
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.experiment import Experiment
 from app.models.user import User
 from pydantic import BaseModel, ConfigDict
-from datetime import datetime, timezone
 
 # Constants
 MAX_EXPERIMENTS = 50
@@ -63,6 +65,8 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
 
     script = Path(__file__).parents[4] / "experiments" / "run_experiment.py"
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
+    start_time = datetime.now(timezone.utc)
+
     try:
         proc = await asyncio.create_subprocess_exec(
             sys.executable,
@@ -76,7 +80,26 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
         )
         await proc.wait()
     except Exception as exc:
-        logger.error("Experiment %s failed: %s", experiment_id, exc)
+        logger.error(
+            "Experiment %s failed: %s",
+            experiment_id,
+            exc,
+            extra={"experiment_id": experiment_id, "config_name": config_name},
+        )
+        return
+
+    duration_seconds = (datetime.now(timezone.utc) - start_time).total_seconds()
+    logger.info(
+        "Experiment completed",
+        extra={
+            "experiment_id": experiment_id,
+            "config_name": config_name,
+            "duration_seconds": duration_seconds,
+            # Placeholders for future metrics
+            "signal_count": None,
+            "pnl": None,
+        },
+    )
 
 
 @router.post("/train")
@@ -117,6 +140,15 @@ async def trigger_training(
     )
     db.add(exp)
     await db.commit()
+
+    logger.info(
+        "Experiment queued",
+        extra={
+            "experiment_id": experiment_id,
+            "config_name": config_name,
+            "queued_at": now.isoformat(),
+        },
+    )
 
     # Launch background training task (fire-and-forget)
     asyncio.create_task(_run_experiment_async(config_name, experiment_id))
