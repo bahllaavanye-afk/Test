@@ -1,5 +1,51 @@
 # QuantEdge — Improvements & Task Tracker
 
+## ⏱️ 2026-08-05 18:30 — CRON DELIVERY RE-MEASURED AT ~11%, ON A DIFFERENT DAY AND TWO WORKFLOWS
+
+Confirmation, not a new finding — the pacemaker comment estimated ~15% from one workflow on 2026-08-03. Fresh
+numbers, and they hold:
+
+| workflow | cron | nominal/day | actual `schedule` runs |
+|---|---|---|---|
+| `desk-trading.yml` | `*/15 9-22 * * 1-5` | ~38 by 18:26 | **4** (10.5%) |
+| `desk-trading-crypto-24x7.yml` | `7,27,47 * * * *` | 72 | **8** (11%) |
+
+- [x] **The pacemaker is load-bearing, and the numbers say by how much.** Of 30 desk-trading runs today:
+  `workflow_dispatch` **16**, `workflow_run` 7, `schedule` 4, `push` 3. Cron contributes **13%** of the desks'
+  actual cadence. Median gap 30.8 min against a nominal 15. All 30 succeeded.
+- [x] **A near-miss worth recording: the crypto desk's 13 `skipped` runs are correct, not broken.** Its job
+  carries `if: github.event_name == 'schedule' || 'workflow_dispatch'` so it *cedes* every trigger it shares
+  with `desk-trading.yml` — the two use different concurrency groups, so on a shared trigger they run in
+  parallel and compete for Alpaca's free-tier data limit (22 of 60 runs collided on 2026-07-28; one pair had
+  desk-trading fetch 70 bars while the crypto-only run got 5 and 429'd).
+- [x] **Which also means "the 24×7 desk only ran 8 times" is the wrong reading, and I nearly filed it.** Crypto
+  is `always_open=True` and `desk-trading.yml` runs **all nine desks**, so every one of those 30 runs covered
+  crypto. Real crypto coverage today is ~38 runs, not 8. The pacemaker dispatches only `desk-trading.yml`
+  deliberately, for exactly this reason — dispatching both would recreate the collision by the one route the
+  cede-rule cannot block, since `workflow_dispatch` is on its allowlist.
+- [x] **I nearly generalised the 11% to the new daily India crons. That would have been wrong** — the failure
+  mode splits by frequency, and the two regimes need opposite mitigations:
+
+  | cron | measured |
+  |---|---|
+  | `*/15 * * * *` (quick-backtest, nominal 96/day) | **8-15 runs/day — 8-16%** |
+  | `*/15 9-22 * * 1-5` (desk-trading) | **4 of ~38 — 10.5%** |
+  | `7,27,47 * * * *` (crypto desk) | **8 of 72 — 11%** |
+  | `17 4 * * 0` (ml-experiments, weekly) | **5 of last 5 Sundays — 100%** |
+
+  **High-frequency crons get their slots dropped; low-frequency crons fire reliably but LATE.** Every one of
+  those five ml-experiments runs landed at **06:4x UTC against a nominal 04:17** — a consistent ~2.5 hour
+  delay, never a miss.
+- [x] **So the risk to the India workflows is lateness, not absence, and both have slack.**
+  `india-nse-signal.yml` (`20 10 * * 1-5`) has ~3h of margin before the 13:30 UTC US open; at the observed
+  ~2.5h delay it still lands first. **And if it ever overran, it degrades safely rather than wrongly**: the
+  desk's read-time age check accepts the *previous* session's file (30h window), so a late run means yesterday's
+  Indian read instead of no read — which is the correct fallback, and it is logged. `india-mf.yml` (`30 18`)
+  only posts a summary; lateness costs nothing.
+- [ ] **The real standing rule, correctly scoped:** anything on a **sub-hourly** cron that must actually run
+  needs a dispatch path (this is what the pacemaker exists for). Anything daily or weekly can rely on cron, but
+  **must not assume its stated minute** — budget hours of slack, and make the consumer tolerate a late producer.
+
 ## 🔬 2026-08-05 18:50 — THE ML EXPERIMENT WAS NEVER REPRODUCIBLE, AND "IT LOSES TO BUY-AND-HOLD" WAS WRONG
 
 **This was found because persistence was fixed this morning.** Four runs in one day, identical params:
