@@ -17,7 +17,7 @@ import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from app.tasks.free_llm_router import call_consensus, available_providers
 from app.tasks.agent_memory import AgentMemory
@@ -66,11 +66,30 @@ class {class_name}(AbstractStrategy):
 
 
 class AIStrategyGenerator:
-    def __init__(self, redis_client: Any = None):
+    """Generates draft trading strategies using LLM consensus.
+
+    The generator runs on a fixed schedule, queries available LLM providers,
+    parses the returned JSON proposals, writes Python strategy files to a
+    staging directory, and records metadata in ``AgentMemory`` for later review.
+    """
+
+    def __init__(self, redis_client: Optional[Any] = None) -> None:
+        """Create an ``AIStrategyGenerator`` instance.
+
+        Args:
+            redis_client: Optional Redis client used by ``AgentMemory``.
+                If ``None``, memory persistence is disabled.
+        """
         self._memory = AgentMemory(redis_client) if redis_client else None
         STAGING_DIR.mkdir(parents=True, exist_ok=True)
 
     async def run(self) -> None:
+        """Execute one generation cycle.
+
+        The method fetches LLM providers, generates proposals, writes them to
+        the staging area, and records a summary in ``AgentMemory``. All errors
+        are caught and logged to avoid crashing the scheduler.
+        """
         logger.info("AIStrategyGenerator: starting 6h generation cycle")
         providers = available_providers()
         if not providers:
@@ -78,23 +97,31 @@ class AIStrategyGenerator:
             return
         try:
             proposals = await self._generate_proposals()
-            written = []
+            written: List[Dict[str, Any]] = []
             for p in proposals:
                 path = self._write_staging_file(p)
                 if path:
                     written.append(p)
 
             if self._memory and written:
-                await self._memory.write("strategy_proposals", {
-                    "count": len(written),
-                    "proposals": [w.get("name", "?") for w in written],
-                    "status": "staging",
-                })
+                await self._memory.write(
+                    "strategy_proposals",
+                    {
+                        "count": len(written),
+                        "proposals": [w.get("name", "?") for w in written],
+                        "status": "staging",
+                    },
+                )
             logger.info("AIStrategyGenerator: wrote %d staging strategies", len(written))
         except Exception as e:
             logger.exception("AIStrategyGenerator error: %s", e)
 
-    async def _generate_proposals(self) -> list[dict]:
+    async def _generate_proposals(self) -> List[Dict[str, Any]]:
+        """Request strategy proposals from the LLM consensus service.
+
+        Returns:
+            A list containing up to two unique strategy proposal dictionaries.
+        """
         system = """You are a senior quantitative analyst. Propose trading strategy parameters.
 Output ONLY a JSON array of exactly 2 strategies, no other text."""
 
@@ -123,8 +150,8 @@ For each strategy, provide:
         if not responses:
             return []
 
-        all_proposals: list[dict] = []
-        seen = set()
+        all_proposals: List[Dict[str, Any]] = []
+        seen: set[str] = set()
         for resp in responses:
             try:
                 content = resp.content.strip()
@@ -142,7 +169,16 @@ For each strategy, provide:
 
         return all_proposals[:2]
 
-    def _write_staging_file(self, proposal: dict) -> Path | None:
+    def _write_staging_file(self, proposal: Dict[str, Any]) -> Optional[Path]:
+        """Write a single strategy proposal to the staging directory.
+
+        Args:
+            proposal: Dictionary containing strategy metadata and conditions.
+
+        Returns:
+            The path to the written file, or ``None`` if validation fails or the
+            file already exists.
+        """
         name = proposal.get("name", "")
         if not name or not re.match(r'^[a-z][a-z0-9_]*$', name):
             return None
