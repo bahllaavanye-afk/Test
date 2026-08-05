@@ -174,6 +174,15 @@ def sub_window_stats(strat_ret, bench_ret, dates, n_windows: int = 3) -> list[di
 
     out: list[dict] = []
     total = len(strat_ret)
+    # A length mismatch is a programming error, and a silent one: the slice
+    # indices stay in range against a LONGER index, so every reported date is
+    # simply wrong — shifted by MIN_TRAIN, about a year. Passing `feat.index`
+    # instead of `feat.index[mask]` does exactly that and changes no other
+    # output, which is why it survived the first mutation pass.
+    if len(dates) != total:
+        raise ValueError(
+            f"sub_window_stats: {total} returns but {len(dates)} dates — "
+            f"the dates must be masked to the out-of-sample rows")
     if total < n_windows * 30:      # <30 OOS days a slice says nothing
         return out
     edges = [round(i * total / n_windows) for i in range(n_windows + 1)]

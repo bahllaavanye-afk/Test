@@ -240,3 +240,77 @@ def test_walk_forward_actually_reports_sub_windows():
     body = src.split("def walk_forward(", 1)[1]
     assert '"sub_windows": sub_window_stats(' in body, (
         "walk_forward does not put sub_windows in its result")
+
+
+# ── The integration the string-match guard cannot cover ──────────────────────
+
+def test_walk_forward_runs_end_to_end_and_emits_sub_windows(monkeypatch):
+    """`walk_forward` had never been EXECUTED by any test — only string-matched.
+
+    `test_walk_forward_actually_reports_sub_windows` greps the source, so if
+    `feat.index[mask]` raised at runtime every test here would still pass and
+    the weekly ML run would die. sklearn is not installed in the agent-test
+    environment (CI installs pandas/numpy/pyyaml/requests only), so the
+    classifier is stubbed: the point is the plumbing — masking, indexing,
+    the sub-window call — not the model.
+    """
+    import sys as _sys
+    import types
+    import numpy as np
+
+    class _StubClf:
+        def __init__(self, **kw): pass
+        def fit(self, X, y): return self
+        def predict_proba(self, X):
+            return np.tile([[0.4, 0.6]], (len(X), 1))
+
+    fake = types.ModuleType("sklearn.ensemble")
+    fake.GradientBoostingClassifier = _StubClf
+    pkg = types.ModuleType("sklearn")
+    pkg.ensemble = fake
+    monkeypatch.setitem(_sys.modules, "sklearn", pkg)
+    monkeypatch.setitem(_sys.modules, "sklearn.ensemble", fake)
+
+    rng = np.random.default_rng(7)
+    n = 700
+    idx = pd.date_range("2021-01-04", periods=n, freq="B")
+    close = pd.Series(100 * np.exp(np.cumsum(rng.normal(0.0003, 0.01, n))), index=idx)
+    raw = pd.DataFrame({"close": close, "high": close * 1.01,
+                        "low": close * 0.99, "volume": rng.integers(1e6, 2e6, n)},
+                       index=idx).astype(float)
+
+    feat = mlx.build_features(raw)
+    assert len(feat) > mlx.MIN_TRAIN + 120, f"fixture too short: {len(feat)} rows"
+
+    out = mlx.walk_forward(feat)
+
+    for key in ("oos_days", "hit_rate", "strategy_sharpe", "buyhold_sharpe", "sub_windows"):
+        assert key in out, f"walk_forward dropped {key}"
+    assert out["oos_days"] == len(feat) - mlx.MIN_TRAIN
+
+    wins = out["sub_windows"]
+    assert len(wins) == 3, wins
+    assert sum(w["days"] for w in wins) == out["oos_days"]
+    for w in wins:
+        # Dates must be real and ordered — this is what `feat.index[mask]`
+        # silently getting the wrong type would break.
+        assert len(w["from"]) == 10 and len(w["to"]) == 10, w
+        assert w["from"] <= w["to"], w
+    assert wins[0]["to"] <= wins[1]["from"] <= wins[2]["from"]
+
+    # The dates must be the OUT-OF-SAMPLE ones. Passing `feat.index` instead of
+    # `feat.index[mask]` keeps every slice index in range against the longer
+    # index, so the windows still look well-formed while every date is shifted
+    # by MIN_TRAIN, roughly a year. That mutation survived the first pass;
+    # these two assertions are what kill it.
+    assert wins[0]["from"] == str(feat.index[mlx.MIN_TRAIN].date())
+    assert wins[-1]["to"] == str(feat.index[-1].date())
+
+
+def test_sub_window_stats_rejects_a_date_index_that_does_not_match():
+    """The mismatch is silent by construction: a longer index keeps every slice
+    in range, so it has to be rejected explicitly rather than caught later."""
+    import numpy as np
+    dates = pd.date_range("2021-01-04", periods=500, freq="B")
+    with pytest.raises(ValueError, match="masked"):
+        mlx.sub_window_stats(np.zeros(300), np.zeros(300), dates)
