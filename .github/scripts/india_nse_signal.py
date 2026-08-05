@@ -182,33 +182,75 @@ def build_payload(quotes: dict[str, list[tuple[date, float]]],
 
 # ── Fetch ────────────────────────────────────────────────────────────────────
 
+CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{sym}?range=7d&interval=1d"
+
+
+def _via_chart_api(symbol: str) -> list[tuple[date, float]]:
+    """Yahoo's chart endpoint over plain HTTPS — the same data yfinance wraps.
+
+    Not redundancy for its own sake. yfinance ships its own HTTP stack
+    (curl_cffi), which fails behind an egress proxy with an SSL reset while a
+    normal `requests` call to the identical URL succeeds. Without this, a
+    yfinance transport problem would look exactly like a flat Indian day.
+    Daily bars are stamped at the session *open* (03:45 UTC), so the date is
+    taken from the timestamp and the close reconstructed by `build_payload`.
+    """
+    import requests
+    r = requests.get(CHART_URL.format(sym=symbol),
+                     headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+    if r.status_code != 200:
+        raise RuntimeError(f"chart API HTTP {r.status_code}")
+    res = r.json()["chart"]["result"][0]
+    stamps = res.get("timestamp") or []
+    closes = res["indicators"]["quote"][0].get("close") or []
+    rows: list[tuple[date, float]] = []
+    for ts, close in zip(stamps, closes):
+        if close is None:
+            continue
+        rows.append((datetime.fromtimestamp(ts, tz=timezone.utc).date(), float(close)))
+    return rows
+
+
 def fetch_closes(symbols: list[str]) -> dict[str, list[tuple[date, float]]]:
-    """Daily closes per symbol via yfinance. Failures are logged, not raised —
-    one dead ticker must not cost the other nine.
+    """Daily closes per symbol, yfinance first and the chart API as fallback.
+
+    Failures are logged per symbol and never raised — one dead ticker must not
+    cost the other five. Which path each symbol took is printed, because a
+    silent fallback is how you end up not knowing your primary source died.
     """
     out: dict[str, list[tuple[date, float]]] = {}
     try:
-        import yfinance  # noqa: F401
+        import yfinance as yf
     except ImportError:
-        print("✗ yfinance not installed — no NSE data this run", flush=True)
-        return out
+        yf = None
+        print("⚠ yfinance not installed — using the chart API for every symbol",
+              flush=True)
 
-    import yfinance as yf
     for sym in symbols:
-        try:
-            hist = yf.Ticker(sym).history(period="7d", interval="1d")
-            rows: list[tuple[date, float]] = []
-            for idx, row in hist.iterrows():
-                close = float(row["Close"])
-                rows.append((idx.date(), close))
-            out[sym] = rows
-            if rows:
-                print(f"  · {sym}: {len(rows)} bars, last {rows[-1][0]} @ {rows[-1][1]:.2f}",
-                      flush=True)
-            else:
-                print(f"  ⚠ {sym}: yfinance returned an empty frame", flush=True)
-        except Exception as exc:
-            print(f"  ⚠ {sym}: fetch failed — {exc}", flush=True)
+        rows: list[tuple[date, float]] = []
+        why = ""
+        if yf is not None:
+            try:
+                hist = yf.Ticker(sym).history(period="7d", interval="1d")
+                rows = [(idx.date(), float(row["Close"])) for idx, row in hist.iterrows()]
+            except Exception as exc:
+                why = f"yfinance: {type(exc).__name__}"
+        if not rows:
+            try:
+                rows = _via_chart_api(sym)
+                if rows:
+                    print(f"  ↩ {sym}: chart-API fallback ({why or 'yfinance returned nothing'})",
+                          flush=True)
+            except Exception as exc:
+                print(f"  ⚠ {sym}: both sources failed — {why or 'yfinance empty'}; "
+                      f"chart API: {exc}", flush=True)
+                continue
+        out[sym] = rows
+        if rows:
+            print(f"  · {sym}: {len(rows)} bars, last {rows[-1][0]} @ {rows[-1][1]:.2f}",
+                  flush=True)
+        else:
+            print(f"  ⚠ {sym}: no bars from either source", flush=True)
     return out
 
 

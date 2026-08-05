@@ -1,0 +1,56 @@
+{
+  "generated_at": "2026-08-05T18:00:47Z",
+  "sessions": [
+    "2026-08-05"
+  ],
+  "max_age_hours": 30.0,
+  "tilt_max": 0.06,
+  "tilts": {
+    "INFY": {
+      "tilt": 0.0111,
+      "source": "INFY.NS",
+      "kind": "adr",
+      "move_pct": 0.557,
+      "weight": 1.0,
+      "session": "2026-08-05"
+    },
+    "HDB": {
+      "tilt": -0.0189,
+      "source": "HDFCBANK.NS",
+      "kind": "adr",
+      "move_pct": -0.943,
+      "weight": 1.0,
+      "session": "2026-08-05"
+    },
+    "IBN": {
+      "tilt": -0.0062,
+      "source": "ICICIBANK.NS",
+      "kind": "adr",
+      "move_pct": -0.309,
+      "weight": 1.0,
+      "session": "2026-08-05"
+    },
+    "WIT": {
+      "tilt": 0.0074,
+      "source": "WIPRO.NS",
+      "kind": "adr",
+      "move_pct": 0.37,
+      "weight": 1.0,
+      "session": "2026-08-05"
+    },
+    "RDY": {
+      "tilt": 0.0058,
+      "source": "DRREDDY.NS",
+      "kind": "adr",
+      "move_pct": 0.29,
+      "weight": 1.0,
+      "session": "2026-08-05"
+    }
+  },
+  "skipped": {
+    "^NSEI->INDA": "move +0.04% below the 0.15% noise floor",
+    "^NSEI->INDY": "move +0.04% below the 0.15% noise floor",
+    "^NSEI->EPI": "move +0.04% below the 0.15% noise floor",
+    "^NSEI->SMIN": "move +0.04% below the 0.15% noise floor"
+  }
+}

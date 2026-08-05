@@ -53,8 +53,38 @@ to, and unlike a `.NS` desk, those symbols can actually be routed by Alpaca.
    file stays in the repo looking valid forever. The producer's freshness check ran once, when it wrote it;
    only the consumer's check can notice the workflow died.
 
-**Not yet verified live** — no NSE route from the dev container. Proven end-to-end on fabricated closes. The
-first 10:20 UTC run is the confirmation; its Discord post states which path it took either way.
+**VERIFIED LIVE** on the real 2026-08-05 Indian session (Nifty 24,624.65 +0.04%, HDFCBANK −0.94%, INFY +0.56%).
+Five real tilts written and read back by the desk. The committed `india_nse_signal.json` is that run's output,
+so the tilt is active now rather than from tomorrow's cron.
+
+**yfinance does not work from this container and the failure is silent.** It ships `curl_cffi`, which dies
+behind the egress proxy (`curl: (35) Recv failure`) on all six symbols, while plain `requests` to the identical
+Yahoo URL succeeds. An empty frame from a dead transport looks exactly like a flat Indian day. `_via_chart_api`
+is the fallback and the log names which path each symbol took. **If you are debugging this module from the dev
+container, that is why** — it is not a broken ticker.
+
+## 💸 2026-08-05 17:50 — THE DESKS ARE TRADING AGAIN. Buying power went $206 → $34,713.
+
+Run `31031318516` (17:43 UTC), the first healthy run since the margin freeze:
+
+| | 08:15 today | 17:43 today |
+|---|---|---|
+| buying power | **$206.86** | **$34,713.48** |
+| cash | −$33,401.86 | −$22,179.98 |
+| equity | $22,013.89 | $21,903.38 |
+| orders placed / filled | 0 | **14 / 13** |
+
+**The margin floor is not firing, and that is the correct behaviour** — 0 "margin floor" drops because bp
+$34,713 is far above the floor (10% of equity = $2,190). It is a backstop against re-exhaustion, not a
+throttle; it only speaks when the account is nearly out. The 2 `insufficient cash` drops are crypto, which
+sizes against `non_marginable_bp = $0.00` and is still starved.
+
+**An India symbol traded live**: `ichimoku_cloud_tv/INDA signal=BUY`, filled. All 10 India symbols are in the
+104-symbol bars request (105 minus `MKR/USD`, skipped as non-tradable). The expansion works end to end, and
+the NSE tilt above now feeds exactly this order path.
+
+Cash is still a −$22k margin debit and the book is levered ~1.6×, so **"reset the paper account" stays on the
+operator list** — but it is no longer blocking, and the floor is in place to stop the freeze recurring.
 
 ## ✅ 2026-08-05 09:15 — BACKTESTS PERSIST FOR THE FIRST TIME, and a margin floor now stops the freeze recurring
 
