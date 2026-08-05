@@ -67,6 +67,27 @@ trade?" about 10% of its own book**, and operator item #1 cannot be settled eith
 Once tagged the audit names the writer, operator item #1 settles either way, and desk_trade_sync gains
 attribution for the 10% of the book it currently skips.
 
+## ⏱️ 2026-08-05 19:40 — CRON LAG RE-MEASURED: 2.5–4.7 HOURS, NOT ~2.5 (correcting my own figure)
+
+`india-mf.yml` had 0 runs at 67 minutes past its 18:30 cron, which looked like breakage. It is not.
+
+    daily-standup       nominal 13:30   actual 18:13   lag 4h43m   (235 scheduled runs — healthy)
+    strategy-auto-tune  nominal 00:30   actual 03:41   lag 3h11m   (42 runs)
+    ml-experiments      nominal 04:17   actual 06:45   lag 2h28m   (5 of 5 Sundays)
+
+**Ruled out: the minute is not the cause.** 41 of this repo's crons sit on `:00`, so collision is the tempting
+story, but other `:30` workflows fire fine. `india-mf`'s first slot simply is not due yet at this lag —
+**expect 21:00–23:15 UTC**.
+
+**Consequence I got wrong earlier and am correcting:** I wrote that `india-nse-signal.yml` (`20 10`) has ~3h of
+margin and "still lands first" before the 13:30 open. At the real lag it can arrive **12:50–15:00 — i.e. it can
+miss the open**. Moving the cron earlier is impossible: NSE closes at 10:00 UTC.
+
+**No code change needed, because the design already absorbs it.** The desk re-checks the file's age at read
+time and accepts the previous session inside its 30h window, so a late producer costs *yesterday's* Indian read
+rather than no read, and logs which it used. Desks running after the late arrival get today's. Worst case is
+absorbed; best case is just not guaranteed.
+
 ## ✅ 2026-08-05 19:00 — THE STRATEGY TRIMMER IS LIVE (pending verification since 07-29, now closed)
 
 Both of today's desk runs log the line the item asked for:
