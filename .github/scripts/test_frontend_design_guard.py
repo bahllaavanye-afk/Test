@@ -22,11 +22,26 @@ def _load_agent():
     stub.llm = lambda *a, **k: None
     stub.chat_post = lambda *a, **k: None
     stub.memory_write = lambda *a, **k: None
+    previous = sys.modules.get("llm_common")
     sys.modules["llm_common"] = stub
-    spec = importlib.util.spec_from_file_location("fda_under_test", _SCRIPTS / "frontend_design_agent.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)  # type: ignore[union-attr]
-    return mod
+    try:
+        spec = importlib.util.spec_from_file_location("fda_under_test", _SCRIPTS / "frontend_design_agent.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        return mod
+    finally:
+        # RESTORE. The stub used to be left in sys.modules for the rest of the
+        # session, so every later test that did `import llm_common` silently got
+        # a three-function shim instead of the real cascade. Found 2026-08-05:
+        # it made the employee-conversations key-guard tests fail in the full
+        # suite while passing alone — the guard's `except -> fail open` branch
+        # was firing on the stub's missing attributes, not on any real
+        # condition. A leaked module stub can mask or invent failures anywhere
+        # downstream of it.
+        if previous is not None:
+            sys.modules["llm_common"] = previous
+        else:
+            sys.modules.pop("llm_common", None)
 
 
 fda = _load_agent()

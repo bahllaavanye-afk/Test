@@ -35,15 +35,23 @@ jobs:
         run: python .github/scripts/employee_conversation_runner.py 2>&1 | tee /tmp/conv_output.txt
         continue-on-error: true
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-          HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY }}
+          # The repo's populated free-tier secrets are the `_1` variants — the
+          # three workflows that demonstrably get LLM replies
+          # (agent-status-check, multi-agent-discussion, claude-chat) all map
+          # `secrets.GROQ_API_KEY_1` etc. This workflow mapped the UNSUFFIXED
+          # names, which are empty, so it had no free provider at all.
+          # `X_1 || X` takes whichever exists, so this cannot regress if the
+          # unsuffixed secret is later populated.
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_1 || secrets.GROQ_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY_1 || secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_API_KEY_2: ${{ secrets.DEEPSEEK_API_KEY_2 }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY_1 || secrets.SAMBANOVA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY_1 || secrets.CEREBRAS_API_KEY }}
+          HYPERBOLIC_API_KEY: ${{ secrets.HYPERBOLIC_API_KEY_1 || secrets.HYPERBOLIC_API_KEY }}
           NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
           NVIDIA_AGENTS_API_KEYS: ${{ secrets.NVIDIA_AGENTS_API_KEYS }}
-          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY_1 || secrets.TOGETHER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 || secrets.GEMINI_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           ALLOW_PAID_APIS: "False"

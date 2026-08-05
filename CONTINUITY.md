@@ -29,6 +29,43 @@ each independently "found" after already being documented.
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
 
 
+## 👥 2026-08-05 04:40 — THE HOURLY EMPLOYEE-CONVERSATIONS WORKFLOW HAS NEVER RUN (fixed)
+
+47 employee personas, hourly, green every time, `Responded: 0/47` posted to `#engineering`. Production log,
+run at 04:14 UTC on sha `071df8db`:
+```
+No LLM keys available — skipping real conversations
+```
+`sys.exit(0)` — a clean exit, so the step passed and the workflow was never red.
+
+**Two independent causes, and the second is the interesting one.**
+
+**(a) The workflow mapped the wrong secret names.** The repo's populated free-tier secrets are the **`_1`
+variants**. The three workflows that demonstrably get real replies — `agent-status-check`,
+`multi-agent-discussion`, `claude-chat` — all map `GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}`.
+`employee-conversations` mapped the **unsuffixed** `secrets.GEMINI_API_KEY`, which is empty. Now mapped as
+`secrets.X_1 || secrets.X`, so it cannot regress if the unsuffixed name is later populated.
+
+**(b) The guard kept its own copy of the provider list, and it disagreed with the cascade.**
+`_LLM_KEY_VARS` listed seven env vars. `llm_common._PROVIDERS` has **eight** — the missing one is NVIDIA
+(`NVIDIA_AGENTS_API_KEYS`, alt `NVIDIA_NIM_API_KEY`), **which this workflow does supply.** So a pre-flight
+check vetoed a cascade that had a usable provider. The fix is not to add NVIDIA to the list; it is to stop
+keeping a second list — `_any_llm_key()` now asks `llm_common` what it can reach. Same failure family as
+the smoke gate keying on `database.ok`: *a guard that maintains its own model of the thing it guards will
+drift from it.*
+
+**The other 18 workflows mapping unsuffixed secrets are NOT broken — measured, don't "fix" them.** Every
+one of them also maps at least one populated secret (usually `GEMINI_API_KEY_1`), so they have a working
+provider; the empty mappings are dead weight, not breakage. Adding `_1` fallbacks there would buy free-tier
+headroom, not correctness.
+
+**A test-isolation leak found on the way, and fixed.** `test_frontend_design_guard.py` replaced
+`sys.modules["llm_common"]` with a three-function stub and never restored it. Every later test that
+imported `llm_common` got the shim. It made the new key-guard tests **fail in the full suite while passing
+alone** — the guard's fail-open `except` branch was firing on the stub's missing attributes, not on any
+real condition. Now restored in a `finally`. **A leaked module stub can invent or mask failures anywhere
+downstream of it**; that this surfaced as "my new tests fail" rather than "an old test lies" was luck.
+
 ## 🎭 2026-08-05 03:50 — THE AGENTS DISCUSSED STATUS BECAUSE NOBODY GAVE THEM RESULTS (fixed, #814)
 
 Two halves of one loop, found together.
