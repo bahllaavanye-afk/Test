@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Request, status
 
@@ -32,7 +32,20 @@ _TOTAL_ALERTS: int = 0
 
 
 def _normalize(payload: dict[str, Any]) -> dict[str, Any]:
-    """Best-effort normalization of TradingView's free-form alert JSON."""
+    """Normalize a TradingView alert payload.
+
+    Args:
+        payload: The raw JSON payload received from TradingView.
+
+    Returns:
+        A dictionary with standardized keys:
+        - ``symbol``: Upper‑cased ticker symbol or ``None``.
+        - ``side``: Normalised side/action string or ``None``.
+        - ``price``: Float price if parsable, otherwise ``None``.
+        - ``strategy``: Strategy or indicator name.
+        - ``message``: Truncated message/comment (max 500 chars).
+        - ``received_at``: ISO‑8601 UTC timestamp of receipt.
+    """
     return {
         "symbol": str(payload.get("ticker") or payload.get("symbol") or "").upper() or None,
         "side": (str(payload.get("action") or payload.get("side") or "").lower() or None),
@@ -44,6 +57,14 @@ def _normalize(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _float_or_none(v: Any) -> float | None:
+    """Convert a value to ``float`` if possible.
+
+    Args:
+        v: The value to convert.
+
+    Returns:
+        The float representation of ``v`` or ``None`` if conversion fails.
+    """
     try:
         return float(v) if v is not None else None
     except (TypeError, ValueError):
@@ -51,7 +72,19 @@ def _float_or_none(v: Any) -> float | None:
 
 
 @router.post("/tradingview")
-async def receive_tradingview_alert(request: Request) -> dict:
+async def receive_tradingview_alert(request: Request) -> Dict[str, Any]:
+    """Receive a TradingView webhook alert.
+
+    The endpoint validates the shared secret, normalises the payload, stores
+    it in a process‑local ring buffer, publishes it to Redis (if available) and
+    returns a confirmation.
+
+    Args:
+        request: The incoming FastAPI request containing a JSON body.
+
+    Returns:
+        A dictionary confirming receipt and echoing the normalised alert.
+    """
     start_time = time.perf_counter()
 
     secret = os.environ.get("TRADINGVIEW_WEBHOOK_SECRET", "").strip()
@@ -113,7 +146,15 @@ async def receive_tradingview_alert(request: Request) -> dict:
 
 
 @router.get("/tradingview/recent")
-async def recent_tradingview_alerts(limit: int = 50) -> dict:
-    """Most recent received alerts (process-local ring buffer)."""
+async def recent_tradingview_alerts(limit: int = 50) -> Dict[str, Any]:
+    """Retrieve the most recent received TradingView alerts.
+
+    Args:
+        limit: Maximum number of alerts to return (capped by internal buffer size).
+
+    Returns:
+        A dictionary containing the list of alerts (newest first) and the total
+        count of stored alerts.
+    """
     limit = max(1, min(limit, _MAX_RECENT))
     return {"alerts": _RECENT_ALERTS[-limit:][::-1], "count": len(_RECENT_ALERTS)}
