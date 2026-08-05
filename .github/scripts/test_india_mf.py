@@ -300,3 +300,29 @@ def test_ranking_is_ordered_best_first():
     for rows in out.values():
         rets = [r["return_pct"] for r in rows]
         assert rets == sorted(rets, reverse=True), f"not descending: {rets}"
+
+
+def test_main_actually_uses_the_category_ranking():
+    """A helper nothing calls is the same absence in a new shape.
+
+    rank_within_categories shipped and merged on 2026-08-05 with full tests and
+    was called by NOTHING — main() still only ran the absolute ranking. Tested,
+    documented, merged, dead. This guard is the cheap version of noticing.
+    """
+    src = (Path(__file__).resolve().parent / "india_mf.py").read_text()
+    body = src[src.index("def main()"):]
+    assert "rank_within_categories(" in body, (
+        "main() no longer calls rank_within_categories — the category-relative "
+        "ranking is defined and tested but never runs, so the Discord post is "
+        "back to the sector-rotation readout."
+    )
+    assert "category leaders" in body, "the category output is not printed"
+
+
+def test_the_state_records_the_category_leaders():
+    """The daily commit is the only durable record of what was ranked."""
+    src = (Path(__file__).resolve().parent / "india_mf.py").read_text()
+    assert "categories_ranked" in src and "category_leaders" in src, (
+        "the per-run state no longer carries the category ranking, so the "
+        "committed history cannot answer 'was this manager consistently ahead?'"
+    )

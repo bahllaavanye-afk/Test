@@ -327,11 +327,29 @@ def main() -> int:
 
     top = rank_by_momentum(hist, names, top_n=10, investable=codes)
     if top:
-        print(f"\n[india_mf] top {len(top)} Direct-Growth funds by 90d NAV return:", flush=True)
+        print(f"\n[india_mf] top {len(top)} Direct-Growth funds by 90d NAV return "
+              f"(absolute — reads as sector rotation, see below):", flush=True)
         for r in top:
             print(f"    {r['return_pct']:>7.2f}%  NAV {r['nav']:>10.4f}  {r['name'][:64]}", flush=True)
     else:
         print("[india_mf] no fund cleared the ranking filters", flush=True)
+
+    # The comparison that actually means something: each fund against its own
+    # AMFI category. The absolute list above is dominated by whichever sector
+    # ran; this says which manager beat their peers.
+    investable_schemes = [s for s in schemes if s.code in codes]
+    by_cat = rank_within_categories(hist, investable_schemes, per_category=3)
+    if by_cat:
+        print(f"\n[india_mf] category leaders ({len(by_cat)} categories with enough peers):",
+              flush=True)
+        for cat, rows in by_cat.items():
+            label = cat.split("(")[-1].rstrip(")") if "(" in cat else cat
+            print(f"  {label[:58]}", flush=True)
+            for r in rows:
+                print(f"    #{r['rank']}/{r['peers']}  {r['return_pct']:>7.2f}%  "
+                      f"{r['name'][:56]}", flush=True)
+    else:
+        print("[india_mf] no category had enough peers to rank", flush=True)
 
     state = load_state()
     runs = state.get("runs") or []
@@ -343,6 +361,8 @@ def main() -> int:
         "amcs": len(amcs),
         "ranked": len(top),
         "top": top[:5],
+        "categories_ranked": len(by_cat),
+        "category_leaders": {c: r[:1] for c, r in list(by_cat.items())[:12]},
     })
     state["runs"] = runs
     state["as_of"] = as_of
