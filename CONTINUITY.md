@@ -29,6 +29,55 @@ each independently "found" after already being documented.
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
 
 
+## 🫀 2026-08-05 01:00 — "17 of 25 PACEMAKER RUNS CANCELLED" IS HEALTHY. Do not re-fix it.
+
+I nearly reported this as a regression of the `cancel-in-progress` bug fixed on 08-03. It is not.
+
+Last 25 pacemaker runs: **8 success, 17 cancelled.** Every success ran 51.4 / 59.9 / 63.6 / 63.6 / 51.9 /
+86.9 / 76.4 min — all past the 50-minute sleep, all dispatching. Desk-trading dispatches landed at 22:05,
+22:55, 23:46, 00:36 — ~50 min apart, no drift.
+
+**The cancelled runs never allocated a runner.** `GET /actions/runs/<id>/jobs` returns `{"jobs": []}` for
+every one checked (30962371134, 30960506332, 30959430157). They are **pending-queue evictions**: with
+`concurrency: {group: pacemaker, cancel-in-progress: false}` GitHub permits at most ONE pending run per
+group and cancels the pending one when a newer arrives. The pacemaker fans in from many `workflow_run`
+sources, so several queue per cycle and all but the newest are evicted.
+
+**The reported duration of a cancelled run is QUEUE time, not run time** — 0.0 to 34.7 min of waiting
+before being superseded. That is what makes this look like the old bug, where runs died *mid-sleep* at up
+to 47.9 min. Duration does not distinguish them. **Whether a runner was ever allocated does.**
+
+`cancel-in-progress: true` is the actual bug: it cancels the RUNNING sleeper, which killed 25 of 30 runs
+before 08-03.
+
+## ✅ 2026-08-05 01:20 — the post-deploy smoke can finally see a dead database (IMPROVEMENTS 843, shipped)
+
+The smoke test asserted on `/health` and nothing else. `/health` returns `{"status": "ok"}`
+unconditionally and does no DB work — deliberately, so the Render keep-alive ping stays cheap. So every
+subsystem the backend already computes was invisible to the only automated post-deploy gate, and smoke
+stayed **green through more than a week of paused database**.
+
+**The item's own field cannot fire.** `IMPROVEMENTS.md:843` specified "fail deploy on `database.ok=false`".
+`main.py:487` sets `database.ok = True` whenever `SELECT 1` succeeds, and on the SQLite fallback it does —
+the fallback is functional, just ephemeral. Live payload with Supabase paused:
+```
+"database":         {"ok": true,  "latency_ms": 5.2, "fallback": "sqlite"}
+"database_primary": {"ok": false, "error": "(ENOTFOUND) tenant/user postgres.vexzwnfbmznvxoxxktax ..."}
+```
+`database.ok` is **true during the exact outage the guard exists to catch**. `database_primary`
+(`main.py:502`, emitted only when `db_fallback_active`) is the field that reports it. Shipped keyed on
+`database_primary`; the test that distinguishes the two is
+`test_a_functional_sqlite_fallback_is_still_a_failure`.
+
+**Strictness is scoped to deploys.** `SMOKE_FAIL_ON_DEGRADED_DB` is set only for `push`, so a degraded
+primary fails the post-deploy run while the 30-min schedule reports it as a warning. Also asserts
+`mode == "paper"` from the same payload — the only automated check positioned to see TRADING_MODE drift.
+
+**Expect main to be RED on smoke until Supabase is unpaused.** That is the gate working. The Discord page
+is suppressed while the durable-DB check is the *only* failure (~10 push-triggered runs/day would
+otherwise re-page operator decision #2); the run still fails and the step summary still lists it. Any
+second failure clears the suppression and the page fires naming both.
+
 ## 🔬 VERIFICATION DISCIPLINE — 2026-08-04/05. Read this before trusting any check you just wrote.
 
 Two findings from the same day, same root cause: **a check that reports nothing is

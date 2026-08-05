@@ -38,6 +38,12 @@ jobs:
         id: smoke
         env:
           SMOKE_BASE_URL: ${{ vars.RENDER_API_URL || 'https://quantedge-api-9jz0.onrender.com' }}
+          # A degraded primary DB FAILS the post-deploy run (push) — that is the
+          # "catch the next Supabase pause at deploy time" gate. On the 30-min
+          # schedule it is reported but non-fatal: the pause is a known,
+          # operator-blocked condition, and paging #ci-failures 48×/day for it
+          # would bury the failures that ARE actionable.
+          SMOKE_FAIL_ON_DEGRADED_DB: ${{ github.event_name == 'push' && '1' || '' }}
         run: python .github/scripts/smoke_test_live.py
 
       # Runs EVERY smoke: proves whether Discord delivery works and prints
@@ -62,24 +68,34 @@ jobs:
           sys.exit(0 if ok else 1)
           PY
 
+      # Skipped when the ONLY failure is the paused primary database: that is
+      # operator decision #2, it cannot be fixed from code, and on push-triggered
+      # runs (~10/day) it would re-page a channel that already knows. The run
+      # still goes RED and the step summary still lists it — this suppresses the
+      # notification, not the signal. Any second failure clears the flag.
       - name: Page Discord on failure
-        if: failure()
+        if: failure() && steps.smoke.outputs.only_known_degraded != '1'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_WEBHOOK_URL_CI_FAILURES: ${{ secrets.DISCORD_WEBHOOK_URL_CI_FAILURES }}
+          FAILED_CHECKS: ${{ steps.smoke.outputs.failed_checks }}
         run: |
           python - <<'PY'
           import os, sys
           sys.path.insert(0, ".github/scripts")
           try:
               from notify import discord_post
-              discord_post(
-                  "ci-failures",
-                  "🚨 **Live smoke test FAILED** — a deployed endpoint is broken or serving fake data. "
-                  f"See run: {os.environ.get('GITHUB_SERVER_URL','')}/{os.environ.get('GITHUB_REPOSITORY','')}/actions/runs/{os.environ.get('GITHUB_RUN_ID','')}",
-                  username="QuantEdge Smoke Test",
-              )
+              # Name the checks that actually failed. The previous fixed string
+              # ("a deployed endpoint is broken or serving fake data") described
+              # one failure mode out of nine and pointed at the wrong subsystem
+              # for most of them.
+              detail = (os.environ.get("FAILED_CHECKS") or "").strip()
+              body = "🚨 **Live smoke test FAILED**"
+              body += f"\n```\n{detail}\n```" if detail else " — see the run for detail."
+              body += (f"\n{os.environ.get('GITHUB_SERVER_URL','')}/{os.environ.get('GITHUB_REPOSITORY','')}"
+                       f"/actions/runs/{os.environ.get('GITHUB_RUN_ID','')}")
+              discord_post("ci-failures", body, username="QuantEdge Smoke Test")
           except Exception as e:
               print(f"notify failed: {e}")
           PY
