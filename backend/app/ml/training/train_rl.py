@@ -35,8 +35,22 @@ def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
     return 100 - (100 / (1 + rs))
 
 
+def _validate_dataframe(df: pd.DataFrame, required_cols: list[str]) -> None:
+    """Validate that a DataFrame is non‑empty and contains required columns."""
+    if df is None:
+        raise ValueError("Input DataFrame is None.")
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("Expected a pandas DataFrame.")
+    if df.empty:
+        raise ValueError("Input DataFrame is empty.")
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        raise ValueError(f"DataFrame missing required columns: {missing}")
+
+
 def _build_features(df: pd.DataFrame) -> np.ndarray:
     """Return (T, n_features) feature matrix with no lookahead."""
+    _validate_dataframe(df, ["close", "volume"])
     close = df["close"]
     volume = df["volume"]
     returns = close.pct_change().fillna(0.0)
@@ -51,15 +65,17 @@ def _step_reward(df: pd.DataFrame, action: int, t: int) -> float:
     Action 0=buy, 1=hold, 2=sell.
     Returns the next-bar return scaled by direction.
     """
-    if t + 1 >= len(df):
+    if df is None or df.empty:
+        return 0.0
+    if t < 0 or t + 1 >= len(df):
         return 0.0
     next_ret = float(df["close"].iloc[t + 1] / df["close"].iloc[t] - 1.0)
     if action == 0:    # buy — reward is positive return
         return next_ret
-    elif action == 2:  # sell — reward is negative return (profit from short)
+    if action == 2:    # sell — reward is negative return (profit from short)
         return -next_ret
-    else:              # hold
-        return 0.0
+    # Any other action (including hold) yields zero reward
+    return 0.0
 
 
 async def train_rl_agent(
@@ -94,6 +110,13 @@ async def train_rl_agent(
     Returns:
         Trained A3CLSTMAgent
     """
+    # Basic input validation
+    _validate_dataframe(ohlcv_df, ["open", "high", "low", "close", "volume"])
+    if n_episodes <= 0:
+        raise ValueError("n_episodes must be a positive integer.")
+    if checkpoint_every <= 0:
+        checkpoint_every = n_episodes  # fallback to save only at the end
+
     features = _build_features(ohlcv_df)  # (T, n_features_raw)
     T = len(features)
 
@@ -133,6 +156,8 @@ async def train_rl_agent(
                 rewards.append(reward)
 
         if not states:
+            # This should not happen given prior checks, but guard against empty trajectories
+            logger.warning("Episode %d produced no states; skipping gradient step.", episode)
             continue
 
         # Stack trajectory
