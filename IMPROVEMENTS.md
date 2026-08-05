@@ -237,11 +237,30 @@ numbers, and they hold:
 - [x] **12 tests, 5 mutations, 5 caught** — one survived the first pass (an empty frame poisoning the shared
   window: an empty `DatetimeIndex` has `min() == NaT`, which makes every `>=` False and returns **zero rows for
   every symbol**, reported as "only 0 usable rows" for symbols whose data was fine). That is now pinned.
-- [ ] **Unverified live — yfinance is unreachable from the dev container** (`curl_cffi` vs the egress proxy, the
-  same trap as the India feed) and there are no Alpaca keys here, so `fetch_bars` correctly returns
-  `(None, "none")`. The fixes are pure functions and are mutation-tested; the confirmation is the next
-  scheduled run (**Sundays 04:17 UTC**), whose persisted payload should show one consistent window across all
-  three symbols plus the new date fields.
+- [x] **✅ VERIFIED IN PRODUCTION, run `2026-08-05T19:22`** — the first ML run after the fix merged, and it is
+  clean:
+
+  | | source | rows | oos | window |
+  |---|---|---|---|---|
+  | SPY | yfinance | 1399 | 1147 | 2021-01-07 → 2026-08-04 |
+  | QQQ | yfinance | 1399 | 1147 | 2021-01-07 → 2026-08-04 |
+  | NVDA | yfinance | 1399 | 1147 | 2021-01-07 → 2026-08-04 |
+
+  One source, one row count, **one window across all three** — against the 09:35 run that mixed yfinance/1399
+  and alpaca/940 inside a single payload. `first_date`/`last_date` are present, so the next drift is a one-line
+  diff rather than a four-run investigation.
+- [x] **And the comparison finally means something. On a pinned 5.5-year window that includes the 2022 bear
+  market, the model beats buy-and-hold on 2 of 3:**
+
+      SPY   sharpe 0.634 vs buyhold 0.791   loses
+      QQQ   sharpe 1.201 vs buyhold 0.734   BEATS  (+64%)
+      NVDA  sharpe 1.184 vs buyhold 1.130   BEATS
+
+  This is the same shape the mixed-window runs hinted at, now stated on evidence instead of coincidence: a
+  model holding ~50% time-in-market gives up a bull run and earns its keep through a drawdown. **It is one
+  window and three symbols — a reason to look further, not a green light.** Wiring ML into orders still needs
+  the walk-forward repeated across windows and symbols, and it is still 0 references in
+  `desk_order_placer.py`.
 
 ## ₿ 2026-08-05 18:30 — CRYPTO IS STRUCTURALLY STARVED, AND THE FIX IS AN ALLOCATION DECISION, NOT A BUG
 
