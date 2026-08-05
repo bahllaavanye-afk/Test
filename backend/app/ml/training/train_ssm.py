@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-from pathlib import Path
+
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader, TensorDataset
@@ -21,6 +21,7 @@ def build_dataloaders(
     train_frac: float = 0.7,
     val_frac: float = 0.15,
 ) -> tuple[DataLoader, DataLoader, DataLoader, int]:
+    """Prepare training, validation, and test DataLoaders from raw OHLCV data."""
     df = engineer_features(df)
     df = add_labels(df, threshold=0.002)
     X, y = create_sequences(df, seq_len=seq_len)
@@ -55,7 +56,10 @@ async def train(
     batch_size: int = 256,
     lr: float = 1e-3,
 ) -> dict:
-    train_loader, val_loader, test_loader, n_features = build_dataloaders(ohlcv_df, seq_len, batch_size)
+    """Train the SSM model and save artifacts."""
+    train_loader, val_loader, test_loader, n_features = build_dataloaders(
+        ohlcv_df, seq_len, batch_size
+    )
 
     model = SSMPredictor(
         input_size=n_features,
@@ -95,7 +99,11 @@ async def train(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", required=True, help="Path to OHLCV CSV with columns: open,high,low,close,volume")
+    parser.add_argument(
+        "--csv",
+        required=True,
+        help="Path to OHLCV CSV with columns: open,high,low,close,volume",
+    )
     parser.add_argument("--name", default="ssm_run")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--d-model", type=int, default=64)
@@ -104,6 +112,12 @@ if __name__ == "__main__":
 
     df = pd.read_csv(args.csv, index_col=0, parse_dates=True)
     result = asyncio.run(
-        train(df, experiment_name=args.name, max_epochs=args.epochs, d_model=args.d_model, n_layers=args.n_layers)
+        train(
+            df,
+            experiment_name=args.name,
+            max_epochs=args.epochs,
+            d_model=args.d_model,
+            n_layers=args.n_layers,
+        )
     )
     print(json.dumps(result, indent=2))
