@@ -179,3 +179,96 @@ def test_the_workflow_yaml_still_parses():
     steps = doc["jobs"]["employee-conversations"]["steps"]
     run_step = next(s for s in steps if "employee_conversation_runner.py" in str(s.get("run", "")))
     assert run_step["env"]["GROQ_API_KEY"], "the runner step lost its key env"
+
+
+# ── call pacing (first real run returned 1/47) ────────────────────────────────
+
+def _spacing(monkeypatch, **env):
+    """Import the module with a key present, then evaluate the pacing helper."""
+    monkeypatch.setenv("GEMINI_API_KEY", "x")   # so the module-level guard passes
+    for k in _PROVIDER_ENVS:
+        if k != "GEMINI_API_KEY":
+            monkeypatch.delenv(k, raising=False)
+    monkeypatch.delenv("EMPLOYEE_CALL_SPACING_S", raising=False)
+    for k, v in env.items():
+        if v is None:
+            monkeypatch.delenv(k, raising=False)
+        else:
+            monkeypatch.setenv(k, v)
+    import employee_conversation_runner as runner
+    return runner._call_spacing_seconds()
+
+
+def test_spacing_matches_geminis_declared_free_rpm(monkeypatch):
+    """The first real run fired 47 calls in ~20s and got 1 response.
+
+    llm_common declares `"rpm_free": 15` for Gemini — 47 calls in 20s is
+    ~140/min against it, so the 429 wall was arithmetic, not an outage.
+    """
+    assert _spacing(monkeypatch) == pytest.approx(4.0), (
+        "spacing no longer matches 60/15 for a Gemini-only key set. 47 "
+        "employees would again outrun the only provider that has a key."
+    )
+
+
+def test_spacing_widens_when_only_a_slower_provider_is_available(monkeypatch):
+    """It must be derived, not hardcoded — that is the whole point."""
+    fast = _spacing(monkeypatch, TOGETHER_API_KEY="x")   # rpm_free 60
+    assert fast == pytest.approx(1.0), (
+        f"expected 60/60=1.0s with Together available, got {fast}. The interval "
+        "is not being derived from llm_common's rpm_free table."
+    )
+    assert fast < _spacing(monkeypatch), "more headroom must mean less waiting"
+
+
+def test_a_keyless_environment_still_paces(monkeypatch):
+    """Fail safe: unknown capacity means assume the observed floor, not zero."""
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    import employee_conversation_runner as runner
+    for k in _PROVIDER_ENVS:
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.delenv("EMPLOYEE_CALL_SPACING_S", raising=False)
+    assert runner._call_spacing_seconds() == pytest.approx(4.0), (
+        "with no keys visible the spacing collapsed. A zero interval reproduces "
+        "the 1/47 run."
+    )
+
+
+def test_the_override_wins(monkeypatch):
+    assert _spacing(monkeypatch, EMPLOYEE_CALL_SPACING_S="1.5") == pytest.approx(1.5)
+
+
+def test_a_malformed_override_falls_back_instead_of_crashing(monkeypatch):
+    assert _spacing(monkeypatch, EMPLOYEE_CALL_SPACING_S="fast") == pytest.approx(4.0)
+
+
+def test_a_negative_override_cannot_go_below_zero(monkeypatch):
+    assert _spacing(monkeypatch, EMPLOYEE_CALL_SPACING_S="-5") == 0.0
+
+
+def test_the_full_roster_fits_inside_the_workflow_timeout(monkeypatch):
+    """Pacing that exceeds the job timeout trades one silent failure for another."""
+    spacing = _spacing(monkeypatch)
+    yaml = pytest.importorskip("yaml")   # module-level import is not available here
+    doc = yaml.safe_load(_WF.read_text())
+    (job,) = doc["jobs"].values()
+    budget_s = job["timeout-minutes"] * 60
+    import employee_conversation_runner as runner
+    roster = len(runner._EMPLOYEE_PERSONAS)
+    sleep_s = roster * spacing
+    assert sleep_s < budget_s * 0.5, (
+        f"{roster} employees x {spacing}s = {sleep_s/60:.1f} min of pure sleep "
+        f"against a {job['timeout-minutes']}-min timeout, leaving too little for "
+        "the calls themselves. Raise the timeout or cap EMPLOYEE_RUNNER_LIMIT."
+    )
+
+
+def test_the_loop_sleeps_between_calls_not_before_the_first(monkeypatch):
+    """A leading sleep adds dead time to every run for no benefit."""
+    src = (_DIR / "employee_conversation_runner.py").read_text()
+    loop = src[src.index("for i, emp_key in enumerate(emp_keys):"):]
+    loop = loop[:loop.index("employee_provider_prompt")]
+    assert "if i:" in loop and "time.sleep(spacing)" in loop, (
+        "the inter-employee sleep is unguarded, so the run waits before doing "
+        "any work at all."
+    )

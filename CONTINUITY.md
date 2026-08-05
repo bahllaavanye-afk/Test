@@ -29,6 +29,43 @@ each independently "found" after already being documented.
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
 
 
+## 🚦 2026-08-05 07:15 — THE FLEET RAN FOR THE FIRST TIME AND RETURNED 1/47 (paced; next layer down)
+
+Run `30983374228` (07:01) — **the key-guard fix worked**: the runner no longer exits at "No LLM keys
+available", it executed. And then:
+```
+RESPONDED_COUNT=1
+FAILED_EMPLOYEES=alpha_dir,ml_lead,risk_eng,backend_lead,qa_dir,devops_dir,… (46 of 47)
+```
+Whole run: **28 seconds**. Log is one provider repeating:
+```
+[gemini-key] error: HTTP Error 429: Too Many Requests
+[gemini-key] error: HTTP Error 503: Service Unavailable
+```
+
+**This is arithmetic, not an outage.** The cascade is fine — it falls through correctly, but every other
+tier is keyless, so **Gemini is the entire budget**. `llm_common._PROVIDERS` declares `"rpm_free": 15` for
+it. 47 calls in ~20s is **~140/min against a 15/min limit**.
+
+**`rpm_free` is declared for all eight providers and was enforced NOWHERE.** The data existed without the
+behaviour — the same shape as `desk_outcomes` being listed but not searched, and `strategy_performance.json`
+being written but not read. Spacing is now derived from that table (not a second hardcoded copy) using the
+**most permissive provider that actually has a key**, since that is the one the cascade settles on:
+```
+gemini only (15 rpm)  -> 4.0s   -> 47 employees ≈ 3.1 min
++ groq      (30 rpm)  -> 2.0s
++ together  (60 rpm)  -> 1.0s
+```
+3.1 minutes of sleep sits well inside the 25-minute timeout set an hour earlier; a test asserts that
+relationship holds rather than leaving the two numbers to drift apart.
+
+**What this does NOT fix:** one provider is still the whole budget. Populating `GROQ_API_KEY_1` /
+`DEEPSEEK_API_KEY_1` / `TOGETHER_API_KEY_1` would both raise the ceiling and shorten the run — the pacing
+math above adapts automatically. That is an operator action, not a code change.
+
+**Fourth layer in one night.** cap → blocked by the key guard → blocked by the pacemaker cascade → blocked
+by rate limits. Each was only visible once the one above it was fixed, and each looked green from outside.
+
 ## ⏱️ 2026-08-05 07:00 — A RISK I CREATED: the fleet workflow had no timeout, and was about to do real work
 
 `employee-conversations.yml` had **no `timeout-minutes`**, so it inherited GitHub's **6-hour** default.
