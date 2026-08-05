@@ -1,5 +1,22 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🪙 2026-08-05 13:40 — THE BACKTEST'S CRYPTO HALF HAS NEVER PRODUCED A RESULT
+
+- [x] **`quick-backtest.yml`'s job is named "Run backtests across all desks". Every persisted result reads
+  `desks: ['equity']`.** Binance's public klines endpoint returns **HTTP 451** (geo-blocked from the runner
+  region), `fetch_crypto_ohlcv` returned a bare `None` on any non-200, and the caller does
+  `if not ohlcv: continue` — so each symbol was dropped **with no log line at all**. Only exceptions were
+  logged, and a 451 is not an exception.
+- [x] **Fixed:** the status is now printed (explicitly naming geo-blocking on 451) and there is a yfinance
+  fallback mapping `BTCUSDT → BTC-USD`. yfinance already powers the equity backtests in the same process, so
+  it is reachable where Binance is not.
+- [ ] **Unverified from the dev container — both hosts are blocked here.** The next scheduled run will say
+  which path it took; that log line is the point. If yfinance also fails in Actions, the fallback needs a
+  third source (Coinbase/Kraken public OHLC), and the log will now show it instead of hiding it.
+- [x] **This one wore a disguise the others did not:** `SYMBOLS["crypto"] = [BTCUSDT, ETHUSDT, SOLUSDT]` sat
+  in the config looking wired, and the loop over it really does run. Config presence is not coverage — the
+  same lesson as key presence not being capacity (07:43 entry).
+
 ## 🧪 2026-08-05 11:30 — A DEAD-CODE SCAN, MEASURED AND REJECTED
 
 - [x] **Not shippable — 813 of 1,710 module-level functions in `.github/scripts` are never referenced
