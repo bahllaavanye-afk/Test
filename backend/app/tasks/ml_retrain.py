@@ -107,6 +107,17 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
 
 async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_INTERVAL) -> dict:
     """Download 2 years of data and retrain a model. Returns result dict."""
+    # Input validation
+    if not isinstance(model_name, str) or not model_name.strip():
+        raise ValueError("model_name must be a non‑empty string")
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise ValueError("symbol must be a non‑empty string")
+    if not isinstance(interval, str) or not interval.strip():
+        raise ValueError("interval must be a non‑empty string")
+    # Simple interval format validation (e.g., '1h', '5m', '1d')
+    if not re.fullmatch(r"\d+[smhd]", interval):
+        raise ValueError(f"interval '{interval}' is invalid; expected format like '1h', '5m', or '1d'")
+
     try:
         end = datetime.now(timezone.utc)
         start = end - timedelta(days=DEFAULT_TRAIN_DAYS)
