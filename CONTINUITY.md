@@ -57,6 +57,31 @@ the real 07:56 account state a $500 SPY order now sizes to **0** instead of ~$19
 margin; already starved). Skip reason reported as `margin floor`, distinct from `insufficient cash`. **Frees
 nothing already committed — it stops the state recurring after a paper-account reset.**
 
+## ✅ 2026-08-05 14:44 — THE BACKTEST NOW COVERS BOTH DESKS, verified in production
+
+Run `31016650918`, committed as `98fdaf96`:
+```
+Binance BTCUSDT: HTTP 451 (geo-blocked from this runner) — falling back to yfinance
+  momentum/BTCUSDT: Sharpe=-0.15      mean_reversion/BTCUSDT: Sharpe=-0.19
+Binance ETHUSDT: HTTP 451 (geo-blocked from this runner) — falling back to yfinance
+  momentum/ETHUSDT: Sharpe=-0.18      mean_reversion/ETHUSDT: Sharpe=+0.30
+✓ 16 backtests | top Sharpe: 1.47 (rsi/AAPL)
+```
+Persisted state: **`total_runs: 16`, `desks: ['equity', 'crypto']`** — up from 12 / equity-only.
+
+**Both open questions answered.** The 451 is real in the Actions runner, not just the dev container — so
+Binance is geo-blocked from GitHub's infrastructure. And **yfinance does resolve `BTC-USD` / `ETH-USD`
+there**, which could not be checked locally because both hosts are blocked from this container. The fix
+needed no third source.
+
+**The whole chain is now verified end to end**, each link having failed silently before:
+`contents: write` + staging the whole state dir (0 commits ever → 6) → crypto 451 logged instead of a bare
+`None` → yfinance fallback → crypto results tagged and persisted.
+
+**Note the numbers are real and mostly negative** — BTC momentum −0.15, ETH momentum −0.18, ETH
+mean-reversion +0.30. That is the point: a backtest that only ever reported equity results was not a
+kinder view of the strategies, it was no view at all.
+
 ## 🔴 2026-08-05 08:15 — THE ACCOUNT IS OUT OF MARGIN. Nothing has traded for ~7 hours.
 
 **This is now the binding constraint on the entire platform**, ahead of everything else in this file. The desks
