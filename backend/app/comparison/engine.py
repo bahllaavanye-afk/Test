@@ -4,11 +4,12 @@ compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import date
 import numbers
+from typing import Dict, Any
 
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 from scipy import stats
 
 from app.backtest.engine import run_backtest, BacktestMetrics
@@ -58,22 +59,100 @@ MSG_SERIES_MUST_BE_NUMERIC: str = "series must contain numeric values."
 MSG_STRING_NON_EMPTY: str = "must be a non‑empty string."
 MSG_DATE_TYPE: str = "must be a datetime.date instance."
 
-@dataclass
-class ComparisonResult:
-    strategy_name: str
-    symbol: str
-    interval: str
-    start_date: date
-    end_date: date
-    manual: BacktestMetrics | None = None
-    ml_enhanced: BacktestMetrics | None = None
-    benchmark_curves: dict = field(default_factory=dict)
-    benchmark_stats: dict = field(default_factory=dict)
-    ml_improvement_sharpe: float = 0.0
-    t_statistic: float = 0.0
-    p_value: float = 1.0
-    is_significant: bool = False
-    winner: str = WINNER_NEITHER
+
+class ComparisonResult(BaseModel):
+    """Schema representing the outcome of a strategy comparison."""
+
+    strategy_name: str = Field(
+        ...,
+        description="Human‑readable name of the strategy under comparison.",
+        example="VWAP+EMA+RSI+MACD",
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol the strategy was applied to.",
+        example="AAPL",
+    )
+    interval: str = Field(
+        ...,
+        description="Timeframe of the data (e.g., '1d', '5m').",
+        example="1d",
+    )
+    start_date: date = Field(
+        ...,
+        description="Inclusive start date for the backtest period.",
+        example="2022-01-01",
+    )
+    end_date: date = Field(
+        ...,
+        description="Inclusive end date for the backtest period.",
+        example="2022-12-31",
+    )
+    manual: BacktestMetrics | None = Field(
+        default=None,
+        description="Metrics from the manual‑signal backtest.",
+    )
+    ml_enhanced: BacktestMetrics | None = Field(
+        default=None,
+        description="Metrics from the ML‑enhanced signal backtest.",
+    )
+    benchmark_curves: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Raw benchmark curves fetched for the period.",
+    )
+    benchmark_stats: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Statistical summary of the benchmark data.",
+    )
+    ml_improvement_sharpe: float = Field(
+        0.0,
+        description="Sharpe ratio improvement of the ML strategy over manual.",
+        example=0.12,
+    )
+    t_statistic: float = Field(
+        0.0,
+        description="T‑statistic from the two‑sample test.",
+        example=1.85,
+    )
+    p_value: float = Field(
+        1.0,
+        description="P‑value from the statistical test (lower indicates significance).",
+        example=0.0321,
+    )
+    is_significant: bool = Field(
+        False,
+        description="Whether the Sharpe improvement is statistically significant.",
+    )
+    winner: str = Field(
+        WINNER_NEITHER,
+        description="Identifier of the winning strategy: 'ml', 'manual', or 'neither'.",
+        example="ml",
+    )
+
+    @validator("strategy_name", "symbol", "interval")
+    def non_empty_string(cls, v: str, field):
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError(f"{field.name} {MSG_STRING_NON_EMPTY}")
+        return v
+
+    @validator("start_date", "end_date")
+    def date_type(cls, v: date, field):
+        if not isinstance(v, date):
+            raise ValueError(f"{field.name} {MSG_DATE_TYPE}")
+        return v
+
+    @validator("ml_improvement_sharpe", "t_statistic", "p_value")
+    def numeric_non_negative(cls, v: float, field):
+        if not isinstance(v, numbers.Number):
+            raise ValueError(f"{field.name} must be a numeric type.")
+        return float(v)
+
+    @validator("winner")
+    def winner_allowed(cls, v: str):
+        allowed = {WINNER_ML, WINNER_MANUAL, WINNER_NEITHER}
+        if v not in allowed:
+            raise ValueError(f"winner must be one of {allowed}.")
+        return v
 
 
 class StrategyComparisonEngine:
