@@ -1,0 +1,72 @@
+name: India NSE — overnight read for the US-listed proxies
+
+# NSE regular hours end at 15:30 IST = 10:00 UTC. This runs at 10:20 UTC so the
+# final print is settled, which is ~3 hours before US pre-market and ~5 before
+# the open — the whole point of the exercise. Weekdays only; NSE does not trade
+# weekends, and a run with nothing new to read would just rewrite the same file.
+on:
+  schedule:
+    - cron: "20 10 * * 1-5"
+  workflow_dispatch: {}
+
+# The state file is the entire deliverable — desk_order_placer.py reads it from
+# the checked-out repo. Read-only token means the commit 403s and the desks see
+# nothing, which is how quick-backtest ran for months with zero results.
+permissions:
+  contents: write
+
+concurrency:
+  group: india-nse-signal
+  cancel-in-progress: false
+
+jobs:
+  read-session:
+    runs-on: ubuntu-latest
+    # Six yfinance calls. Anything past this is a hang, not slow data.
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+
+      - name: Install
+        run: pip install --quiet yfinance requests
+
+      - name: Read the Indian session
+        run: python .github/scripts/india_nse_signal.py
+
+      - name: Post the read to Discord
+        if: always()
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+        run: |
+          python - <<'PY'
+          import pathlib, sys
+          sys.path.insert(0, ".github/scripts")
+          import notify
+          f = pathlib.Path("/tmp/india_nse_discord.md")
+          body = f.read_text() if f.exists() else ""
+          if not body.strip():
+              body = ("🇮🇳 **NSE overnight read** — the run produced no payload at all. "
+                      "The script writes this file even on a flat day, so an empty one "
+                      "means the script itself failed; see the workflow log.")
+          notify.post("desk-india-mf", body[:1900], username="QuantEdge India NSE")
+          PY
+
+      - name: Commit the tilt state
+        if: always()
+        continue-on-error: true
+        run: |
+          git config user.email "india-nse@quantedge.ai"
+          git config user.name "QuantEdge India NSE"
+          git add -A .github/state/india_nse_signal.json
+          if ! git diff --cached --quiet; then
+            git commit -m "india-nse: overnight tilt $(date -u +%Y-%m-%d) [skip ci]"
+            for i in 1 2 3 4; do
+              git pull --rebase --quiet origin main && git push origin HEAD:main && break || sleep $((i*2))
+            done
+          fi
