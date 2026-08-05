@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import numbers
+import unittest
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -104,6 +105,8 @@ def monte_carlo_simulation(
         raise ValueError("risk_free_daily must be a real number.")
 
     n_days = int(n_years * 252)
+    if n_days <= 0:
+        raise ValueError("n_years is too small resulting in zero simulation days.")
     returns_array = daily_returns.dropna().values
     sharpes: list[float] = []
     max_dds: list[float] = []
@@ -146,3 +149,38 @@ def monte_carlo_simulation(
         prob_positive_return=round(positive / n_simulations, 4),
         num_simulations=n_simulations,
     )
+
+
+class MonteCarloSimulationTests(unittest.TestCase):
+    """Edge‑case unit tests for monte_carlo_simulation."""
+
+    def test_empty_series_raises(self):
+        """Empty return series should raise a ValueError."""
+        with self.assertRaises(ValueError):
+            monte_carlo_simulation(pd.Series([], dtype=float))
+
+    def test_non_finite_values_raise(self):
+        """Series containing NaN or Inf should raise a ValueError."""
+        bad_series = pd.Series([0.01, np.nan, 0.02])
+        with self.assertRaises(ValueError):
+            monte_carlo_simulation(bad_series)
+
+    def test_minimum_simulation(self):
+        """Single‑simulation, single‑day case should return a valid result."""
+        # One trading day (1/252 years) ensures n_days == 1
+        returns = pd.Series([0.001])
+        result = monte_carlo_simulation(
+            returns,
+            n_simulations=1,
+            n_years=1 / 252,
+            risk_free_daily=0.0,
+        )
+        self.assertIsInstance(result, MonteCarloResult)
+        # Probability must be either 0.0 or 1.0 for a single path
+        self.assertIn(result.prob_positive_return, (0.0, 1.0))
+        # Sharpe ratios are defined (even if zero)
+        self.assertIsInstance(result.median_sharpe, float)
+
+
+if __name__ == "__main__":
+    unittest.main()
