@@ -15,15 +15,26 @@ from app.bots.engine import BotEngine
 
 def _bot(action: dict, conditions=None):
     return SimpleNamespace(
-        id="bot1", account_id="acc1", symbol="SPY", market_type="equity",
-        conditions=conditions or [], condition_logic="ALL", action=action,
+        id="bot1",
+        account_id="acc1",
+        symbol="SPY",
+        market_type="equity",
+        conditions=conditions or [],
+        condition_logic="ALL",
+        action=action,
         name="Guard Bot",
     )
 
 
 def _df():
-    return pd.DataFrame({"close": [100.0, 101.0, 102.0], "high": [102.0] * 3,
-                         "low": [99.0] * 3, "volume": [1000.0] * 3})
+    return pd.DataFrame(
+        {
+            "close": [100.0, 101.0, 102.0],
+            "high": [102.0] * 3,
+            "low": [99.0] * 3,
+            "volume": [1000.0] * 3,
+        }
+    )
 
 
 async def _run(eng, bot, monkeypatch, *, open_now=0, today=0):
@@ -71,7 +82,7 @@ async def test_under_limit_still_opens(monkeypatch):
         return "order-1"
 
     monkeypatch.setattr(BotEngine, "_create_paper_order", fake_order)
-    res = await _run(eng, bot, monkeypatch, open_now=1)   # 1 < 3
+    res = await _run(eng, bot, monkeypatch, open_now=1)  # 1 < 3
     assert res.fired is True
     assert res.orders_created == ["order-1"]
 
@@ -79,12 +90,53 @@ async def test_under_limit_still_opens(monkeypatch):
 @pytest.mark.asyncio
 async def test_no_position_condition_reflects_real_state(monkeypatch):
     eng = BotEngine()
-    bot = _bot({"type": "open_long", "size_pct": 5.0},
-               conditions=[{"type": "no_position"}])
+    bot = _bot(
+        {"type": "open_long", "size_pct": 5.0},
+        conditions=[{"type": "no_position"}],
+    )
     # A position is open → no_position is False → conditions fail → no entry.
     res = await _run(eng, bot, monkeypatch, open_now=1)
     assert res.fired is False
     assert res.signal == "hold"
+
+
+@pytest.mark.asyncio
+async def test_position_exists_condition_reflects_real_state(monkeypatch):
+    eng = BotEngine()
+    bot = _bot(
+        {"type": "open_long", "size_pct": 5.0},
+        conditions=[{"type": "position_exists"}],
+    )
+    # No position open → position_exists is False → conditions fail.
+    res = await _run(eng, bot, monkeypatch, open_now=0)
+    assert res.fired is False
+    assert res.signal == "hold"
+
+    # With a position open → condition passes → entry allowed.
+    async def fake_order(self, b, a, price, side, db):
+        return "order-2"
+
+    monkeypatch.setattr(BotEngine, "_create_paper_order", fake_order)
+    res = await _run(eng, bot, monkeypatch, open_now=1)
+    assert res.fired is True
+    assert res.orders_created == ["order-2"]
+
+
+@pytest.mark.asyncio
+async def test_combined_limits_block_when_either_exceeded(monkeypatch):
+    eng = BotEngine()
+    bot = _bot(
+        {"type": "open_long", "size_pct": 5.0, "max_open_positions": 1, "max_daily_positions": 1}
+    )
+    # Exceeds open limit
+    res = await _run(eng, bot, monkeypatch, open_now=1, today=0)
+    assert res.fired is False
+    assert "Position limit reached" in res.reason
+
+    # Exceeds daily limit (open now within limit)
+    res = await _run(eng, bot, monkeypatch, open_now=0, today=1)
+    assert res.fired is False
+    assert "Daily position limit reached" in res.reason
 
 
 @pytest.mark.asyncio
