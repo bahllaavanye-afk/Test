@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -66,6 +67,46 @@ def _load_memory() -> dict:
         except Exception:
             pass
     return {"conversations": {}, "daily_topics": {}, "platform_metrics": {}, "peer_learnings": []}
+
+
+def _call_spacing_seconds() -> float:
+    """Seconds to wait between employees, derived from the provider's own limit.
+
+    First real run (30983374228, 2026-08-05 07:01) fired all 47 employees in
+    ~20 seconds and got **1 response**. The log is one provider repeating:
+
+        [gemini-key] error: HTTP Error 429: Too Many Requests
+        [gemini-key] error: HTTP Error 503: Service Unavailable
+
+    The cascade is not broken — it falls through correctly, but every other tier
+    is keyless, so Gemini is the whole budget. `llm_common._PROVIDERS` declares
+    `"rpm_free": 15` for it. 47 calls in 20s is ~140/min against a 15/min limit;
+    the 429s were arithmetic, not an outage.
+
+    `rpm_free` is declared for all eight providers and was enforced NOWHERE — the
+    data existed without the behaviour. This derives the interval from that
+    table rather than hardcoding a second copy of the number: the interval is
+    set by the most permissive provider that actually has a key, since that is
+    the one the cascade will settle on.
+
+    At 15 rpm that is 4s -> ~3.1 min for 47 employees, comfortably inside the
+    workflow's 25-minute timeout.
+    """
+    override = os.environ.get("EMPLOYEE_CALL_SPACING_S", "").strip()
+    if override:
+        try:
+            return max(0.0, float(override))
+        except ValueError:
+            pass
+    try:
+        from llm_common import _PROVIDERS, _has_key
+        rpms = [p.get("rpm_free", 0) for p in _PROVIDERS if _has_key(p)]
+        rpms = [r for r in rpms if r and r > 0]
+        if rpms:
+            return 60.0 / max(rpms)
+    except Exception:  # noqa: BLE001 — pacing must never break the run
+        pass
+    return 4.0          # Gemini's free tier, the observed floor
 
 
 def _save_memory(mem: dict) -> None:
@@ -141,8 +182,14 @@ def main() -> None:
 
     conversations: dict = mem.setdefault("conversations", {})
 
+    spacing = _call_spacing_seconds()
+    print(f"[employee_runner] {len(emp_keys)} employees, {spacing:.1f}s spacing "
+          f"(~{len(emp_keys) * spacing / 60:.1f} min)", flush=True)
+
     for i, emp_key in enumerate(emp_keys):
         task = topics[i % len(topics)]
+        if i:
+            time.sleep(spacing)   # between calls, not before the first
         try:
             answer, provider = employee_provider_prompt(emp_key, task, state)
             if not answer:
