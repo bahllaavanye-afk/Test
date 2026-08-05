@@ -4,7 +4,7 @@ Provides ensemble predictions for any symbol.
 """
 import time
 import pandas as pd
-from typing import Any
+from typing import Any, Optional
 from app.ml.features.engineer import engineer_features, create_sequences, FEATURE_COLS
 from app.ml.features.normalization import FeatureScaler
 from app.config import settings
@@ -85,12 +85,19 @@ class InferenceService:
             for k in ("lstm", "xgboost", "lorentzian", "gemini")
         )
 
-    async def predict(self, data: pd.DataFrame, symbol: str) -> dict | None:
+    async def predict(self, data: Optional[pd.DataFrame], symbol: Optional[str]) -> dict | None:
         """
         Generate ensemble prediction for the latest bar in data.
         Returns: {prediction: 'up'|'down'|'neutral', confidence: float, ...}
         """
+        if data is None or not isinstance(data, pd.DataFrame) or data.empty:
+            logger.warning("Predict called with invalid or empty data", symbol=symbol)
+            return None
+        if not symbol:
+            logger.warning("Predict called with missing symbol")
+            return None
         if not self.models:
+            logger.warning("No models loaded; inference disabled")
             return None
 
         logger.info("Inference started", symbol=symbol, data_points=len(data))
@@ -98,36 +105,49 @@ class InferenceService:
         try:
             # Feature engineering
             feat_df = engineer_features(data, normalize=False)
-            if len(feat_df) < 60:
+            if feat_df is None or len(feat_df) < 60:
+                logger.warning("Feature engineering yielded insufficient data", symbol=symbol)
                 return None
 
             # Gather individual predictions
-            predictions = {}
+            predictions: dict[str, float] = {}
 
             if "lstm" in self.models:
                 scaler = self.scalers.get("default")
+                feat_df_norm = feat_df.copy()
                 if scaler:
-                    feat_df_norm = feat_df.copy()
                     feat_df_norm[FEATURE_COLS] = scaler.transform(feat_df_norm[FEATURE_COLS])
-                    X, _ = create_sequences(feat_df_norm, seq_len=60)
-                    if len(X) > 0:
-                        import torch
-                        prob = float(self.models["lstm"].predict_proba(X[-1:]).item())
-                        predictions["lstm"] = prob
+                X, _ = create_sequences(feat_df_norm, seq_len=60)
+                if X is not None and len(X) > 0:
+                    import torch
+                    prob = float(self.models["lstm"].predict_proba(X[-1:]).item())
+                    predictions["lstm"] = prob
+                else:
+                    logger.debug("LSTM sequence generation produced no data", symbol=symbol)
 
             if "xgboost" in self.models:
                 import numpy as np
                 X_flat = feat_df[FEATURE_COLS].values[-1:]
-                prob = float(self.models["xgboost"].predict_proba(X_flat)[0])
-                predictions["xgboost"] = prob
+                if X_flat.size > 0:
+                    prob = float(self.models["xgboost"].predict_proba(X_flat)[0])
+                    predictions["xgboost"] = prob
+                else:
+                    logger.debug("XGBoost feature slice empty", symbol=symbol)
 
             if "lorentzian" in self.models:
                 from app.ml.models.lorentzian_knn import compute_lorentzian_features, LORENTZIAN_FEATURES
                 import torch, numpy as np
                 lf = compute_lorentzian_features(data)
-                x = torch.tensor(lf[LORENTZIAN_FEATURES].fillna(0).values[-1:], dtype=torch.float32)
-                prob = float(self.models["lorentzian"].forward(x).item())
-                predictions["lorentzian"] = prob
+                if lf is not None and not lf.empty:
+                    last_row = lf[LORENTZIAN_FEATURES].fillna(0).values[-1:]
+                    if last_row.size > 0:
+                        x = torch.tensor(last_row, dtype=torch.float32)
+                        prob = float(self.models["lorentzian"].forward(x).item())
+                        predictions["lorentzian"] = prob
+                    else:
+                        logger.debug("Lorentzian feature vector empty", symbol=symbol)
+                else:
+                    logger.debug("Lorentzian features computation failed or empty", symbol=symbol)
 
             # Gemini signal (async)
             if "gemini" in self.models:
@@ -138,13 +158,17 @@ class InferenceService:
                     if gemini_prob is not None:
                         predictions["gemini"] = gemini_prob
                 except Exception as e:
-                    logger.warning("Gemini model prediction failed", error=str(e))
+                    logger.warning("Gemini model prediction failed", error=str(e), symbol=symbol)
 
             if not predictions:
+                logger.warning("No predictions generated from any model", symbol=symbol)
                 return None
 
             # Weighted ensemble
             total_w = sum(self.weights.get(n, 1.0) for n in predictions)
+            if total_w == 0:
+                logger.error("Total weight for ensemble is zero", symbol=symbol)
+                return None
             ensemble_prob = sum(v * self.weights.get(n, 1.0) for n, v in predictions.items()) / total_w
             confidence = abs(ensemble_prob - 0.5) * 2
 
