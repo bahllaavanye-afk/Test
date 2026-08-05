@@ -33,6 +33,20 @@ each independently "found" after already being documented.
 | 14 | **Set `ANGELONE_API_KEY` / `_CLIENT_ID` / `_PASSWORD` / `_TOTP_SECRET`** | ~5min | Turns the India work from research into execution. AngelOne SmartAPI is free and TOTP-derivable, so it is the only broker that can log in unattended — **Zerodha cannot** (browser redirect, daily token, ₹2,000/mo). `india_broker.py` reports what is missing; nothing places an Indian order until these exist. |
 
 
+## ✅ 2026-08-05 19:00 — THE STRATEGY TRIMMER IS LIVE (pending verification since 07-29, now closed)
+
+Both of today's desk runs log the line the item asked for:
+```
+✂ 8 strategy(ies) retired by the trimmer will not trade: avellaneda, avellaneda_stoikov_mm,
+  options_pcr_reversal, realized_vol_asymmetry, stat_arb_e, stat_arb_etf, vol_of_vol, vol_of_vol_timing
+```
+`strategy_trims.json` carries the reasons (`avellaneda` −7.9% over 10 trades, 07-29; `vol_of_vol` win_rate 20%,
+07-31). **`avellaneda` is the legacy truncated key the desk could never have matched**, and it is retired next
+to the full `avellaneda_stoikov_mm` — so the truncated-key expansion works, and the whole four-link chain
+(producer commits the file → cadence aligned → full names emitted → truncated keys expanded) is confirmed live.
+The *other* pruning path — attribution weights from `/leaderboard/live` — remains inert while Supabase is
+paused, so the trimmer is currently the only one working, not the redundant one.
+
 ## 🔬 2026-08-05 18:50 — "THE ML MODEL LOSES TO BUY-AND-HOLD" WAS AN ARTEFACT OF AN UNSTABLE WINDOW
 
 **Correcting an earlier claim in this file.** The model's record depends entirely on which data window a run
