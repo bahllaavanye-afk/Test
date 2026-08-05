@@ -19,7 +19,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, List, Tuple
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.tasks.free_llm_router import call_race
 from app.tasks.agent_memory import AgentMemory
