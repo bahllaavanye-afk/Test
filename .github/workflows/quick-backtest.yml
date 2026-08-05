@@ -8,6 +8,13 @@ on:
     - cron: "*/15 * * * *"
   workflow_dispatch:
 
+# Without this the GITHUB_TOKEN is read-only and the push at the end of every
+# run 403s. Measured 2026-08-05: `git log --all -- .github/state/last_backtest.json`
+# returns ZERO commits — this workflow has run every 15 minutes and has never
+# once persisted a result.
+permissions:
+  contents: write
+
 concurrency:
   group: quick-backtest
   cancel-in-progress: false
@@ -51,9 +58,16 @@ jobs:
           if [ -f /tmp/quick_backtest_summary.json ]; then
             mkdir -p .github/state
             cp /tmp/quick_backtest_summary.json .github/state/last_backtest.json
-            git add .github/state/last_backtest.json
-            git diff --cached --quiet || git commit -m "backtest: update results $(date -u +%H:%M)"
           fi
+          # Stage the WHOLE state dir, not just last_backtest.json.
+          # quick_backtest_runner.py also writes agent_memory.json (line ~218),
+          # which is tracked. Staging only one file left the other modified, so
+          # the next step's `git pull --rebase` aborted with
+          #   error: cannot pull with rebase: You have unstaged changes.
+          # on all four retries, and nothing was ever pushed. The results were
+          # computed correctly every 15 minutes and discarded every time.
+          git add -A .github/state/
+          git diff --cached --quiet || git commit -m "backtest: update results $(date -u +%H:%M) [skip ci]"
 
       - name: Push results
         continue-on-error: true

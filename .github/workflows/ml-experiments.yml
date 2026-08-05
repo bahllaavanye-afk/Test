@@ -14,7 +14,10 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: read
+  # `read` until 2026-08-05, which was consistent with the script only ever
+  # printing. It now writes .github/state/ml_experiments.json, and a history
+  # that cannot be committed is the same ephemeral result in a new location.
+  contents: write
   issues: write
 
 concurrency:
@@ -69,3 +72,21 @@ jobs:
             echo '```'
           } > /tmp/comment.md
           gh issue comment "$n" --body-file /tmp/comment.md
+
+      # The walk-forward numbers are the point of this workflow. Before this,
+      # they existed only as stdout and as a comment on a rolling issue that
+      # does not exist (checked 2026-08-05: 500 issues paged, no
+      # `ml-experiments-log`), so every run's out-of-sample result was lost.
+      - name: Commit the experiment history
+        if: always()
+        continue-on-error: true
+        run: |
+          git config user.email "ml-experiments@quantedge.ai"
+          git config user.name "QuantEdge ML Experiments"
+          git add -A .github/state/ml_experiments.json
+          if ! git diff --cached --quiet; then
+            git commit -m "ml: walk-forward results $(date -u +%Y-%m-%dT%H:%M) [skip ci]"
+            for i in 1 2 3 4; do
+              git pull --rebase --quiet origin main && git push origin HEAD:main && break || sleep $((i*2))
+            done
+          fi
