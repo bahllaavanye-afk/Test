@@ -326,6 +326,56 @@ try:
 except Exception:
     pass
 
+# ── India overnight tilt ─────────────────────────────────────────────────────
+# NSE closes at 10:00 UTC, hours before the US session these desks trade. That
+# session has already priced India-specific news that INDA/INFY/HDB will react
+# to, so `india_nse_signal.py` writes it to a state file and this reads it.
+#
+# The age check is re-run HERE rather than trusted from the file. If the
+# producing workflow stops, a file whose contents look perfectly valid keeps
+# sitting in the repo; without this the desk would tilt on a dead read forever
+# and every log line would look healthy.
+_INDIA_TILT_FILE = REPO_ROOT / ".github" / "state" / "india_nse_signal.json"
+_INDIA_TILTS: dict[str, dict] = {}
+_INDIA_TILT_NOTE = "no file"
+try:
+    if _INDIA_TILT_FILE.exists():
+        _idata = json.loads(_INDIA_TILT_FILE.read_text())
+        _gen = datetime.strptime(_idata.get("generated_at", ""), "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc)
+        _max_age = float(_idata.get("max_age_hours", 30) or 30)
+        _age_h = (datetime.now(timezone.utc) - _gen).total_seconds() / 3600.0
+        if _age_h > _max_age:
+            _INDIA_TILT_NOTE = f"stale ({_age_h:.0f}h > {_max_age:.0f}h) — ignored"
+        else:
+            _INDIA_TILTS = {
+                k: v for k, v in (_idata.get("tilts") or {}).items()
+                if isinstance(v, dict) and isinstance(v.get("tilt"), (int, float))
+            }
+            _INDIA_TILT_NOTE = f"{len(_INDIA_TILTS)} symbol(s), {_age_h:.1f}h old"
+except Exception as _exc:
+    _INDIA_TILT_NOTE = f"unreadable ({_exc})"
+print(f"🇮🇳 India overnight tilt: {_INDIA_TILT_NOTE}", flush=True)
+
+# Hard ceiling applied at the point of use, independent of whatever the file
+# claims. A bad producer must not be able to hand the desk a ±0.9 nudge.
+INDIA_TILT_HARD_CAP = 0.06
+
+
+def india_tilt(symbol: str, side: str) -> float:
+    """Confidence adjustment for `symbol` given the Indian session's direction.
+
+    Positive when the signal agrees with how India moved overnight, negative
+    when it disagrees, 0 for every symbol with no Indian read. Sign is applied
+    here rather than stored so one entry serves both sides of the book.
+    """
+    info = _INDIA_TILTS.get(symbol)
+    if not info:
+        return 0.0
+    raw = float(info.get("tilt", 0.0) or 0.0)
+    raw = max(-INDIA_TILT_HARD_CAP, min(INDIA_TILT_HARD_CAP, raw))
+    return raw if str(side).lower() == "buy" else -raw
+
 # ── Alpaca REST client (direct HTTP, no SDK dependency) ───────────────────────
 
 ALPACA_PAPER_BASE    = "https://paper-api.alpaca.markets"
@@ -2183,6 +2233,22 @@ async def main() -> None:
                 # then raise the bar for premium sellers in calm vol.
                 threshold = max(_TUNED_THRESHOLDS.get(sname, desk.confidence_min), desk.confidence_min)
                 threshold = _vol_adjusted_threshold(sname, threshold, vol_regime)
+
+                # India overnight tilt: NSE already traded a full session on
+                # this name's home market before US open. Bounded, and only
+                # ever applied to a signal that already exists.
+                _tilt = india_tilt(item["symbol"], getattr(item["signal"], "side", ""))
+                if _tilt:
+                    _before = conf
+                    conf = round(min(1.0, max(0.0, conf + _tilt)), 4)
+                    item["confidence"] = conf
+                    if getattr(item["signal"], "confidence", None) is not None:
+                        item["signal"].confidence = conf
+                    _src = _INDIA_TILTS.get(item["symbol"], {})
+                    print(f"  🇮🇳 {sname}/{item['symbol']} conf {_before:.2f} → {conf:.2f} "
+                          f"({_tilt:+.3f} from {_src.get('source', '?')} "
+                          f"{_src.get('move_pct', 0):+.2f}%)", flush=True)
+
                 if conf < threshold:
                     print(f"  · {sname}/{item['symbol']} conf={conf:.2f} < {threshold:.2f} — skipped", flush=True)
                 else:

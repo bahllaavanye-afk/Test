@@ -29,6 +29,33 @@ each independently "found" after already being documented.
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
 
 
+## 🇮🇳 2026-08-05 18:10 — NSE NOW FEEDS THE US-LISTED INDIA ORDERS (the `[P2]` play, shipped)
+
+PR #1473 merged (the time-bomb fix; `test` green). This is the next item off IMPROVEMENTS.md.
+
+**The shape of it, so it doesn't have to be re-derived.** NSE closes 10:00 UTC. US desks run from 13:30 UTC.
+That gap is the entire opportunity: Mumbai has already priced a day of India news that INDA/INFY/HDB will react
+to, and unlike a `.NS` desk, those symbols can actually be routed by Alpaca.
+
+    NSE close 10:00 UTC ──► india_nse_signal.py 10:20 ──► .github/state/india_nse_signal.json ──► desk run 13:30+
+
+- **Producer**: `.github/scripts/india_nse_signal.py` + `.github/workflows/india-nse-signal.yml` (cron
+  `20 10 * * 1-5`, `contents: write`, posts to `#desk-india-mf`).
+- **Consumer**: `desk_order_placer.py` — `india_tilt(symbol, side)` applied at the confidence gate, bounded to
+  **±0.06**, written back to `item["confidence"]` so top-K ranks on the tilted number.
+- **Map**: ADRs at weight 1.0 (`INFY.NS→INFY`, `HDFCBANK.NS→HDB`, `ICICIBANK.NS→IBN`, `WIPRO.NS→WIT`,
+  `DRREDDY.NS→RDY`); `^NSEI →` INDA 1.0, INDY 1.0, EPI 0.9, SMIN 0.6. MMYT unmapped on purpose (no NSE listing).
+
+**The two things most likely to be broken by a future edit**, both test-pinned:
+1. The desk must *call* `india_tilt` — `test_the_desk_actually_applies_the_tilt`. Fourth call-site guard this
+   week; three features already shipped green and dead.
+2. The desk must **re-check the file's age itself**. If `india-nse-signal.yml` ever stops running, the state
+   file stays in the repo looking valid forever. The producer's freshness check ran once, when it wrote it;
+   only the consumer's check can notice the workflow died.
+
+**Not yet verified live** — no NSE route from the dev container. Proven end-to-end on fabricated closes. The
+first 10:20 UTC run is the confirmation; its Discord post states which path it took either way.
+
 ## ✅ 2026-08-05 09:15 — BACKTESTS PERSIST FOR THE FIRST TIME, and a margin floor now stops the freeze recurring
 
 **Backtest persistence VERIFIED in production.** Run `30992181279`:

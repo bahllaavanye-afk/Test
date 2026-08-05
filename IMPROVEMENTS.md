@@ -1,5 +1,61 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🇮🇳 2026-08-05 18:10 — THE INDIAN SESSION NOW FEEDS THE ORDERS IT CAN ACTUALLY REACH
+
+- [x] **Shipped the `[P2]` intermediate play** from the 08-05 India entry, which is the only way to use NSE
+  without an unexecutable desk. NSE trades **03:45–10:00 UTC** — a window US regular hours never touches — so
+  by the time the desks run, Mumbai has already priced a full day of India-specific news that INDA/INFY/HDB
+  will react to. `india_nse_signal.py` reads the close at 10:20 UTC; `desk_order_placer.py` applies it at the
+  confidence gate, ~3 hours before pre-market.
+- [x] **The tilt is deliberately weak.** A bounded nudge to an *existing* signal's confidence: `+` when the
+  signal agrees with the Indian session, `−` when it disagrees, capped at **±0.06** (a 3% Nifty day saturates
+  it). It cannot create a signal, flip a side, or push confidence outside [0,1]. Enough to move a marginal
+  signal across a 0.60 bar; not enough to drag a weak one there.
+- [x] **Single names carry weight 1.0, the index does not.** An ADR is a claim on the *same shares* that just
+  traded in Mumbai. The Nifty 50 → ETF link is weaker and the weights say so: `INDA`/`INDY` 1.0, `EPI` 0.9
+  (earnings re-weighting drifts from the index), `SMIN` **0.6** (small-cap has a different beta to a large-cap
+  index, and pretending otherwise would overstate the edge). `MMYT` is deliberately unmapped — US-listed with
+  no NSE line, so there is no Indian close to read, and mapping it to the index would invent one.
+- [x] **State file, not a live fetch in the desk.** Six yfinance calls in the hot order path would buy a
+  network dependency and a stall risk for data that changes once a day. The file also makes the input
+  auditable after the fact.
+- [x] **Staleness is re-checked by the CONSUMER, not trusted from the file.** This is the whole reason the
+  design is safe: if the producing workflow stops, a file whose contents look perfectly valid keeps sitting in
+  the repo, and every desk log line would stay green while the tilt rode a dead read. The desk re-derives the
+  age at read time and refuses anything past `max_age_hours` (30). The producer *also* rewrites the file on
+  every run — **even when nothing resolves** — so a total fetch failure overwrites yesterday's numbers instead
+  of leaving them in place.
+- [x] **Absent, stale, and genuinely flat are three different facts** and all three would serialise to
+  `tilt: 0.0` if the code were careless. Each is pinned by its own test: no data → `skipped` with "fewer than
+  2 usable daily closes"; too old → `skipped` with the age quoted; a real ±0.02% day → `skipped` with the move
+  quoted, under the 0.15% noise floor.
+- [x] **27 tests, every one mutation-verified** (10 mutations, 10 caught). The one that matters is
+  `test_the_desk_actually_applies_the_tilt` — a call-site guard on the confidence gate, the fourth this week
+  after three features shipped green and dead. It also asserts the write-back to `item["confidence"]`, without
+  which top-K would rank on the pre-tilt number and the tilt would half-work.
+- [x] **A second consumer-side cap (`INDIA_TILT_HARD_CAP`) is not redundant.** The producer caps at ±0.06; a
+  hand-edited or corrupted file claiming 0.9 would otherwise force any signal past any threshold.
+- [ ] **Unverified live — no network to NSE from the dev container.** End-to-end was proven on fabricated
+  closes (INFY −2% → INFY tilt −0.04, buy; +0.04, sell. ^NSEI +1.5% → INDA +0.03, SMIN +0.018). The first
+  scheduled run at 10:20 UTC is what confirms yfinance resolves `.NS` from an Actions runner; the Discord post
+  states which path it took either way.
+
+## 🧪 2026-08-05 18:10 — THE IMPROVER'S SIZE GUARD HAD NO TEST, AND ITS OTHER TESTS ONLY PASSED FROM ONE DIRECTORY
+
+- [x] **`_too_large` (the #1248 fix) was completely untested.** Added `test_oversized_files_are_never_picked`
+  (real files on disk — the guard's job is to stat them) and `test_an_unreadable_path_is_treated_as_unusable`
+  (OSError → True is deliberate: a path that cannot be stat'd cannot be read by `improve_file()` either).
+  Both mutation-verified.
+- [x] **Two existing improver tests were silently cwd-dependent.** `_too_large` returns True on OSError, and
+  the tests' fake paths (`backend/app/utils/logging.py`) are *relative* — they resolve only when pytest runs
+  from the repo root. CI does, so CI is green; running `pytest` from `.github/scripts` empties the candidate
+  list and `pick_target_file` returns None, failing on an assertion about protected paths that has nothing to
+  do with the real cause. Now `monkeypatch`ed explicitly.
+- [x] **Worth recording that this was NOT a main regression, and I checked before acting.** It surfaced during
+  the tick's regression sweep and looked exactly like one. The full agent suite is **1365 passed, 164 skipped**
+  from the repo root. Same discipline as the 18 hardcoded dates in `test_desk_trade_sync.py` that turned out to
+  be fine — the cheap check before the expensive "fix" was right both times.
+
 ## 🪙 2026-08-05 13:40 — THE BACKTEST'S CRYPTO HALF HAS NEVER PRODUCED A RESULT
 
 - [x] **`quick-backtest.yml`'s job is named "Run backtests across all desks". Every persisted result reads
@@ -98,10 +154,10 @@
   added to any desk, because the data resolving makes it *look* correct while every order fails.
 - [ ] **To trade Indian equities natively, wire a real broker** — Zerodha Kite, Upstox, or ICICI Direct. That is
   an operator decision (account + API credentials); no code change can create the venue.
-- [ ] **[P2] The stronger intermediate play:** use NSE data as a *signal input* for the India ETFs/ADRs that CAN
-  execute. NSE trades 03:45–10:00 UTC — the window US RTH never reaches, and the platform is measured at ~27% of
-  the clock. A RELIANCE.NS/Nifty move informs an INDA or INFY order that is actually placeable. This gets India
-  signal quality without an unexecutable desk.
+- [x] **[P2] The stronger intermediate play — SHIPPED 2026-08-05 18:10, see the top entry.** Use NSE data as a
+  *signal input* for the India ETFs/ADRs that CAN execute. NSE trades 03:45–10:00 UTC — the window US RTH never
+  reaches, and the platform is measured at ~27% of the clock. A Nifty/INFY.NS move informs an INDA or INFY order
+  that is actually placeable. This gets India signal quality without an unexecutable desk.
 
 ### Deliberately excluded
 - [x] **Options desk** — its eight underlyings are mega-liquid by design. INDA/INFY have listed options but thin
