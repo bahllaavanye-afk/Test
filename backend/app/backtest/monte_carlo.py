@@ -56,6 +56,55 @@ class MonteCarloResult:
             raise ValueError("num_simulations must be a positive integer.")
 
 
+def _validate_daily_returns(daily_returns: pd.Series) -> np.ndarray:
+    """Validate daily_returns and return a clean NumPy array.
+
+    Raises
+    ------
+    ValueError
+        If the series is not suitable for simulation.
+    """
+    if not isinstance(daily_returns, pd.Series):
+        raise ValueError("daily_returns must be a pandas Series.")
+    if daily_returns.empty:
+        raise ValueError("daily_returns series cannot be empty.")
+    if not np.issubdtype(daily_returns.dtype, np.number):
+        raise ValueError("daily_returns must contain numeric values.")
+    # Drop NaNs and ensure all values are finite
+    cleaned = daily_returns.dropna()
+    if cleaned.empty:
+        raise ValueError("daily_returns series contains only NaN values.")
+    if not np.isfinite(cleaned).all():
+        raise ValueError("daily_returns contains non‑finite values (NaN or Inf).")
+    return cleaned.values
+
+
+def _validate_positive_integer(value: int, name: str) -> None:
+    """Validate that a value is a positive integer.
+
+    Raises
+    ------
+    ValueError
+        If the value is not a positive integer.
+    """
+    if not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{name} must be a positive integer.")
+
+
+def _validate_real_number(value: float, name: str) -> None:
+    """Validate that a value is a real, finite number.
+
+    Raises
+    ------
+    ValueError
+        If the value is not a real or is not finite.
+    """
+    if not isinstance(value, numbers.Real):
+        raise ValueError(f"{name} must be a real number.")
+    if not np.isfinite(value):
+        raise ValueError(f"{name} must be finite.")
+
+
 def monte_carlo_simulation(
     daily_returns: pd.Series,
     n_simulations: int = 1000,
@@ -73,7 +122,7 @@ def monte_carlo_simulation(
     n_years : int
         Number of years to simulate. Must be a positive integer.
     risk_free_daily : float
-        Daily risk‑free rate. Must be a real number.
+        Daily risk‑free rate. Must be a real, finite number.
 
     Returns
     -------
@@ -88,23 +137,15 @@ def monte_carlo_simulation(
         If an unexpected error occurs during the simulation.
     """
     # Input validation
-    if not isinstance(daily_returns, pd.Series):
-        raise ValueError("daily_returns must be a pandas Series.")
-    if daily_returns.empty:
-        raise ValueError("daily_returns series cannot be empty.")
-    if not np.issubdtype(daily_returns.dtype, np.number):
-        raise ValueError("daily_returns must contain numeric values.")
-    if not np.isfinite(daily_returns.dropna()).all():
-        raise ValueError("daily_returns contains non‑finite values (NaN or Inf).")
-    if not isinstance(n_simulations, int) or n_simulations <= 0:
-        raise ValueError("n_simulations must be a positive integer.")
-    if not isinstance(n_years, (int, float)) or n_years <= 0:
-        raise ValueError("n_years must be a positive number.")
-    if not isinstance(risk_free_daily, numbers.Real):
-        raise ValueError("risk_free_daily must be a real number.")
+    returns_array = _validate_daily_returns(daily_returns)
+    _validate_positive_integer(n_simulations, "n_simulations")
+    _validate_positive_integer(n_years, "n_years")
+    _validate_real_number(risk_free_daily, "risk_free_daily")
 
     n_days = int(n_years * 252)
-    returns_array = daily_returns.dropna().values
+    if n_days <= 0:
+        raise ValueError("Calculated number of days to simulate must be positive.")
+
     sharpes: list[float] = []
     max_dds: list[float] = []
     positive = 0
