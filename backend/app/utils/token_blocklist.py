@@ -9,6 +9,8 @@ Stored keys: "revoked_jti:<jti>" with TTL = token remaining lifetime.
 from __future__ import annotations
 
 import time
+from typing import Optional
+
 # In-memory fallback: {jti: expires_at_unix}
 _memory_blocklist: dict[str, float] = {}
 
@@ -27,8 +29,22 @@ async def _try_get_redis():
         return None
 
 
-async def revoke_jti(jti: str, ttl_seconds: int) -> None:
-    """Mark this JTI as revoked. TTL should equal the token's remaining lifetime."""
+async def revoke_jti(jti: Optional[str], ttl_seconds: Optional[int]) -> None:
+    """
+    Mark this JTI as revoked. TTL should equal the token's remaining lifetime.
+
+    Edge‑case handling:
+    * If `jti` is None or an empty string, the function returns early.
+    * If `ttl_seconds` is missing, non‑positive, or not an int, the JTI is not stored.
+    """
+    if not jti:
+        # Nothing to revoke
+        return
+
+    if not isinstance(ttl_seconds, int) or ttl_seconds <= 0:
+        # Non‑positive TTL means the token is already expired; no need to store.
+        return
+
     r = await _try_get_redis()
     if r is not None:
         try:
@@ -40,8 +56,17 @@ async def revoke_jti(jti: str, ttl_seconds: int) -> None:
     _memory_blocklist[jti] = time.time() + ttl_seconds
 
 
-async def is_revoked(jti: str) -> bool:
-    """Return True if this JTI has been revoked."""
+async def is_revoked(jti: Optional[str]) -> bool:
+    """
+    Return True if this JTI has been revoked.
+
+    Edge‑case handling:
+    * Returns False for None or empty JTI.
+    * Cleans up expired entries that hit the exact expiration moment.
+    """
+    if not jti:
+        return False
+
     r = await _try_get_redis()
     if r is not None:
         try:
@@ -52,7 +77,8 @@ async def is_revoked(jti: str) -> bool:
     expires = _memory_blocklist.get(jti)
     if expires is None:
         return False
-    if time.time() > expires:
+    # Consider the token revoked if the current time is greater than or equal to expiration.
+    if time.time() >= expires:
         _memory_blocklist.pop(jti, None)
         return False
     return True

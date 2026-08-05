@@ -1,5 +1,7 @@
 """API v1 router — mounts all sub-routers."""
 import logging
+from typing import Iterable, Tuple, Optional
+
 from fastapi import APIRouter
 
 from app.api.v1 import (
@@ -39,18 +41,35 @@ logger = logging.getLogger(__name__)
 
 api_router = APIRouter()
 
-def _include(router_obj, name: str):
-    """Safely include a sub‑router, handling None or invalid inputs."""
+
+def _include(router_obj: Optional[APIRouter], name: str) -> None:
+    """Safely include a sub‑router, handling None, empty, or invalid inputs.
+
+    Args:
+        router_obj: The router instance to include. May be None or an invalid type.
+        name: Human‑readable identifier for logging.
+    """
     if router_obj is None:
         logger.warning("Router %s is None and will be skipped.", name)
         return
+
+    # Guard against accidental passing of empty iterables or wrong types.
+    if not isinstance(router_obj, APIRouter):
+        logger.warning(
+            "Router %s is not an APIRouter instance (type=%s); skipping inclusion.",
+            name,
+            type(router_obj).__name__,
+        )
+        return
+
     try:
         api_router.include_router(router_obj)
     except Exception as exc:  # pragma: no cover
         logger.error("Failed to include router %s: %s", name, exc)
 
-# List of (router, name) tuples for systematic inclusion
-_routers = [
+
+# List of (router, name) tuples for systematic inclusion.
+_routers: Iterable[Tuple[Optional[APIRouter], str]] = [
     (auth.router, "auth"),
     (accounts.router, "accounts"),
     (orders.router, "orders"),
@@ -83,5 +102,8 @@ _routers = [
     (webhooks_router, "webhooks"),
 ]
 
-for r, n in _routers:
-    _include(r, n)
+if not _routers:
+    logger.warning("No sub‑routers defined; API router will have no endpoints.")
+else:
+    for r, n in _routers:
+        _include(r, n)

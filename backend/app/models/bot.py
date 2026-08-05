@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import String, Boolean, JSON, Integer, DateTime
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, validates
 from app.database import Base
 from app.models.base import TimestampMixin
 
@@ -41,3 +41,63 @@ class Bot(Base, TimestampMixin):
     last_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     template_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    @validates("trigger")
+    def _validate_trigger(self, key: str, value: dict | None) -> dict:
+        """Ensure trigger is always a dict; treat None as empty dict."""
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError("trigger must be a dict")
+        return value
+
+    @validates("action")
+    def _validate_action(self, key: str, value: dict | None) -> dict:
+        """Ensure action is always a dict; treat None as empty dict."""
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError("action must be a dict")
+        return value
+
+    @validates("conditions")
+    def _validate_conditions(self, key: str, value: list | None) -> list:
+        """Normalize conditions to an empty list when None or non‑list."""
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("conditions must be a list")
+        return value
+
+    @validates("exit_rules")
+    def _validate_exit_rules(self, key: str, value: list | None) -> list:
+        """Normalize exit_rules to an empty list when None or non‑list."""
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("exit_rules must be a list")
+        return value
+
+    @validates("market_type")
+    def _validate_market_type(self, key: str, value: str | None) -> str:
+        """Validate market_type against known types; default to 'equity' on invalid input."""
+        if not value or value not in MARKET_TYPES:
+            return "equity"
+        return value
+
+    @validates("run_count")
+    def _validate_run_count(self, key: str, value: int | None) -> int:
+        """Guard against negative or None run counts."""
+        if value is None or value < 0:
+            return 0
+        return value
+
+    @validates("last_signal")
+    def _validate_last_signal(self, key: str, value: str | None) -> str | None:
+        """Allow only known signal values or None."""
+        allowed = {"buy", "sell", "hold", "alert"}
+        if value is None:
+            return None
+        if value not in allowed:
+            raise ValueError(f"last_signal must be one of {allowed}")
+        return value
