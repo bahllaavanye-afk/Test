@@ -1,5 +1,43 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🇮🇳 2026-08-05 10:10 — INDIAN MUTUAL FUNDS LIVE (data), and why Zerodha cannot be the bot
+
+### ✅ Mutual funds — real data, no credentials needed
+- [x] **AMFI feed built and verified**: `14,237` schemes across `52` AMCs, of which **3,156 are investable**
+  (Direct + Growth). Free, unauthenticated, daily. `india_mf.py` — snapshot, history, universe filter,
+  momentum ranking, bounded state.
+- [x] **Two traps pinned by tests, both cost real debugging:**
+  - `www.amfiindia.com` **302-redirects** to `portal.amfiindia.com`. Unfollowed, the payload is a 169-byte HTML
+    stub that parses to zero schemes — an empty universe that reads as "no funds today", not a broken fetch.
+  - **Ranking the raw history returns the same fund four times.** Direct/Regular × Growth/IDCW track one
+    portfolio and post near-identical returns. Measured on Axis (`mf=53`), the unfiltered top 5 was: Axis IT ETF,
+    then Nifty IT Index Fund as Direct-Growth, Direct-IDCW, Regular-Growth, Regular-IDCW — four slots for one
+    fund, two of them the strictly-worse Regular plan. Filtered gives five distinct funds.
+- [x] **Universe is Direct + Growth deliberately.** Direct plans carry no distributor commission (~0.5-1.0%
+  lower expense ratio); IDCW options pay out of NAV, so their series has discontinuities that look exactly like
+  negative returns.
+- [ ] **[P1] Next:** daily workflow + `#desk-india-mf` channel, and category-relative ranking (a top-quartile
+  large-cap fund is a different claim from a sector fund that happened to run).
+
+### 🔴 [USER] Zerodha cannot be the automated bot — pick AngelOne or Dhan
+- [ ] **Kite Connect issues `request_token` only via a browser redirect a human completes, and `access_token`
+  expires daily (~06:00 IST).** A Kite-backed desk would place orders only on days somebody logged in by hand.
+  It also costs ₹2,000/month. Automating it means scripting a login page — against their terms, and it breaks
+  silently whenever the page changes.
+
+  | broker | cost | unattended? |
+  |---|---|---|
+  | **AngelOne SmartAPI** | free | **yes** — TOTP from a stored seed |
+  | **Dhan** | free | **yes** — long-lived token |
+  | Upstox | free tier | no — daily OAuth redirect |
+  | Zerodha Kite | ₹2,000/mo | no — daily interactive login |
+- [ ] **To enable Indian execution, set four secrets:** `ANGELONE_API_KEY`, `ANGELONE_CLIENT_ID`,
+  `ANGELONE_PASSWORD`, `ANGELONE_TOTP_SECRET`. `india_broker.status_line()` reports what is missing, and
+  selection prefers unattended brokers over configured-but-manual ones.
+- [x] **Deliberately no order routing yet.** `india_broker.py` is a capability/spec module — a test fails if
+  `urlopen`/`place_order` appears in it. Routing live orders into a real Indian brokerage account moves real
+  money and is not a change to make unsupervised.
+
 ## 🇮🇳 2026-08-05 09:40 — INDIA COVERAGE ADDED (tradeable today), and the limit on it
 
 - [x] **The desk layer covered 19 countries and not India** — the world's 5th-largest equity market. Japan,
