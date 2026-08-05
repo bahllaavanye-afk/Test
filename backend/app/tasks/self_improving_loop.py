@@ -16,7 +16,7 @@ import json
 import logging
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, List, Tuple
+from typing import Any, List, Tuple, Optional
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,10 +43,10 @@ class SelfImprovingLoop:
             await self._broadcast_regime(metrics)
 
             duration = time.perf_counter() - start_time
-            total_pnl = sum(m.get("total_pnl", 0) for m in metrics)
+            total_pnl = sum(m.get("total_pnl", 0) for m in metrics or [])
             logger.info(
                 "SelfImprovingLoop: cycle complete (%d strategies evaluated, total_pnl=%.2f, duration=%.3fs)",
-                len(metrics),
+                len(metrics or []),
                 total_pnl,
                 duration,
             )
@@ -96,9 +96,12 @@ class SelfImprovingLoop:
 
     # ── Auto-disable ──────────────────────────────────────────────────────────
 
-    async def _auto_disable_underperformers(self, metrics: List[dict]) -> None:
+    async def _auto_disable_underperformers(self, metrics: Optional[List[dict]]) -> None:
         """Disable strategies with Sharpe < 0 and >= 10 trades in the last 30 days."""
-        underperformers = [m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10]
+        if not metrics:
+            return
+
+        underperformers = [m for m in metrics if m.get("sharpe", 0) < 0 and m.get("num_trades", 0) >= 10]
         if not underperformers:
             return
 
@@ -124,7 +127,7 @@ class SelfImprovingLoop:
 
     # ── LLM improvement pass ──────────────────────────────────────────────────
 
-    async def _llm_improvement_pass(self, metrics: List[dict]) -> None:
+    async def _llm_improvement_pass(self, metrics: Optional[List[dict]]) -> None:
         if not metrics:
             return
 
@@ -140,20 +143,28 @@ class SelfImprovingLoop:
             await self._store_llm_suggestion(response)
 
     def _select_top_bottom_strategies(self, metrics: List[dict]) -> Tuple[List[dict], List[dict]]:
-        """Return the top 5 and bottom 3 strategies based on Sharpe."""
-        top = sorted(metrics, key=lambda m: m["sharpe"], reverse=True)[:5]
-        bottom = sorted(metrics, key=lambda m: m["sharpe"])[:3]
+        """Return the top 5 and bottom 3 strategies based on Sharpe, avoiding overlap."""
+        sorted_metrics = sorted(metrics, key=lambda m: m.get("sharpe", 0), reverse=True)
+        top = sorted_metrics[:5]
+
+        # Bottom strategies should come from the end of the list and not overlap with top
+        if len(sorted_metrics) > 5:
+            bottom = sorted_metrics[-3:]
+        else:
+            bottom = []  # Not enough distinct strategies to define a bottom set
         return top, bottom
 
-    def _build_llm_prompt(self, top: List[dict], bottom: List[dict]) -> str:
+    def _build_llm_prompt(self, top: Optional[List[dict]], bottom: Optional[List[dict]]) -> str:
         """Create the prompt sent to the LLM with formatted strategy data."""
+        top_data = top or []
+        bottom_data = bottom or []
         return f"""You are a quantitative trading researcher.
 
 Top performing strategies (last 30d):
-{json.dumps(top, indent=2)}
+{json.dumps(top_data, indent=2)}
 
 Underperforming strategies:
-{json.dumps(bottom, indent=2)}
+{json.dumps(bottom_data, indent=2)}
 
 Suggest 3 specific, actionable improvements:
 1. Parameter tuning for the worst performer
@@ -164,19 +175,24 @@ Be concise. Each suggestion under 2 sentences."""
 
     async def _store_llm_suggestion(self, response: Any) -> None:
         """Persist LLM suggestion to AgentMemory and log the provider."""
+        provider = getattr(response, "provider", "unknown")
+        suggestion = getattr(response, "content", "")
         await self._memory.write(
             "llm_suggestions",
             {
-                "provider": response.provider,
-                "suggestion": response.content,
+                "provider": provider,
+                "suggestion": suggestion,
             },
         )
-        logger.info("SelfImprovingLoop: LLM suggestion from %s stored", response.provider)
+        logger.info("SelfImprovingLoop: LLM suggestion from %s stored", provider)
 
     # ── Regime broadcast ──────────────────────────────────────────────────────
 
-    async def _broadcast_regime(self, metrics: List[dict]) -> None:
-        profitable = sum(1 for m in metrics if m["sharpe"] > 0.5)
+    async def _broadcast_regime(self, metrics: Optional[List[dict]]) -> None:
+        if not metrics:
+            metrics = []
+
+        profitable = sum(1 for m in metrics if m.get("sharpe", 0) > 0.5)
         total = len(metrics) or 1
         health = profitable / total
 
