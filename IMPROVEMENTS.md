@@ -1,5 +1,40 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 👥 2026-08-05 19:15 — THE SECOND WRITER ON THE ALPACA ACCOUNT IS NOW REPORTED EVERY RUN
+
+Operator item #1 has been "re-verified still live" by hand in three separate sessions. Re-verified again just
+now, and this time the *rediscovery* is what got fixed.
+
+`quantedge-api-agb8.onrender.com/health/detailed`, 2026-08-05 19:00:
+
+    background_tasks: {"running": 11, "total": 11}
+    alpaca:           {"ok": true, "note": "connected"}
+    strategies:       {"count": 113}
+    database:         {"ok": false, "error": "Name or service not known"}
+
+- [x] **It cannot record what it does, but it can still place orders.** Its own DB is dead, so nothing on that
+  side leaves a trace — and it moves the equity, buying power and positions that Kelly sizing, the daily loss
+  cap and `is_risk_reducing` all read on this side.
+- [x] **The existing origin report could almost never run.** `_report_recent_closes()` is called in exactly one
+  place: inside the daily-loss-cap branch, and only when the book is additionally flat. On every ordinary run —
+  including all 30 desk runs today — a second writer on the account was invisible.
+- [x] **Shipped `audit_order_origins()`, called unconditionally in the account stage** before the sizing inputs
+  it exists to warn about. `client_order_id` is the discriminator, and it is the right one because it lives at
+  the *broker*: it survives the backend DB sitting on its ephemeral sqlite fallback, which is where it has been
+  all week. Orders tagged `qe-…` are ours; anything else is named, with a bounded 5-line sample.
+- [x] **It prints on the clean path too** (`✓ order-origin audit: all N recent order(s) placed by this desk`).
+  A guard that only speaks when it fires cannot be told apart from one that stopped running — a mistake this
+  file has recorded more than once.
+- [x] **`status: "all"`, not `"closed"`.** `_report_recent_closes` asks about closed orders, which is right for
+  *its* question ("what flattened the book?") and wrong for this one: a second writer's **open** orders are the
+  ones about to move the book underneath the next sizing decision.
+- [x] **11 tests, 5 mutations, 5 caught.** Including: an order with no `client_order_id` (Alpaca
+  auto-liquidation, hand-placed) must count as **foreign**, since defaulting it to "ours" would hide precisely
+  the writer this exists to find.
+- [ ] **This does not fix the hazard, and is not meant to.** Suspending the service is still operator item #1;
+  no code here can do it. What changes is that a duplicate writer now shows up in the log of every desk run
+  instead of being re-derived by hand each session.
+
 ## 🖼️ 2026-08-05 19:00 — EVERY CONSUMER OF A FRONTEND URL WAS POINTED AT AN ABANDONED STUB
 
 Three Vercel projects in this account answer **HTTP 200** and exactly one is this platform:

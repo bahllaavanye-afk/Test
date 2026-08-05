@@ -1021,6 +1021,65 @@ async def _report_recent_closes(limit: int = 8) -> None:
               flush=True)
 
 
+def summarise_origins(orders: list) -> "tuple[int, int, list]":
+    """(ours, foreign, sample_of_foreign) from a list of Alpaca orders.
+
+    Pure, so the classification is testable without a broker. `client_order_id`
+    is the only discriminator that survives everything else being unavailable:
+    it lives at the broker, not in any storage this project controls, and the
+    backend DB has been on its ephemeral sqlite fallback for days.
+    """
+    ours = foreign = 0
+    sample = []
+    for o in orders or []:
+        if _order_origin(o.get("client_order_id")) == "this desk placer":
+            ours += 1
+        else:
+            foreign += 1
+            if len(sample) < 5:
+                sample.append(o)
+    return ours, foreign, sample
+
+
+async def audit_order_origins(limit: int = 50) -> "tuple[int, int, list]":
+    """Who has been trading this account lately. Fail-soft; diagnostic only.
+
+    `quantedge-api-agb8.onrender.com` is a SECOND backend on the SAME Alpaca
+    paper account — re-verified live 2026-08-05 19:00 with `background_tasks:
+    running 11`, `alpaca: connected`, `strategies: count 113`, and its own
+    database dead. It cannot record what it does, but it can still place
+    orders, and it contaminates the equity/buying-power reads this script uses
+    for Kelly sizing, the loss cap and `is_risk_reducing`.
+
+    Suspending it is an operator action; no code here can. What code *can* do
+    is stop the hazard being re-established by hand every session. Until now
+    the only origin report (`_report_recent_closes`) ran solely when the daily
+    loss cap tripped on a flat book — a corner almost never reached — so a
+    second writer on the account was invisible on every ordinary run.
+    """
+    try:
+        orders = await _alpaca_get("/v2/orders", {"status": "all", "limit": limit,
+                                                  "direction": "desc"})
+    except Exception as exc:  # noqa: BLE001 — never take the desk down for a diagnostic
+        print(f"  (order-origin audit unavailable: {str(exc)[:70]})", flush=True)
+        return 0, 0, []
+
+    ours, foreign, sample = summarise_origins(orders)
+    if foreign:
+        print(f"  ⚠️ ORDER-ORIGIN AUDIT: {foreign} of {ours + foreign} recent orders were "
+              f"NOT placed by this desk — a second writer is on this account", flush=True)
+        for o in sample:
+            print(f"       {o.get('submitted_at')} {o.get('symbol')} {o.get('side')} "
+                  f"qty={o.get('qty')} [{o.get('status')}] "
+                  f"coid={o.get('client_order_id')!r}", flush=True)
+    else:
+        # Printed on the clean path too. A guard that only speaks when it fires
+        # cannot be distinguished from one that stopped running.
+        print(f"  ✓ order-origin audit: all {ours} recent order(s) placed by this desk",
+              flush=True)
+    return ours, foreign, sample
+
+
 def _vol_scalar(bars) -> float:
     """target/realized annualized vol from 20d closes, clamped [0.5, 2.0].
     1.0 when bars are absent/short/degenerate — sizing then falls back to
@@ -1981,6 +2040,12 @@ async def main() -> None:
                 # are still generated and logged for the record.
                 last_equity = float(account.get("last_equity", 0) or 0)
                 _loss_cap_hit = daily_loss_cap_hit(equity, last_equity)
+                # Runs on EVERY run, before any sizing decision reads these
+                # numbers. A second writer on this account changes equity,
+                # buying power and positions underneath Kelly sizing, the loss
+                # cap and is_risk_reducing — so if one exists, it belongs at the
+                # top of the log rather than inferred later from a surprise.
+                await audit_order_origins()
                 await recover_negative_cash(account)
                 if _loss_cap_hit:
                     print(f"  🛑 DAILY LOSS CAP: equity down {1.0 - equity / last_equity:.2%} vs prior "
