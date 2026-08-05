@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785891567.6896825,
+    "last_updated": 1785891716.1755412,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -110,7 +110,7 @@
     "opinion_score": 4,
     "macro_score": 3,
     "vix": 16.5,
-    "market_scan_ts": 1785891341.4222806,
+    "market_scan_ts": 1785891716.1523588,
     "sector_leaders": [
       "Energy",
       "Financials",
@@ -155,21 +155,6 @@
     "last_brain_update": 1785888532.2577984
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Energy",
-        "Healthcare",
-        "Financials"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Energy, Healthcare. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1785162260.4040143
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -2043,6 +2028,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
       "ts": 1785891341.4575145
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Financials",
+        "Real Estate"
+      ],
+      "gap_count": 8,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
+      "ts": 1785891716.179944
     }
   ],
   "github_insights": [
