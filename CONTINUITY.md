@@ -57,6 +57,62 @@ the real 07:56 account state a $500 SPY order now sizes to **0** instead of ~$19
 margin; already starved). Skip reason reported as `margin floor`, distinct from `insufficient cash`. **Frees
 nothing already committed — it stops the state recurring after a paper-account reset.**
 
+## 💣 2026-08-05 16:40 — A SECOND TIME BOMB, and it went off at 15:00 UTC today
+
+`test_desk_trade_sync_env.py::test_env_desk_fills_attributed_to_keyless_account` began failing on main with
+`assert written2 == 0` → `assert 1 == 0`. **Not a code regression** — the test and `desk_trade_sync.py` last
+changed in #1143 / #764.
+
+**The fixture had an expiry date.** Orders were hardcoded at `2026-07-06T14:00/15:00Z`, and
+`sync_desk_trades` dedups against `Trade.closed_at >= now - lookback_days` (30). Measured at 16:39 UTC:
+```
+lookback_start   2026-07-06T16:39
+trade closed_at  2026-07-06T15:00   ← outside the window by 1.7 hours
+```
+Once the close time aged past 30 days, the dedup query could no longer see the row it had just written, so
+the second sync re-inserted it. The test passed until ~15:00 UTC today and has failed since — **exactly 30
+days after the hardcoded date, to the hour.** Fixed with relative timestamps (`_ago(hours=25/24)`), which
+cannot expire.
+
+**Second instance of this class in two days** (`DENYLIST_TTL_DAYS`, 08-04). Both were tests asserting the
+absence of an expiry they were written to live inside. **When a test hardcodes a date and the code under it
+has a time window, the test has a shelf life.**
+
+**Swept for a third — none.** `test_desk_trade_sync.py` has 18 hardcoded dates at the same 30-day boundary
+but passes: it exercises `reconstruct_closed_trades`, a pure pairing function with no time window
+(`grep -c "lookback|closed_at"` → 0). Its dates are relative to each other, not to now. Checked before
+"fixing" 18 timestamps that are fine.
+
+**Noted, not acted on:** `test_no_datetime_utcnow_in_source` fails locally on `backend/app/models/backtest.py`
+(3 occurrences, present on main, file unmodified) but **passes in CI** — 2034 passed, 1 failed, the time
+bomb only. Path resolution differs between environments; CI is the authority for whether main is broken,
+and `backend/app/**` is outside the modify-safe set in `scripts/CLAUDE.md`.
+
+## ✅ 2026-08-05 14:44 — THE BACKTEST NOW COVERS BOTH DESKS, verified in production
+
+Run `31016650918`, committed as `98fdaf96`:
+```
+Binance BTCUSDT: HTTP 451 (geo-blocked from this runner) — falling back to yfinance
+  momentum/BTCUSDT: Sharpe=-0.15      mean_reversion/BTCUSDT: Sharpe=-0.19
+Binance ETHUSDT: HTTP 451 (geo-blocked from this runner) — falling back to yfinance
+  momentum/ETHUSDT: Sharpe=-0.18      mean_reversion/ETHUSDT: Sharpe=+0.30
+✓ 16 backtests | top Sharpe: 1.47 (rsi/AAPL)
+```
+Persisted state: **`total_runs: 16`, `desks: ['equity', 'crypto']`** — up from 12 / equity-only.
+
+**Both open questions answered.** The 451 is real in the Actions runner, not just the dev container — so
+Binance is geo-blocked from GitHub's infrastructure. And **yfinance does resolve `BTC-USD` / `ETH-USD`
+there**, which could not be checked locally because both hosts are blocked from this container. The fix
+needed no third source.
+
+**The whole chain is now verified end to end**, each link having failed silently before:
+`contents: write` + staging the whole state dir (0 commits ever → 6) → crypto 451 logged instead of a bare
+`None` → yfinance fallback → crypto results tagged and persisted.
+
+**Note the numbers are real and mostly negative** — BTC momentum −0.15, ETH momentum −0.18, ETH
+mean-reversion +0.30. That is the point: a backtest that only ever reported equity results was not a
+kinder view of the strategies, it was no view at all.
+
 ## 🔴 2026-08-05 08:15 — THE ACCOUNT IS OUT OF MARGIN. Nothing has traded for ~7 hours.
 
 **This is now the binding constraint on the entire platform**, ahead of everything else in this file. The desks
