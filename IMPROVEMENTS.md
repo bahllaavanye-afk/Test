@@ -1,5 +1,26 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔬 2026-08-05 20:20 — "BEATS BUY-AND-HOLD" NOW HAS TO SURVIVE THREE SUB-PERIODS, NOT ONE
+
+The 19:22 run beat buy-and-hold on QQQ (1.201 vs 0.734) and NVDA (1.184 vs 1.130). I flagged the caveat in the
+same breath — **one window** — and this closes it.
+
+- [x] **A single Sharpe cannot distinguish "the model has an edge" from "the model was long through one good
+  stretch and flat through a crash",** and those two imply opposite decisions about wiring ML into live orders.
+  The walk-forward now also reports Sharpe per equal-length sub-period (default 3) with a `beats` flag each.
+- [x] **It costs nothing.** `walk_forward` already computed the strategy and benchmark return series; slicing
+  them adds **zero model fits**. This is not a new experiment, it is the same one read properly.
+- [x] **Under 30 OOS days a sub-window reports nothing rather than a number.** A Sharpe over a handful of days
+  is noise, and a reader weighs a printed number the same whether or not it means anything.
+- [x] **5 tests, 4 mutations, 4 caught.** The one that matters is
+  `test_an_edge_concentrated_in_one_period_is_visible`: a synthetic series with the edge deliberately confined
+  to the middle third must report `[False, True, False]`. Two separate mutations (a hardcoded `beats: True`,
+  and slicing that ignores the window bounds) were caught by exactly that test — without it, a sub-window
+  report that always said "consistent" would have looked like good news.
+- [ ] **Next run tells us something new.** If QQQ and NVDA beat in all three sub-periods, that is a materially
+  stronger claim than this morning's. If they beat in one, the honest read is that the headline number was a
+  regime artefact — the same trap the window bug set, one level up.
+
 ## 🇮🇳 2026-08-05 20:06 — INDIA MUTUAL FUNDS: FIRST SCHEDULED RUN, FULL PIPELINE VERIFIED
 
 `india-mf.yml` fired for the first time and every stage produced something. Not "exit 0" — output at each link:

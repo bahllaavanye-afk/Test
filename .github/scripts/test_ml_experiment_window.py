@@ -180,3 +180,63 @@ def test_the_window_is_recorded_in_the_payload():
     src = (SCRIPTS / "ml_experiment.py").read_text()
     body = src.split("def main(", 1)[1]
     assert "first_date" in body and "last_date" in body
+
+
+# ── Sub-windows: is the edge consistent, or one lucky stretch? ───────────────
+
+def _series(n, val):
+    import numpy as np
+    return np.full(n, val, dtype=float)
+
+
+def test_sub_windows_split_the_oos_series_evenly():
+    import numpy as np
+    dates = pd.date_range("2021-01-04", periods=900, freq="B")
+    out = mlx.sub_window_stats(_series(900, 0.001), _series(900, 0.001), dates)
+    assert len(out) == 3
+    assert sum(w["days"] for w in out) == 900
+    assert out[0]["from"] == "2021-01-04"
+    assert out[-1]["to"] == str(dates[-1].date())
+
+
+def test_a_short_series_reports_nothing_rather_than_noise():
+    """Under 30 OOS days a slice's Sharpe is noise dressed as a number, and a
+    reader would weigh it the same as a real one."""
+    import numpy as np
+    dates = pd.date_range("2026-01-01", periods=60, freq="B")
+    assert mlx.sub_window_stats(_series(60, 0.001), _series(60, 0.001), dates) == []
+
+
+def test_an_edge_concentrated_in_one_period_is_visible():
+    """THE point of this. A model that beats the benchmark only in the middle
+    third must not read the same as one that beats it throughout — those imply
+    opposite decisions about wiring ML into live orders."""
+    import numpy as np
+    n = 900
+    bench = _series(n, 0.0005)
+    strat = _series(n, 0.0001)
+    rng = np.random.default_rng(0)
+    bench = bench + rng.normal(0, 0.001, n)
+    strat = strat + rng.normal(0, 0.001, n)
+    strat[300:600] += 0.004                      # edge ONLY in the middle third
+    out = mlx.sub_window_stats(strat, bench, pd.date_range("2021-01-04", periods=n, freq="B"))
+    assert [w["beats"] for w in out] == [False, True, False], [w["beats"] for w in out]
+
+
+def test_a_consistent_edge_shows_in_every_window():
+    import numpy as np
+    n = 900
+    rng = np.random.default_rng(1)
+    bench = rng.normal(0.0002, 0.001, n)
+    strat = bench + 0.003                        # uniformly better
+    out = mlx.sub_window_stats(strat, bench, pd.date_range("2021-01-04", periods=n, freq="B"))
+    assert all(w["beats"] for w in out)
+
+
+def test_walk_forward_actually_reports_sub_windows():
+    """Call-site guard. The helper is worthless if the payload never carries it
+    — the exact mistake made four times this week."""
+    src = (SCRIPTS / "ml_experiment.py").read_text()
+    body = src.split("def walk_forward(", 1)[1]
+    assert '"sub_windows": sub_window_stats(' in body, (
+        "walk_forward does not put sub_windows in its result")
