@@ -85,6 +85,25 @@ def _load_memory() -> dict:
 _QUOTA_SHARE = float(os.environ.get("EMPLOYEE_QUOTA_SHARE", "0.6") or 0.6)
 
 
+# Ceiling on the adaptive multiplier. At the Gemini-only base of 6.67s this tops
+# out at ~53s between calls — slow, but a run that finishes 20 employees beats
+# one that 429s through all 47.
+_MAX_BACKOFF = float(os.environ.get("EMPLOYEE_MAX_BACKOFF", "8") or 8)
+
+
+def _run_budget_seconds() -> float:
+    """Wall-clock budget for the employee loop, under the job's own timeout.
+
+    The job allows 25 minutes. Stopping at 18 leaves room to write memory, the
+    proof file and the Discord report — a job killed by the runner timeout loses
+    all three, so an overrun would present as a crash rather than a partial run.
+    """
+    try:
+        return max(60.0, float(os.environ.get("EMPLOYEE_RUN_BUDGET_S", "1080") or 1080))
+    except ValueError:
+        return 1080.0
+
+
 def _call_spacing_seconds() -> float:
     """Seconds to wait between employees, derived from the provider's own limit.
 
@@ -199,18 +218,40 @@ def main() -> None:
     conversations: dict = mem.setdefault("conversations", {})
 
     spacing = _call_spacing_seconds()
-    print(f"[employee_runner] {len(emp_keys)} employees, {spacing:.1f}s spacing "
-          f"(~{len(emp_keys) * spacing / 60:.1f} min)", flush=True)
+    budget_s = _run_budget_seconds()
+    started = time.monotonic()
+    backoff = 1.0
+    skipped: list[str] = []
+    print(f"[employee_runner] {len(emp_keys)} employees, {spacing:.1f}s base spacing, "
+          f"{budget_s/60:.0f} min budget", flush=True)
 
     for i, emp_key in enumerate(emp_keys):
         task = topics[i % len(topics)]
+        elapsed = time.monotonic() - started
+        if elapsed > budget_s:
+            # Stop deliberately and SAY SO, rather than running into the job
+            # timeout — a killed job loses the memory write and the proof file,
+            # so a budget overrun would look like a crash.
+            skipped = list(emp_keys[i:])
+            print(f"[employee_runner] budget exhausted after {elapsed/60:.1f} min — "
+                  f"skipping {len(skipped)} employees: {','.join(skipped[:5])}…",
+                  flush=True)
+            break
         if i:
-            time.sleep(spacing)   # between calls, not before the first
+            time.sleep(spacing * backoff)   # between calls, not before the first
         try:
             answer, provider = employee_provider_prompt(emp_key, task, state)
             if not answer:
                 failed.append(emp_key)
+                # ADAPTIVE. Measured 2026-08-05 07:43 (run 30986127682): 47
+                # employees, 1.0s spacing, 101 consecutive `[gemini-key] HTTP
+                # 429`, 5 responses. The declared rpm_free said there was
+                # headroom; the provider said otherwise. Declarations are a
+                # starting guess — the 429s are the ground truth, so widen on
+                # failure and snap back on success.
+                backoff = min(backoff * 2, _MAX_BACKOFF)
                 continue
+            backoff = 1.0
             ts = datetime.now(timezone.utc).isoformat()
             quality_log = state.get("quality_log", [])
             quality_score = quality_log[-1]["score"] if quality_log else None
@@ -235,6 +276,11 @@ def main() -> None:
     _write_proof(conversations, provider_dist, date_str, len(responded))
 
     print(f"RESPONDED_COUNT={len(responded)}")
+    # Skipped-for-budget is NOT the same as failed, and folding the two together
+    # would misreport a healthy-but-throttled run as 42 broken employees.
+    print(f"SKIPPED_COUNT={len(skipped)}")
+    if skipped:
+        print(f"SKIPPED_EMPLOYEES={','.join(skipped)}")
     if failed:
         print(f"FAILED_EMPLOYEES={','.join(failed)}")
     else:
