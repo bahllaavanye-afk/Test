@@ -99,6 +99,12 @@ short window and 0.789 on the long one, because the long one reaches into the 20
 | NVDA | 0.949 vs 1.487 loses | **1.227 vs 1.119 beats** |
 | SPY | 0.932 vs 1.482 loses | 0.645 vs 0.789 loses |
 
+**✅ VERIFIED 19:22 — the fix works and the numbers are now reproducible.** First run after the merge:
+all three symbols on `yfinance`, 1399 rows, oos 1147, window `2021-01-07 → 2026-08-04`. One source, one
+window, and `first_date`/`last_date` in the payload. On that pinned window:
+
+    SPY   0.634 vs 0.791  loses      QQQ  1.201 vs 0.734  BEATS      NVDA  1.184 vs 1.130  BEATS
+
 Expected shape for a defensive model (`time_in_market` ≈ 0.5): gives up upside in a bull run, earns its keep in
 a drawdown. **Do not replace "it loses" with "it wins"** — the honest claim is that the window decides, and
 `ml_experiment.py` now pins one: longest-history source, both ends clamped to what every symbol covers, and
