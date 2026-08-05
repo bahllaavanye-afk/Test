@@ -840,7 +840,7 @@ Live evidence: `/health/detailed` → `ml_models: count 0`. Three stacked causes
 - [ ] **[P2] SOTA sweep — execution**: SmartPricing-style laddered repricing (already queued below), plus survey adaptive limit-order placement literature (queue-position aware repricing) for _ensure_filled.
 - [ ] **[P2] SOTA sweep — ML**: evaluate PatchTST/iTransformer-family for the existing feature pipeline vs the current LSTM/ensemble; only via walk-forward gate, paper-first.
 - [ ] **[P2] SOTA sweep — portfolio**: compare current HRP against NCO (nested clustered optimization) and turnover-penalized variants on the desk universes.
-- [ ] **[P2] Pipeline hardening**: CI: cache uv wheels for faster runs; deploy: post-deploy smoke now hits /health — extend to /health/detailed and fail deploy on `database.ok=false` (catches the next Supabase pause at deploy time instead of silently).
+- [ ] **[P2] Pipeline hardening**: CI: cache uv wheels for faster runs. ~~deploy: post-deploy smoke now hits /health — extend to /health/detailed and fail deploy on `database.ok=false`~~ **DONE 2026-08-05** — with a correction: `database.ok` is **true** on the SQLite fallback (`main.py:487` — the fallback answers `SELECT 1`), so the guard as specified could never fire. It keys on `database_primary.ok` (`main.py:502`), and is strict only on `push` (`SMOKE_FAIL_ON_DEGRADED_DB`) so the 30-min schedule doesn't page 48×/day for an operator-blocked pause. Also asserts `mode == "paper"`.
 
 ## Autonomy hardening (2026-07-20)
 - [x] **[P1] ~~Improver PRs BYPASS CI entirely — the reward gate never runs on them~~ RESOLVED — verified 2026-08-04 03:45.**
