@@ -29,6 +29,45 @@ each independently "found" after already being documented.
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
 
 
+## 🧠 2026-08-05 02:10 — THE RETRIEVAL UPGRADE DROPPED WHAT THE DESKS ACTUALLY DID (fixed)
+
+`memory_manager.SemanticRetriever` — pure-python TF-IDF, live for a while (`_MEMORY_MANAGER_OK` is True,
+so every `inject_company_context=True` prompt routes through it) — searched a hardcoded category list:
+```python
+["episodic", "skills", "chat_insights", "github_insights", "trade_outcomes", "experiment_results"]
+```
+Three of those six have **never existed** in `company_brain.json`. And `desk_outcomes`, which does exist
+and held **100 of the brain's 403 entries**, was not in it. Each entry is one desk run:
+```json
+{"channel": "desk-commodities", "source": "desk_run_summary",
+ "summary": "*Commodities Desk* — 3 order(s) placed 🟢 `time_series_momentum/SLV` BUY $200 conf=100% …"}
+```
+Side, notional, confidence, per order — the most decision-relevant memory a trading firm has, reaching no
+agent prompt.
+
+**It is a regression, not an oversight.** The recency path it replaced (`llm_common.get_company_context`,
+~line 951) *did* include them: `brain.get("desk_outcomes", [])[-3:]`. So moving to semantic retrieval made
+agent context strictly worse for trading outcomes while looking like an upgrade.
+
+**Why nothing caught it: the failure mode is a NARROWER result set, not an empty one.**
+`search("crypto desk orders placed")` still returned four plausible `episodic` hits. A silent narrowing is
+indistinguishable from a specific query. Fixed by `DEFAULT_SEARCH_CATEGORIES` + `_unsearched_categories()`,
+which reports populated brain keys outside the search set.
+
+**That reporter is a RUNTIME stderr line, not a CI assertion — deliberately.** The brain is written by
+background bots. A test asserting on the live file lets a 3am bot commit turn the agent suite red and block
+every PR under `pytest -x` — the denylist TTL failure of 2026-08-04, which this repo has now paid for once.
+
+**Two traps found in passing, both worth not re-learning:**
+- **Tiny corpora score zero.** IDF is `log(N / (1 + df))`, so on a small or homogeneous fixture every term
+  scores ≤ 0 and the `score > 0` filter empties the result. Two of my first tests failed on this, not on the
+  code. Fixtures need enough *varied* documents. Do not "fix" it by changing the formula — that re-ranks the
+  whole brain and needs its own justification. The live brain (~400 docs) is unaffected.
+- **`_BRAIN_FILE` is relative** (`Path(os.environ.get("GITHUB_WORKSPACE", ".")) / ".github" / "state"`).
+  Run from anywhere but the repo root it silently resolves to nothing and every search returns 0 hits. I
+  read that as total breakage for several minutes. Same shape as `_too_large` in `continuous_improver.py`.
+  **When an agent script returns suspiciously empty, check cwd before diagnosing.**
+
 ## 🫀 2026-08-05 01:00 — "17 of 25 PACEMAKER RUNS CANCELLED" IS HEALTHY. Do not re-fix it.
 
 I nearly reported this as a regression of the `cancel-in-progress` bug fixed on 08-03. It is not.
