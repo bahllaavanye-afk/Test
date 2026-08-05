@@ -1,20 +1,24 @@
 """Inbound webhook receivers — TradingView alerts.
 
-IMPROVEMENTS P2 (2026-06-29 review): TradingView has no public trade API, but
-its alerts can POST here (charts → webhook-IN). This endpoint RECEIVES and
-records alerts for visibility — it does NOT auto-trade them (paper-first;
-alerts are unauthenticated third-party input and only ever advisory).
+TradingView alerts can POST JSON payloads to this endpoint (charts → webhook‑IN).
+The endpoint records alerts for visibility only; it does not trigger any
+trading actions. Because alerts are unauthenticated third‑party input, the
+shared secret is expected inside the JSON body under the key ``secret``.
+If the environment variable ``TRADINGVIEW_WEBHOOK_SECRET`` is not set, the
+endpoint is disabled and returns HTTP 503.
 
-Security model: TradingView webhooks can't send custom headers, so the shared
-secret rides in the JSON body ("secret"). With TRADINGVIEW_WEBHOOK_SECRET
-unset the endpoint is disabled (503) — never an open unauthenticated sink.
+This module provides:
+* A POST endpoint to receive and log TradingView alerts.
+* A GET endpoint to retrieve the most recent alerts stored in a process‑local
+  ring buffer.
 """
+
 from __future__ import annotations
 
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request, status
 
@@ -22,19 +26,32 @@ from app.utils.logging import logger
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
-# Ring buffer of the most recent alerts (process-local; visibility, not storage
+# Ring buffer of the most recent alerts (process‑local; visibility, not storage
 # of record). A dead Redis must not break the receiver.
-_RECENT_ALERTS: list[dict] = []
+_RECENT_ALERTS: List[Dict[str, Any]] = []
 _MAX_RECENT = 200
 
 # Global counters for monitoring
 _TOTAL_ALERTS: int = 0
 
 
-def _normalize(payload: dict[str, Any]) -> dict[str, Any]:
-    """Best-effort normalization of TradingView's free-form alert JSON."""
+def _normalize(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a free‑form TradingView alert payload.
+
+    The function extracts a known subset of fields and coerces them into a
+    consistent shape suitable for logging and downstream consumption.
+
+    Args:
+        payload: The raw JSON object received from TradingView.
+
+    Returns:
+        A dictionary containing the normalized fields:
+        ``symbol``, ``side``, ``price``, ``strategy``, ``message`` and
+        ``received_at``. Missing or unparsable values are represented as ``None``.
+    """
     return {
-        "symbol": str(payload.get("ticker") or payload.get("symbol") or "").upper() or None,
+        "symbol": str(payload.get("ticker") or payload.get("symbol") or "").upper()
+        or None,
         "side": (str(payload.get("action") or payload.get("side") or "").lower() or None),
         "price": _float_or_none(payload.get("price") or payload.get("close")),
         "strategy": payload.get("strategy") or payload.get("indicator"),
@@ -44,6 +61,14 @@ def _normalize(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _float_or_none(v: Any) -> float | None:
+    """Convert a value to ``float`` when possible.
+
+    Args:
+        v: The value to convert. ``None`` is returned unchanged.
+
+    Returns:
+        The float representation of ``v`` or ``None`` if conversion fails.
+    """
     try:
         return float(v) if v is not None else None
     except (TypeError, ValueError):
@@ -51,7 +76,24 @@ def _float_or_none(v: Any) -> float | None:
 
 
 @router.post("/tradingview")
-async def receive_tradingview_alert(request: Request) -> dict:
+async def receive_tradingview_alert(request: Request) -> Dict[str, Any]:
+    """Receive a TradingView alert, validate it, and store a normalized copy.
+
+    The endpoint performs the following steps:
+    1. Verify that the webhook secret is configured.
+    2. Parse the request body as JSON and ensure it is an object.
+    3. Check the supplied secret against the configured secret.
+    4. Normalize the payload and append it to the in‑memory ring buffer.
+    5. Increment the global alert counter and emit structured logs.
+    6. Attempt to publish the alert to Redis for downstream consumers.
+
+    Args:
+        request: The incoming FastAPI request containing the JSON payload.
+
+    Returns:
+        A JSON‑serialisable dictionary with ``ok`` set to ``True`` and the
+        normalized ``alert`` payload.
+    """
     start_time = time.perf_counter()
 
     secret = os.environ.get("TRADINGVIEW_WEBHOOK_SECRET", "").strip()
@@ -97,7 +139,7 @@ async def receive_tradingview_alert(request: Request) -> dict:
         pnl=alert.get("pnl"),
     )
 
-    # Best-effort fan-out to Redis subscribers (strategies/dashboards may listen).
+    # Best‑effort fan‑out to Redis subscribers (strategies/dashboards may listen).
     try:
         from app.redis_client import get_redis
 
@@ -113,7 +155,21 @@ async def receive_tradingview_alert(request: Request) -> dict:
 
 
 @router.get("/tradingview/recent")
-async def recent_tradingview_alerts(limit: int = 50) -> dict:
-    """Most recent received alerts (process-local ring buffer)."""
+async def recent_tradingview_alerts(limit: int = 50) -> Dict[str, Any]:
+    """Return the most recent received TradingView alerts.
+
+    The alerts are stored in a process‑local ring buffer. The ``limit`` query
+    parameter caps the number of alerts returned, bounded by the size of the
+    buffer.
+
+    Args:
+        limit: Maximum number of alerts to return (default 50). The value is
+            clamped between 1 and ``_MAX_RECENT``.
+
+    Returns:
+        A dictionary with two keys:
+        * ``alerts`` – a list of alert dictionaries ordered from newest to oldest.
+        * ``count`` – the total number of alerts currently stored in the buffer.
+    """
     limit = max(1, min(limit, _MAX_RECENT))
     return {"alerts": _RECENT_ALERTS[-limit:][::-1], "count": len(_RECENT_ALERTS)}
