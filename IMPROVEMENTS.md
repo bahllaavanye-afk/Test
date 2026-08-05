@@ -1,5 +1,50 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔬 2026-08-05 18:50 — THE ML EXPERIMENT WAS NEVER REPRODUCIBLE, AND "IT LOSES TO BUY-AND-HOLD" WAS WRONG
+
+**This was found because persistence was fixed this morning.** Four runs in one day, identical params:
+
+    09:28  SPY alpaca   940 rows   strat 0.932  buyhold 1.482   loses
+    09:35  SPY yfinance 1399 rows  strat 0.645  buyhold 0.789   loses   ← 7 minutes later
+    14:44  SPY alpaca   941 rows   strat 0.944  buyhold 1.490   loses
+    16:54  SPY yfinance 1399 rows  strat 0.470  buyhold 0.791   loses
+
+- [x] **`oos_days` alternated 688 / 1147 for the same symbol and the same config.** Alpaca's free **IEX** feed
+  carries ~940 usable rows; yfinance carries **1399** — a 49% difference. `main()` called `fetch_alpaca` and
+  fell back to yfinance only when it returned *nothing*, so a transient Alpaca failure silently changed the
+  evaluation period. It did this **per symbol**: run 09:35 evaluated SPY on 1399 rows and QQQ on 940 and
+  reported them side by side as one cross-sectional result.
+- [x] **The benchmark moves with the window, and that is what made it dangerous.** SPY buy-and-hold Sharpe was
+  **1.482 on 940 rows and 0.789 on 1399** — the longer series reaches back into the 2022 bear market. The
+  *strategy* Sharpe barely moved. So the yardstick was changing, not the model.
+- [x] **CORRECTION to the 2026-08-05 finding that the model simply loses to buy-and-hold.** That reading came
+  from the short-window runs. On the **longer window**, which includes a real drawdown, it wins on two of three:
+
+  | | short (≈940 rows, mostly bull) | long (1399 rows, incl. 2022) |
+  |---|---|---|
+  | QQQ | 1.118 vs 1.325 — loses | **1.128 vs 0.736 — beats** |
+  | NVDA | 0.949 vs 1.487 — loses | **1.227 vs 1.119 — beats** |
+  | SPY | 0.932 vs 1.482 — loses | 0.645 vs 0.789 — loses |
+
+  That is the expected shape for a defensive model (`time_in_market` ≈ 0.5): it gives up upside in a bull run
+  and earns its keep in a drawdown. **Neither the old "it loses" nor a new "it wins" is a safe claim** — the
+  honest statement is that the answer depends on the window, and until today no run recorded which window it
+  used in a way anyone compared.
+- [x] **Fixed:** `fetch_bars()` takes whichever source has the **longer** history (deterministic for a given
+  symbol and date, rather than dependent on which fetch succeeded); `common_window()` trims every symbol in a
+  run to the window they all cover, **clamping both ends** — a lagging feed that has not published today's bar
+  is the same defect at the other end and much harder to spot, since the row counts stay close. `first_date`
+  and `last_date` are now in the payload, so a changed window is visible in one line instead of taking four
+  runs and a diff.
+- [x] **12 tests, 5 mutations, 5 caught** — one survived the first pass (an empty frame poisoning the shared
+  window: an empty `DatetimeIndex` has `min() == NaT`, which makes every `>=` False and returns **zero rows for
+  every symbol**, reported as "only 0 usable rows" for symbols whose data was fine). That is now pinned.
+- [ ] **Unverified live — yfinance is unreachable from the dev container** (`curl_cffi` vs the egress proxy, the
+  same trap as the India feed) and there are no Alpaca keys here, so `fetch_bars` correctly returns
+  `(None, "none")`. The fixes are pure functions and are mutation-tested; the confirmation is the next
+  scheduled run (**Sundays 04:17 UTC**), whose persisted payload should show one consistent window across all
+  three symbols plus the new date fields.
+
 ## ₿ 2026-08-05 18:30 — CRYPTO IS STRUCTURALLY STARVED, AND THE FIX IS AN ALLOCATION DECISION, NOT A BUG
 
 Measured in run `31031318516`, the first healthy run after the margin freeze lifted:

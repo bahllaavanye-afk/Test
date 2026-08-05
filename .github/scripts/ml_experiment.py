@@ -82,6 +82,63 @@ def fetch_yfinance(symbol: str) -> pd.DataFrame | None:
         return None
 
 
+def fetch_bars(symbol: str) -> "tuple[pd.DataFrame | None, str]":
+    """Bars for `symbol` from whichever source has the LONGER history.
+
+    Not a preference — a correctness fix. The two sources disagree by ~49%:
+    Alpaca's free IEX feed yields 940 usable rows, yfinance 1399, and the old
+    code took Alpaca and silently fell back only when it returned nothing. So
+    the evaluation window flipped between runs, and even between symbols
+    inside one run (2026-08-05 09:35: SPY yfinance/1399, QQQ alpaca/940).
+
+    That is not a cosmetic difference. The *benchmark* moves with the window —
+    SPY buy-and-hold Sharpe was 1.482 on 940 rows and 0.789 on 1399, because
+    the longer series includes the 2022 bear market. Two runs 7 minutes apart
+    disagreed about the benchmark by 2x, so no two runs were comparable and
+    "beats buy-and-hold" meant nothing without knowing which window it used.
+
+    Taking the longest available makes the choice deterministic for a given
+    symbol and date instead of dependent on which fetch happened to succeed.
+    """
+    candidates: list[tuple[pd.DataFrame, str]] = []
+    alpaca = fetch_alpaca(symbol)
+    if alpaca is not None and len(alpaca):
+        candidates.append((alpaca, "alpaca"))
+    yfin = fetch_yfinance(symbol)
+    if yfin is not None and len(yfin):
+        candidates.append((yfin, "yfinance"))
+    if not candidates:
+        return None, "none"
+    # Ties go to the first source listed, so the pick stays stable.
+    df, source = max(candidates, key=lambda c: len(c[0]))
+    if len(candidates) == 2:
+        other = [c for c in candidates if c[1] != source][0]
+        print(f"  [{symbol}] {source} {len(df)} rows > {other[1]} {len(other[0])} rows",
+              file=sys.stderr)
+    return df, source
+
+
+def common_window(frames: "dict[str, pd.DataFrame]") -> "dict[str, pd.DataFrame]":
+    """Truncate every symbol to the window all of them cover.
+
+    Comparing SPY on 1399 rows against QQQ on 940 in the same run is comparing
+    two different periods and calling it a cross-sectional result. Trimming to
+    the shared window costs the extra history of the longest symbol and buys
+    the ability to read the run as one experiment.
+
+    Both ends are clamped, not just the start. In practice every source ends at
+    the last close, but a lagging feed that has not published today's bar would
+    otherwise leave one symbol a day short — the same defect at the other end,
+    and much harder to notice because the row counts stay close.
+    """
+    usable = {s: d for s, d in frames.items() if d is not None and len(d)}
+    if len(usable) < 2:
+        return usable
+    start = max(d.index.min() for d in usable.values())
+    end = min(d.index.max() for d in usable.values())
+    return {s: d[(d.index >= start) & (d.index <= end)] for s, d in usable.items()}
+
+
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
     out = pd.DataFrame(index=df.index)
     ret = df["close"].pct_change()
@@ -142,22 +199,38 @@ def walk_forward(feat: pd.DataFrame) -> dict:
 
 def main() -> int:
     results = {}
+    frames: dict[str, pd.DataFrame] = {}
+    sources: dict[str, str] = {}
     for sym in SYMBOLS:
         print(f"[{sym}] fetching…", file=sys.stderr)
-        df = fetch_alpaca(sym)
-        source = "alpaca"
-        if df is None:
-            df, source = fetch_yfinance(sym), "yfinance"
+        df, source = fetch_bars(sym)
         if df is None:
             results[sym] = {"status": "skipped", "reason": "no data from alpaca or yfinance"}
             continue
+        frames[sym] = df
+        sources[sym] = source
+
+    # One window for the whole run, so the symbols can be read against each
+    # other and against previous runs.
+    frames = common_window(frames)
+
+    for sym, df in frames.items():
         feat = build_features(df)
         if len(feat) < MIN_TRAIN + 60:
             results[sym] = {"status": "skipped", "reason": f"only {len(feat)} usable rows"}
             continue
         print(f"[{sym}] walk-forward on {len(feat)} rows…", file=sys.stderr)
         metrics = walk_forward(feat)
-        metrics.update({"status": "ok", "source": source, "rows": len(feat)})
+        metrics.update({
+            "status": "ok",
+            "source": sources[sym],
+            "rows": len(feat),
+            # The window is the thing that made every earlier comparison
+            # invalid, so it is recorded explicitly rather than inferred from
+            # the row count.
+            "first_date": str(feat.index.min().date()),
+            "last_date": str(feat.index.max().date()),
+        })
         results[sym] = metrics
 
     payload = {
