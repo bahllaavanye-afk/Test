@@ -3,17 +3,122 @@ Unified ML inference service. Loaded once at app startup.
 Provides ensemble predictions for any symbol.
 """
 import time
+from pathlib import Path
+from typing import Any, Dict, List, Literal
+
 import pandas as pd
-from typing import Any
-from app.ml.features.engineer import engineer_features, create_sequences, FEATURE_COLS
+import structlog
+from pydantic import BaseModel, Field, validator
+
+from app.ml.features.engineer import FEATURE_COLS, create_sequences, engineer_features
 from app.ml.features.normalization import FeatureScaler
 from app.config import settings
-from pathlib import Path
-import structlog
 
 logger = structlog.get_logger()
 
 _inference_service: "InferenceService | None" = None
+
+
+class PredictionRequest(BaseModel):
+    """
+    Schema for a prediction request.
+
+    Attributes
+    ----------
+    symbol: str
+        Ticker symbol for which the prediction is requested.
+    data: List[Dict[str, Any]]
+        List of raw bar data dictionaries (e.g., OHLCV). Each dict should contain
+        the same keys required by the feature engineering step.
+    """
+
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol for the prediction request",
+        example="AAPL",
+    )
+    data: List[Dict[str, Any]] = Field(
+        ...,
+        description="Raw bar data as a list of dictionaries (e.g., OHLCV rows)",
+        example=[
+            {"timestamp": "2024-01-01T09:30:00Z", "open": 150.0, "high": 152.0, "low": 149.5, "close": 151.0, "volume": 1000000},
+            {"timestamp": "2024-01-01T09:31:00Z", "open": 151.0, "high": 152.5, "low": 150.8, "close": 152.0, "volume": 800000},
+        ],
+    )
+
+    @validator("symbol")
+    def symbol_must_not_be_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("symbol must be a non-empty string")
+        return v
+
+    @validator("data")
+    def data_must_be_non_empty(cls, v: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not v:
+            raise ValueError("data list must contain at least one bar")
+        return v
+
+
+class PredictionResponse(BaseModel):
+    """
+    Schema for a prediction response.
+
+    Attributes
+    ----------
+    prediction: Literal['up', 'down', 'neutral']
+        Directional prediction.
+    probability: float
+        Ensemble probability (0.0‑1.0) indicating confidence in the prediction.
+    confidence: float
+        Normalized confidence metric (0.0‑1.0).
+    individual: Dict[str, float]
+        Mapping of model names to their individual probabilities.
+    execution_time: float
+        Time taken for inference in seconds.
+    pnl: float
+        Estimated profit & loss based on the ensemble probability.
+    """
+
+    prediction: Literal["up", "down", "neutral"] = Field(
+        ...,
+        description="Directional prediction based on ensemble probability",
+        example="up",
+    )
+    probability: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Ensemble probability (0.0‑1.0)",
+        example=0.73,
+    )
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Normalized confidence metric (0.0‑1.0)",
+        example=0.46,
+    )
+    individual: Dict[str, float] = Field(
+        ...,
+        description="Individual model probabilities",
+        example={"lstm": 0.71, "xgboost": 0.68, "lorentzian": 0.70},
+    )
+    execution_time: float = Field(
+        ...,
+        description="Inference execution time in seconds",
+        example=0.0123,
+    )
+    pnl: float = Field(
+        ...,
+        description="Estimated profit & loss based on probability deviation from neutrality",
+        example=0.46,
+    )
+
+    @validator("probability", "confidence")
+    def probability_bounds(cls, v: float) -> float:
+        if not 0.0 <= v <= 1.0:
+            raise ValueError("value must be between 0.0 and 1.0")
+        return v
 
 
 class InferenceService:
@@ -34,6 +139,7 @@ class InferenceService:
         if lstm_path.exists():
             try:
                 from app.ml.models.lstm import LSTMPredictor
+
                 self.models["lstm"] = LSTMPredictor.load(str(lstm_path))
                 logger.info("LSTM model loaded", path=str(lstm_path))
             except Exception as e:
@@ -44,6 +150,7 @@ class InferenceService:
         if xgb_path.exists():
             try:
                 from app.ml.models.xgboost_model import XGBoostClassifier
+
                 self.models["xgboost"] = XGBoostClassifier.load(str(xgb_path))
                 logger.info("XGBoost model loaded")
             except Exception as e:
@@ -54,6 +161,7 @@ class InferenceService:
         if lk_path.exists():
             try:
                 from app.ml.models.lorentzian_knn import LorentzianKNN
+
                 self.models["lorentzian"] = LorentzianKNN.load(str(lk_path))
                 logger.info("Lorentzian KNN loaded")
             except Exception as e:
@@ -66,6 +174,7 @@ class InferenceService:
 
         # Load Gemini signal engine (always available when API key is set)
         from app.ml.models.gemini_signal import get_gemini_engine
+
         gemini = get_gemini_engine()
         if gemini.is_available:
             self.models["gemini"] = gemini
@@ -112,18 +221,22 @@ class InferenceService:
                     X, _ = create_sequences(feat_df_norm, seq_len=60)
                     if len(X) > 0:
                         import torch
+
                         prob = float(self.models["lstm"].predict_proba(X[-1:]).item())
                         predictions["lstm"] = prob
 
             if "xgboost" in self.models:
                 import numpy as np
+
                 X_flat = feat_df[FEATURE_COLS].values[-1:]
                 prob = float(self.models["xgboost"].predict_proba(X_flat)[0])
                 predictions["xgboost"] = prob
 
             if "lorentzian" in self.models:
-                from app.ml.models.lorentzian_knn import compute_lorentzian_features, LORENTZIAN_FEATURES
+                from app.ml.models.lorentzian_knn import LORENTZIAN_FEATURES, compute_lorentzian_features
+
                 import torch, numpy as np
+
                 lf = compute_lorentzian_features(data)
                 x = torch.tensor(lf[LORENTZIAN_FEATURES].fillna(0).values[-1:], dtype=torch.float32)
                 prob = float(self.models["lorentzian"].forward(x).item())
@@ -173,6 +286,13 @@ class InferenceService:
                 execution_time=exec_time,
                 pnl=estimated_pnl,
                 result=result,
+            )
+            # Extend result to match PredictionResponse schema
+            result.update(
+                {
+                    "execution_time": exec_time,
+                    "pnl": estimated_pnl,
+                }
             )
             return result
         except Exception as e:

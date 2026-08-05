@@ -8,6 +8,8 @@ live in .github/scripts (channel_monitor, multi_agent_discussion).
 """
 from __future__ import annotations
 
+import os
+from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -15,7 +17,7 @@ import structlog
 logger = structlog.get_logger()
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 
 from app.api.deps import get_current_user
 from app.models.user import User
@@ -27,9 +29,50 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 # ── Models ───────────────────────────────────────────────────────────────
 
 class ReviewRequest(BaseModel):
-    channel: str
-    message: str
-    context: str | None = None
+    """Payload for triggering a CTO review via Discord."""
+    channel: str = Field(
+        ...,
+        description="Discord channel name or ID where the review will be posted.",
+        example="cto-reviews",
+    )
+    message: str = Field(
+        ...,
+        description="The content of the message to be reviewed.",
+        example="We need to improve the latency of our order execution.",
+    )
+    context: str | None = Field(
+        None,
+        description="Optional additional context to assist the review.",
+        example="Related to recent latency spikes.",
+    )
+
+    @validator("channel")
+    def channel_must_not_be_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("channel must not be empty")
+        return v
+
+    @validator("message")
+    def message_must_not_be_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("message must not be empty")
+        return v
+
+    @validator("context", pre=True, always=True)
+    def normalize_context(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        stripped = v.strip()
+        return stripped or None
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "channel": "cto-reviews",
+                "message": "We need to improve the latency of our order execution.",
+                "context": "Related to recent latency spikes."
+            }
+        }
 
 # ── Standard endpoints ────────────────────────────────────────────────────────
 
@@ -190,5 +233,3 @@ Keep replies under 4 sentences. Be direct, technical, and action-oriented."""
 
     except Exception as e:
         return {"error": str(e), "review": None}
-
-
