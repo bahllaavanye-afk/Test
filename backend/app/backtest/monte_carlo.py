@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import numbers
+import time
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -103,6 +104,18 @@ def monte_carlo_simulation(
     if not isinstance(risk_free_daily, numbers.Real):
         raise ValueError("risk_free_daily must be a real number.")
 
+    signal_count = len(daily_returns)
+    start_time = time.perf_counter()
+    logger.info(
+        "Monte Carlo simulation started",
+        extra={
+            "signal_count": signal_count,
+            "n_simulations": n_simulations,
+            "n_years": n_years,
+            "risk_free_daily": risk_free_daily,
+        },
+    )
+
     n_days = int(n_years * 252)
     returns_array = daily_returns.dropna().values
     sharpes: list[float] = []
@@ -136,7 +149,7 @@ def monte_carlo_simulation(
         )
         raise MonteCarloError("Monte Carlo simulation failed") from exc
 
-    return MonteCarloResult(
+    result = MonteCarloResult(
         median_sharpe=round(float(np.median(sharpes)), 4),
         p5_sharpe=round(float(np.percentile(sharpes, 5)), 4),
         p95_sharpe=round(float(np.percentile(sharpes, 95)), 4),
@@ -146,3 +159,17 @@ def monte_carlo_simulation(
         prob_positive_return=round(positive / n_simulations, 4),
         num_simulations=n_simulations,
     )
+
+    elapsed = time.perf_counter() - start_time
+    logger.info(
+        "Monte Carlo simulation completed",
+        extra={
+            "signal_count": signal_count,
+            "n_simulations": n_simulations,
+            "execution_time_seconds": elapsed,
+            "median_sharpe": result.median_sharpe,
+            "prob_positive_return": result.prob_positive_return,
+            "median_max_dd": result.median_max_dd,
+        },
+    )
+    return result

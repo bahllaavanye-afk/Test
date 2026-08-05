@@ -1,6 +1,8 @@
 """Screenshot capture utility. Uses Playwright if installed, falls back to dummy."""
 from __future__ import annotations
+
 import asyncio
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -25,6 +27,7 @@ async def capture_dashboard(url: str = "https://quantedge.vercel.app", page: str
     page_name = page.replace("/", "_") or "root"
     filepath = SCREENSHOTS_DIR / f"dashboard_{page_name}_{timestamp}.png"
 
+    start_time = time.monotonic()
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
@@ -33,7 +36,12 @@ async def capture_dashboard(url: str = "https://quantedge.vercel.app", page: str
             await pg.goto(f"{url}/{page}", wait_until="networkidle", timeout=15_000)
             await pg.screenshot(path=str(filepath), full_page=True)
             await browser.close()
-        logger.info("Screenshot captured", path=str(filepath))
+        duration = time.monotonic() - start_time
+        logger.info(
+            "Screenshot captured",
+            path=str(filepath),
+            execution_time=duration,
+        )
         return str(filepath)
     except Exception as e:
         logger.warning("Screenshot failed", error=str(e))
@@ -42,11 +50,28 @@ async def capture_dashboard(url: str = "https://quantedge.vercel.app", page: str
 
 async def capture_all_pages(base_url: str = "https://quantedge.vercel.app") -> list[str]:
     """Capture all main dashboard pages."""
-    pages = ["", "equity", "crypto", "comparison", "backtest", "experiments", "analytics", "risk"]
-    results = []
+    pages = [
+        "",
+        "equity",
+        "crypto",
+        "comparison",
+        "backtest",
+        "experiments",
+        "analytics",
+        "risk",
+    ]
+    results: list[str] = []
+    start_time = time.monotonic()
     for page in pages:
         path = await capture_dashboard(base_url, page)
         if path:
             results.append(path)
         await asyncio.sleep(0.5)
+    total_duration = time.monotonic() - start_time
+    logger.info(
+        "All screenshots captured",
+        signal_count=len(results),
+        execution_time=total_duration,
+        pnl=0.0,
+    )
     return results

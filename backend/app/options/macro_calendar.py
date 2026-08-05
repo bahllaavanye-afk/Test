@@ -5,9 +5,13 @@ Economic data via FRED API (free, no key required for basic calls).
 """
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
 from datetime import date
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -61,6 +65,7 @@ MONTHLY_EVENTS_2025 = [
 
 
 def get_upcoming_events(days_ahead: int = 90) -> list[dict]:
+    start_time = time.perf_counter()
     today = date.today()
     cutoff = date(today.year + 1, today.month, today.day)
     events: list[MacroEvent] = []
@@ -125,16 +130,43 @@ def get_upcoming_events(days_ahead: int = 90) -> list[dict]:
 
     events.sort(key=lambda e: e.date)
     upcoming = [e for e in events if e.date >= today][:days_ahead]
-    return [e.to_dict() for e in upcoming]
+    result = [e.to_dict() for e in upcoming]
+
+    elapsed = time.perf_counter() - start_time
+    logger.info(
+        "get_upcoming_events completed",
+        extra={
+            "signal_count": len(result),
+            "execution_time_ms": int(elapsed * 1000),
+            "pnl": 0.0,
+        },
+    )
+    return result
 
 
 def get_next_fomc() -> dict | None:
+    start_time = time.perf_counter()
     today = date.today()
     for d in sorted(FOMC_2025 + FOMC_2026):
         if d >= today:
-            return {
+            result = {
                 "date": d.isoformat(),
                 "days_away": (d - today).days,
                 "title": "FOMC Rate Decision",
             }
+            elapsed = time.perf_counter() - start_time
+            logger.info(
+                "get_next_fomc completed",
+                extra={
+                    "signal_count": 1,
+                    "execution_time_ms": int(elapsed * 1000),
+                    "pnl": 0.0,
+                },
+            )
+            return result
+    elapsed = time.perf_counter() - start_time
+    logger.info(
+        "get_next_fomc completed - no upcoming FOMC",
+        extra={"signal_count": 0, "execution_time_ms": int(elapsed * 1000), "pnl": 0.0},
+    )
     return None

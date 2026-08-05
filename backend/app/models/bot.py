@@ -1,10 +1,13 @@
 """Bot model — declarative trading bot definitions."""
 import uuid
+import logging
 from datetime import datetime
 from sqlalchemy import String, Boolean, JSON, Integer, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 from app.models.base import TimestampMixin
+
+logger = logging.getLogger(__name__)
 
 # Canonical market types / desks a bot can trade. The column stays a free string for
 # forward-compat, but this is the supported set the API advertises and the builder offers.
@@ -41,3 +44,22 @@ class Bot(Base, TimestampMixin):
     last_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     template_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    def log_execution_metrics(self, signal_count: int, execution_time: float, pnl: float) -> None:
+        """Log key execution metrics for monitoring.
+
+        Args:
+            signal_count: Number of signals generated during the run.
+            execution_time: Duration of the bot run in seconds.
+            pnl: Profit and loss realized (positive for profit, negative for loss).
+        """
+        logger.info(
+            "Bot execution metrics",
+            extra={
+                "bot_id": self.id,
+                "user_id": self.user_id,
+                "signal_count": signal_count,
+                "execution_time_seconds": execution_time,
+                "pnl": pnl,
+            },
+        )

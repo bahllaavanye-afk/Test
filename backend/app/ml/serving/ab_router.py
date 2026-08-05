@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import random
 import time
+from collections import defaultdict
 from typing import NamedTuple
 
 import structlog
@@ -57,6 +58,8 @@ class ABRouter:
         self._snapshot: dict[str, list[dict]] = {}
         self._last_refresh: float = 0.0
         self._refresh_lock: asyncio.Lock = asyncio.Lock()
+        # Track how many routing decisions have been made per model
+        self._signal_counts: defaultdict[str, int] = defaultdict(int)
 
     # ── Snapshot management ────────────────────────────────────────────────────
 
@@ -128,6 +131,7 @@ class ABRouter:
           champion receives (100-T) %.
         - Shadow releases: never routed; use :meth:`route_shadow` for logging.
         """
+        start_ts = time.monotonic()
         await self._maybe_refresh()
 
         releases = self._snapshot.get(model_name, [])
@@ -135,6 +139,13 @@ class ABRouter:
         challenger = next((r for r in releases if r["status"] == "challenger"), None)
 
         if champion is None:
+            # Log missing champion at INFO to aid monitoring
+            logger.info(
+                "ABRouter: no champion found",
+                model_name=model_name,
+                signal_count=self._signal_counts[model_name],
+                execution_time_ms=(time.monotonic() - start_ts) * 1000,
+            )
             return None
 
         if challenger and random.random() * 100 < challenger["traffic_pct"]:
@@ -142,7 +153,10 @@ class ABRouter:
         else:
             chosen = champion
 
-        return RouteDecision(
+        # Update signal count for monitoring
+        self._signal_counts[model_name] += 1
+
+        decision = RouteDecision(
             release_id=chosen["id"],
             model_name=chosen["model_name"],
             version=chosen["version"],
@@ -151,6 +165,17 @@ class ABRouter:
             ab_group=chosen["status"],
             traffic_pct=chosen["traffic_pct"],
         )
+
+        # Structured logging of routing metrics
+        logger.info(
+            "ABRouter: routing decision",
+            model_name=model_name,
+            ab_group=decision.ab_group,
+            signal_count=self._signal_counts[model_name],
+            execution_time_ms=(time.monotonic() - start_ts) * 1000,
+            pnl=None,  # Placeholder for future P&L integration
+        )
+        return decision
 
     def get_champion(self, model_name: str) -> dict | None:
         """Return the champion release dict for *model_name* from the snapshot."""
