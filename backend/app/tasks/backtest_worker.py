@@ -42,9 +42,9 @@ MSG_BACKTEST_FAILED = "Backtest {run_id} failed: {exc}"
 
 async def run_backtest_job(run_id: str | None) -> None:
     """Fetch one queued BacktestRun, execute it, write results back to DB."""
-    if not run_id:
-        logger.warning(MSG_RUN_BACKTEST_JOB_NONE_ID)
-        return
+    # Input validation
+    if not run_id or not isinstance(run_id, str):
+        raise ValueError(MSG_RUN_BACKTEST_JOB_NONE_ID)
 
     from app.database import AsyncSessionLocal
     from app.models.backtest import BacktestRun, BacktestResult
