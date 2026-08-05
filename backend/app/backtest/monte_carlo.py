@@ -56,6 +56,53 @@ class MonteCarloResult:
             raise ValueError("num_simulations must be a positive integer.")
 
 
+def _validate_inputs(
+    daily_returns: pd.Series,
+    n_simulations: int,
+    n_years: int | float,
+    risk_free_daily: float,
+) -> None:
+    """Validate inputs for the Monte Carlo simulation."""
+    if not isinstance(daily_returns, pd.Series):
+        raise ValueError("daily_returns must be a pandas Series.")
+    if daily_returns.empty:
+        raise ValueError("daily_returns series cannot be empty.")
+    if not np.issubdtype(daily_returns.dtype, np.number):
+        raise ValueError("daily_returns must contain numeric values.")
+    if not np.isfinite(daily_returns.dropna()).all():
+        raise ValueError("daily_returns contains non‑finite values (NaN or Inf).")
+    if not isinstance(n_simulations, int) or n_simulations <= 0:
+        raise ValueError("n_simulations must be a positive integer.")
+    if not isinstance(n_years, (int, float)) or n_years <= 0:
+        raise ValueError("n_years must be a positive number.")
+    if not isinstance(risk_free_daily, numbers.Real):
+        raise ValueError("risk_free_daily must be a real number.")
+
+
+def _simulate_path(
+    rng: np.random.Generator,
+    returns_array: np.ndarray,
+    n_days: int,
+    risk_free_daily: float,
+    initial_equity: float = 100_000.0,
+) -> tuple[float, float, bool]:
+    """Run a single Monte‑Carlo path and return sharpe, max drawdown, and positivity flag."""
+    sampled = rng.choice(returns_array, size=n_days, replace=True)
+    equity = np.cumprod(1 + sampled) * initial_equity
+    peak = np.maximum.accumulate(equity)
+    dd = (equity - peak) / peak
+    max_dd = dd.min()
+
+    excess = sampled - risk_free_daily
+    sharpe = (
+        (excess.mean() / excess.std() * np.sqrt(252))
+        if excess.std() > 0
+        else 0.0
+    )
+    positive = equity[-1] > initial_equity
+    return sharpe, max_dd, positive
+
+
 def monte_carlo_simulation(
     daily_returns: pd.Series,
     n_simulations: int = 1000,
@@ -87,48 +134,25 @@ def monte_carlo_simulation(
     MonteCarloError
         If an unexpected error occurs during the simulation.
     """
-    # Input validation
-    if not isinstance(daily_returns, pd.Series):
-        raise ValueError("daily_returns must be a pandas Series.")
-    if daily_returns.empty:
-        raise ValueError("daily_returns series cannot be empty.")
-    if not np.issubdtype(daily_returns.dtype, np.number):
-        raise ValueError("daily_returns must contain numeric values.")
-    if not np.isfinite(daily_returns.dropna()).all():
-        raise ValueError("daily_returns contains non‑finite values (NaN or Inf).")
-    if not isinstance(n_simulations, int) or n_simulations <= 0:
-        raise ValueError("n_simulations must be a positive integer.")
-    if not isinstance(n_years, (int, float)) or n_years <= 0:
-        raise ValueError("n_years must be a positive number.")
-    if not isinstance(risk_free_daily, numbers.Real):
-        raise ValueError("risk_free_daily must be a real number.")
+    _validate_inputs(daily_returns, n_simulations, n_years, risk_free_daily)
 
     n_days = int(n_years * 252)
     returns_array = daily_returns.dropna().values
+    rng = np.random.default_rng(42)
+
     sharpes: list[float] = []
     max_dds: list[float] = []
-    positive = 0
-
-    rng = np.random.default_rng(42)
+    positive_count = 0
 
     try:
         for _ in range(n_simulations):
-            sampled = rng.choice(returns_array, size=n_days, replace=True)
-            equity = np.cumprod(1 + sampled) * 100_000
-            peak = np.maximum.accumulate(equity)
-            dd = (equity - peak) / peak
-            max_dd = dd.min()
-
-            excess = sampled - risk_free_daily
-            sharpe = (
-                (excess.mean() / excess.std() * np.sqrt(252))
-                if excess.std() > 0
-                else 0.0
+            sharpe, max_dd, positive = _simulate_path(
+                rng, returns_array, n_days, risk_free_daily
             )
             sharpes.append(sharpe)
             max_dds.append(max_dd)
-            if equity[-1] > 100_000:
-                positive += 1
+            if positive:
+                positive_count += 1
     except Exception as exc:  # pragma: no cover
         logger.exception(
             "Unexpected error during Monte Carlo simulation",
@@ -143,6 +167,6 @@ def monte_carlo_simulation(
         median_max_dd=round(float(np.median(max_dds)), 4),
         p95_max_dd=round(float(np.percentile(max_dds, 95)), 4),
         p5_max_dd=round(float(np.percentile(max_dds, 5)), 4),
-        prob_positive_return=round(positive / n_simulations, 4),
+        prob_positive_return=round(positive_count / n_simulations, 4),
         num_simulations=n_simulations,
     )
