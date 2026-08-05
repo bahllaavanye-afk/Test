@@ -35,6 +35,27 @@ async def _make_keyless_demo_account() -> tuple[str, str]:
     return uid, acct.id
 
 
+def _ago(**kw) -> str:
+    """An RFC-3339 timestamp `kw` before now.
+
+    These were hardcoded as 2026-07-06T14:00/15:00Z, and the test began failing
+    at ~15:00 UTC on 2026-08-05 — exactly 30 days later, to the hour.
+    `sync_desk_trades` dedups against `Trade.closed_at >= now - lookback_days`
+    (30), so once the fixture's close time aged past that window the dedup query
+    could no longer see the row it had just written and the second sync
+    re-inserted it: `assert written2 == 0` -> `assert 1 == 0`.
+
+    Nothing was wrong with the dedup logic. The fixture had an expiry date and
+    no one had noticed. Same shape as the denylist TTL bomb fixed earlier the
+    same day (`DENYLIST_TTL_DAYS`, 2026-08-04) — a test asserting the ABSENCE of
+    an expiry it was written to live inside.
+
+    Relative timestamps cannot expire. Keep them well inside the 30-day window.
+    """
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) - timedelta(**kw)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _order(coid, side, qty, price, ts, oid, symbol="SPY"):
     return {
         "id": oid, "client_order_id": coid, "symbol": symbol, "side": side,
@@ -56,8 +77,8 @@ async def test_env_desk_fills_attributed_to_keyless_account(_create_tables, monk
     tok = uuid.uuid4().hex[:8]
     strat = f"deskx{tok}"  # unique per run so dedup/assertions don't collide across tests
     orders = [
-        _order(f"qe-{strat}-SPY-1", "buy", 10, 100.0, "2026-07-06T14:00:00Z", f"o1-{tok}"),
-        _order(f"qe-{strat}-SPY-2", "sell", 10, 110.0, "2026-07-06T15:00:00Z", f"o2-{tok}"),
+        _order(f"qe-{strat}-SPY-1", "buy", 10, 100.0, _ago(hours=25), f"o1-{tok}"),
+        _order(f"qe-{strat}-SPY-2", "sell", 10, 110.0, _ago(hours=24), f"o2-{tok}"),
     ]
 
     async def fake_env_fetch(creds, lookback_days=30):
