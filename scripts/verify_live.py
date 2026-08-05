@@ -32,7 +32,12 @@ BACKEND_HOSTS = [
     "https://quantedge-api-9jz0.onrender.com",
     "https://quantedge-api.onrender.com",
 ]
-FRONTEND = "https://quantedge.vercel.app"
+# Was `quantedge.vercel.app` until 2026-08-05 — an abandoned Next.js stub that
+# answers 200 as "Create Next App". This script exists to verify the live
+# system, and it was verifying a different one. `REAL_APP_MIN_ROUTES` below is
+# the guard that makes the check mean something: a stub passes a status check
+# and fails a content check.
+FRONTEND = os.environ.get("FRONTEND_URL", "https://quantedge-eight.vercel.app").rstrip("/")
 REAL_APP_MIN_ROUTES = 30
 _TIMEOUT = 20
 

@@ -335,3 +335,21 @@ def test_both_sources_failing_yields_no_entry_at_all(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "yfinance", _Broken())
     assert ins.fetch_closes(["INFY.NS"]) == {}
+
+
+def test_the_tilt_log_line_states_the_side():
+    """The first live application printed
+
+        INFY conf 0.73 → 0.72 (-0.011 from INFY.NS +0.56%)
+
+    a down-tilt from an up session, which reads as a sign error until you learn
+    it was a SELL. The sign is *derived* from the side, so a line that omits the
+    side cannot be checked by the person reading it — and these lines exist to
+    be checked."""
+    src = (SCRIPTS / "desk_order_placer.py").read_text()
+    stage = src.split("Apply confidence threshold + top-K filter", 1)[1][:4000]
+    tilt_log = [ln for ln in stage.splitlines() if "🇮🇳" in ln and "print(" in ln]
+    assert tilt_log, "the tilt application no longer logs anything"
+    block = stage.split("🇮🇳", 1)[1][:400]
+    assert "_sd" in block or "side" in block, "the tilt log line omits the signal side"
+    assert "agrees" in block, "the log does not say whether India agreed or disagreed"

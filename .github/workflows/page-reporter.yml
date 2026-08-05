@@ -26,7 +26,10 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       # Screenshot the deployed production site (real data) instead of a CI-local dev
       # server pointed at a dead backend — that was why Slack showed empty localhost pages.
-      SCREENSHOT_BASE_URL: ${{ vars.PUBLIC_SITE_URL || 'https://quantedge.vercel.app' }}
+      # The fallback was `quantedge.vercel.app`, an abandoned Next.js stub that
+      # answers 200 as "Create Next App" — so unless PUBLIC_SITE_URL happened to
+      # be set, this job screenshotted a blank starter page and reported success.
+      SCREENSHOT_BASE_URL: ${{ vars.PUBLIC_SITE_URL || 'https://quantedge-eight.vercel.app' }}
     steps:
       - uses: actions/checkout@v4
         with:

@@ -2245,9 +2245,17 @@ async def main() -> None:
                     if getattr(item["signal"], "confidence", None) is not None:
                         item["signal"].confidence = conf
                     _src = _INDIA_TILTS.get(item["symbol"], {})
-                    print(f"  🇮🇳 {sname}/{item['symbol']} conf {_before:.2f} → {conf:.2f} "
-                          f"({_tilt:+.3f} from {_src.get('source', '?')} "
-                          f"{_src.get('move_pct', 0):+.2f}%)", flush=True)
+                    # The SIDE has to be here. The first live application read
+                    #   INFY conf 0.73 → 0.72 (-0.011 from INFY.NS +0.56%)
+                    # which looks backwards — a down-tilt from an up session —
+                    # until you know it was a SELL signal. A log line whose only
+                    # purpose is letting a human check the arithmetic must not
+                    # omit the term the arithmetic turns on.
+                    _sd = str(getattr(item["signal"], "side", "?")).upper()
+                    print(f"  🇮🇳 {sname}/{item['symbol']} {_sd} conf {_before:.2f} → {conf:.2f} "
+                          f"({_tilt:+.3f} — {_src.get('source', '?')} "
+                          f"{_src.get('move_pct', 0):+.2f}% "
+                          f"{'agrees' if _tilt > 0 else 'disagrees'})", flush=True)
 
                 if conf < threshold:
                     print(f"  · {sname}/{item['symbol']} conf={conf:.2f} < {threshold:.2f} — skipped", flush=True)

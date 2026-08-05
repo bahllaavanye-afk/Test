@@ -1,6 +1,7 @@
 """Screenshot capture utility. Uses Playwright if installed, falls back to dummy."""
 from __future__ import annotations
 import asyncio
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,8 +10,18 @@ from app.utils.logging import logger
 SCREENSHOTS_DIR = Path(__file__).parents[3] / "screenshots"
 SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 
+# The dashboard these screenshots are supposed to show.
+#
+# This defaulted to `quantedge.vercel.app` until 2026-08-05, which is an
+# ABANDONED Next.js stub in the same Vercel account. It returns HTTP 200 under
+# the title "Create Next App", so every screenshot posted to Discord captured a
+# blank starter page successfully — no error, no empty file, nothing to notice.
+# Three Vercel projects here answer 200 and only one is this platform, so a
+# frontend must be identified by its <title>, never by its status code.
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://quantedge-eight.vercel.app").rstrip("/")
 
-async def capture_dashboard(url: str = "https://quantedge.vercel.app", page: str = "") -> str | None:
+
+async def capture_dashboard(url: str = FRONTEND_URL, page: str = "") -> str | None:
     """
     Capture a screenshot of the dashboard. Returns the filepath or None on failure.
     Requires `playwright` installed: pip install playwright && playwright install chromium
@@ -40,7 +51,7 @@ async def capture_dashboard(url: str = "https://quantedge.vercel.app", page: str
         return None
 
 
-async def capture_all_pages(base_url: str = "https://quantedge.vercel.app") -> list[str]:
+async def capture_all_pages(base_url: str = FRONTEND_URL) -> list[str]:
     """Capture all main dashboard pages."""
     pages = ["", "equity", "crypto", "comparison", "backtest", "experiments", "analytics", "risk"]
     results = []
