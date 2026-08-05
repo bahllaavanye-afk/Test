@@ -1,6 +1,13 @@
-"""InferenceLog ORM — records every prediction made by a serving model."""
+"""Defines the InferenceLog ORM model which records each prediction made by a serving model.
+
+The model is immutable after creation except for the ``actual_return`` and ``is_correct``
+fields, which are populated later via the ``POST /releases/{id}/record-outcome`` endpoint
+to enable live accuracy calculations.
+"""
+
 import uuid
 from datetime import datetime
+from typing import ClassVar, Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -12,11 +19,39 @@ class InferenceLog(Base):
     """
     Immutable record of a single model inference.
 
-    actual_return and is_correct are filled in after-the-fact via
-    POST /releases/{id}/record-outcome so accuracy can be computed live.
+    Attributes
+    ----------
+    id: str
+        Primary key; generated as a UUID string.
+    release_id: str
+        Foreign key referencing the model release that produced the inference.
+    model_name: str
+        Name of the model used for inference.
+    version: str
+        Version identifier of the model.
+    symbol: str
+        Trading symbol for which the inference was made.
+    ts: datetime
+        Timestamp of the inference (UTC).
+    prediction: float
+        Raw model output in the range ``[0, 1]``.
+    signal: str
+        Discretised trading signal (``buy``, ``sell`` or ``hold``).
+    confidence: float
+        Calibration metric calculated as ``abs(prediction - 0.5) * 2``.
+    latency_ms: float
+        Inference latency in milliseconds.
+    ab_group: str
+        Identifier of the A/B test branch that served the request
+        (e.g., ``champion``, ``challenger`` or ``shadow``).
+    actual_return: Optional[float]
+        Actual market return, populated after the fact.
+    is_correct: Optional[bool]
+        Indicator whether the prediction was correct, populated after the fact.
     """
-    __tablename__ = "inference_logs"
-    __table_args__ = (
+
+    __tablename__: ClassVar[str] = "inference_logs"
+    __table_args__: ClassVar[tuple] = (
         Index("ix_inf_release_ts", "release_id", "ts"),
         Index("ix_inf_model_symbol", "model_name", "symbol"),
     )
@@ -34,15 +69,10 @@ class InferenceLog(Base):
     version: Mapped[str] = mapped_column(String(32), nullable=False)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    # Raw model output in [0, 1]
     prediction: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False)
-    # Discretised trading signal
     signal: Mapped[str] = mapped_column(String(8), nullable=False)  # buy|sell|hold
-    # Calibration metric: abs(pred - 0.5) * 2
     confidence: Mapped[float] = mapped_column(Numeric(6, 4), nullable=False)
     latency_ms: Mapped[float] = mapped_column(Numeric(8, 3), nullable=False)
-    # Which branch of the A/B test served this request
     ab_group: Mapped[str] = mapped_column(String(16), nullable=False)  # champion|challenger|shadow
-    # Filled in ex-post when actual market return is known
-    actual_return: Mapped[float | None] = mapped_column(Numeric(10, 6))
-    is_correct: Mapped[bool | None] = mapped_column(Boolean)
+    actual_return: Mapped[Optional[float]] = mapped_column(Numeric(10, 6))
+    is_correct: Mapped[Optional[bool]] = mapped_column(Boolean)
