@@ -44,9 +44,15 @@ each independently "found" after already being documented.
 All five are FILLED BUYS inside 65 minutes, all carrying bare UUIDs — the id Alpaca generates when the caller
 supplies none. Broker auto-liquidation is ruled out: that sells.
 
-**The root cause of the anonymity is one missing field.** `submit_alpaca_order()`
-(`backend/app/brokers/alpaca_orders.py:34`) builds symbol/qty/side/type/tif/prices and **no
-`client_order_id`** — so every order any backend places is indistinguishable from every other backend's.
+**The root cause: NO backend order path sets a `client_order_id` — zero occurrences in all four files**
+(`brokers/alpaca.py`, `brokers/alpaca_orders.py`, `bots/engine.py`, `api/v1/orders.py`). A first pass blamed
+`submit_alpaca_order` alone; that is the *least* likely source, since it is reached only from the HTTP endpoint.
+The background-task path is `AlpacaBroker.place_order` (`brokers/alpaca.py:157`), equally untagged.
+
+**Narrowing that does hold, from the code:** `position_monitor` is the only order-placing background task and
+it places **exits** — these are all buys, so not it. `bot_runner._run_bot()` does a `select(Bot)` before every
+run and **agb8's DB is `ok: false` with no sqlite fallback**, so its bot path cannot complete one. That points
+at `9jz0`'s own bots (legitimate) rather than agb8 — an inference from code, not proof.
 
 **Both candidates produce identical evidence:**
 - `9jz0` runs `bot_jobs: 64`, firing every 1-2 min → the orders would be **legitimate**.
@@ -55,10 +61,11 @@ supplies none. Broker auto-liquidation is ruled out: that sells.
 That ambiguity matters more than the count: **nobody can currently answer "did our platform place this
 trade?" about 10% of its own book**, and operator item #1 cannot be settled either way without it.
 
-**The fix is one line and is deliberately not shipped.** Give `submit_alpaca_order` a `qb-` prefix mirroring
-the desk's working `qe-` scheme. `backend/app/brokers/*.py` is Do-Not-Modify and this is the live
-order-submission path — a change there moves real orders, so it needs a human. Once tagged, the audit names
-the writer instead of counting it.
+**The fix is a `qb-` tag at BOTH submission points** — `AlpacaBroker.place_order` and
+`submit_alpaca_order` — mirroring the desk's working `qe-` scheme, which `desk_trade_sync` already parses.
+`backend/app/brokers/*.py` is Do-Not-Modify and this is the live order-submission path, so it needs a human.
+Once tagged the audit names the writer, operator item #1 settles either way, and desk_trade_sync gains
+attribution for the 10% of the book it currently skips.
 
 ## ✅ 2026-08-05 19:00 — THE STRATEGY TRIMMER IS LIVE (pending verification since 07-29, now closed)
 

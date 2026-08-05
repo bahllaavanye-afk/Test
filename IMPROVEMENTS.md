@@ -18,9 +18,23 @@ buys**, all within 65 minutes, all carrying bare UUIDs — the id Alpaca generat
 
 **What is ruled out:** broker auto-liquidation. That sells; these are all buys.
 
-- [x] **Root cause of the anonymity found: `submit_alpaca_order()` sets no `client_order_id`.**
-  `backend/app/brokers/alpaca_orders.py:34` builds its payload with symbol/qty/side/type/tif/prices and
-  nothing else, so **every** order the backend places is indistinguishable from every other backend's.
+- [x] **Root cause of the anonymity: NO backend order path sets a `client_order_id`. Zero occurrences in all
+  four.** (A first pass here named only `submit_alpaca_order` — that was too narrow, and it also happens to be
+  the *least* likely source, since it is reached only from the HTTP endpoint.)
+
+  ```
+  grep -c client_order_id
+    backend/app/brokers/alpaca.py          0   ← AlpacaBroker.place_order, the background-task path
+    backend/app/brokers/alpaca_orders.py   0   ← submit_alpaca_order, reached ONLY from the HTTP endpoint
+    backend/app/bots/engine.py             0
+    backend/app/api/v1/orders.py           0
+  ```
+- [x] **Narrowing that does hold, from the code:** `position_monitor` is the only background task that places
+  orders and it places **exits** (`close_req`/`close_side`) — these are all buys, so it is not the source.
+  `bot_runner._run_bot()` does `select(Bot)` before every run, and **agb8's database is `ok: false` with no
+  sqlite fallback**, so its bot path cannot complete a run. That points at `9jz0`'s own bots (legitimate)
+  rather than agb8 — but it is an inference from code, not proof, and it does not cover any agb8 path that
+  skips the DB. **The tagging is what would settle it.**
 - [ ] **[P0] Which backend is doing it CANNOT currently be determined, and that is the actual problem.** Two
   candidates both produce bare UUIDs:
   - `9jz0` (the live one) — health reports `scheduler: jobs_total 73, bot_jobs 64`, firing every 1-2 minutes.
@@ -30,12 +44,14 @@ buys**, all within 65 minutes, all carrying bare UUIDs — the id Alpaca generat
 
   Same evidence for both. That ambiguity is worth more than the count: it means nobody can currently answer
   "did our platform place this trade?" about 10% of its own book.
-- [ ] **[P0] The one-line fix, deliberately NOT shipped unattended.** `submit_alpaca_order` should set a
-  distinguishing `client_order_id` (e.g. `qb-{bot_or_strategy}-{sym}-{ts}`, mirroring the desk's `qe-` scheme
-  that already works). `backend/app/brokers/*.py` is under **Do NOT Modify** in `backend/app/tasks/CLAUDE.md`,
-  and this is the live order-submission path — a change there moves real orders. It needs a human. Once tagged,
-  `audit_order_origins()` names the writer instead of merely counting it, and operator item #1 resolves itself
-  either way.
+- [ ] **[P0] The fix is a `client_order_id` at each of the TWO submission points, deliberately NOT shipped
+  unattended.** `AlpacaBroker.place_order` (`brokers/alpaca.py:157` — the path background tasks use) and
+  `submit_alpaca_order` (`brokers/alpaca_orders.py:27` — the HTTP path), tagged `qb-{bot_or_strategy}-{sym}-{ts}`
+  to mirror the desk's `qe-` scheme that already works and is already parsed by
+  `desk_trade_sync.parse_strategy_from_coid`. `backend/app/brokers/*.py` is under **Do NOT Modify** in
+  `backend/app/tasks/CLAUDE.md` and this is the live order-submission path — a change there moves real orders.
+  It needs a human. Once tagged, `audit_order_origins()` names the writer instead of counting it, operator item
+  #1 settles either way, **and desk_trade_sync gains attribution for the 10% of the book it currently skips.**
 - [x] **This is what the audit was for.** Built 25 minutes earlier because a second writer had gone unreported
   across all 30 of today's desk runs; on its first live execution it found five filled orders nobody could
   account for.
