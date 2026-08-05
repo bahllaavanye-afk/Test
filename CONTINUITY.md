@@ -29,6 +29,37 @@ each independently "found" after already being documented.
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
 
 
+## ✅ 2026-08-05 07:45 — PACEMAKER FLEET DISPATCH **VERIFIED**, and the pacing margin that was missing
+
+**Correction to the 07:15 and 07:00 entries, which called this unverified.** It is verified. Run
+`30983374228` — the 1/47 run analysed below — was itself the proof, and I misread it as cron:
+```
+employee-conversations   07:00:45  event=workflow_dispatch  actor=github-actions[bot]
+multi-agent-discussion   07:00:47  event=workflow_dispatch  actor=github-actions[bot]
+```
+Both fleet workflows, two seconds apart, dispatched by the pacemaker. The CI-cascade fix works.
+
+**And that exposed a flaw in the pacing I shipped 30 minutes earlier.** `60 / rpm_free` = `60/15` = 4.0s is
+**exactly 100% of Gemini's quota, by construction** — it assumed this workflow is the only consumer.
+It is not: **42 workflows map `secrets.GEMINI_API_KEY_1`**, and at least a dozen run on schedules
+(agent-status-check, company-brain, brain-health, channel-monitor, collective-learning,
+continuous-improvement, …). The quota is fleet-wide, so a 100%-utilisation plan walks straight back into
+the 429s it was written to prevent — and the pacemaker now fires two of those workflows *simultaneously*.
+
+`_QUOTA_SHARE = 0.6` reserves 40% for everyone else:
+```
+gemini only (15 rpm)  ->  6.67s  ->  47 employees ≈ 5.2 min
++ together  (60 rpm)  ->  1.67s  ->  ≈ 1.3 min
+```
+5.2 min is a fifth of the 25-minute timeout, so the headroom is nearly free.
+
+`multi_agent_discussion` needs no pacing — checked, not assumed: at most **3 LLM calls per run** (one round
+of ≤3 speakers), negligible against any limit.
+
+**The lesson worth keeping:** the first pacing fix was correct arithmetic against the wrong denominator.
+*Whose budget is it?* is a different question from *what is the limit?*, and only the second one is written
+in the provider table.
+
 ## 🚦 2026-08-05 07:15 — THE FLEET RAN FOR THE FIRST TIME AND RETURNED 1/47 (paced; next layer down)
 
 Run `30983374228` (07:01) — **the key-guard fix worked**: the runner no longer exits at "No LLM keys

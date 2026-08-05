@@ -69,6 +69,22 @@ def _load_memory() -> dict:
     return {"conversations": {}, "daily_topics": {}, "platform_metrics": {}, "peer_learnings": []}
 
 
+# Fraction of the provider's declared free-tier RPM this ONE workflow may use.
+#
+# The first pacing fix computed `60 / rpm_free` — exactly 15 calls/min against a
+# 15/min limit, i.e. **100% of the quota, by construction**. That silently
+# assumed this workflow is the only consumer. It is not: 42 workflows map
+# `secrets.GEMINI_API_KEY_1` and at least a dozen of them run on schedules
+# (agent-status-check, company-brain, brain-health, channel-monitor,
+# collective-learning, continuous-improvement, …). The quota is fleet-wide.
+#
+# Any concurrent consumer pushes a 100%-utilisation plan straight back into the
+# 429s it was written to prevent. 0.6 leaves 40% for everyone else; at Gemini's
+# 15 rpm that is 6.7s spacing and ~5.2 min for 47 employees — still a fifth of
+# the 25-minute timeout, so the headroom is nearly free.
+_QUOTA_SHARE = float(os.environ.get("EMPLOYEE_QUOTA_SHARE", "0.6") or 0.6)
+
+
 def _call_spacing_seconds() -> float:
     """Seconds to wait between employees, derived from the provider's own limit.
 
@@ -103,10 +119,10 @@ def _call_spacing_seconds() -> float:
         rpms = [p.get("rpm_free", 0) for p in _PROVIDERS if _has_key(p)]
         rpms = [r for r in rpms if r and r > 0]
         if rpms:
-            return 60.0 / max(rpms)
+            return 60.0 / (max(rpms) * _QUOTA_SHARE)
     except Exception:  # noqa: BLE001 — pacing must never break the run
         pass
-    return 4.0          # Gemini's free tier, the observed floor
+    return 60.0 / (15 * _QUOTA_SHARE)   # Gemini's free tier, the observed floor
 
 
 def _save_memory(mem: dict) -> None:
