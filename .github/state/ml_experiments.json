@@ -198,5 +198,61 @@
         "rows": 941
       }
     }
+  },
+  {
+    "experiment": "gbc_walkforward_daily",
+    "ran_at": "2026-08-05T19:02:52.327887+00:00",
+    "params": {
+      "min_train": 252,
+      "refit_every": 21,
+      "long_threshold": 0.55
+    },
+    "results": {
+      "SPY": {
+        "oos_days": 1147,
+        "hit_rate": 0.5222,
+        "time_in_market": 0.4813,
+        "strategy_sharpe": 0.725,
+        "buyhold_sharpe": 0.79,
+        "strategy_total_return": 0.4306,
+        "buyhold_total_return": 0.7524,
+        "max_drawdown": 0.1827,
+        "status": "ok",
+        "source": "yfinance",
+        "rows": 1399,
+        "first_date": "2021-01-07",
+        "last_date": "2026-08-04"
+      },
+      "QQQ": {
+        "oos_days": 1147,
+        "hit_rate": 0.5405,
+        "time_in_market": 0.49,
+        "strategy_sharpe": 1.315,
+        "buyhold_sharpe": 0.733,
+        "strategy_total_return": 1.4464,
+        "buyhold_total_return": 0.9291,
+        "max_drawdown": 0.1765,
+        "status": "ok",
+        "source": "yfinance",
+        "rows": 1399,
+        "first_date": "2021-01-07",
+        "last_date": "2026-08-04"
+      },
+      "NVDA": {
+        "oos_days": 1147,
+        "hit_rate": 0.5397,
+        "time_in_market": 0.5144,
+        "strategy_sharpe": 1.211,
+        "buyhold_sharpe": 1.13,
+        "strategy_total_return": 4.984,
+        "buyhold_total_return": 6.9076,
+        "max_drawdown": 0.3615,
+        "status": "ok",
+        "source": "yfinance",
+        "rows": 1399,
+        "first_date": "2021-01-07",
+        "last_date": "2026-08-04"
+      }
+    }
   }
 ]
