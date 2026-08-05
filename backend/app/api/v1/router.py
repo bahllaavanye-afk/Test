@@ -1,6 +1,9 @@
-"""API v1 router — mounts all sub-routers."""
+"""API v1 router — mounts all sub‑routers."""
 import logging
+from typing import Optional
+
 from fastapi import APIRouter
+from pydantic import BaseModel, Field, root_validator
 
 from app.api.v1 import (
     auth,
@@ -39,15 +42,52 @@ logger = logging.getLogger(__name__)
 
 api_router = APIRouter()
 
-def _include(router_obj, name: str):
-    """Safely include a sub‑router, handling None or invalid inputs."""
+
+class RouterInclusionResult(BaseModel):
+    """Result of attempting to include a sub‑router."""
+
+    name: str = Field(
+        ...,
+        description="Identifier of the sub‑router being included.",
+        example="auth",
+    )
+    included: bool = Field(
+        ...,
+        description="Flag indicating whether the router was successfully included.",
+        example=True,
+    )
+    error: Optional[str] = Field(
+        None,
+        description="Error message if inclusion failed; omitted when inclusion succeeds.",
+        example="AttributeError: 'router' not found",
+    )
+
+    @root_validator
+    def check_error_consistency(cls, values):
+        """Validate that error is present when inclusion fails and absent when successful."""
+        included, error = values.get("included"), values.get("error")
+        if included and error:
+            raise ValueError("Error should be None when inclusion succeeds.")
+        if not included and not error:
+            raise ValueError("Error message required when inclusion fails.")
+        return values
+
+
+def _include(router_obj, name: str) -> RouterInclusionResult:
+    """Safely include a sub‑router, handling None or invalid inputs.
+
+    Returns a RouterInclusionResult describing the outcome.
+    """
     if router_obj is None:
         logger.warning("Router %s is None and will be skipped.", name)
-        return
+        return RouterInclusionResult(name=name, included=False, error="Router is None")
     try:
         api_router.include_router(router_obj)
+        return RouterInclusionResult(name=name, included=True)
     except Exception as exc:  # pragma: no cover
         logger.error("Failed to include router %s: %s", name, exc)
+        return RouterInclusionResult(name=name, included=False, error=str(exc))
+
 
 # List of (router, name) tuples for systematic inclusion
 _routers = [

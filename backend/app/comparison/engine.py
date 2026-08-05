@@ -7,9 +7,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 import numbers
+from typing import Any, Dict, Optional
 
 import pandas as pd
 from scipy import stats
+from pydantic import BaseModel, Field, root_validator, validator
 
 from app.backtest.engine import run_backtest, BacktestMetrics
 from app.comparison.benchmarks import fetch_benchmark_curves, get_benchmark_stats
@@ -60,6 +62,7 @@ MSG_DATE_TYPE: str = "must be a datetime.date instance."
 
 @dataclass
 class ComparisonResult:
+    """Legacy dataclass kept for backward compatibility; use Pydantic model below."""
     strategy_name: str
     symbol: str
     interval: str
@@ -74,6 +77,91 @@ class ComparisonResult:
     p_value: float = 1.0
     is_significant: bool = False
     winner: str = WINNER_NEITHER
+
+
+class ComparisonResultModel(BaseModel):
+    """Pydantic schema for the comparison result with rich metadata and validation."""
+
+    strategy_name: str = Field(
+        ...,
+        description="Name of the strategy being compared.",
+        example="mean_rev_20_1.5",
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol of the instrument.",
+        example="AAPL",
+    )
+    interval: str = Field(
+        ...,
+        description="Data interval (e.g., '1d', '15m').",
+        example="15m",
+    )
+    start_date: date = Field(
+        ...,
+        description="Start date of the backtest period.",
+        example="2023-01-01",
+    )
+    end_date: date = Field(
+        ...,
+        description="End date of the backtest period.",
+        example="2023-06-30",
+    )
+    manual: Optional[BacktestMetrics] = Field(
+        None,
+        description="Backtest metrics for the manual signal set.",
+    )
+    ml_enhanced: Optional[BacktestMetrics] = Field(
+        None,
+        description="Backtest metrics for the ML‑enhanced signal set.",
+    )
+    benchmark_curves: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Benchmark performance curves over the same period.",
+    )
+    benchmark_stats: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Statistical summary of benchmarks.",
+    )
+    ml_improvement_sharpe: float = Field(
+        0.0,
+        description="Sharpe ratio improvement of the ML strategy over the manual one.",
+        example=0.15,
+    )
+    t_statistic: float = Field(
+        0.0,
+        description="T‑statistic from the significance test.",
+        example=2.34,
+    )
+    p_value: float = Field(
+        1.0,
+        description="P‑value from the significance test.",
+        example=0.0198,
+    )
+    is_significant: bool = Field(
+        False,
+        description="Indicates whether the Sharpe improvement is statistically significant.",
+    )
+    winner: str = Field(
+        WINNER_NEITHER,
+        description="Identifier of the winning strategy.",
+        example="ml",
+    )
+
+    @validator("winner")
+    def validate_winner(cls, v: str) -> str:
+        allowed = {WINNER_ML, WINNER_MANUAL, WINNER_NEITHER}
+        if v not in allowed:
+            raise ValueError(f"winner must be one of {allowed}")
+        return v
+
+    @root_validator
+    def validate_dates(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        start = values.get("start_date")
+        end = values.get("end_date")
+        if start and end and start > end:
+            raise ValueError(ERROR_DATE_ORDER_MSG)
+        return values
 
 
 class StrategyComparisonEngine:
@@ -119,7 +207,7 @@ class StrategyComparisonEngine:
         start_date: date,
         end_date: date,
         initial_equity: float = DEFAULT_INITIAL_EQUITY,
-    ) -> ComparisonResult:
+    ) -> ComparisonResultModel:
         """Run a side‑by‑side backtest comparison between manual and ML‑enhanced signals.
 
         Validates inputs, aligns series, executes backtests, fetches benchmark data,
@@ -185,7 +273,7 @@ class StrategyComparisonEngine:
             },
         )
 
-        return ComparisonResult(
+        return ComparisonResultModel(
             strategy_name=strategy_name,
             symbol=symbol,
             interval=interval,
