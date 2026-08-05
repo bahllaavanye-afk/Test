@@ -66,6 +66,108 @@ def trim_conversations(mem: dict, cap: int = CONVERSATION_CAP) -> int:
     return dropped
 
 
+# ── peer_learnings quality + outcome linkage ──────────────────────────────────
+#
+# Measured 2026-08-05: **56 of 200 peer_learnings entries (28%) were LLM prompt
+# echoes** — the model restating its instruction instead of answering it:
+#
+#   [investor_pipeline @ ...] The user asks: "Give a one-sentence status update:
+#                             what are you actively working on RIGHT NOW..."
+#   [self_improver @ ...]     We need to respond as self_improver agent,
+#                             autonomous, 2 sentences max, first person...
+#
+# `agent_status_checker.py:247` and `multi_agent_discussion.py:360` append the
+# raw reply with no quality check, so a failed generation is stored as a
+# "learning". That was merely wasteful until the retrieval fix landed; now these
+# entries are RETRIEVED into other agents' prompts, so the noise compounds.
+#
+# The patterns below are deliberately narrow and anchored to observed pollution.
+# A false positive silently discards a real learning, which is worse than
+# keeping one echo — so this rejects only unambiguous instruction-restatement.
+_ECHO_PATTERNS = (
+    "the user asks",
+    "we need to respond as",
+    "respond as the",
+    "one-sentence status update",
+    "the instruction:",
+    "as an ai language model",
+    "i cannot fulfill",
+)
+_MIN_LEARNING_CHARS = 25
+
+
+def is_low_quality_learning(text: str) -> bool:
+    """True if `text` is an instruction echo rather than a learning.
+
+    Applied at the WRITE boundary: once stored, an echo is indistinguishable
+    from a real entry and gets retrieved into other agents' context.
+    """
+    if not isinstance(text, str):
+        return True
+    # Strip the "[agent @ timestamp] " prefix before judging length/content.
+    body = text.split("] ", 1)[1] if text.startswith("[") and "] " in text else text
+    body = body.strip()
+    if len(body) < _MIN_LEARNING_CHARS:
+        return True
+    low = body.lower()
+    return any(p in low for p in _ECHO_PATTERNS)
+
+
+def clean_learnings(entries) -> list:
+    """Filter a batch, preserving order. Non-strings are dropped."""
+    return [e for e in (entries or []) if not is_low_quality_learning(e)]
+
+
+_PERF_FILE = REPO_ROOT / "backend" / "performance_log" / "strategy_performance.json"
+
+
+def outcome_learnings(top_n: int = 5, path: Path | None = None) -> list[str]:
+    """Factual P&L attribution lines for peer_learnings — the anti-status-theater.
+
+    `strategy_performance.json` is written by `fill_tracker.py` from real filled
+    orders, attributed back to strategies via the client_order_id encoding, and
+    it IS committed (verified 2026-08-05: 22 strategies, 247 tracked orders).
+    Nothing consumed it into the agents' shared context, so the daily discussion
+    ran on self-reported status while the actual results sat in a file.
+
+    Ranked by total return, worst included: a losing strategy is the more useful
+    thing to discuss, and reporting only winners is how status theater starts.
+    """
+    src = path or _PERF_FILE
+    try:
+        data = json.loads(Path(src).read_text())
+    except Exception:  # noqa: BLE001 — no attribution is not an error
+        return []
+    strategies = data.get("strategies")
+    if not isinstance(strategies, dict) or not strategies:
+        return []
+    ranked = sorted(
+        ((n, s) for n, s in strategies.items()
+         if isinstance(s, dict) and (s.get("trades") or 0) > 0),
+        key=lambda kv: kv[1].get("total_return_pct", 0.0),
+        reverse=True,
+    )
+    if not ranked:
+        return []
+    picks = ranked[:top_n]
+    if len(ranked) > top_n:
+        picks.append(ranked[-1])  # always surface the worst performer
+    stamp = datetime.now(timezone.utc).isoformat()[:16]
+    out = []
+    for name, s in picks:
+        out.append(
+            "[attribution @ {ts}] {n}: {t} trades, {w:.0f}% win rate, "
+            "{tot:+.2f}% total return, {avg:+.2f}% avg (period {d}d)".format(
+                ts=stamp, n=name, t=s.get("trades", 0),
+                w=100 * (s.get("win_rate") or 0.0),
+                tot=s.get("total_return_pct", 0.0),
+                avg=s.get("avg_return_pct", 0.0),
+                d=data.get("period_days", "?"),
+            )
+        )
+    return out
+
+
 AGENT_ROLES = {
     "continuous_improver":   "Improves Python code quality across backend + scripts",
     "signal_runner":         "Generates trading signals every 5 min, all desks",
@@ -176,10 +278,12 @@ class SharedContext:
         stats["last_success"] = now
         stats["last_summary"] = summary
 
-        # Share learnings with peer agents
-        self._mem.setdefault("peer_learnings", [])
-        self._mem["peer_learnings"].append(f"[{self.agent_name} @ {now[:16]}] {summary}")
-        self._mem["peer_learnings"] = self._mem["peer_learnings"][-100:]
+        # Share learnings with peer agents — but not instruction echoes.
+        entry = f"[{self.agent_name} @ {now[:16]}] {summary}"
+        if not is_low_quality_learning(entry):
+            self._mem.setdefault("peer_learnings", [])
+            self._mem["peer_learnings"].append(entry)
+            self._mem["peer_learnings"] = self._mem["peer_learnings"][-100:]
 
     def record_failure(self, what_failed: str, error: str, what_to_try_next: str = ""):
         """Record a failure so other agents (and next run) can learn from it."""

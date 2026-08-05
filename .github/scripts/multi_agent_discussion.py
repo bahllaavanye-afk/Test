@@ -400,8 +400,24 @@ def main():
     force_channel = os.environ.get("FORCE_CHANNEL", "").strip()
     new_learnings = run_discussion(mem, skills, force_channel=force_channel)
 
-    # Write back to shared memory
+    # Write back to shared memory.
+    #
+    # Two changes here, both aimed at the same thing: what the agents actually
+    # discuss tomorrow.
+    #   1. Drop instruction echoes — a failed generation restates its prompt,
+    #      and 28% of peer_learnings was that (measured 2026-08-05).
+    #   2. Inject real P&L attribution. strategy_performance.json holds 22
+    #      strategies from real fills and nothing consumed it into agent
+    #      context, so the daily discussion ran on self-reported status while
+    #      the results sat in a file. This is the outcome-linked half of
+    #      IMPROVEMENTS #814.
     mem.setdefault("peer_learnings", [])
+    try:
+        from shared_context import clean_learnings, outcome_learnings
+        new_learnings = clean_learnings(new_learnings)
+        new_learnings = list(outcome_learnings()) + list(new_learnings)
+    except Exception as exc:  # noqa: BLE001 — never fail the discussion for this
+        print(f"[discussion] outcome/quality wiring skipped: {exc}", flush=True)
     mem["peer_learnings"].extend(new_learnings)
     mem["peer_learnings"] = mem["peer_learnings"][-200:]
     mem["last_updated"] = now.isoformat()
