@@ -29,6 +29,34 @@ each independently "found" after already being documented.
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
 
 
+## ✅ 2026-08-05 09:15 — BACKTESTS PERSIST FOR THE FIRST TIME, and a margin floor now stops the freeze recurring
+
+**Backtest persistence VERIFIED in production.** Run `30992181279`:
+```
+✓ 12 backtests | top Sharpe: 1.29 (rsi/AAPL)
+[main ed92ec8] backtest: update results 09:11 [skip ci]
+```
+`git log --all -- .github/state/last_backtest.json` went from **0 commits to 1**. This workflow had run every
+15 minutes since inception, green every time, and had never saved a result. Two causes, both required:
+no `permissions:` block (push 403'd) and staging only `last_backtest.json` while the runner also writes
+`agent_memory.json`, so `git pull --rebase` aborted on all four retries. `continue-on-error` on both steps is
+why it stayed green throughout.
+
+**ML experiments now persist too** — `.github/state/ml_experiments.json`, 60-run rolling. Previously the whole
+output was a `print`; the workflow's fallback appends to an issue titled `ml-experiments-log` that **does not
+exist** (500 issues paged, step still reports success).
+
+**ML answered, definitively: working, NOT used in trades.** Real walk-forward GBC on real bars, torch-free (the
+Render torch exclusion never applied to this path — that is LSTM only). `ml_signal`/`ml_enhanced` appear **zero**
+times in `desk_order_placer.py`. And the model **loses to buy-and-hold**: SPY Sharpe 0.56 vs 0.789, QQQ 1.12 vs
+1.325. Wiring it into live sizing is a strategy decision, deliberately not taken.
+
+**`MARGIN_FLOOR_PCT` (0.10) added.** Nothing prevented the book levering to a standstill because
+`cash_capped_notional` only asked "can we pay for this one?", never "should we spend the last of it?". Against
+the real 07:56 account state a $500 SPY order now sizes to **0** instead of ~$196. Crypto exempt (cannot use
+margin; already starved). Skip reason reported as `margin floor`, distinct from `insufficient cash`. **Frees
+nothing already committed — it stops the state recurring after a paper-account reset.**
+
 ## 🔴 2026-08-05 08:15 — THE ACCOUNT IS OUT OF MARGIN. Nothing has traded for ~7 hours.
 
 **This is now the binding constraint on the entire platform**, ahead of everything else in this file. The desks
