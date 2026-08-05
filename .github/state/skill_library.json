@@ -1,6 +1,5 @@
 {
   "skills": [
-    "Optimize cache usage",
     "Sanitize user data",
     "Based on the recent agent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
     "Retrain hybrid models.",
@@ -199,8 +198,9 @@
     "Scan for duplicates",
     "Fix TTL handling bugs.",
     "Run static-type sweeps.",
-    "Validate cache fixes."
+    "Validate cache fixes.",
+    "Alert on timeouts"
   ],
-  "last_updated": "2026-08-05T12:58:51.724925+00:00",
+  "last_updated": "2026-08-05T15:19:23.115640+00:00",
   "total": 200
 }
