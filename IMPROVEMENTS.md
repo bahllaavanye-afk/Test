@@ -54,8 +54,9 @@ none of it has to be re-derived.
 - [x] Equities, Crypto, Options, Polymarket, Macro/FX, StatArb, Commodities, TV Indicators, International.
       Crypto is the only `always_open=True` (line 152); Polymarket the only `executable=False`, and it now reports
       `NO ORDER PATH` honestly rather than "closed" — 3 such signals at conf=0.99 in the latest run.
-- [ ] **[P2] International shares `#desk-equities`** as its chat channel, so its output is indistinguishable from
-      the Equities desk in Discord. Give it `#desk-international` or prefix its lines.
+- [x] ~~**[P2] International shares `#desk-equities`**~~ **WITHDRAWN 2026-08-05** — the posts already open with
+      `*International Desk*` (the format string interpolates `desk.name`), so they are labelled distinctly inside the
+      shared channel. Splitting the channel would only add a `#general` fallback risk for a channel that may not exist.
 
 ### 📣 DISCORD — 21 real channels targeted
 - [x] `cto-audit, desk-commodities, desk-crypto, desk-equities, desk-fx-rates, desk-lead-review, desk-options,

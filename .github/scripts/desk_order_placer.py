@@ -733,6 +733,16 @@ _ENSEMBLE_NET_MIN = float(os.environ.get("ENSEMBLE_NET_MIN", "0.60"))
 
 MIN_ORDER_USD = 25.0
 
+# Fraction of EQUITY that must remain as buying power before a new equity order
+# is allowed. 0.10 on a $22k book reserves ~$2.2k — roughly ten minimum orders of
+# room, enough to keep trading through a session and to exit positions, while
+# still allowing the great majority of the book to be deployed.
+#
+# Set to 0 to disable (restores the pre-2026-08-05 behaviour of levering until
+# buying power reaches zero, which is how the account spent seven hours unable
+# to place a single order).
+MARGIN_FLOOR_PCT = float(os.environ.get("MARGIN_FLOOR_PCT", "0.10") or 0.10)
+
 
 def slippage_bps(side: str, arrival_price: float | None,
                  fill_price: float | None) -> float | None:
@@ -797,6 +807,33 @@ def cash_capped_notional(notional: float, symbol: str, account: dict) -> float:
     is_crypto = "/" in symbol
     field = "non_marginable_buying_power" if is_crypto else "buying_power"
     avail = float(account.get(field, 0) or 0) * 0.95
+
+    # MARGIN FLOOR — leave the book able to act tomorrow.
+    #
+    # Measured 2026-08-05: buying power ran $0.00–$206 for seven hours and cash
+    # sat at exactly −$33,401.86 across eight consecutive runs (zero fills). The
+    # desks were healthy — 51 signals generated, 17 through the gate, 0 placed —
+    # the account had simply levered itself to a standstill. Nothing stopped it,
+    # because each individual order was affordable at the moment it was sized.
+    #
+    # `recover_negative_cash` deliberately will not unwind this (flattening a
+    # levered book realises losses and trips the daily loss cap — 2026-07-27), so
+    # the only place to prevent it is BEFORE the last order that exhausts the
+    # margin. Reserve a floor proportional to equity: new EQUITY exposure stops
+    # while buying power is under it, leaving headroom for risk-reducing exits
+    # and for the next session.
+    #
+    # Crypto is exempt: it sizes against non-marginable cash, cannot use margin
+    # at all, and is already starved by this same interaction — applying a
+    # margin floor there would compound the problem it exists to prevent.
+    if not is_crypto and MARGIN_FLOOR_PCT > 0:
+        equity = float(account.get("equity", 0) or 0)
+        floor = equity * MARGIN_FLOOR_PCT
+        bp = float(account.get(field, 0) or 0)
+        if equity > 0 and bp < floor:
+            return 0.0          # caller logs "margin floor" and skips honestly
+        avail = min(avail, max(0.0, bp - floor) * 0.95)
+
     if avail < MIN_ORDER_USD:
         return 0.0
     return min(float(notional), avail)
@@ -2319,9 +2356,22 @@ async def main() -> None:
                     kelly_notional = min(kelly_notional, MIN_ORDER_USD) or MIN_ORDER_USD
                 kelly_notional = cash_capped_notional(kelly_notional, symbol, account)
                 if kelly_notional <= 0:
-                    print(f"  · {strategy.name}/{symbol} skipped — insufficient available cash "
-                          f"(< ${MIN_ORDER_USD:.0f}; frees as pending closes fill)", flush=True)
-                    _drop("insufficient cash", desk.name)
+                    # Distinguish "the account is empty" from "the guard held
+                    # capital back on purpose". Both size to 0, and folding them
+                    # together would make the margin floor look like the very
+                    # exhaustion it exists to prevent.
+                    _eq = float(account.get("equity", 0) or 0)
+                    _bp = float(account.get("buying_power", 0) or 0)
+                    if ("/" not in symbol and MARGIN_FLOOR_PCT > 0
+                            and _eq > 0 and _bp < _eq * MARGIN_FLOOR_PCT):
+                        print(f"  · {strategy.name}/{symbol} skipped — margin floor "
+                              f"(bp ${_bp:,.0f} < {MARGIN_FLOOR_PCT:.0%} of equity "
+                              f"${_eq:,.0f}; reserved so the book can still act)", flush=True)
+                        _drop("margin floor", desk.name)
+                    else:
+                        print(f"  · {strategy.name}/{symbol} skipped — insufficient available cash "
+                              f"(< ${MIN_ORDER_USD:.0f}; frees as pending closes fill)", flush=True)
+                        _drop("insufficient cash", desk.name)
                     continue
                 coid = make_coid(strategy.name, symbol)
                 limit_price: float | None = None
