@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-08-05T09:06:09.806734+00:00",
+  "last_updated": "2026-08-05T09:11:27.201828+00:00",
   "conversations": {
     "2026-07-27T02:51:12.693593+00:00": {
       "channel": "ml-research",
@@ -6409,5 +6409,163 @@
       "test_pass": 10
     }
   },
-  "last_health_check": "2026-08-05T09:08:09.381487+00:00"
+  "last_health_check": "2026-08-05T09:08:09.381487+00:00",
+  "backtest_results": [
+    {
+      "strategy": "rsi",
+      "symbol": "AAPL",
+      "desk": "equity",
+      "total_return_pct": 36.28,
+      "ann_return_pct": 24.97,
+      "volatility_pct": 19.32,
+      "sharpe": 1.293,
+      "sortino": 1.659,
+      "max_drawdown_pct": -7.74,
+      "n_days": 350,
+      "timestamp": "2026-08-05T09:11:25.415004+00:00"
+    },
+    {
+      "strategy": "breakout",
+      "symbol": "AAPL",
+      "desk": "equity",
+      "total_return_pct": 9.8,
+      "ann_return_pct": 7.82,
+      "volatility_pct": 6.89,
+      "sharpe": 1.134,
+      "sortino": 0.739,
+      "max_drawdown_pct": -3.23,
+      "n_days": 313,
+      "timestamp": "2026-08-05T09:11:25.415004+00:00"
+    },
+    {
+      "strategy": "rsi",
+      "symbol": "SPY",
+      "desk": "equity",
+      "total_return_pct": 4.83,
+      "ann_return_pct": 3.45,
+      "volatility_pct": 11.04,
+      "sharpe": 0.313,
+      "sortino": 0.397,
+      "max_drawdown_pct": -6.5,
+      "n_days": 350,
+      "timestamp": "2026-08-05T09:11:25.415004+00:00"
+    },
+    {
+      "strategy": "momentum",
+      "symbol": "QQQ",
+      "desk": "equity",
+      "total_return_pct": 8.72,
+      "ann_return_pct": 6.32,
+      "volatility_pct": 23.18,
+      "sharpe": 0.273,
+      "sortino": 0.324,
+      "max_drawdown_pct": -19.26,
+      "n_days": 344,
+      "timestamp": "2026-08-05T09:11:25.415004+00:00"
+    },
+    {
+      "strategy": "breakout",
+      "symbol": "QQQ",
+      "desk": "equity",
+      "total_return_pct": 2.06,
+      "ann_return_pct": 1.65,
+      "volatility_pct": 6.19,
+      "sharpe": 0.267,
+      "sortino": 0.162,
+      "max_drawdown_pct": -5.44,
+      "n_days": 313,
+      "timestamp": "2026-08-05T09:11:25.415004+00:00"
+    },
+    {
+      "strategy": "momentum",
+      "symbol": "SPY",
+      "desk": "equity",
+      "total_return_pct": 5.04,
+      "ann_return_pct": 3.67,
+      "volatility_pct": 17.93,
+      "sharpe": 0.205,
+      "sortino": 0.237,
+      "max_drawdown_pct": -15.02,
+      "n_days": 344,
+      "timestamp": "2026-08-05T09:11:25.415004+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "symbol": "SPY",
+      "desk": "equity",
+      "total_return_pct": 2.81,
+      "ann_return_pct": 2.05,
+      "volatility_pct": 12.32,
+      "sharpe": 0.166,
+      "sortino": 0.15,
+      "max_drawdown_pct": -7.49,
+      "n_days": 345,
+      "timestamp": "2026-08-05T09:11:25.415004+00:00"
+    },
+    {
+      "strategy": "rsi",
+      "symbol": "QQQ",
+      "desk": "equity",
+      "total_return_pct": 1.7,
+      "ann_return_pct": 1.22,
+      "volatility_pct": 13.98,
+      "sharpe": 0.087,
+      "sortino": 0.104,
+      "max_drawdown_pct": -14.46,
+      "n_days": 350,
+      "timestamp": "2026-08-05T09:11:25.415004+00:00"
+    },
+    {
+      "strategy": "momentum",
+      "symbol": "AAPL",
+      "desk": "equity",
+      "total_return_pct": -2.59,
+      "ann_return_pct": -1.9,
+      "volatility_pct": 31.21,
+      "sharpe": -0.061,
+      "sortino": -0.078,
+      "max_drawdown_pct": -22.43,
+      "n_days": 344,
+      "timestamp": "2026-08-05T09:11:25.415004+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "symbol": "QQQ",
+      "desk": "equity",
+      "total_return_pct": -2.58,
+      "ann_return_pct": -1.89,
+      "volatility_pct": 15.46,
+      "sharpe": -0.122,
+      "sortino": -0.128,
+      "max_drawdown_pct": -10.48,
+      "n_days": 345,
+      "timestamp": "2026-08-05T09:11:25.415004+00:00"
+    },
+    {
+      "strategy": "breakout",
+      "symbol": "SPY",
+      "desk": "equity",
+      "total_return_pct": -2.05,
+      "ann_return_pct": -1.65,
+      "volatility_pct": 6.13,
+      "sharpe": -0.269,
+      "sortino": -0.186,
+      "max_drawdown_pct": -5.17,
+      "n_days": 313,
+      "timestamp": "2026-08-05T09:11:25.415004+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "symbol": "AAPL",
+      "desk": "equity",
+      "total_return_pct": -7.77,
+      "ann_return_pct": -5.74,
+      "volatility_pct": 20.07,
+      "sharpe": -0.286,
+      "sortino": -0.252,
+      "max_drawdown_pct": -19.09,
+      "n_days": 345,
+      "timestamp": "2026-08-05T09:11:25.415004+00:00"
+    }
+  ]
 }
