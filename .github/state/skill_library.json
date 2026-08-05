@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Sanitize user data",
-    "Based on the recent agent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
-    "Retrain hybrid models.",
-    "Test API rate limits",
-    "Implement early-stopping callbacks",
     "Integrate new models",
     "Limit API calls",
     "Log API request IDs",
@@ -199,8 +194,13 @@
     "Fix TTL handling bugs.",
     "Run static-type sweeps.",
     "Validate cache fixes.",
-    "Alert on timeouts"
+    "Alert on timeouts",
+    "Verify DB sync",
+    "Monitor thread count",
+    "Check OS updates",
+    "Fix type issues",
+    "Prevent stale drift"
   ],
-  "last_updated": "2026-08-05T17:00:13.298459+00:00",
+  "last_updated": "2026-08-05T18:59:55.399889+00:00",
   "total": 200
 }
