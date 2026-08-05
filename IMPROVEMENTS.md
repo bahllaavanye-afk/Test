@@ -1,5 +1,28 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🧪 2026-08-05 22:45 — `walk_forward` HAD NEVER BEEN EXECUTED BY A TEST, ONLY STRING-MATCHED
+
+Follow-up to the sub-window work, and the mutation pass is what exposed it.
+
+- [x] **`test_walk_forward_actually_reports_sub_windows` greps the source.** That guard is real but partial:
+  if `feat.index[mask]` raised at runtime, every test in the file would still pass and the weekly ML run would
+  die. sklearn is not in the agent-test environment (CI installs pandas/numpy/pyyaml/requests), which is why
+  the function had never been run — so the new test **stubs the classifier**. The subject is the plumbing:
+  masking, indexing, and the sub-window call, not the model.
+- [x] **The first mutation SURVIVED, and it was the one that mattered.** Replacing `feat.index[mask]` with
+  `feat.index` passed everything. The slice indices stay in range against a *longer* index, so the windows
+  still look well-formed while **every reported date is shifted by `MIN_TRAIN` — about a year**. Nothing else
+  in the output changes. A reader would have compared sub-periods to the wrong calendar dates and never known.
+- [x] **Fixed on both sides.** `sub_window_stats` now raises on a dates/returns length mismatch — it is a
+  programming error and a silent one, so it must be loud — and the integration test asserts the first window
+  starts at `feat.index[MIN_TRAIN]` and the last ends at the final bar. Both mutations now die.
+- [x] **The general lesson, which this codebase keeps relearning: a call-site guard proves the call exists, not
+  that it works.** Four features shipped dead this week and string-matching fixed that; this is the next layer
+  — the call is there, the arguments are wrong, and only execution catches it.
+- [ ] **Still pending: live sub-window data.** The latest persisted ML run is `20:17`, which predates the merge.
+  The next run carries `sub_windows` and answers whether QQQ/NVDA beat buy-and-hold in all three sub-periods or
+  just one.
+
 ## 📣 2026-08-05 21:40 — THE DISCORD CHANNEL INVENTORY, AND TWO PLACES POSTS DO NOT LAND WHERE THEY SAY
 
 Triggered by the India MF run logging `no channel id for '#desk-india-mf' in this guild — webhook fallback`.
