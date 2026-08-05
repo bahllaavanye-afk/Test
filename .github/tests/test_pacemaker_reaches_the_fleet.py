@@ -101,6 +101,31 @@ def test_each_dispatched_workflow_queues_rather_than_clobbers(wf):
     )
 
 
+@pytest.mark.parametrize("wf", FLEET)
+def test_each_dispatched_workflow_bounds_its_own_runtime(wf):
+    """Dispatching something every ~50 min makes its runtime a budget question.
+
+    `employee-conversations.yml` had NO timeout-minutes, so it inherited
+    GitHub's 6-hour default. That was invisible while the job did nothing — the
+    key guard exited immediately and every run took 0.3-0.8 min. The moment the
+    guard was fixed it began making 47 sequential LLM calls, and a hung provider
+    could have burned six hours of free-tier budget per run.
+
+    A workflow the pacemaker wakes on a schedule must bound itself.
+    """
+    doc = yaml.safe_load((_WF_DIR / wf).read_text())
+    (job,) = doc["jobs"].values()
+    timeout = job.get("timeout-minutes")
+    assert timeout is not None, (
+        f"{wf} has no timeout-minutes, so it inherits GitHub's 6-hour default. "
+        "The pacemaker dispatches it every ~50 minutes."
+    )
+    assert 0 < timeout <= 60, (
+        f"{wf} allows {timeout} minutes, longer than the ~50-minute dispatch "
+        "interval — runs would overlap by construction."
+    )
+
+
 def test_the_dispatch_step_is_gated_on_the_killswitch(pacemaker_doc):
     """Every other dispatch honours it; a new one that ignores it is a hole."""
     # Derive the job key rather than hardcoding it — an earlier version guessed

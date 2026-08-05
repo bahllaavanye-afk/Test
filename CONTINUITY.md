@@ -29,6 +29,28 @@ each independently "found" after already being documented.
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
 
 
+## ⏱️ 2026-08-05 07:00 — A RISK I CREATED: the fleet workflow had no timeout, and was about to do real work
+
+`employee-conversations.yml` had **no `timeout-minutes`**, so it inherited GitHub's **6-hour** default.
+That was invisible for as long as it mattered least: the key guard exited at line ~24 and every run
+finished in **0.3–0.8 min** having done nothing.
+
+Fixing the guard (05:00) and adding the pacemaker dispatch (05:40) changed both sides of that at once. The
+job now makes **47 sequential LLM calls**, each with a possible quality-gate retry, and fires every ~50
+minutes on top of `cron: '5 * * * *'`. A hung provider would have burned six hours of free-tier budget per
+run — a hazard created by my own two fixes, in a workflow whose duration history says 0.8 min.
+
+Set to **25 minutes**: generous for 47 calls (`multi-agent-discussion` allows 10 for a smaller roster,
+`desk-trading` 15) and bounded well under the dispatch interval. If a real run approaches it, cap the
+roster with `EMPLOYEE_RUNNER_LIMIT` rather than raising the timeout.
+
+**Generalised, not patched:** a test now asserts every workflow the pacemaker dispatches declares a
+`timeout-minutes` that is under the ~50-minute dispatch interval. **Waking something on a schedule makes
+its runtime a budget question**, and the next workflow added to that list gets the check for free.
+
+Related, already safe: GitHub allows only one *pending* run per concurrency group, so queued runs cannot
+pile up unboundedly — `cancel-in-progress: false` bounds it at one running plus one pending.
+
 ## ✅ 2026-08-05 06:30 — THREE FIXES VERIFIED IN PRODUCTION (one still unverified — say which)
 
 Run `multi-agent-discussion` at 06:26, commit `bb2a9092`. All three landed together because they ride the
