@@ -15,6 +15,18 @@ concurrency:
 jobs:
   employee-conversations:
     runs-on: ubuntu-latest
+    # No timeout was set here, so this job inherited GitHub's 6-hour default.
+    # That was harmless only because the job never did any work: the key guard
+    # exited at line ~24 and every run finished in 0.3-0.8 min. With the guard
+    # fixed (2026-08-05) it makes 47 sequential LLM calls, each with a possible
+    # quality-gate retry, and it is now dispatched by the pacemaker every ~50
+    # minutes on top of `cron: '5 * * * *'`.
+    #
+    # 25 minutes is generous for 47 calls — multi-agent-discussion allows 10 for
+    # a smaller roster, desk-trading 15 — while bounding a hung provider to 25
+    # minutes of free-tier budget instead of six hours. If a real run approaches
+    # this, cap the roster with EMPLOYEE_RUNNER_LIMIT rather than raising it.
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
