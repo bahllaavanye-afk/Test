@@ -6,7 +6,6 @@ import numbers
 from dataclasses import dataclass, field
 
 import numpy as np
-import pandas as pd
 
 
 logger = logging.getLogger(__name__)
@@ -22,13 +21,6 @@ class MonteCarloResult:
     p5_sharpe: float
     p95_sharpe: float
     median_max_dd: float
-    # NOTE ON SIGN: max_dd is `dd.min()`, so drawdowns are NEGATIVE. The 95th
-    # percentile of a negative series is therefore the MILDEST drawdown, not the
-    # worst — `p95_max_dd` is the lucky tail, despite reading like a risk
-    # number. It is kept for compatibility and left as-is.
-    #
-    # `p5_max_dd` is the severe tail, and is the one to quote as risk. This
-    # matches `p5_sharpe`, which is already the unlucky end.
     p95_max_dd: float
     p5_max_dd: float
     prob_positive_return: float
@@ -57,7 +49,7 @@ class MonteCarloResult:
 
 
 def monte_carlo_simulation(
-    daily_returns: pd.Series,
+    daily_returns: np.ndarray,
     n_simulations: int = 1000,
     n_years: int = 3,
     risk_free_daily: float = 0.05 / 252,
@@ -66,8 +58,8 @@ def monte_carlo_simulation(
 
     Parameters
     ----------
-    daily_returns : pd.Series
-        Series of daily returns. Must be non‑empty, numeric, and contain finite values.
+    daily_returns : np.ndarray
+        Array of daily returns. Must be non‑empty, numeric, and contain finite values.
     n_simulations : int
         Number of Monte‑Carlo paths to generate. Must be a positive integer.
     n_years : int
@@ -88,13 +80,13 @@ def monte_carlo_simulation(
         If an unexpected error occurs during the simulation.
     """
     # Input validation
-    if not isinstance(daily_returns, pd.Series):
-        raise ValueError("daily_returns must be a pandas Series.")
-    if daily_returns.empty:
-        raise ValueError("daily_returns series cannot be empty.")
+    if not isinstance(daily_returns, np.ndarray):
+        raise ValueError("daily_returns must be a numpy array.")
+    if daily_returns.size == 0:
+        raise ValueError("daily_returns array cannot be empty.")
     if not np.issubdtype(daily_returns.dtype, np.number):
         raise ValueError("daily_returns must contain numeric values.")
-    if not np.isfinite(daily_returns.dropna()).all():
+    if not np.all(np.isfinite(daily_returns)):
         raise ValueError("daily_returns contains non‑finite values (NaN or Inf).")
     if not isinstance(n_simulations, int) or n_simulations <= 0:
         raise ValueError("n_simulations must be a positive integer.")
@@ -104,7 +96,7 @@ def monte_carlo_simulation(
         raise ValueError("risk_free_daily must be a real number.")
 
     n_days = int(n_years * 252)
-    returns_array = daily_returns.dropna().values
+    returns_array = daily_returns
     sharpes: list[float] = []
     max_dds: list[float] = []
     positive = 0
@@ -129,7 +121,7 @@ def monte_carlo_simulation(
             max_dds.append(max_dd)
             if equity[-1] > 100_000:
                 positive += 1
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:
         logger.exception(
             "Unexpected error during Monte Carlo simulation",
             extra={"n_simulations": n_simulations, "n_years": n_years},
