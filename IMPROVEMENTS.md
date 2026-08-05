@@ -1,5 +1,47 @@
 # QuantEdge — Improvements & Task Tracker
 
+## ₿ 2026-08-05 18:30 — CRYPTO IS STRUCTURALLY STARVED, AND THE FIX IS AN ALLOCATION DECISION, NOT A BUG
+
+Measured in run `31031318516`, the first healthy run after the margin freeze lifted:
+
+    equity $21,903.38   buying_power $34,713.48   non_marginable_bp $0.00
+    Crypto: 1 signal(s) fired, 0 placed — 1 insufficient cash
+
+- [x] **The desk is not silently broken and does not need a reporting fix.** It says exactly what happened, in
+  Discord, per run — that half is working (the per-desk zero-order post, shipped this morning, verified here).
+- [x] **The mechanism.** Crypto sizes against `non_marginable_buying_power`, which is settled cash, because
+  Alpaca crypto cannot use margin at all. Cash is currently **−$22,179.98** (a margin debit from the equity
+  book), so non-marginable BP is **$0.00 by definition**. Crypto cannot place an order at any size. The
+  `MARGIN_FLOOR_PCT` guard does not help: it reserves *buying power*, and crypto cannot spend buying power.
+- [ ] **[OPERATOR] The only mechanism that would fix it is a cash reserve, and it is a real trade-off — not a
+  free win.** To keep $X of cash for crypto, the equity desks must be capped at `cash − X`, which means
+  **equity stops using margin** whenever cash approaches the reserve. The equity book only just started
+  filling again (13 fills in this run) and throttling it to cash-only would be a significant, arguable
+  behavioural change. **I am not shipping it unattended** — same call as `india_broker.py` not routing live
+  orders. Same shape as the margin floor: it could not create cash today anyway, only prevent recurrence after
+  a paper-account reset.
+- [x] **Note what this means for the 24×7 claim.** Crypto is the only desk with `always_open=True` — the only
+  one that can trade outside US hours. While cash is a margin debit, the platform's overnight coverage is
+  **zero orders**, not "quiet". The India NSE tilt shipped today does not change this: it improves US-session
+  India orders, it does not add an overnight *venue*.
+
+## 🚫 2026-08-05 18:30 — TWO NON-FINDINGS, RECORDED SO THEY ARE NOT RE-INVESTIGATED
+
+Both looked like live outages for a few minutes each. Neither was. Written down because the *next* sweep will
+see the same surface and start the same dig.
+
+- [x] **`/api/v1/positions/` and `/api/v1/trades/` are NOT returning an empty book while the broker holds one.**
+  Both return **HTTP 401** to an unauthenticated probe. My probe parsed the JSON with
+  `d.get('positions', d.get('data', []))`, which turns `{"detail":"Not authenticated"}` into `[]` and prints
+  `0`. **An auth failure and an empty book are indistinguishable to a parser that defaults to empty** — the
+  same shape as reading Alpaca positions with the wrong field names earlier today. Always print the HTTP status
+  next to the count.
+- [x] **`_live_platform_positions` is not self-defeatingly gated.** It exists so the dashboard survives an empty
+  DB, and it is gated on the caller owning an `Account` row with `broker='alpaca'` — which reads like requiring
+  the DB to be non-empty in order to survive the DB being empty. It is fine: `seed_all()` runs on boot
+  (`main.py:161`, DEMO_MODE-gated, idempotent) and creates exactly that row at `bots/seed.py:92`, so the
+  ephemeral sqlite fallback is re-seeded on every redeploy before any request arrives.
+
 ## 🇮🇳 2026-08-05 18:10 — THE INDIAN SESSION NOW FEEDS THE ORDERS IT CAN ACTUALLY REACH
 
 - [x] **Shipped the `[P2]` intermediate play** from the 08-05 India entry, which is the only way to use NSE
@@ -118,7 +160,9 @@
 - [x] **[P1] Daily workflow SHIPPED** — `india-mf.yml`, 18:30 UTC Mon-Fri (AMFI publishes 15:30-17:30 UTC), posts
   the top 10 to `#desk-india-mf`, commits bounded state, `contents: write` so the commit cannot 403 the way
   quick-backtest did. Live run ranks across 7 major AMCs (HDFC, SBI, Nippon, ABSL, Axis, UTI, Franklin).
-- [ ] **[P1] Category-relative ranking.** The current list is dominated by sector funds — the live top 10 is
+- [x] **[P1] Category-relative ranking — SHIPPED.** `rank_within_categories(per_category=3)`, called from
+  `main()` at `india_mf.py:344` and pinned by `test_main_actually_uses_the_category_ranking` (it shipped once
+  as dead code and was caught the following tick). The current list is dominated by sector funds — the live top 10 is
   transportation/logistics, healthcare, technology and automotive. A sector fund that happened to run is a
   different claim from a top-quartile large-cap fund, and ranking them together is not a like-for-like
   comparison. Needs the AMFI category header (already parsed as a section marker, currently discarded).
