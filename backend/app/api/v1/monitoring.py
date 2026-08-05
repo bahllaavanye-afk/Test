@@ -33,6 +33,7 @@ RESPONSE_MESSAGE_KEY = "message"
 
 # HTTP status codes
 HTTP_STATUS_INTERNAL_ERROR = 500
+HTTP_STATUS_BAD_REQUEST = 400
 
 router = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
 
@@ -46,9 +47,16 @@ def _load_health_report() -> Dict[str, Any]:
     if not HEALTH_REPORT_PATH.exists():
         return {"status": DEFAULT_HEALTH_STATUS, "message": DEFAULT_HEALTH_MESSAGE}
     try:
-        return json.loads(HEALTH_REPORT_PATH.read_text())
+        data = json.loads(HEALTH_REPORT_PATH.read_text())
+        # Ensure the result is a dict; if not, treat as corrupted.
+        if not isinstance(data, dict):
+            raise ValueError("Health report JSON is not an object")
+        return data
     except Exception as exc:
-        raise HTTPException(status_code=HTTP_STATUS_INTERNAL_ERROR, detail=HEALTH_REPORT_CORRUPTED_DETAIL) from exc
+        raise HTTPException(
+            status_code=HTTP_STATUS_INTERNAL_ERROR,
+            detail=HEALTH_REPORT_CORRUPTED_DETAIL,
+        ) from exc
 
 
 def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
@@ -57,6 +65,10 @@ def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
     The log is stored as newline‑delimited JSON. Empty or missing files result in
     an empty list. Any parsing error raises an HTTPException.
     """
+    # Guard against None or non‑positive limits
+    if limit is None or limit <= 0:
+        return []
+
     if not FIX_LOG_PATH.exists():
         return []
     try:
@@ -64,10 +76,20 @@ def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
         if not raw_text:
             return []
         lines = raw_text.splitlines()
-        recent_lines = lines[-limit:]
-        return [json.loads(line) for line in recent_lines]
+        # Slice safely; if limit exceeds length we get the whole list
+        recent_lines = lines[-limit:] if limit < len(lines) else lines
+        parsed: List[Dict[str, Any]] = []
+        for line in recent_lines:
+            entry = json.loads(line)
+            # Ensure each entry is a dict; skip malformed entries
+            if isinstance(entry, dict):
+                parsed.append(entry)
+        return parsed
     except Exception as exc:
-        raise HTTPException(status_code=HTTP_STATUS_INTERNAL_ERROR, detail=FIX_LOG_READ_ERROR_DETAIL.format(exc)) from exc
+        raise HTTPException(
+            status_code=HTTP_STATUS_INTERNAL_ERROR,
+            detail=FIX_LOG_READ_ERROR_DETAIL.format(exc),
+        ) from exc
 
 
 @router.get(ENDPOINT_HEALTH)
@@ -87,8 +109,17 @@ async def get_fix_log(
 ):
     """Recent auto‑fixes applied by the QA monitor (requires auth).
 
-    Returns the last *limit* entries from the fix log (newest last).
+    Returns the last *limit* entries from the fix log (newest last). Handles
+    None, zero, or negative limits gracefully by returning an empty list.
     """
+    # FastAPI may provide None if the query parameter is explicitly null
+    if limit is None:
+        raise HTTPException(
+            status_code=HTTP_STATUS_BAD_REQUEST,
+            detail="Limit must be a positive integer",
+        )
+    if limit <= 0:
+        return []
     return _read_fix_log(limit)
 
 
