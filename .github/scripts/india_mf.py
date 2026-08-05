@@ -76,6 +76,7 @@ class Scheme:
     nav: float
     date: str
     amc: str
+    category: str = "?"
 
     @property
     def is_direct(self) -> bool:
@@ -97,7 +98,16 @@ class Scheme:
             # Distribution cum Capital Withdrawal" as two separate 13.58%
             # entries, plus the same for SBI Automotive. Same portfolio, two
             # slots, and the payout variant is the wrong one to hold.
-            r"|income\s+distribution",
+            r"|income\s+distribution"
+            # AMFI TRUNCATES "IDCW" on some rows. Observed 2026-08-05:
+            #   Axis Conservative Hybrid - Regular Plan - Half Yearly IDCW  (caught)
+            #   Axis Conservative Hybrid - Direct Plan  - Half Yearly       (missed)
+            # Same payout option, one spelling. A payout FREQUENCY at the end of
+            # the name is the tell: a growth option does not distribute, so it
+            # has no frequency. Anchored to the end so an interval fund with
+            # "Quarterly" mid-name is not swept up.
+            r"|[-\s](annual|half\s*yearly|quarterly|monthly|fortnightly|weekly|daily)"
+            r"(\s+option)?\s*$",
             self.name, re.I)
 
 
@@ -117,14 +127,28 @@ def parse_navall(text: str) -> list[Scheme]:
     """
     out: list[Scheme] = []
     amc = "?"
+    category = "?"
     for line in text.splitlines():
         s = line.strip()
         if not s:
             continue
         if ";" not in s:
-            # Category headers are noise; AMC lines are what we want to keep.
-            if not s.lower().startswith("open ended") and not s.lower().startswith("close ended"):
+            # Two kinds of bare line: the AMC, and AMFI's scheme-category header
+            # ("Open Ended Schemes(Equity Scheme - Large Cap)"). The category was
+            # discarded until 2026-08-05, which made the ranking a sector-rotation
+            # readout: the live top 10 was transportation, healthcare, technology
+            # and automotive funds — "which sector ran", not "which manager is
+            # good". Both are section state; neither is on the scheme row.
+            low = s.lower()
+            if low.startswith("open ended") or low.startswith("close ended"):
+                category = s
+            else:
                 amc = s
+                # NOTE the nesting: the real file is category -> AMC -> rows, so
+                # an AMC line must NOT reset the category. An earlier version
+                # did, and only 12 of 3,010 schemes ended up categorised — while
+                # the unit test passed, because its fixture had them the other
+                # way round. The fixture was the thing that was wrong.
             continue
         parts = s.split(";")
         if len(parts) < 6 or parts[0].strip().lower().startswith("scheme code"):
@@ -135,7 +159,7 @@ def parse_navall(text: str) -> list[Scheme]:
             continue          # 'N.A.' for schemes that did not price that day
         out.append(Scheme(code=parts[0].strip(), name=parts[3].strip(),
                           isin=parts[1].strip(), nav=nav,
-                          date=parts[5].strip(), amc=amc))
+                          date=parts[5].strip(), amc=amc, category=category))
     return out
 
 
@@ -215,6 +239,48 @@ def rank_by_momentum(hist: dict[str, list[tuple[str, float]]],
                      "nav": series[-1][1], "as_of": series[-1][0]})
     rows.sort(key=lambda r: r["return_pct"], reverse=True)
     return rows[:top_n]
+
+
+def rank_within_categories(hist: dict[str, list[tuple[str, float]]],
+                           schemes: list[Scheme],
+                           min_points: int = 15,
+                           per_category: int = 3,
+                           min_peers: int = 5) -> dict[str, list[dict]]:
+    """Best funds *within each category*, which is the comparison that means something.
+
+    A flat return ranking is a sector-rotation readout. The 2026-08-05 live top
+    10 was transportation/logistics, healthcare, technology and automotive funds
+    — that says which sector ran, not which manager is good. A thematic fund
+    beating a large-cap fund on 90-day return is not evidence about either.
+
+    `min_peers` drops categories too small to rank: coming first out of two is
+    not a percentile. Categories are AMFI's own, so this inherits their taxonomy
+    rather than inventing one.
+    """
+    by_code = {s.code: s for s in schemes}
+    buckets: dict[str, list[dict]] = {}
+    for code, series in hist.items():
+        sch = by_code.get(code)
+        if sch is None or len(series) < min_points:
+            continue
+        ret = total_return_pct(series)
+        if ret is None:
+            continue
+        buckets.setdefault(sch.category, []).append({
+            "code": code, "name": sch.name, "category": sch.category,
+            "return_pct": round(ret, 2), "nav": series[-1][1],
+            "points": len(series), "as_of": series[-1][0],
+        })
+    out: dict[str, list[dict]] = {}
+    for cat, rows in buckets.items():
+        if len(rows) < min_peers:
+            continue
+        rows.sort(key=lambda r: r["return_pct"], reverse=True)
+        for i, r in enumerate(rows, 1):
+            r["rank"] = i
+            r["peers"] = len(rows)
+        out[cat] = rows[:per_category]
+    return dict(sorted(out.items()))
 
 
 def load_state() -> dict:

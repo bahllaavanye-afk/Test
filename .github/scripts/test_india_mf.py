@@ -33,16 +33,16 @@ import india_mf as M  # noqa: E402
 # the four plan/option variants of one fund plus an unpriced scheme.
 SAMPLE = """Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Net Asset Value;Date
 
-Axis Mutual Fund
 Open Ended Schemes(Equity Scheme - Sectoral/Thematic)
+Axis Mutual Fund
 100001;INF0001;INF0002;Axis Nifty IT Index Fund - Direct Plan - Growth;25.5000;04-Aug-2026
 100002;INF0003;-;Axis Nifty IT Index Fund - Direct Plan - IDCW;25.4000;04-Aug-2026
 100003;INF0004;-;Axis Nifty IT Index Fund - Regular Plan - Growth;24.8000;04-Aug-2026
 100004;INF0005;-;Axis Nifty IT Index Fund - Regular Plan - IDCW;24.7000;04-Aug-2026
 100005;INF0006;-;Axis Unpriced Fund - Direct Plan - Growth;N.A.;04-Aug-2026
 
-SBI Mutual Fund
 Open Ended Schemes(Equity Scheme - Large Cap)
+SBI Mutual Fund
 200001;INF0007;-;SBI Bluechip Fund - Direct Plan - Growth;95.1000;04-Aug-2026
 """
 
@@ -237,3 +237,66 @@ def test_the_discord_post_says_something_when_there_is_no_ranking():
         "the Discord step posts nothing when the ranking is empty — the failure "
         "this repo keeps rediscovering, in a brand-new channel."
     )
+
+
+# ── category-relative ranking, and AMFI's truncated IDCW ──────────────────────
+
+def test_the_category_is_captured(schemes):
+    """AMFI nests category -> AMC -> rows, NOT the other way round.
+
+    An earlier version reset the category on each AMC line, which left 2,998 of
+    3,010 schemes uncategorised in production while the unit test passed — the
+    fixture had the two lines reversed. The fixture was the thing that was wrong.
+    """
+    by_code = {s.code: s for s in schemes}
+    assert "Sectoral" in by_code["100001"].category
+    assert "Large Cap" in by_code["200001"].category, (
+        "the category did not advance at the second section — or an AMC line is "
+        "resetting it, which silently uncategorises almost everything."
+    )
+
+
+@pytest.mark.parametrize("name,growth", [
+    # AMFI truncates 'IDCW' on some Direct rows. Observed 2026-08-05:
+    # 'Regular Plan - Half Yearly IDCW' was caught, 'Direct Plan - Half Yearly'
+    # was not — same payout option, one spelling. A payout FREQUENCY at the end
+    # is the tell: a growth option does not distribute, so it has no frequency.
+    ("Axis Conservative Hybrid Fund - Direct Plan - Half Yearly", False),
+    ("Axis Conservative Hybrid Fund - Direct Plan - Quarterly", False),
+    ("X Fund - Direct Plan - Annual", False),
+    ("X Fund - Direct Plan - Monthly Option", False),
+    ("Axis Conservative Hybrid Fund - Direct Plan - Growth Option", True),
+    # Anchored to the end, so a frequency word mid-name is not swept up.
+    ("Some Quarterly Interval Fund - Direct Plan - Growth", True),
+])
+def test_truncated_payout_frequencies_are_excluded(name, growth):
+    s = M.Scheme(code="1", name=name, isin="", nav=10.0, date="", amc="")
+    assert s.is_growth is growth, f"is_growth={s.is_growth} for {name!r}"
+
+
+def test_category_ranking_compares_like_with_like():
+    """A thematic fund beating a large-cap fund is not evidence about either."""
+    sch = M.parse_navall(SAMPLE)
+    hist = M.parse_history(HIST)
+    out = M.rank_within_categories(hist, sch, min_points=2, per_category=3, min_peers=1)
+    assert out, "no category produced a ranking"
+    for cat, rows in out.items():
+        assert all(r["category"] == cat for r in rows), "a fund leaked across categories"
+        assert rows[0]["rank"] == 1 and rows[0]["peers"] >= 1
+
+
+def test_a_category_with_too_few_peers_is_dropped():
+    """Coming first out of two is not a percentile."""
+    sch = M.parse_navall(SAMPLE)
+    hist = M.parse_history(HIST)
+    out = M.rank_within_categories(hist, sch, min_points=2, per_category=3, min_peers=99)
+    assert out == {}, "a category ranked despite having fewer peers than min_peers"
+
+
+def test_ranking_is_ordered_best_first():
+    sch = M.parse_navall(SAMPLE)
+    hist = M.parse_history(HIST)
+    out = M.rank_within_categories(hist, sch, min_points=2, per_category=5, min_peers=1)
+    for rows in out.values():
+        rets = [r["return_pct"] for r in rows]
+        assert rets == sorted(rets, reverse=True), f"not descending: {rets}"
