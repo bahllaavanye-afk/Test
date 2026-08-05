@@ -38,6 +38,7 @@ import json
 import math
 import os
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -150,6 +151,52 @@ class ConversationStore:
 
 # ── 2. Semantic Retriever (TF-IDF, no ML libraries) ───────────────────────────
 
+# Categories the retriever searches by default.
+#
+# `desk_outcomes` was MISSING here until 2026-08-05, and it is the category that
+# matters most to a trading firm: one entry per desk run, each carrying the
+# orders placed with side, notional and confidence. 100 of the brain's 403
+# entries — a quarter of the corpus, and the only record of what the desks
+# actually did — were invisible to every agent prompt.
+#
+# The old recency path (`llm_common.get_company_context`, line ~951) DID include
+# them: `brain.get("desk_outcomes", [])[-3:]`. So moving to semantic retrieval
+# silently REGRESSED agent context for trading outcomes. Nothing reported it
+# because the retriever still returned plausible hits from `episodic` — the
+# failure mode is a narrower result set, not an empty one.
+#
+# Three names in the old list — `skills`, `chat_insights`, `trade_outcomes` —
+# have never existed in company_brain.json. They cost nothing (`brain.get(cat,
+# [])` yields empty) but they made the list look comprehensive while it was
+# missing a live category. `_unsearched_categories()` below exists so the next
+# drift is visible instead of silent.
+DEFAULT_SEARCH_CATEGORIES = [
+    "episodic",            # 200 — scanner/desk observations with a `lesson`
+    "desk_outcomes",       # 100 — per-desk run summaries: orders, side, conf
+    "github_insights",     # 100 — CI/deploy failures with a `summary`
+    "experiment_results",  #   3 — ML experiment records
+    "learnings",           # collective_learner output (currently empty)
+    "experiments",         # (currently empty)
+    # Declared in llm_common's cap table but never written; kept so a producer
+    # appearing later is searched without another edit here.
+    "skills", "chat_insights", "trade_outcomes",
+]
+
+
+def _unsearched_categories(brain: dict, searched: list[str] | None = None) -> list[str]:
+    """List-valued brain keys that carry entries but are NOT searched.
+
+    The bug this guards against does not raise, log, or empty the results — it
+    just narrows them, which is indistinguishable from the query being specific.
+    Surfacing the drift is the only cheap way to catch the next one.
+    """
+    searched_set = set(searched or DEFAULT_SEARCH_CATEGORIES)
+    return sorted(
+        k for k, v in (brain or {}).items()
+        if isinstance(v, list) and v and k not in searched_set
+    )
+
+
 class SemanticRetriever:
     """
     Keyword-weighted retrieval over company brain episodic memory.
@@ -167,6 +214,7 @@ class SemanticRetriever:
         self._brain_cache: dict | None = None
         self._idf: dict[str, float] = {}
         self._built = False
+        self._drift_warned = False
 
     def _load_brain(self) -> dict:
         if self._brain_cache is None:
@@ -228,8 +276,19 @@ class SemanticRetriever:
             List of memory dicts sorted by relevance, most relevant first.
         """
         brain = self._load_brain()
-        search_cats = categories or ["episodic", "skills", "chat_insights",
-                                     "github_insights", "trade_outcomes", "experiment_results"]
+        search_cats = categories or DEFAULT_SEARCH_CATEGORIES
+
+        # Surface drift at RUNTIME, not in CI. A new populated category is
+        # written by background bots, so asserting on the live brain would let a
+        # 3am bot commit turn the agent suite red and block every PR under
+        # `pytest -x` — the failure mode recorded on 2026-08-04. One stderr line
+        # per process is enough to make it findable in an Actions log.
+        if categories is None and not self._drift_warned:
+            self._drift_warned = True
+            missed = _unsearched_categories(brain)
+            if missed:
+                print(f"[memory] brain categories present but NOT searched: {missed} "
+                      f"— add them to DEFAULT_SEARCH_CATEGORIES", file=sys.stderr, flush=True)
 
         # Collect all candidate entries with their text
         candidates: list[tuple[float, dict]] = []
