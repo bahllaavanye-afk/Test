@@ -201,3 +201,94 @@ class StrategyComparisonEngine:
             is_significant=p_val < SIGNIFICANCE_LEVEL,
             winner=winner,
         )
+
+# ==============================
+# Unit Tests for Edge Cases
+# ==============================
+import unittest
+import asyncio
+from unittest.mock import patch, AsyncMock, Mock
+
+class TestStrategyComparisonEngine(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        # Common minimal valid series
+        self.index = pd.date_range(start="2022-01-01", periods=15, freq="D")
+        self.manual_signals = pd.Series([1] * 15, index=self.index)
+        self.ml_signals = pd.Series([1] * 15, index=self.index)
+        self.prices = pd.Series([100 + i for i in range(15)], index=self.index)
+        self.start_date = date(2022, 1, 1)
+        self.end_date = date(2022, 1, 15)
+
+    @patch("app.backtest.engine.run_backtest")
+    @patch("app.comparison.benchmarks.fetch_benchmark_curves", new_callable=AsyncMock)
+    @patch("app.comparison.benchmarks.get_benchmark_stats")
+    async def test_common_index_empty_raises(self, mock_get_stats, mock_fetch_curves, mock_run_backtest):
+        # Create mismatched indices so intersection is empty
+        manual = pd.Series([1], index=[pd.Timestamp("2022-01-01")])
+        ml = pd.Series([1], index=[pd.Timestamp("2022-01-02")])
+        prices = pd.Series([100], index=[pd.Timestamp("2022-01-03")])
+
+        engine = StrategyComparisonEngine()
+        with self.assertRaisesRegex(ValueError, ERROR_COMMON_INDEX_MSG):
+            await engine.run_comparison(
+                manual, ml, prices,
+                "test_strategy", "TEST", "1d",
+                self.start_date, self.end_date
+            )
+
+    @patch("app.backtest.engine.run_backtest")
+    @patch("app.comparison.benchmarks.fetch_benchmark_curves", new_callable=AsyncMock)
+    @patch("app.comparison.benchmarks.get_benchmark_stats")
+    async def test_min_sample_size_boundary(self, mock_get_stats, mock_fetch_curves, mock_run_backtest):
+        # Prepare equity curves with exactly MIN_SAMPLE_SIZE + 1 points to get MIN_SAMPLE_SIZE returns
+        equity_curve = [{"equity": 100000 + i * 1000} for i in range(MIN_SAMPLE_SIZE + 1)]
+        mock_metrics = Mock()
+        mock_metrics.equity_curve = equity_curve
+        mock_metrics.sharpe = 1.0
+        mock_run_backtest.return_value = mock_metrics
+        mock_fetch_curves.return_value = {}
+        mock_get_stats.return_value = {}
+
+        engine = StrategyComparisonEngine()
+        result = await engine.run_comparison(
+            self.manual_signals, self.ml_signals, self.prices,
+            "test_strategy", "TEST", "1d",
+            self.start_date, self.end_date
+        )
+        # Since min_len == MIN_SAMPLE_SIZE, default stats should be used
+        self.assertEqual(result.t_statistic, DEFAULT_T_STAT)
+        self.assertEqual(result.p_value, DEFAULT_P_VAL)
+
+    @patch("app.backtest.engine.run_backtest")
+    @patch("app.comparison.benchmarks.fetch_benchmark_curves", new_callable=AsyncMock)
+    @patch("app.comparison.benchmarks.get_benchmark_stats")
+    async def test_improvement_exact_threshold(self, mock_get_stats, mock_fetch_curves, mock_run_backtest):
+        # Manual sharpe 1.0, ML sharpe 1.0 + IMPROVEMENT_THRESHOLD
+        equity_curve = [{"equity": 100000 + i * 1000} for i in range(20)]
+        manual_metrics = Mock()
+        manual_metrics.equity_curve = equity_curve
+        manual_metrics.sharpe = 1.0
+
+        ml_metrics = Mock()
+        ml_metrics.equity_curve = equity_curve
+        ml_metrics.sharpe = 1.0 + IMPROVEMENT_THRESHOLD
+
+        # run_backtest should return manual then ml metrics in order
+        mock_run_backtest.side_effect = [manual_metrics, ml_metrics]
+        mock_fetch_curves.return_value = {}
+        mock_get_stats.return_value = {}
+
+        engine = StrategyComparisonEngine()
+        result = await engine.run_comparison(
+            self.manual_signals, self.ml_signals, self.prices,
+            "test_strategy", "TEST", "1d",
+            self.start_date, self.end_date
+        )
+        # Improvement equals threshold, so winner should be based on Sharpe (ML)
+        self.assertEqual(result.winner, WINNER_ML)
+        # Verify improvement rounding respects IMPROVEMENT_ROUND
+        expected_improvement = round(IMPROVEMENT_THRESHOLD, IMPROVEMENT_ROUND)
+        self.assertEqual(result.ml_improvement_sharpe, expected_improvement)
+
+if __name__ == "__main__":
+    unittest.main()
