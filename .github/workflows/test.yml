@@ -68,7 +68,13 @@ jobs:
           # job timeout, single-pacemaker concurrency) has never once executed
           # here. Found 2026-08-03 when a new test imported yaml directly and
           # was the first thing to fail on it.
-          uv pip install --system pytest pytest-timeout pandas pyyaml
+          # requests: quick_backtest_runner imports it at module level, so any
+          # test that imports that module ERRORS AT COLLECTION without it. Added
+          # 2026-08-05 after test_backtest_covers_crypto.py passed locally (where
+          # requests happens to exist) and failed CI with ModuleNotFoundError.
+          # The agent scripts' import surface is what this job must satisfy, not
+          # the dev container's.
+          uv pip install --system pytest pytest-timeout pandas pyyaml requests
 
       - name: Run agent script tests
         # .github/scripts/test_*.py (agent team, strategy gate/trimmer, and the
