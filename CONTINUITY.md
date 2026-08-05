@@ -29,6 +29,62 @@ each independently "found" after already being documented.
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
 
 
+## 🔬 VERIFICATION DISCIPLINE — 2026-08-04/05. Read this before trusting any check you just wrote.
+
+Two findings from the same day, same root cause: **a check that reports nothing is
+indistinguishable from a check that found nothing.** This is the inverse of the
+"green-looking absence" bug family this repo keeps hitting in production code —
+here it happened in the tools used to *verify* production code, which is worse,
+because it manufactures both false alarms and false all-clears.
+
+### The rule
+**Validate the probe on a known-positive before trusting a negative.** A scan that
+returns "clean" is only evidence if you have first watched it return "dirty" on a
+case you already know is dirty. Cost: one extra run. Without it, "no results" and
+"the scan never executed" produce identical output.
+
+### Case 1 — four broken checks in one tick produced a false "work lost" alarm
+Chasing whether session work had been lost to the reset/force-push pattern, three
+of my own verification scripts were silently wrong:
+- an **orphan scan that scanned 0 shas** — its input list came back empty, the loop
+  body never ran, and the empty output read as "no orphans found";
+- an **ancestry scan that flagged ~199 commits** — it used
+  `git merge-base --is-ancestor`, but a **squash-merged commit is never an ancestor
+  of `main`**. Ancestry is the wrong test for "did this land". Content is;
+- `grep -qF "$line"` erroring `invalid option` on every probe line beginning with
+  `-`. Fix: `grep -qF -- "$line"`.
+
+**Resolved by a content audit whose method was first proven on a known-merged
+commit**, then applied to 36 doc commits: **0 lost.** The alarm was entirely an
+artifact of the instruments.
+
+### Case 2 — a test that was a time bomb, and the sweep for its siblings
+`test_the_shipped_denylist_parses_and_contains_the_confirmed_asset` asserted
+`"MKR/USD" in dop._denylisted_assets()`. That is a **time-dependent** fact: the
+shipped entry carries `since=2026-07-28T21:52:00Z` and `DENYLIST_TTL_DAYS = 7`, so
+the assertion was true when written and false exactly seven days later. Measured at
+2026-08-04 23:39 UTC the entry was 7 days 1 hour old — expired about an hour
+earlier. Nothing was broken; the TTL did exactly what its own docstring says it
+exists to do, and the test was asserting the **absence** of the expiry it was
+written to protect. Under `pytest -x` this took out a required check on **every**
+open PR. Fixed in #1413 by asserting against the raw shipped JSON (time-independent)
+plus `isinstance(dop._denylisted_assets(), set)` — the evidence stays pinned,
+removing `MKR/USD` from the file still fails, and the clock no longer participates.
+
+**Sweep for other time bombs — none found**, and the search surfaced the
+known-positive (`DENYLIST_TTL_DAYS`, lines 1673/1707) before returning the negative,
+which is what makes the negative worth recording:
+- `DENYLIST_TTL_DAYS` is the **only** TTL applied to shipped state in
+  `desk_order_placer.py`;
+- `_trimmed_strategies()` (`.github/state/strategy_trims.json`, line 1782) has **no**
+  expiry — trims persist until explicitly recovered;
+- the remaining `timedelta` uses are **API query windows**, not state filters: a
+  420-day bars lookback (line 577) and the options DTE window (lines 1310-1312);
+- of the six test files that reference `.github/state/`, none assert a decaying fact
+  about a shipped file's contents — the references are docstrings or workflow-source
+  assertions.
+
+
 ## 🔴 WHY THERE ARE NO TRADES — answered 2026-08-03, full writeup in `docs/REVIEW_2026-08-03_WHY_NO_TRADES.md`
 
 The desks are **not** broken and the strategies are **not** silent. Signals fire on
