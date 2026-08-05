@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-08-05T10:33:54.726269+00:00",
+  "checked_at": "2026-08-05T14:07:57.127832+00:00",
   "total_agents": 18,
   "batch_checked": 6,
   "total_runs": 61,
@@ -8,44 +8,44 @@
   "skill_count": 200,
   "agent_statuses": [
     {
-      "agent": "strategy_generator",
-      "emoji": "\ud83e\udde0",
-      "reply": "I\u2019m currently integrating the S4 block into",
+      "agent": "investor_pipeline",
+      "emoji": "\ud83d\udcbc",
+      "reply": "The user asks for a one-sentence status update: what am I actively working on right now? As the investor_pipeline agent, I need to respond in first person, concise, referencing real file paths. I should mention what I'm currently doing, like advancing investor pipeline stages, checking for duplicate entries, maybe scanning files like `src/investor/pipeline.py` or similar. Provide one sentence. Ensure 2 sentences max (so one sentence). Provide file path reference.",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "free_agent_engineer",
-      "emoji": "\ud83e\udd16",
-      "reply": "I\u2019m currently fixing the TTL handling bug in\u202f`backend/app/utils/cache.py` to prevent stale data from",
+      "agent": "run_experiments",
+      "emoji": "\ud83d\udd2c",
+      "reply": "I'm currently scanning `",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "desk_trader",
-      "emoji": "\ud83d\udcca",
-      "reply": "We need to respond as desk_trader agent, 1 sentence status update, first person, concise, 2 sentences max (so one sentence is fine). Should mention what we are actively working on right now. According to recent tasks: \"Check data feeds\" or \"Test database conn\" or \"Prepend S4 block to LSTM pipeline\". As desk_trader, maybe checking data feeds for crypto/equity. Provide file paths? Could reference config file path. Eg",
+      "agent": "algo_agent",
+      "emoji": "\ud83c\udfb0",
+      "reply": "We need to respond as the algo_agent, giving a one-sentence status update, specific, first person, concise (2 sentences max). Should reference real file paths. Currently, the agent is a UCB1 bandit for strategy exploration. Should mention what it's actively working on now. Maybe scanning for duplicate strategies or running UCB1 selection. Provide file paths like `src/bandit/ucb1.py` etc. Provide one sentence. Must be first person. Let's",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "system_watchdog",
-      "emoji": "\ud83d\udee1\ufe0f",
-      "reply": "I'm currently",
+      "agent": "self_improver",
+      "emoji": "\ud83d\udd04",
+      "reply": "I'm currently scanning `backend",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "ml_trainer",
-      "emoji": "\ud83c\udfcb\ufe0f",
-      "reply": "We need to respond as ml_trainer agent, give one-sentence status update, first person, concise, max 2 sentences, referencing real file paths. Should mention current task: maybe prepending S4 block to LSTM pipeline, testing db connection, running mypy, checking data feeds. Choose one. Provide one sentence. Could say: \"I'm currently prepending the S4 block to the LSTM pipeline in `backend/app/ml/pipelines/lstm.py` while running",
+      "agent": "research_scientist",
+      "emoji": "\ud83d\udd2d",
+      "reply": "The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" We need to respond as the research_scientist agent, following developer instructions: be specific, first person, concise (2 sentences max). One sentence. Should reference real file paths. So we need to say what we are actively working on. According to role, discovering new alpha from research papers. Could be scanning new papers in a directory like \"research/papers/\".",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "standup_agent",
-      "emoji": "\ud83d\udccb",
-      "reply": "I'm actively writing the daily standup post to Discord, summarizing today's progress on the SPY EMA-VWAP-MACD-ATR strategy proposal (Sharpe ~1.15) and the prepend of the S4 block to the LSTM pipeline in `backend/app/ml/model/`.",
+      "agent": "modeling_engineer",
+      "emoji": "\u2699\ufe0f",
+      "reply": "I'm currently running a static-type sweep on the retraining pipeline in `backend/models/retrain.py` to catch any type mismatches before the next scheduled model update.",
       "runs": 0,
       "successes": 0
     }
