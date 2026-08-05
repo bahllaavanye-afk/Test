@@ -1,0 +1,52 @@
+[
+  {
+    "experiment": "gbc_walkforward_daily",
+    "ran_at": "2026-08-05T09:28:28.029753+00:00",
+    "params": {
+      "min_train": 252,
+      "refit_every": 21,
+      "long_threshold": 0.55
+    },
+    "results": {
+      "SPY": {
+        "oos_days": 688,
+        "hit_rate": 0.532,
+        "time_in_market": 0.5712,
+        "strategy_sharpe": 0.932,
+        "buyhold_sharpe": 1.482,
+        "strategy_total_return": 0.3082,
+        "buyhold_total_return": 0.7904,
+        "max_drawdown": 0.2617,
+        "status": "ok",
+        "source": "alpaca",
+        "rows": 940
+      },
+      "QQQ": {
+        "oos_days": 688,
+        "hit_rate": 0.5378,
+        "time_in_market": 0.5799,
+        "strategy_sharpe": 1.12,
+        "buyhold_sharpe": 1.325,
+        "strategy_total_return": 0.5955,
+        "buyhold_total_return": 0.9911,
+        "max_drawdown": 0.1168,
+        "status": "ok",
+        "source": "alpaca",
+        "rows": 940
+      },
+      "NVDA": {
+        "oos_days": 688,
+        "hit_rate": 0.5,
+        "time_in_market": 0.5756,
+        "strategy_sharpe": 0.949,
+        "buyhold_sharpe": 1.46,
+        "strategy_total_return": 1.153,
+        "buyhold_total_return": 3.8715,
+        "max_drawdown": 0.4182,
+        "status": "ok",
+        "source": "alpaca",
+        "rows": 940
+      }
+    }
+  }
+]
