@@ -20,6 +20,16 @@ BACKEND_ROOT = Path(__file__).parents[2]
 
 
 def _count_loc(root: Path) -> dict:
+    if root is None:
+        return {
+            "files": 0,
+            "total_lines": 0,
+            "code_lines": 0,
+            "comment_lines": 0,
+            "blank_lines": 0,
+            "comment_ratio": 0.0,
+        }
+
     total_files = 0
     total_lines = 0
     code_lines = 0
@@ -55,8 +65,15 @@ def _count_loc(root: Path) -> dict:
 
 
 def _count_strategies(root: Path) -> dict:
-    manual = list((root / "app" / "strategies" / "manual").glob("*.py"))
-    ml = list((root / "app" / "strategies" / "ml_enhanced").glob("*.py"))
+    if root is None:
+        return {"manual_strategies": 0, "ml_strategies": 0}
+
+    manual_dir = root / "app" / "strategies" / "manual"
+    ml_dir = root / "app" / "strategies" / "ml_enhanced"
+    
+    manual = list(manual_dir.glob("*.py")) if manual_dir.exists() else []
+    ml = list(ml_dir.glob("*.py")) if ml_dir.exists() else []
+    
     return {
         "manual_strategies": len([f for f in manual if not f.name.startswith("__")]),
         "ml_strategies": len([f for f in ml if not f.name.startswith("__")]),
@@ -64,8 +81,15 @@ def _count_strategies(root: Path) -> dict:
 
 
 def _count_tests(root: Path) -> dict:
-    unit = list((root / "tests" / "unit").glob("test_*.py"))
-    integration = list((root / "tests" / "integration").glob("test_*.py"))
+    if root is None:
+        return {"unit_test_files": 0, "integration_test_files": 0}
+
+    unit_dir = root / "tests" / "unit"
+    integration_dir = root / "tests" / "integration"
+    
+    unit = list(unit_dir.glob("test_*.py")) if unit_dir.exists() else []
+    integration = list(integration_dir.glob("test_*.py")) if integration_dir.exists() else []
+    
     return {
         "unit_test_files": len(unit),
         "integration_test_files": len(integration),
@@ -74,7 +98,7 @@ def _count_tests(root: Path) -> dict:
 
 class CodeQualityLoop:
     def __init__(self, interval_seconds: int = 3600):
-        self.interval_seconds = interval_seconds
+        self.interval_seconds = max(interval_seconds, 1) if interval_seconds is not None else 3600
         self._running = False
 
     async def _snapshot(self) -> dict:
@@ -90,8 +114,13 @@ class CodeQualityLoop:
         }
 
     def _persist(self, snapshot: dict) -> None:
+        if snapshot is None:
+            return
+        
         try:
             history = json.loads(QUALITY_FILE.read_text()) if QUALITY_FILE.exists() else []
+            if not isinstance(history, list):
+                history = []
             history.append(snapshot)
             history = history[-200:]
             QUALITY_FILE.write_text(json.dumps(history, indent=2))
@@ -133,6 +162,8 @@ class CodeQualityLoop:
             return None
         try:
             history = json.loads(QUALITY_FILE.read_text())
-            return history[-1] if history else None
+            if not isinstance(history, list) or len(history) == 0:
+                return None
+            return history[-1]
         except Exception:
             return None
