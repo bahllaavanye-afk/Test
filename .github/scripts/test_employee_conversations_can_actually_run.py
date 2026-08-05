@@ -376,3 +376,49 @@ def test_skipped_is_reported_separately_from_failed():
     assert "skipped" in tail and "failed" in tail, (
         "skipped and failed are no longer reported as distinct outcomes"
     )
+
+
+def test_the_run_names_the_providers_it_thinks_it_has(monkeypatch):
+    """Run 30986127682 computed 1.0s spacing — implying a 60-rpm provider — while
+    every one of its 101 errors was `[gemini-key]`. The log named neither the
+    provider nor the contradiction, so the disagreement had to be inferred
+    backwards from the spacing number.
+    """
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setenv("TOGETHER_API_KEY", "y")
+    import employee_conversation_runner as runner
+    keyed = dict(runner._keyed_providers())
+    assert "gemini" in keyed and "together" in keyed, (
+        f"_keyed_providers did not report both keyed providers: {keyed}"
+    )
+    assert keyed["together"] == 60, "the declared rpm is not being surfaced"
+
+
+def test_keyed_providers_excludes_unkeyed_ones(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    import employee_conversation_runner as runner
+    for k in _PROVIDER_ENVS:
+        if k != "GEMINI_API_KEY":
+            monkeypatch.delenv(k, raising=False)
+    names = [n for n, _ in runner._keyed_providers()]
+    assert names == ["gemini"], f"expected gemini only, got {names}"
+
+
+def test_the_diagnostic_is_actually_printed():
+    """A helper nothing calls is the same absence in a new shape."""
+    src = (_DIR / "employee_conversation_runner.py").read_text()
+    assert "_keyed_providers()" in src.split("def main(")[1], (
+        "the provider diagnostic is defined but never called from main(), so "
+        "the next run's log still cannot answer which key the pacer saw."
+    )
+    assert "providers with a key" in src
+
+
+def test_keyed_providers_survives_an_import_failure(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    import employee_conversation_runner as runner
+    monkeypatch.setitem(sys.modules, "llm_common", None)
+    assert runner._keyed_providers() == [], (
+        "a broken llm_common import raises instead of degrading — this runs in "
+        "the startup path of every fleet run"
+    )
