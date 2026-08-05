@@ -87,9 +87,14 @@ SERVICES = [
     },
     {
         "name": "Vercel (Frontend)",
-        "url": "https://quantedge.vercel.app",
+        # Was `quantedge.vercel.app` — an abandoned Next.js stub in the same
+        # account that answers 200 as "Create Next App". This monitor reported
+        # the frontend healthy for as long as it has existed, about a site
+        # nobody uses. Accepting 404 as healthy on top of that meant it could
+        # not fail at all: wrong target, and no status it would reject.
+        "url": "https://quantedge-eight.vercel.app",
         "method": "GET",
-        "expected_status": [200, 301, 302, 404],  # 404 = deployed but no route at /
+        "expected_status": [200],
         "headers": {},
         "critical": True,
         "chat_channel": "#infra-alerts",

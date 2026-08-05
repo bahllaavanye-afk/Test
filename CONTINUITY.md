@@ -83,6 +83,17 @@ to, and unlike a `.NS` desk, those symbols can actually be routed by Alpaca.
    file stays in the repo looking valid forever. The producer's freshness check ran once, when it wrote it;
    only the consumer's check can notice the workflow died.
 
+**✅ 18:40 — THE TILT FIRED IN A LIVE DESK RUN.** Run `31035271962`:
+```
+🇮🇳 India overnight tilt: 5 symbol(s), 0.6h old
+   supertrend_rsi_tv/INFY conf 0.73 → 0.72 (-0.011 from INFY.NS +0.56%)
+   ► ichimoku_cloud_tv/INDA signal=BUY conf=0.97 — placing $1033 limit-first order
+```
+A **down**-tilt from an **up** session is correct — that was a SELL signal — but the line did not say so, and it
+reads as a sign error until you dig for the side. Fixed: the line now prints the side and whether India
+`agrees`/`disagrees`. INDA got no tilt because the Nifty moved +0.04%, under the noise floor; it traded on its
+own signal. Both behaviours are the designed ones, observed in production.
+
 **VERIFIED LIVE** on the real 2026-08-05 Indian session (Nifty 24,624.65 +0.04%, HDFCBANK −0.94%, INFY +0.56%).
 Five real tilts written and read back by the desk. The committed `india_nse_signal.json` is that run's output,
 so the tilt is active now rather than from tomorrow's cron.

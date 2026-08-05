@@ -41,14 +41,24 @@ frontend/
 GitHub push → CI (test.yml) → merge to main → auto-deploy
 
 Backend:  Render free web service
-  URL:   https://quantedge-api.onrender.com
+  URL:   https://quantedge-api-9jz0.onrender.com
   Env:   DATABASE_URL, REDIS_URL, SECRET_KEY, ALPACA_*, TRADING_MODE
   Keep-alive: UptimeRobot pings /health every 5min
 
 Frontend: Vercel (auto-deploy on push to main)
-  URL:    https://quantedge.vercel.app
-  Env:    VITE_API_URL=https://quantedge-api.onrender.com/api/v1
-          VITE_WS_URL=wss://quantedge-api.onrender.com/ws
+  URL:    https://quantedge-eight.vercel.app
+  Env:    VITE_API_URL=https://quantedge-api-9jz0.onrender.com/api/v1
+          VITE_WS_URL=wss://quantedge-api-9jz0.onrender.com/ws
+
+  ⚠️ VERIFY A FRONTEND BY ITS <title>, NOT ITS STATUS CODE. Three Vercel
+  projects in this account return HTTP 200 and only one is QuantEdge:
+    quantedge-eight.vercel.app  → "QuantEdge — Institutional Trading Platform" ✅
+    quantedge.vercel.app        → "Create Next App"          (abandoned stub)
+    quant-edge-nine.vercel.app  → "My Google AI Studio App"  (unrelated)
+  The old URLs above were live-checked 2026-08-05 and are dead:
+  quantedge-api.onrender.com/health returns 404, and both stub frontends
+  return a healthy-looking 200. A whole session was once spent reporting
+  "frontend 200 ✓" against the wrong app.
 
 Database: Supabase PostgreSQL
   Apply migrations: ALEMBIC_DATABASE_URL=<psycopg2 URL> alembic upgrade head

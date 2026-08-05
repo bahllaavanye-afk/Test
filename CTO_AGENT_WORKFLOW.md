@@ -231,7 +231,7 @@ Each PR review counts toward the reviewer's bi-weekly review. The system tracks 
 Any IC can drop an idea into the "Idea Board" DB. Other ICs upvote. Top 5 weekly ideas get a 1-day spike from any squad with capacity. Spike result either becomes a tracked task or gets archived with reasoning.
 
 ### 7. **Live dashboard for everyone**
-A Notion-embedded iframe shows the live frontend at https://quantedge.vercel.app for any squad member who wants the visual state.
+A Notion-embedded iframe shows the live frontend at https://quantedge-eight.vercel.app for any squad member who wants the visual state. (It previously pointed at `quantedge.vercel.app`, an abandoned Next.js stub that still returns HTTP 200 under the title "Create Next App" — so the iframe showed a healthy-looking page that was not this platform.)
 
 ### 8. **Auto-postmortem template**
 When an incident is closed, a GitHub Action generates a postmortem doc skeleton in Google Docs from a template, pre-populated with the incident timeline from #incidents, deploy log entries, and impacted PR diffs. Owner only fills "root cause" and "lessons learned".

@@ -1,5 +1,36 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🖼️ 2026-08-05 19:00 — EVERY CONSUMER OF A FRONTEND URL WAS POINTED AT AN ABANDONED STUB
+
+Three Vercel projects in this account answer **HTTP 200** and exactly one is this platform:
+
+    quantedge-eight.vercel.app   "QuantEdge — Institutional Trading Platform"   ✅ the real app
+    quantedge.vercel.app         "Create Next App"                              abandoned stub
+    quant-edge-nine.vercel.app   "My Google AI Studio App"                      unrelated
+
+- [x] **The rule was already written down and had not been applied to the code that does the verifying.**
+  CONTINUITY records "verify by TITLE, not status code" from an earlier session that spent its whole length
+  reporting "frontend 200 ✓" against the wrong app. Four consumers were still resolving the stub:
+
+  | consumer | what it was actually doing |
+  |---|---|
+  | `backend/app/notifications/screenshot.py` | Discord dashboard screenshots captured a blank Next.js starter — successfully, no error, nothing to notice |
+  | `.github/workflows/page-reporter.yml` | fallback when `PUBLIC_SITE_URL` is unset → screenshotted the stub |
+  | `.github/scripts/third_party_monitor.py` | reported "Vercel (Frontend) healthy" about a site nobody uses |
+  | `scripts/verify_live.py` | the script whose entire job is confirming the live system, confirming a different one |
+
+- [x] **The uptime monitor could not fail under any condition.** Wrong target *and* `expected_status:
+  [200, 301, 302, 404]` — with 404 counted healthy there is no response a dead deployment could return that it
+  would reject. Now `[200]`, against the real host.
+- [x] **Also stale in `scripts/CLAUDE.md`: the backend URL.** `quantedge-api.onrender.com/health` returns
+  **404** (live-checked); the real host is `quantedge-api-9jz0.onrender.com`. Both wrong URLs sat in the same
+  block a human is told to read first. Fixed, with the three-project table inline so the next reader does not
+  have to rediscover it.
+- [x] **The Notion iframe in `CTO_AGENT_WORKFLOW.md` pointed at the stub too** — the "live dashboard for
+  everyone" showed a starter page to any squad member who opened it.
+- [x] **11 tests, 4 mutations, 4 caught.** `FRONTEND_URL` is env-overridable now rather than a literal, since a
+  hardcoded default is how this drifted and how it would drift again at the next domain change.
+
 ## ⏱️ 2026-08-05 18:30 — CRON DELIVERY RE-MEASURED AT ~11%, ON A DIFFERENT DAY AND TWO WORKFLOWS
 
 Confirmation, not a new finding — the pacemaker comment estimated ~15% from one workflow on 2026-08-03. Fresh
