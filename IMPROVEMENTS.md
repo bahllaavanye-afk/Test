@@ -1,5 +1,70 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🧰 2026-08-05 19:35 — A GREEN LOCAL RUN CARRIES NO INFORMATION ABOUT CI, AND THAT COST TWO RED PRs TODAY
+
+    morning   test_backtest_covers_crypto.py   ModuleNotFoundError: requests
+    evening   test_order_origin_audit.py       async def functions are not natively
+                                               supported  (pytest-asyncio absent)
+
+- [x] **Same cause both times, and it is not "I forgot".** The dev container has a fat Python environment and
+  CI installs five packages on purpose. Nothing compared the two, so the only detector was a red PR — after the
+  push, after the wait. `test_ci_installs_what_the_tests_import.py` is that comparison, run locally.
+- [x] **The first draft of the guard missed the exact case it was written for, and mutation testing is what
+  caught it.** The morning break came from `test_backtest_covers_crypto.py` importing `quick_backtest_runner`
+  — a *local* module that imports `requests` at module scope. The test file itself names nothing third-party,
+  so a guard reading only test files sees nothing while CI ERRORs at collection. It now follows local imports
+  transitively and blames the test file, which is what a reader has to go and change.
+- [x] **The two failures need two different detectors.** `pytest-asyncio` is demanded by a *marker in a file*;
+  `pytest-timeout` is demanded by `--timeout=30` *on the command line* and by no marker anywhere. A
+  marker-only check passes happily while the run command needs a plugin nobody installed — that mutation
+  survived the first pass too.
+- [x] **The guard found a third case on its first run:** `test_vol_target_sizing.py` imports `numpy` directly
+  while CI only received it transitively via pandas. It never broke and it was never declared. Now explicit —
+  *if a test imports it, the install line installs it* — rather than special-cased in the guard, because a
+  guard with an exceptions list stops being one.
+- [x] **Resolution chosen for the async tests: `asyncio.run()` in sync tests, not a new CI dependency.** Mine
+  was the only file using the marker, and `pytest-asyncio` additionally needs `asyncio_mode` configured — a
+  second failure surface for four tests. `test_the_agent_tests_run_without_pytest_asyncio` pins the decision
+  and *skips itself* if someone later adds the plugin properly, so it constrains the mistake rather than the
+  choice.
+- [x] **6 mutations, 6 caught** — dropping each of `requests`, `pandas`, `numpy`, `pytest-timeout` from the
+  install line, and re-adding `@pytest.mark.asyncio` to either async test.
+
+## 👥 2026-08-05 19:15 — THE SECOND WRITER ON THE ALPACA ACCOUNT IS NOW REPORTED EVERY RUN
+
+Operator item #1 has been "re-verified still live" by hand in three separate sessions. Re-verified again just
+now, and this time the *rediscovery* is what got fixed.
+
+`quantedge-api-agb8.onrender.com/health/detailed`, 2026-08-05 19:00:
+
+    background_tasks: {"running": 11, "total": 11}
+    alpaca:           {"ok": true, "note": "connected"}
+    strategies:       {"count": 113}
+    database:         {"ok": false, "error": "Name or service not known"}
+
+- [x] **It cannot record what it does, but it can still place orders.** Its own DB is dead, so nothing on that
+  side leaves a trace — and it moves the equity, buying power and positions that Kelly sizing, the daily loss
+  cap and `is_risk_reducing` all read on this side.
+- [x] **The existing origin report could almost never run.** `_report_recent_closes()` is called in exactly one
+  place: inside the daily-loss-cap branch, and only when the book is additionally flat. On every ordinary run —
+  including all 30 desk runs today — a second writer on the account was invisible.
+- [x] **Shipped `audit_order_origins()`, called unconditionally in the account stage** before the sizing inputs
+  it exists to warn about. `client_order_id` is the discriminator, and it is the right one because it lives at
+  the *broker*: it survives the backend DB sitting on its ephemeral sqlite fallback, which is where it has been
+  all week. Orders tagged `qe-…` are ours; anything else is named, with a bounded 5-line sample.
+- [x] **It prints on the clean path too** (`✓ order-origin audit: all N recent order(s) placed by this desk`).
+  A guard that only speaks when it fires cannot be told apart from one that stopped running — a mistake this
+  file has recorded more than once.
+- [x] **`status: "all"`, not `"closed"`.** `_report_recent_closes` asks about closed orders, which is right for
+  *its* question ("what flattened the book?") and wrong for this one: a second writer's **open** orders are the
+  ones about to move the book underneath the next sizing decision.
+- [x] **11 tests, 5 mutations, 5 caught.** Including: an order with no `client_order_id` (Alpaca
+  auto-liquidation, hand-placed) must count as **foreign**, since defaulting it to "ours" would hide precisely
+  the writer this exists to find.
+- [ ] **This does not fix the hazard, and is not meant to.** Suspending the service is still operator item #1;
+  no code here can do it. What changes is that a duplicate writer now shows up in the log of every desk run
+  instead of being re-derived by hand each session.
+
 ## 🖼️ 2026-08-05 19:00 — EVERY CONSUMER OF A FRONTEND URL WAS POINTED AT AN ABANDONED STUB
 
 Three Vercel projects in this account answer **HTTP 200** and exactly one is this platform:
