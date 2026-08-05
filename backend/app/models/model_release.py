@@ -1,6 +1,6 @@
 """ModelRelease ORM — tracks every trained model artifact through its serving lifecycle."""
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import String, Float, Integer, Text, DateTime, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
@@ -54,3 +54,19 @@ class ModelRelease(Base, TimestampMixin):
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Who registered this release (email or "system")
     created_by: Mapped[str] = mapped_column(String(128), nullable=False, default="system")
+
+    def promote(self) -> None:
+        """Mark this release as promoted to champion."""
+        self.promoted_at = datetime.now(timezone.utc)
+        self.status = "champion"
+
+    def archive(self) -> None:
+        """Archive this release."""
+        self.archived_at = datetime.now(timezone.utc)
+        self.status = "archived"
+
+    def set_traffic(self, pct: float) -> None:
+        """Set traffic percentage for challenger releases."""
+        if not 0 <= pct <= 100:
+            raise ValueError("Traffic percentage must be between 0 and 100")
+        self.traffic_pct = pct
