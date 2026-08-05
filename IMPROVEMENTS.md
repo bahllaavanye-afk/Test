@@ -1,5 +1,31 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 📣 2026-08-05 21:40 — THE DISCORD CHANNEL INVENTORY, AND TWO PLACES POSTS DO NOT LAND WHERE THEY SAY
+
+Triggered by the India MF run logging `no channel id for '#desk-india-mf' in this guild — webhook fallback`.
+Swept every `notify.post` / `discord_post` / `chat_channel` reference: **17 distinct channels**.
+
+    alpha-research      desk-commodities   desk-fx-rates    desk-polymarket    desk-tv-indicators
+    ci-failures         desk-crypto        desk-india-mf    desk-research      engineering
+    incidents           desk-equities      desk-options     desk-stat-arb      infra-alerts
+    leadership-summary  squad-backend
+
+- [x] **Ruled out first: the resolver is not the problem.** `#infra-alerts` and `infra-alerts` both appear in
+  the codebase, which looks like a lookup mismatch — it is not. `discord_post` does
+  `str(channel).lower().lstrip("#")` and `_load_channel_ids` strips the same way, so both spellings resolve.
+- [ ] **[OPERATOR] `#desk-india-mf` does not exist in the guild.** Both India workflows post to it
+  (`india-mf.yml` and `india-nse-signal.yml`), so both fall back to the default webhook and land in whichever
+  channel that targets. The notifier reports this correctly on every run rather than dropping the message —
+  the message is arriving, just not where it is addressed. **Creating the channel is the whole fix**; no code
+  can create a Discord channel it has no ID for.
+- [ ] **[OPERATOR] The International desk posts to `#desk-equities`, not a channel of its own.** Measured from
+  `DESKS`: eight desks have a dedicated channel, `International` shares Equities'. Since the India expansion
+  put `INDA`/`EPI`/`SMIN`/`INDY` on that desk, **India ETF activity is now being reported as Equities
+  activity**. This is a defensible choice, not a defect — but it is worth knowing before reading either
+  channel, and `#desk-international` would separate them. **Deliberately not repointed in code**: aiming a desk
+  at a channel that does not exist would send its posts to the default webhook, which is strictly worse than
+  the current honest mislabel.
+
 ## 🔬 2026-08-05 20:20 — "BEATS BUY-AND-HOLD" NOW HAS TO SURVIVE THREE SUB-PERIODS, NOT ONE
 
 The 19:22 run beat buy-and-hold on QQQ (1.201 vs 0.734) and NVDA (1.184 vs 1.130). I flagged the caveat in the
