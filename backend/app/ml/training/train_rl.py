@@ -10,6 +10,7 @@ Or import and call directly:
 """
 import asyncio
 import logging
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -37,8 +38,17 @@ def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
 
 def _build_features(df: pd.DataFrame) -> np.ndarray:
     """Return (T, n_features) feature matrix with no lookahead."""
-    close = df["close"]
-    volume = df["volume"]
+    try:
+        close = df["close"]
+        volume = df["volume"]
+    except KeyError as exc:
+        logger.error(
+            "Missing required column in OHLCV DataFrame",
+            exc_info=True,
+            extra={"missing_column": exc.args[0]},
+        )
+        raise
+
     returns = close.pct_change().fillna(0.0)
     log_vol = np.log1p(volume).diff().fillna(0.0)
     rsi_norm = (_rsi(close).fillna(50.0) - 50.0) / 50.0
@@ -53,7 +63,16 @@ def _step_reward(df: pd.DataFrame, action: int, t: int) -> float:
     """
     if t + 1 >= len(df):
         return 0.0
-    next_ret = float(df["close"].iloc[t + 1] / df["close"].iloc[t] - 1.0)
+    try:
+        next_ret = float(df["close"].iloc[t + 1] / df["close"].iloc[t] - 1.0)
+    except (KeyError, IndexError, ZeroDivisionError) as exc:
+        logger.error(
+            "Error computing step reward",
+            exc_info=True,
+            extra={"action": action, "time_index": t},
+        )
+        raise RuntimeError("Failed to compute step reward") from exc
+
     if action == 0:    # buy — reward is positive return
         return next_ret
     elif action == 2:  # sell — reward is negative return (profit from short)
@@ -94,11 +113,22 @@ async def train_rl_agent(
     Returns:
         Trained A3CLSTMAgent
     """
-    features = _build_features(ohlcv_df)  # (T, n_features_raw)
+    try:
+        features = _build_features(ohlcv_df)  # (T, n_features_raw)
+    except Exception as exc:
+        logger.error(
+            "Failed to build features from input DataFrame",
+            exc_info=True,
+            extra={"num_rows": len(ohlcv_df)},
+        )
+        raise
+
     T = len(features)
 
     if T < _SEQ_LEN + 2:
-        raise ValueError(f"DataFrame too short ({T} rows); need at least {_SEQ_LEN + 2}")
+        msg = f"DataFrame too short ({T} rows); need at least {_SEQ_LEN + 2}"
+        logger.error(msg)
+        raise ValueError(msg)
 
     # Pad or trim to expected n_features
     raw_dim = features.shape[1]
@@ -108,8 +138,16 @@ async def train_rl_agent(
     else:
         features = features[:, :n_features]
 
-    agent = A3CLSTMAgent(n_features=n_features, hidden_size=hidden_size, n_actions=3)
-    optimizer = torch.optim.Adam(agent.parameters(), lr=lr)
+    try:
+        agent = A3CLSTMAgent(n_features=n_features, hidden_size=hidden_size, n_actions=3)
+        optimizer = torch.optim.Adam(agent.parameters(), lr=lr)
+    except Exception as exc:
+        logger.error(
+            "Failed to initialize agent or optimizer",
+            exc_info=True,
+            extra={"n_features": n_features, "hidden_size": hidden_size},
+        )
+        raise RuntimeError("Agent initialization error") from exc
 
     save_path = model_path or str(_CHECKPOINT_DIR / "a3c_lstm_latest.pt")
 
@@ -125,14 +163,32 @@ async def train_rl_agent(
             for t in range(_SEQ_LEN, T - 1):
                 window = features[t - _SEQ_LEN : t]  # (seq_len, n_features)
                 x = torch.tensor(window, dtype=torch.float32).unsqueeze(0)  # (1, seq_len, n_feat)
-                action = agent.select_action(x)
-                reward = _step_reward(ohlcv_df, action, t)
+                try:
+                    action = agent.select_action(x)
+                except Exception as exc:
+                    logger.error(
+                        "Action selection failed",
+                        exc_info=True,
+                        extra={"episode": episode, "time_index": t},
+                    )
+                    raise RuntimeError("Action selection error") from exc
+
+                try:
+                    reward = _step_reward(ohlcv_df, action, t)
+                except Exception as exc:
+                    logger.error(
+                        "Reward computation failed",
+                        exc_info=True,
+                        extra={"episode": episode, "time_index": t, "action": action},
+                    )
+                    raise
 
                 states.append(x.squeeze(0))  # (seq_len, n_features)
                 actions.append(action)
                 rewards.append(reward)
 
         if not states:
+            logger.warning("No states collected in episode %d; skipping update", episode)
             continue
 
         # Stack trajectory
@@ -143,12 +199,29 @@ async def train_rl_agent(
         # Single gradient update
         agent.train()
         optimizer.zero_grad()
-        loss_dict = agent.actor_critic_loss(
-            states_tensor, actions_tensor, rewards, dones, gamma=gamma
-        )
-        loss_dict["loss"].backward()
-        nn.utils.clip_grad_norm_(agent.parameters(), grad_clip)
-        optimizer.step()
+        try:
+            loss_dict = agent.actor_critic_loss(
+                states_tensor, actions_tensor, rewards, dones, gamma=gamma
+            )
+        except Exception as exc:
+            logger.error(
+                "Loss computation failed",
+                exc_info=True,
+                extra={"episode": episode},
+            )
+            raise RuntimeError("Loss computation error") from exc
+
+        try:
+            loss_dict["loss"].backward()
+            nn.utils.clip_grad_norm_(agent.parameters(), grad_clip)
+            optimizer.step()
+        except RuntimeError as exc:
+            logger.error(
+                "Gradient update failed",
+                exc_info=True,
+                extra={"episode": episode},
+            )
+            raise
 
         ep_reward = float(sum(rewards))
         total_rewards.append(ep_reward)
@@ -167,28 +240,45 @@ async def train_rl_agent(
         # Save checkpoint
         if episode % checkpoint_every == 0:
             ckpt_path = save_path.replace(".pt", f"_ep{episode:04d}.pt")
-            agent.save(
-                ckpt_path,
-                metadata={
-                    "episode": episode,
-                    "avg_reward": float(np.mean(total_rewards[-100:])),
-                    "n_features": n_features,
-                    "hidden_size": hidden_size,
-                },
-            )
-            logger.info("Checkpoint saved → %s", ckpt_path)
+            try:
+                agent.save(
+                    ckpt_path,
+                    metadata={
+                        "episode": episode,
+                        "avg_reward": float(np.mean(total_rewards[-100:])),
+                        "n_features": n_features,
+                        "hidden_size": hidden_size,
+                    },
+                )
+                logger.info("Checkpoint saved → %s", ckpt_path)
+            except OSError as exc:
+                logger.error(
+                    "Failed to write checkpoint file",
+                    exc_info=True,
+                    extra={"checkpoint_path": ckpt_path},
+                )
+                raise
 
     # Save final model as the "latest" checkpoint
-    agent.save(
-        save_path,
-        metadata={
-            "episode": n_episodes,
-            "avg_reward": float(np.mean(total_rewards[-100:]) if total_rewards else 0.0),
-            "n_features": n_features,
-            "hidden_size": hidden_size,
-        },
-    )
-    logger.info("Training complete. Final model saved → %s", save_path)
+    try:
+        agent.save(
+            save_path,
+            metadata={
+                "episode": n_episodes,
+                "avg_reward": float(np.mean(total_rewards[-100:]) if total_rewards else 0.0),
+                "n_features": n_features,
+                "hidden_size": hidden_size,
+            },
+        )
+        logger.info("Training complete. Final model saved → %s", save_path)
+    except OSError as exc:
+        logger.error(
+            "Failed to save final model",
+            exc_info=True,
+            extra={"final_path": save_path},
+        )
+        raise
+
     return agent
 
 
@@ -197,7 +287,7 @@ async def train_rl_agent(
 # ------------------------------------------------------------------
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
     rng = np.random.default_rng(42)
     price = 100.0 * np.cumprod(1 + rng.normal(0, 0.01, 300))
@@ -211,5 +301,8 @@ if __name__ == "__main__":
         }
     )
 
-    trained = asyncio.run(train_rl_agent(demo_df, n_episodes=50, checkpoint_every=25))
-    print(f"Trained agent: {trained}")
+    try:
+        trained = asyncio.run(train_rl_agent(demo_df, n_episodes=50, checkpoint_every=25))
+        print(f"Trained agent: {trained}")
+    except Exception as exc:
+        logger.exception("Training failed: %s", exc)
