@@ -10,7 +10,7 @@ from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.experiment import Experiment
 from app.models.user import User
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, validator
 from datetime import datetime, timezone
 
 # Constants
@@ -46,14 +46,24 @@ async def list_experiments(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Guard against non‑positive limits
+    limit = MAX_EXPERIMENTS if MAX_EXPERIMENTS > 0 else 10
     result = await db.execute(
-        select(Experiment).order_by(Experiment.started_at.desc()).limit(MAX_EXPERIMENTS)
+        select(Experiment).order_by(Experiment.started_at.desc()).limit(limit)
     )
-    return result.scalars().all()
+    experiments = result.scalars().all()
+    # Return empty list explicitly if no experiments are found
+    return experiments if experiments else []
 
 
 class TrainRequest(BaseModel):
     config_name: str  # e.g. "lstm_btc_1h"
+
+    @validator("config_name")
+    def non_empty(cls, v: str) -> str:
+        if not v or not isinstance(v, str):
+            raise ValueError("config_name must be a non‑empty string")
+        return v.strip()
 
 
 async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
@@ -75,7 +85,7 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
             stderr=subprocess.DEVNULL,
         )
         await proc.wait()
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover
         logger.error("Experiment %s failed: %s", experiment_id, exc)
 
 
@@ -90,12 +100,18 @@ async def trigger_training(
     Returns immediately with experiment_id and status='queued'.
     The training runs as a background asyncio task.
     """
-    config_name = body.config_name.removesuffix(".yaml")
+    # Normalise config name and guard against empty values after stripping suffix
+    config_name = body.config_name.removesuffix(".yaml").strip()
+    if not config_name:
+        raise HTTPException(400, "Config name cannot be empty after processing")
 
     # Validate config exists
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
-    if not config_path.exists():
-        available = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
+    if not config_path.is_file():
+        if not CONFIGS_DIR.is_dir():
+            available = []
+        else:
+            available = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
         display_list = available[:CONFIGS_LIMIT_DISPLAY]
         suffix = "..." if len(available) > CONFIGS_LIMIT_DISPLAY else ""
         message = CONFIG_NOT_FOUND_TEMPLATE.format(
@@ -133,7 +149,7 @@ async def list_train_configs(
     current_user: User = Depends(get_current_user),
 ):
     """List available training config names."""
-    if not CONFIGS_DIR.exists():
+    if not CONFIGS_DIR.is_dir():
         return {CONFIGS_KEY: []}
     configs = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
     return {CONFIGS_KEY: configs}
@@ -145,6 +161,8 @@ async def get_experiment(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if not experiment_id:
+        raise HTTPException(400, "experiment_id must be provided")
     result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
     exp = result.scalar_one_or_none()
     if not exp:
