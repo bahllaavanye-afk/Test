@@ -2,6 +2,7 @@
 import logging
 import time
 from collections import Counter
+from typing import Dict, List, Tuple, Optional
 
 from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user
@@ -19,6 +20,50 @@ except Exception:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/regime", tags=["regime"])
+
+_LABEL_MAP: Dict[str, str] = {
+    "trending": "bull",
+    "mean_reverting": "sideways",
+    "high_vol": "bear",
+    "unknown": "unknown",
+}
+
+
+def _map_label(raw_label: str) -> str:
+    """Map raw detector label to frontend‑friendly label."""
+    return _LABEL_MAP.get(raw_label, "unknown")
+
+
+def _aggregate_states(
+    states: Dict[str, Dict],
+) -> Tuple[str, float, Optional[str], int]:
+    """
+    Aggregate regime states across symbols.
+
+    Returns:
+        overall_regime: The most common mapped regime.
+        avg_confidence: Mean confidence rounded to three decimals.
+        latest_updated: Most recent update timestamp (or None).
+        symbol_count: Number of symbols processed.
+    """
+    label_counts: Counter = Counter()
+    confidences: List[float] = []
+    latest_updated: Optional[str] = None
+
+    for sym_state in states.values():
+        raw = sym_state.get("regime", "unknown")
+        label = _map_label(raw)
+        label_counts[label] += 1
+        confidences.append(sym_state.get("confidence", 0.0))
+        updated = sym_state.get("updated_at")
+        if updated and (latest_updated is None or updated > latest_updated):
+            latest_updated = updated
+
+    overall_regime = label_counts.most_common(1)[0][0] if label_counts else "unknown"
+    avg_confidence = (
+        round(sum(confidences) / len(confidences), 3) if confidences else 0.0
+    )
+    return overall_regime, avg_confidence, latest_updated, len(states)
 
 
 @router.get("/current")
@@ -41,37 +86,15 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
                 "pnl": get_current_pnl(),
             },
         )
-        return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
+        return {"regime": "unknown", "confidence": 0.0, "updated_at": None, "symbol_count": 0}
 
-    # Map detector regimes → frontend-friendly labels
-    _label_map = {
-        "trending": "bull",
-        "mean_reverting": "sideways",
-        "high_vol": "bear",
-        "unknown": "unknown",
-    }
-
-    label_counts: Counter = Counter()
-    confidences: list[float] = []
-    latest_updated: str | None = None
-
-    for sym_state in states.values():
-        raw = sym_state.get("regime", "unknown")
-        label = _label_map.get(raw, "unknown")
-        label_counts[label] += 1
-        confidences.append(sym_state.get("confidence", 0.0))
-        updated = sym_state.get("updated_at")
-        if updated and (latest_updated is None or updated > latest_updated):
-            latest_updated = updated
-
-    overall_regime = label_counts.most_common(1)[0][0]
-    avg_confidence = round(sum(confidences) / len(confidences), 3) if confidences else 0.0
+    overall_regime, avg_confidence, latest_updated, symbol_count = _aggregate_states(states)
 
     elapsed_ms = (time.time() - start_time) * 1000
     logger.info(
         "endpoint=get_current_regime",
         extra={
-            "signal_count": len(states),
+            "signal_count": symbol_count,
             "execution_time_ms": round(elapsed_ms, 2),
             "pnl": get_current_pnl(),
         },
@@ -81,7 +104,7 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
         "regime": overall_regime,
         "confidence": avg_confidence,
         "updated_at": latest_updated,
-        "symbol_count": len(states),
+        "symbol_count": symbol_count,
     }
 
 
