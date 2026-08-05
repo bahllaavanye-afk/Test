@@ -27,11 +27,14 @@ close did not originate from a strategy and cannot introduce one. Excess beyond
 open inventory is discarded rather than opening an unattributed lot: inventing
 a strategy for it would corrupt exactly the attribution the leaderboard reads.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Literal, Optional
 
 import pytest
+from pydantic import BaseModel, Field, validator
 
 from app.tasks.desk_trade_sync import reconstruct_closed_trades
 
@@ -51,7 +54,84 @@ def _order(coid, symbol, side, qty, price, minutes, oid=None):
     }
 
 
+class TradeSchema(BaseModel):
+    """Schema representing a closed trade produced by ``reconstruct_closed_trades``."""
+
+    strategy_name: str = Field(
+        ...,
+        description="Name of the strategy that originated the opened lot.",
+        example="avellaneda_stoikov_mm",
+    )
+    realized_pnl: float = Field(
+        ...,
+        description="Realized profit and loss for the closed position, in quote currency.",
+        example=50.0,
+    )
+    side: Literal["buy", "sell"] = Field(
+        ...,
+        description="Side of the original opening order (buy for long, sell for short).",
+        example="buy",
+    )
+    hold_seconds: int = Field(
+        ...,
+        description="Duration the position was held, measured in seconds.",
+        example=3240,
+    )
+    quantity: float = Field(
+        ...,
+        description="Quantity of the closed lot.",
+        example=5.0,
+    )
+    entry_price: float = Field(
+        ...,
+        description="Average price at which the lot was opened.",
+        example=100.0,
+    )
+    exit_price: float = Field(
+        ...,
+        description="Average price at which the lot was closed.",
+        example=105.0,
+    )
+    symbol: str = Field(
+        ...,
+        description="Trading symbol of the asset.",
+        example="AAVEUSD",
+    )
+    filled_at: Optional[datetime] = Field(
+        None,
+        description="Timestamp of when the closing fill occurred.",
+    )
+
+    @validator("hold_seconds")
+    def non_negative_hold_seconds(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("hold_seconds must be non‑negative")
+        return v
+
+    @validator("quantity")
+    def positive_quantity(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("quantity must be positive")
+        return v
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "strategy_name": "avellaneda_stoikov_mm",
+                "realized_pnl": 50.0,
+                "side": "buy",
+                "hold_seconds": 3240,
+                "quantity": 5.0,
+                "entry_price": 100.0,
+                "exit_price": 105.0,
+                "symbol": "AAVEUSD",
+                "filled_at": "2026-07-27T18:43:00+00:00",
+            }
+        }
+
+
 # ── the regression ───────────────────────────────────────────────────────────
+
 
 def test_a_broker_flatten_now_produces_a_closed_trade():
     """THE BUG: the Jul 27 shape — desk buys, broker flattens, no trade."""
@@ -93,6 +173,7 @@ def test_the_25_position_flatten_shape():
 
 
 # ── attribution must not be invented ─────────────────────────────────────────
+
 
 def test_an_untagged_close_keeps_the_OPENING_strategys_name():
     """The close carries no strategy; the lot's owner must be preserved."""
@@ -148,6 +229,7 @@ def test_an_untagged_close_only_touches_its_own_symbol():
 
 
 # ── existing behaviour must be untouched ─────────────────────────────────────
+
 
 def test_a_fully_tagged_round_trip_is_unchanged():
     orders = [
