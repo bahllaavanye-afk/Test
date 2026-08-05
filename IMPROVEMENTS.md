@@ -1,5 +1,34 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🤖 2026-08-05 23:45 — A LIVE SAMPLE OF THE IMPROVER'S DEAD CODE, WHICH THE 813 FIGURE ASKED FOR
+
+The 11:30 entry measured 813 unreferenced functions, rejected a gate built on it, and left one open item:
+**"sample before believing it."** PR #1510 merged tonight and is that sample, caught fresh.
+
+- [x] **No regression.** `static_server` imports, the three touched API/model modules import individually, and
+  `test_bot_safeguards.py` — a test file the improver *rewrote* — passes 7/7. Improver PRs bypass CI, so this
+  is checked by hand every tick; tonight it was clean.
+- [x] **But two of the five files got trading logic they have no business holding.** The run's prompt was
+  `strategy_logic` ("tighten entry conditions, add confirmation filters, improve exit logic") and it was
+  applied to `api/v1/notifications.py`, `api/v1/improvements.py`, `models/ml_model.py`, `models/account.py`
+  and a unit test. `models/account.py` — a **SQLAlchemy declarative model** — gained:
+
+      def is_signal_allowed(self, signal, market_data) -> bool
+      def should_exit_position(self, position, market_data) -> bool
+
+  **Zero call sites** (`grep` across `backend/`). Two brand-new unreferenced functions in one commit, on the
+  model layer, in +445/-54 lines.
+- [x] **So the 813 figure is directionally right, and the mechanism is now named.** It is not stale legacy code
+  — it is being *manufactured*, a few functions per improver run, because the improvement type is chosen by
+  `hour % len(IMPROVEMENT_TYPES)` and the target file by `pick_target_file(hour, ...)`, **independently**.
+  Nothing checks that a `strategy_logic` prompt landed on a file containing strategy logic.
+- [ ] **[P2] The cheap fix is pairing, not a dead-code gate.** Constrain `strategy_logic` (and `schemas`, and
+  `optimization`) to files whose paths plausibly match — `strategies/`, `execution/`, `risk/` — instead of
+  whatever `hour % N` selects. That is a small change to `continuous_improver.py`'s pairing and it attacks the
+  source rather than measuring the symptom, which is exactly why the 48%-flagging gate was rejected.
+  **Deliberately not shipped in this tick**: it changes what the autonomous improver does to the codebase
+  unattended, and that deserves to be a decision rather than a side effect of a monitor run.
+
 ## 🧪 2026-08-05 22:45 — `walk_forward` HAD NEVER BEEN EXECUTED BY A TEST, ONLY STRING-MATCHED
 
 Follow-up to the sub-window work, and the mutation pass is what exposed it.
