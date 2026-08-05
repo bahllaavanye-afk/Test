@@ -43,25 +43,18 @@ jobs:
           DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
         run: |
           python - <<'PY'
-          import sys
+          import pathlib, sys
           sys.path.insert(0, ".github/scripts")
           import notify
-          try:
-              out = open("/tmp/mf.txt").read()
-          except FileNotFoundError:
-              out = ""
-          head = [l for l in out.splitlines() if l.startswith("[india_mf] 1")
-                  or "investable" in l]
-          top = [l.strip() for l in out.splitlines() if l.strip().startswith(("1", "2", "3", "4", "5", "6", "7", "8", "9", "-"))
-                 and "NAV" in l][:10]
-          if not top:
-              # Say so rather than posting an empty embed — a silent channel and
-              # a broken fetch must not look identical.
-              body = "🇮🇳 **India MF** — no ranking produced this run (see the workflow log)."
-          else:
-              body = ("🇮🇳 **India Mutual Funds** — top Direct-Growth by 90d NAV return\n"
-                      + (head[0] if head else "") + "\n```\n" + "\n".join(top) + "\n```")
-          notify.post("desk-india-mf", body, username="QuantEdge India MF")
+          # The script writes this file; no stdout parsing. An earlier version
+          # matched log lines by leading character and captured 0 of the 114
+          # category-leader lines — the half that matters.
+          f = pathlib.Path("/tmp/india_mf_discord.md")
+          body = f.read_text() if f.exists() else ""
+          if not body.strip():
+              body = ("🇮🇳 **India MF** — the run produced no payload. "
+                      "Either AMFI changed format or the fetch failed; see the workflow log.")
+          notify.post("desk-india-mf", body[:1900], username="QuantEdge India MF")
           PY
 
       - name: Commit the NAV state
