@@ -10,13 +10,33 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
 
 # ── Key availability check ────────────────────────────────────────────────────
-_LLM_KEY_VARS = [
-    "GROQ_API_KEY", "DEEPSEEK_API_KEY", "SAMBANOVA_API_KEY",
-    "CEREBRAS_API_KEY", "HYPERBOLIC_API_KEY", "TOGETHER_API_KEY", "GEMINI_API_KEY",
-]
-
+#
+# This guard used a HAND-MAINTAINED list of seven env vars:
+#
+#   GROQ, DEEPSEEK, SAMBANOVA, CEREBRAS, HYPERBOLIC, TOGETHER, GEMINI
+#
+# `llm_common._PROVIDERS` has eight. The missing one is NVIDIA
+# (`NVIDIA_AGENTS_API_KEYS`, alt `NVIDIA_NIM_API_KEY`) — and that is the provider
+# `employee-conversations.yml` actually supplies, because its six other mappings
+# point at unsuffixed secrets that are empty (the repo's populated secrets are
+# the `_1` variants; `company-brain.yml` and friends survive on
+# `GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_1 }}`).
+#
+# So the pre-flight guard exited 0 while the cascade behind it had a usable
+# provider. Measured in production run 30974… (2026-08-05 04:14):
+# "No LLM keys available — skipping real conversations", the workflow reported
+# SUCCESS, posted "run complete / Responded: 0/47" to #engineering, and did
+# nothing — hourly.
+#
+# The fix is not to add NVIDIA to the list. It is to stop keeping a second list:
+# ask the cascade what it can reach, so the guard cannot disagree with the thing
+# it guards.
 def _any_llm_key() -> bool:
-    return any(os.environ.get(k, "").strip() for k in _LLM_KEY_VARS)
+    try:
+        from llm_common import _PROVIDERS, _has_key
+        return any(_has_key(p) for p in _PROVIDERS)
+    except Exception:  # noqa: BLE001 — never let the probe itself block the run
+        return True
 
 
 if not _any_llm_key():
