@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785952058.50869,
+    "last_updated": 1785954224.7122295,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 4,
     "macro_score": 2,
-    "vix": 15.92,
-    "market_scan_ts": 1785952058.479824,
+    "vix": 15.78,
+    "market_scan_ts": 1785954224.6830273,
     "sector_leaders": [
       "Energy",
       "Tech",
@@ -127,8 +127,8 @@
       "NVDA",
       "EOG",
       "GOOGL",
-      "INTC",
       "MSFT",
+      "INTC",
       "AMZN",
       "XLV",
       "XLK",
@@ -138,8 +138,8 @@
       "QQQ",
       "AVGO",
       "XLI",
-      "AAPL",
       "SPY",
+      "AAPL",
       "XLF",
       "GS"
     ],
@@ -155,13 +155,6 @@
     "last_brain_update": 1785949379.0575004
   },
   "episodic": [
-    {
-      "lesson": "Bandit scan found high-severity CWE-327 (broken crypto) in .github/scripts/agent_team.py:229. Auto-fix failed; requires manual code review and remediation.",
-      "category": "code",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1785327596.5246925
-    },
     {
       "lesson": "Equities desk had 2 signals fired but 0 placed because both were market closed. Evaluate signal generation timing or add pre-market check to avoid wasted compute.",
       "category": "execution",
@@ -1918,6 +1911,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Tech. Gaps: 6, Breakouts: 0, Risk flags: 0.",
       "ts": 1785952058.5143588
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Tech",
+        "Financials"
+      ],
+      "gap_count": 6,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Tech. Gaps: 6, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785954224.7177937
     }
   ],
   "github_insights": [
