@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785961643.9863741,
+    "last_updated": 1785963659.4624863,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -109,8 +109,8 @@
     },
     "opinion_score": 4,
     "macro_score": 2,
-    "vix": 15.82,
-    "market_scan_ts": 1785961643.957833,
+    "vix": 15.81,
+    "market_scan_ts": 1785963659.4403765,
     "sector_leaders": [
       "Energy",
       "Tech",
@@ -123,25 +123,25 @@
     ],
     "active_universe": [
       "AMD",
-      "LLY",
-      "NVDA",
       "EOG",
+      "NVDA",
+      "LLY",
       "MSFT",
       "GOOGL",
       "AMZN",
       "INTC",
       "CRWD",
       "PANW",
-      "AVGO",
-      "ORCL",
       "XLV",
-      "XLK",
+      "MPC",
+      "AVGO",
       "C",
-      "AAPL",
-      "SPY",
+      "XLK",
+      "ORCL",
       "QQQ",
-      "CVX",
-      "MPC"
+      "GS",
+      "AAPL",
+      "CVX"
     ],
     "top_momentum": [
       "MSFT",
@@ -155,13 +155,6 @@
     "last_brain_update": 1785961368.320714
   },
   "episodic": [
-    {
-      "lesson": "Bandit scan found high-severity CWE-327 (weak hash) in agent_team.py \u2014 patch immediately to prevent security exploitation.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1785363145.952504
-    },
     {
       "lesson": "Vercel deployment blocked by free-tier daily limit \u2014 upgrade plan or reduce deploy frequency to unblock releases.",
       "category": "execution",
@@ -1883,6 +1876,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Tech. Gaps: 6, Breakouts: 0, Risk flags: 0.",
       "ts": 1785961643.9917288
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Tech",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Tech. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785963659.4667883
     }
   ],
   "github_insights": [
