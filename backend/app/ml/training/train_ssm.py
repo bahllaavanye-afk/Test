@@ -1,9 +1,19 @@
-"""SSM (State Space Model) training entry point. Mirrors train_lstm.py interface."""
+"""SSM (State Space Model) training entry point.
+
+This module provides utilities to prepare data loaders and train a
+State‑Space Model (SSM) using the same command‑line interface as the
+LSTM trainer.  It is intended for offline training runs and produces
+model artifacts that can later be loaded by the inference pipeline.
+"""
+
 from __future__ import annotations
+
 import argparse
 import asyncio
 import json
 from pathlib import Path
+from typing import Tuple, Dict, Any
+
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader, TensorDataset
@@ -20,7 +30,25 @@ def build_dataloaders(
     batch_size: int = 256,
     train_frac: float = 0.7,
     val_frac: float = 0.15,
-) -> tuple[DataLoader, DataLoader, DataLoader, int]:
+) -> Tuple[DataLoader, DataLoader, DataLoader, int]:
+    """Create training, validation, and test DataLoaders for the SSM.
+
+    The function engineers additional features, adds binary labels based on a
+    price‑movement threshold, and then converts the data into fixed‑length
+    sequences suitable for time‑series modelling.
+
+    Args:
+        df: Raw OHLCV DataFrame indexed by timestamp.
+        seq_len: Length of each input sequence (number of timesteps).
+        batch_size: Number of samples per batch for the DataLoaders.
+        train_frac: Fraction of the dataset to allocate to training.
+        val_frac: Fraction of the dataset to allocate to validation.
+
+    Returns:
+        A tuple containing the training, validation, and test DataLoaders,
+        followed by the number of input features (``n_features``) used by the
+        model.
+    """
     df = engineer_features(df)
     df = add_labels(df, threshold=0.002)
     X, y = create_sequences(df, seq_len=seq_len)
@@ -54,8 +82,31 @@ async def train(
     max_epochs: int = 100,
     batch_size: int = 256,
     lr: float = 1e-3,
-) -> dict:
-    train_loader, val_loader, test_loader, n_features = build_dataloaders(ohlcv_df, seq_len, batch_size)
+) -> Dict[str, Any]:
+    """Train an SSM model on the provided OHLCV data.
+
+    The function prepares data loaders, instantiates the ``SSMPredictor``,
+    runs training via the shared Lightning trainer, and persists the final
+    model artifact.
+
+    Args:
+        ohlcv_df: DataFrame containing OHLCV columns indexed by timestamp.
+        experiment_name: Identifier for the training run; used for artifact paths.
+        d_model: Dimensionality of the model’s internal representation.
+        n_layers: Number of recurrent layers in the SSM.
+        dropout: Dropout probability applied between layers.
+        seq_len: Length of the input sequences.
+        max_epochs: Maximum number of training epochs.
+        batch_size: Batch size for training and validation.
+        lr: Learning rate for the optimizer.
+
+    Returns:
+        A dictionary containing training metrics and the path to the saved
+        model artifact.
+    """
+    train_loader, val_loader, test_loader, n_features = build_dataloaders(
+        ohlcv_df, seq_len=seq_len, batch_size=batch_size
+    )
 
     model = SSMPredictor(
         input_size=n_features,
@@ -94,8 +145,13 @@ async def train(
 
 
 if __name__ == "__main__":
+    """Command‑line interface for training an SSM model."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", required=True, help="Path to OHLCV CSV with columns: open,high,low,close,volume")
+    parser.add_argument(
+        "--csv",
+        required=True,
+        help="Path to OHLCV CSV with columns: open,high,low,close,volume",
+    )
     parser.add_argument("--name", default="ssm_run")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--d-model", type=int, default=64)
@@ -104,6 +160,12 @@ if __name__ == "__main__":
 
     df = pd.read_csv(args.csv, index_col=0, parse_dates=True)
     result = asyncio.run(
-        train(df, experiment_name=args.name, max_epochs=args.epochs, d_model=args.d_model, n_layers=args.n_layers)
+        train(
+            df,
+            experiment_name=args.name,
+            max_epochs=args.epochs,
+            d_model=args.d_model,
+            n_layers=args.n_layers,
+        )
     )
     print(json.dumps(result, indent=2))
