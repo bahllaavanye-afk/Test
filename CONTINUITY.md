@@ -29,6 +29,40 @@ each independently "found" after already being documented.
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
 
 
+## 📉 2026-08-05 08:00 — KEY PRESENCE IS NOT CAPACITY. 5/47, and the declared limit was fiction.
+
+Run `30986127682` (07:43), the first with pacing:
+```
+[employee_runner] 47 employees, 1.0s spacing (~0.8 min)
+101 × [gemini-key] error: HTTP Error 429: Too Many Requests
+RESPONDED_COUNT=5
+```
+Better than 1/47, still 5/47. **And the spacing was 1.0s, not the 4.0s I expected** — which is the finding.
+
+`1.0s = 60/60`, so `max(rpms)` saw a provider declaring `rpm_free: 60` (sambanova / deepseek / together /
+hyperbolic). One of those secrets is non-empty. **But the cascade never called it: 101 errors, all
+`[gemini-key]`, and no other provider appears in the log at all.**
+
+So the pacer computed headroom from a key that exists and is never used. **`_has_key()` tests that an env
+var is non-empty — not that the provider is reachable, valid, or in the path the cascade actually takes.**
+Presence is not capacity. The pacing was correct arithmetic over a number that described nothing real.
+
+**Fixed by measuring instead of declaring.** Declared `rpm_free` is now only the starting guess; the 429s
+are ground truth:
+- **adaptive backoff** — double the interval on a failed employee (cap ×8 ≈ 53s at the Gemini-only base),
+  snap back to base on success. Responds to the provider that is actually answering, whichever it is.
+- **an 18-minute loop budget** inside the 25-minute job timeout. A job killed by the runner timeout loses
+  the memory write, the proof file and the Discord report — so an overrun would present as a crash rather
+  than a partial run. It now stops deliberately and says how many it skipped.
+- **`SKIPPED_COUNT` reported separately from `FAILED_EMPLOYEES`.** They are different outcomes, and the
+  workflow opens an issue when failures exceed 5 names — folding a budget stop into that would file
+  spurious bugs about 42 healthy employees.
+
+**Unresolved, and it is a secret, not code:** some 60-rpm provider has a key that the cascade never
+reaches. Either the key is invalid, or `_llm_waterfall` (which runs before the manual cascade and keeps its
+own provider order) never gets to it. Worth one measurement next session — the backoff makes the system
+survive it either way, but it does not explain it.
+
 ## ✅ 2026-08-05 07:45 — PACEMAKER FLEET DISPATCH **VERIFIED**, and the pacing margin that was missing
 
 **Correction to the 07:15 and 07:00 entries, which called this unverified.** It is verified. Run

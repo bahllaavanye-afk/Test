@@ -287,7 +287,92 @@ def test_the_loop_sleeps_between_calls_not_before_the_first(monkeypatch):
     src = (_DIR / "employee_conversation_runner.py").read_text()
     loop = src[src.index("for i, emp_key in enumerate(emp_keys):"):]
     loop = loop[:loop.index("employee_provider_prompt")]
-    assert "if i:" in loop and "time.sleep(spacing)" in loop, (
+    assert "if i:" in loop and "time.sleep(spacing" in loop, (
         "the inter-employee sleep is unguarded, so the run waits before doing "
         "any work at all."
+    )
+
+
+# ── adaptive backoff (declared limits were not the real limits) ───────────────
+
+def test_the_loop_backs_off_on_failure_and_snaps_back_on_success():
+    """Run 30986127682 (07:43): 47 employees, 1.0s spacing, 101 consecutive
+    `[gemini-key] HTTP 429`, 5 responses.
+
+    The spacing was computed from `rpm_free`, which said there was headroom
+    because SOME 60-rpm provider had a key present — while the cascade only ever
+    called Gemini. Key presence is not capacity, and a declared limit is not the
+    real one. The 429s are the ground truth, so the loop must widen on failure
+    and narrow again on success.
+    """
+    src = (_DIR / "employee_conversation_runner.py").read_text()
+    loop = src[src.index("for i, emp_key in enumerate(emp_keys):"):]
+    loop = loop[:loop.index("_save_memory")] if "_save_memory" in loop else loop
+    assert "time.sleep(spacing * backoff)" in loop, (
+        "the inter-call sleep ignores the backoff multiplier, so a throttled "
+        "run keeps hammering at the base rate."
+    )
+    assert "backoff = min(backoff * 2" in loop, (
+        "no widening on failure — the run cannot adapt when the declared rpm "
+        "turns out to be wrong."
+    )
+    assert "backoff = 1.0" in loop, (
+        "the backoff never resets, so one early failure slows every remaining "
+        "employee for the whole run."
+    )
+
+
+def test_the_backoff_is_bounded():
+    import employee_conversation_runner as runner
+    assert 1 < runner._MAX_BACKOFF <= 32, (
+        f"_MAX_BACKOFF={runner._MAX_BACKOFF} is unbounded or a no-op; an "
+        "unbounded multiplier turns one bad provider into a run that sleeps "
+        "through its entire budget."
+    )
+
+
+def test_the_run_budget_sits_inside_the_job_timeout():
+    """A job killed by the runner timeout loses memory, proof file and report."""
+    import employee_conversation_runner as runner
+    yaml = pytest.importorskip("yaml")
+    (job,) = yaml.safe_load(_WF.read_text())["jobs"].values()
+    timeout_s = job["timeout-minutes"] * 60
+    budget = runner._run_budget_seconds()
+    assert budget < timeout_s, (
+        f"the loop budget ({budget/60:.0f} min) meets or exceeds the job "
+        f"timeout ({job['timeout-minutes']} min), so an overrun is a kill "
+        "rather than a clean partial run."
+    )
+    assert timeout_s - budget >= 300, (
+        "fewer than 5 minutes reserved for the memory write, proof file and "
+        "Discord report after the loop stops."
+    )
+
+
+def test_a_malformed_budget_falls_back(monkeypatch):
+    monkeypatch.setenv("EMPLOYEE_RUN_BUDGET_S", "soon")
+    import employee_conversation_runner as runner
+    assert runner._run_budget_seconds() == pytest.approx(1080.0)
+
+
+def test_the_budget_cannot_be_set_absurdly_low(monkeypatch):
+    monkeypatch.setenv("EMPLOYEE_RUN_BUDGET_S", "1")
+    import employee_conversation_runner as runner
+    assert runner._run_budget_seconds() >= 60.0, (
+        "a sub-minute budget would skip the entire roster on every run"
+    )
+
+
+def test_skipped_is_reported_separately_from_failed():
+    """Folding them together misreports a throttled run as broken employees.
+
+    `FAILED_EMPLOYEES` drives an issue-opening step when it exceeds 5 names, so
+    a budget stop that reported 42 failures would file spurious bugs.
+    """
+    src = (_DIR / "employee_conversation_runner.py").read_text()
+    assert "SKIPPED_COUNT=" in src, "the budget stop is not reported at all"
+    assert "SKIPPED_EMPLOYEES=" in src
+    tail = src[src.index("RESPONDED_COUNT={len(responded)}"):]
+    assert "skipped" in tail and "failed" in tail, (
+        "skipped and failed are no longer reported as distinct outcomes"
     )
