@@ -242,11 +242,21 @@ def main():
 
     # Update shared memory with new peer learnings
     mem.setdefault("peer_learnings", [])
+    # Raw LLM replies land here. When a generation fails the model restates its
+    # prompt ("We need to respond as X agent, give a one-sentence status
+    # update..."), and storing that as a learning polluted 28% of the list —
+    # entries that are now RETRIEVED into other agents' context. Filter at the
+    # write boundary; see shared_context.is_low_quality_learning.
+    try:
+        from shared_context import is_low_quality_learning
+    except Exception:  # noqa: BLE001
+        def is_low_quality_learning(_t):  # type: ignore[misc]
+            return False
     for s in agent_statuses:
         if s["reply"] and "Offline" not in s["reply"]:
-            mem["peer_learnings"].append(
-                f"[{s['agent']} @ {now.strftime('%Y-%m-%dT%H:%M')}] {s['reply'][:150]}"
-            )
+            entry = f"[{s['agent']} @ {now.strftime('%Y-%m-%dT%H:%M')}] {s['reply'][:150]}"
+            if not is_low_quality_learning(entry):
+                mem["peer_learnings"].append(entry)
     mem["peer_learnings"] = mem["peer_learnings"][-200:]
     mem["last_updated"] = now.isoformat()
     MEMORY_FILE.write_text(json.dumps(mem, indent=2))

@@ -29,6 +29,49 @@ each independently "found" after already being documented.
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
 
 
+## 🎭 2026-08-05 03:50 — THE AGENTS DISCUSSED STATUS BECAUSE NOBODY GAVE THEM RESULTS (fixed, #814)
+
+Two halves of one loop, found together.
+
+**1. The attribution artifact reached no agent.** `backend/performance_log/strategy_performance.json` is
+written by `fill_tracker.py` from real filled orders, attributed via the `client_order_id` encoding, and
+it **is** committed — 22 strategies, 247 tracked order ids, regenerated at 00:55. Nothing read it into
+agent context. So the daily discussion ran on self-reported status while the actual results sat in a file:
+```
+avellaneda_stoikov_mm  10 trades   90% win   +53.48%
+stat_arb_etf           30 trades   93% win   +31.89%
+options_pc             14 trades  100% win   +24.03%
+stat_arb_e             21 trades    0% win   −37.17%   <- never discussed
+```
+`shared_context.outcome_learnings()` now injects these into `peer_learnings` through
+`multi_agent_discussion`. **The worst performer is always included**, outside `top_n`, by construction:
+reporting only winners is exactly the status theater the item names, and a 0%-win strategy is the most
+useful thing in the list.
+
+**2. 28% of `peer_learnings` was the model restating its prompt.** 56 of 200 entries:
+```
+[investor_pipeline @ …] The user asks: "Give a one-sentence status update: what are you…"
+[self_improver @ …]     We need to respond as self_improver agent, autonomous, 2 sentences max…
+```
+`agent_status_checker.py:247` and `multi_agent_discussion.py:360` append the raw reply with no quality
+check, so a **failed generation is stored as a learning**. That was merely wasteful until the retrieval
+fix landed hours earlier — these entries are now *retrieved into other agents' prompts*, so the noise
+compounds. `is_low_quality_learning()` filters at the write boundary. On live data it rejects 65 of 200.
+
+**The patterns are narrow on purpose.** A false positive silently deletes a real finding, which is worse
+than keeping one echo. `test_ordinary_learnings_are_never_dropped` pins realistic entries that must
+survive.
+
+**Testing note worth keeping:** a mutation reversing the attribution sort **survived** the first test
+pass. `stat_arb_e` was still present — it just landed in the leading slice instead of the trailing one —
+so a membership assertion could not see that "top N winners + the worst" had become "worst N + the best".
+**Assert composition and position, not membership**, whenever a ranking decides what a human or an agent
+reads first.
+
+**Noted, not fixed:** attribution keys are still truncated to 10 chars in places (`time_serie`,
+`stat_arb_e`). `desk_order_placer._expand_truncated` handles this for trims; the performance file itself
+carries the short form.
+
 ## 🗜️ 2026-08-05 03:00 — 47% OF THE GIT REPOSITORY IS ONE UNBOUNDED STATE FILE (growth stopped)
 
 `agent_memory.json` has a `conversations` dict that three writers append to and **none** trimmed.
