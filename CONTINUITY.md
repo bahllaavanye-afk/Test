@@ -33,6 +33,33 @@ each independently "found" after already being documented.
 | 14 | **Set `ANGELONE_API_KEY` / `_CLIENT_ID` / `_PASSWORD` / `_TOTP_SECRET`** | ~5min | Turns the India work from research into execution. AngelOne SmartAPI is free and TOTP-derivable, so it is the only broker that can log in unattended — **Zerodha cannot** (browser redirect, daily token, ₹2,000/mo). `india_broker.py` reports what is missing; nothing places an Indian order until these exist. |
 
 
+## 🚨 2026-08-05 19:10 — 10% OF THE BOOK HAS NO OWNER, AND NOTHING CAN SAY WHOSE IT IS
+
+`audit_order_origins()` shipped at 19:00 and fired on its first live desk run (`31037485632`):
+
+    ⚠️ ORDER-ORIGIN AUDIT: 5 of 50 recent orders were NOT placed by this desk
+       19:02:24 USO  buy [filled]   19:01:51 NVDA buy [filled]   19:01:42 QQQ buy [filled]
+       18:38:52 NVDA buy [filled]   17:58:46 AAPL buy [filled]
+
+All five are FILLED BUYS inside 65 minutes, all carrying bare UUIDs — the id Alpaca generates when the caller
+supplies none. Broker auto-liquidation is ruled out: that sells.
+
+**The root cause of the anonymity is one missing field.** `submit_alpaca_order()`
+(`backend/app/brokers/alpaca_orders.py:34`) builds symbol/qty/side/type/tif/prices and **no
+`client_order_id`** — so every order any backend places is indistinguishable from every other backend's.
+
+**Both candidates produce identical evidence:**
+- `9jz0` runs `bot_jobs: 64`, firing every 1-2 min → the orders would be **legitimate**.
+- `agb8` runs 11 background tasks, Alpaca connected, dead DB → the orders would be **rogue duplicates**.
+
+That ambiguity matters more than the count: **nobody can currently answer "did our platform place this
+trade?" about 10% of its own book**, and operator item #1 cannot be settled either way without it.
+
+**The fix is one line and is deliberately not shipped.** Give `submit_alpaca_order` a `qb-` prefix mirroring
+the desk's working `qe-` scheme. `backend/app/brokers/*.py` is Do-Not-Modify and this is the live
+order-submission path — a change there moves real orders, so it needs a human. Once tagged, the audit names
+the writer instead of counting it.
+
 ## ✅ 2026-08-05 19:00 — THE STRATEGY TRIMMER IS LIVE (pending verification since 07-29, now closed)
 
 Both of today's desk runs log the line the item asked for:

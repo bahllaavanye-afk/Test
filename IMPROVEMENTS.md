@@ -1,5 +1,45 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🚨 2026-08-05 19:10 — THE AUDIT FIRED ON ITS FIRST LIVE RUN: SOMETHING ELSE IS BUYING ON THIS ACCOUNT
+
+Run `31037485632`, the first desk run carrying `audit_order_origins()`:
+
+```
+⚠️ ORDER-ORIGIN AUDIT: 5 of 50 recent orders were NOT placed by this desk — a second writer is on this account
+   2026-08-05T19:02:24Z USO  buy qty=None [filled] coid='7038f73a-d7a2-494e-b4d1-4a24b387705c'
+   2026-08-05T19:01:51Z NVDA buy qty=None [filled] coid='0ac8049c-cc42-4fd8-a6d4-43031541046a'
+   2026-08-05T19:01:42Z QQQ  buy qty=1    [filled] coid='04e8f2be-cbd7-46ae-b79c-121d36a865ab'
+   2026-08-05T18:38:52Z NVDA buy qty=None [filled] coid='31dc9a10-17db-412d-8405-9ad9c14c7201'
+   2026-08-05T17:58:46Z AAPL buy qty=1    [filled] coid='332050e9-fc0e-4535-b5fc-9d74aba3b2f8'
+```
+
+**What is proven:** 10% of the last 50 orders were not placed by the Actions desk placer; all five are **filled
+buys**, all within 65 minutes, all carrying bare UUIDs — the id Alpaca generates when the caller supplies none.
+
+**What is ruled out:** broker auto-liquidation. That sells; these are all buys.
+
+- [x] **Root cause of the anonymity found: `submit_alpaca_order()` sets no `client_order_id`.**
+  `backend/app/brokers/alpaca_orders.py:34` builds its payload with symbol/qty/side/type/tif/prices and
+  nothing else, so **every** order the backend places is indistinguishable from every other backend's.
+- [ ] **[P0] Which backend is doing it CANNOT currently be determined, and that is the actual problem.** Two
+  candidates both produce bare UUIDs:
+  - `9jz0` (the live one) — health reports `scheduler: jobs_total 73, bot_jobs 64`, firing every 1-2 minutes.
+    If this is the source, the orders are **legitimate** and the platform is working as designed.
+  - `agb8` (operator item #1) — 11 background tasks, Alpaca connected, 113 strategies, dead DB. If this is the
+    source, they are **rogue duplicates on an account it should not be touching**.
+
+  Same evidence for both. That ambiguity is worth more than the count: it means nobody can currently answer
+  "did our platform place this trade?" about 10% of its own book.
+- [ ] **[P0] The one-line fix, deliberately NOT shipped unattended.** `submit_alpaca_order` should set a
+  distinguishing `client_order_id` (e.g. `qb-{bot_or_strategy}-{sym}-{ts}`, mirroring the desk's `qe-` scheme
+  that already works). `backend/app/brokers/*.py` is under **Do NOT Modify** in `backend/app/tasks/CLAUDE.md`,
+  and this is the live order-submission path — a change there moves real orders. It needs a human. Once tagged,
+  `audit_order_origins()` names the writer instead of merely counting it, and operator item #1 resolves itself
+  either way.
+- [x] **This is what the audit was for.** Built 25 minutes earlier because a second writer had gone unreported
+  across all 30 of today's desk runs; on its first live execution it found five filled orders nobody could
+  account for.
+
 ## 🧰 2026-08-05 19:35 — A GREEN LOCAL RUN CARRIES NO INFORMATION ABOUT CI, AND THAT COST TWO RED PRs TODAY
 
     morning   test_backtest_covers_crypto.py   ModuleNotFoundError: requests
