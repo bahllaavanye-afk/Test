@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785963659.4624863,
+    "last_updated": 1785966253.6463912,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,65 +152,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1785961368.320714
+    "last_brain_update": 1785966253.645069
   },
   "episodic": [
-    {
-      "lesson": "Vercel deployment blocked by free-tier daily limit \u2014 upgrade plan or reduce deploy frequency to unblock releases.",
-      "category": "execution",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1785363145.9581017
-    },
-    {
-      "lesson": "Auto-fix failed twice (patch too large, validation error) \u2014 review patch generation logic and set stricter size/validation limits.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1785363145.9636662
-    },
-    {
-      "source": "market_opinion",
-      "regime": "bull",
-      "score": 2,
-      "gates": {
-        "directional": true,
-        "min_confidence": 0.6,
-        "size_multiplier": 1.0
-      },
-      "lesson": "[LLM unavailable \u2014 all providers failed]",
-      "ts": 1785426333.1886961
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Energy",
-        "Financials",
-        "Cons. Staples"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1785426384.1934302
-    },
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Energy",
-        "Financials",
-        "Healthcare"
-      ],
-      "gap_count": 8,
-      "breakout_count": 0,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
-      "ts": 1785428607.2286897
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -1891,14 +1835,44 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Tech. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1785963659.4667883
+    },
+    {
+      "lesson": "19 trades dropped pre-placement: 14 market closed, 3 no order path, 2 no account. This represents a 38% signal loss; review market hours alignment, order path configuration, and account setup for equity/crypto/commodity/Polymarket desks.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1785966249.949866
+    },
+    {
+      "lesson": "Bandit scan found a high-severity CWE-327 (weak hashing) in .github/scripts/agent_team.py:229. This is a security vulnerability that must be patched immediately to prevent potential data integrity issues.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1785966249.956539
+    },
+    {
+      "lesson": "Vercel deployment blocked due to free-tier daily limit exceeded. This halts CI/CD; upgrade to Pro or reduce deployment frequency to avoid blocking releases.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1785966249.9619627
+    },
+    {
+      "lesson": "Three consecutive auto-fix failures on GitHub issues indicate a broken automated patching pipeline. Investigate patch generation logic and apply manual fixes to the underlying issues.",
+      "category": "code",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1785966249.9673336
+    },
+    {
+      "lesson": "Crypto desk placed 0 of 2 signals due to 'no account' \u2014 same root cause as 2 dropped funnel trades. This is a systematic account provisioning gap that prevents crypto execution entirely.",
+      "category": "execution",
+      "priority": 3,
+      "source": "company_brain_synthesis",
+      "ts": 1785966249.9728057
     }
   ],
   "github_insights": [
-    {
-      "summary": "The deployment failed due to resource limits, the team lead revoked automerge because the PR modified protected files, and the auto-fix attempt also failed.",
-      "item_count": 20,
-      "ts": 1784751667.953088
-    },
     {
       "summary": "The auto-fix bot failed to apply patches in two instances and skipped a third due to excessive complexity, with the reason attributed to the issue description.",
       "item_count": 20,
@@ -2393,6 +2367,11 @@
       "summary": "The deployment failed due to a resource limitation error, with a suggestion to retry after 24 hours, and the LLM response could not be parsed as valid JSON.",
       "item_count": 20,
       "ts": 1785961368.3091023
+    },
+    {
+      "summary": "The automated security scan identified a high-severity Bandit issue that caused a deployment failure for the QuantEdge project on Vercel, with the auto-fix attempt failing to apply a patch to the affected file.",
+      "item_count": 20,
+      "ts": 1785966253.6331701
     }
   ],
   "experiment_results": [
@@ -2479,48 +2458,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "desk-commodities",
-      "summary": "*Commodities Desk* \u2014 3 order(s) placed\n\ud83d\udfe2 `time_series_momentum/GDX` BUY $196 conf=99%  id=`3d50c6cc\u2026`\n\ud83d\udfe2 `time_series_momentum/USO` BUY $196 conf=99%  id=`716e23a5\u2026`\n\ud83d\udfe2 `time_series_momentum/CPER` BUY $362 conf=98%  id=`d9828462\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785800873.867344
-    },
-    {
-      "channel": "desk-polymarket",
-      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785800873.8726206
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (14:41 UTC)  equity=$21,912.03  cash=$18,232.86  buying_power=$82,536.25  regime=bull/calm\nfunnel: 46 generated \u2192 17 survived gate+topK (3 exploration) \u2192 14 placed\nexecution: avg slippage -0.5 bps \u00b7 worst +10.3 bps \u00b7 7/14 measured (7 unmeasured)\n\u26a0\ufe0f 3 dropped before placement \u2014 2",
-      "source": "desk_run_summary",
-      "ts": 1785857120.724758
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 1 order(s) placed of 10 signal(s) \u2265 0.6: USD_JPY BUY@157.19600, USD_CAD BUY@1.40465, EUR_USD SELL@1.15084 | 2 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1785857120.7467837
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Tuesday August 04, 2026*\n\nWe need to produce a brief all-hands standup with 4-5 bullet points, energetic, data-driven, referencing real stats. Must be under 150 words, Discord markdown (so bullet points with hyphens). No headers. Provide bullets only, 4-5 bullets. Use given st",
-      "source": "desk_run_summary",
-      "ts": 1785857120.7526233
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Tuesday August 04, 2026*\n\nWe need to produce a brief all-hands standup with 4-5 bullet points, energetic, data-driven, referencing real stats. Must be under 150 words, Discord markdown (so bullet points with hyphens). No headers. Provide bullets only, 4-5 bullets. Use given st",
-      "source": "desk_run_summary",
-      "ts": 1785857120.757229
-    },
-    {
-      "channel": "desk-options",
-      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `gamma_exposure/IWM` BUY $540 conf=88%  id=`6c650a63\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785857120.766353
-    },
     {
       "channel": "desk-commodities",
       "summary": "*Commodities Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $210 conf=100%  id=`994eb2a0\u2026`\n\ud83d\udd34 `time_series_momentum/UNG` SELL $216 conf=92%  id=`14d46ab4\u2026`",
@@ -3078,6 +3015,48 @@
       "summary": "*Polymarket Desk* \u2014 3 signal(s) fired, **0 orders placed**\nreason: 3 no order path",
       "source": "desk_run_summary",
       "ts": 1785961365.9483678
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (21:08 UTC)  equity=$21,786.51  cash=$-48,471.29  buying_power=$0.00  crypto_bp=$0.00  regime=bull/calm\nfunnel: 50 generated \u2192 19 survived gate+topK (3 exploration) \u2192 0 placed\n\u26a0\ufe0f 19 dropped before placement \u2014 14 market closed \u00b7 3 no order path \u00b7 2 no account\n\u26a0\ufe0f *Equities*: 4 sig",
+      "source": "desk_run_summary",
+      "ts": 1785966249.978107
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 3 signal(s) \u2265 0.6: EUR_USD SELL@1.15324, AUD_USD SELL@0.70464, USD_CHF SELL@0.80899 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1785966249.983419
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 2 signal(s) fired, **0 orders placed**\nreason: 2 no account",
+      "source": "desk_run_summary",
+      "ts": 1785966249.9890096
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*International Desk* \u2014 4 signal(s) fired, **0 orders placed**\nreason: 4 market closed",
+      "source": "desk_run_summary",
+      "ts": 1785966249.9943573
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `gamma_exposure/IWM` BUY $517 conf=90%  id=`2e60cb99\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1785966249.9997003
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 3 signal(s) fired, **0 orders placed**\nreason: 3 market closed",
+      "source": "desk_run_summary",
+      "ts": 1785966250.0050123
+    },
+    {
+      "channel": "desk-polymarket",
+      "summary": "*Polymarket Desk* \u2014 3 signal(s) fired, **0 orders placed**\nreason: 3 no order path",
+      "source": "desk_run_summary",
+      "ts": 1785966250.0103514
     }
   ]
 }
