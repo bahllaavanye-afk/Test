@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-08-05T05:17:45.888473+00:00",
+  "last_updated": "2026-08-05T19:01:43.927323+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,27 +28,27 @@
       ]
     },
     "general": {
-      "summary": "**Key Takeaways**\n\n* **Investor Pipeline Analysis**: Currently parsing log files in `backend/logs/investor_pipeline.log` to identify potential bottlenecks and gain insights in the investor pipeline (investor_pipeline).\n* **Experiment Tracking**: Actively tracking and monitoring experiment data in `backend/logs/experiment.log` (token_monitor, run_experiments).\n* **Research and Development**: Parsing data in `datasets/research_data.csv` and running experiments using `backend/logs/experiment.log` for research and development purposes (research_scientist, algo_agent).",
-      "source_count": 56,
-      "updated_at": "2026-08-05T05:17:45.888473+00:00",
+      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **Options PC strategy excels in short-term gains**: The Options PC strategy has achieved a combined 100% win rate, +24.03% total return, and +1.72% average return across 56 trades (14 trades with 4 consecutive 100% win rate and high returns).\n\u2022 **Avellaneda-Stoikov MM strategy maintains high performance**: The Avellaneda-Stoikov MM strategy has demonstrated a consistent 90% win rate, +53.48% total return, and +5.35% average return across 40 trades.\n\u2022 **Time Serie strategy lags, but provides diversification**: The Time Serie strategy has shown a relatively lower win rate (72%), but still offers a notable +43.01% total return and +2.39% average return, potentially providing a diversification benefit.",
+      "source_count": 68,
+      "updated_at": "2026-08-05T19:01:43.927323+00:00",
       "raw_recent": [
-        "[free_agent_engineer @ 2026-08-04T10:38] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the free_agent_engineer agent, we need to respond w",
-        "[token_monitor @ 2026-08-04T21:12] We need to respond as token_monitor agent, giving one-sentence status update, first person, concise, referencing real file paths. Should mention track",
-        "[run_experiments @ 2026-08-05T02:28] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the run_experiments agent, we need to respond in fi",
-        "[algo_agent @ 2026-08-05T02:28] The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the algo_agent, we need to respond in first person,",
-        "[research_scientist @ 2026-08-05T02:28] We need to respond as research_scientist agent, give one-sentence status update, specific, first person, concise (2 sentences max). Should reference r"
+        "[attribution @ 2026-08-05T17:43] time_serie: 18 trades, 72% win rate, +43.01% total return, +2.39% avg (period 30d)",
+        "[attribution @ 2026-08-05T17:43] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)",
+        "[attribution @ 2026-08-05T18:33] avellaneda_stoikov_mm: 10 trades, 90% win rate, +53.48% total return, +5.35% avg (period 30d)",
+        "[attribution @ 2026-08-05T18:33] time_serie: 18 trades, 72% win rate, +43.01% total return, +2.39% avg (period 30d)",
+        "[attribution @ 2026-08-05T18:33] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)"
       ]
     },
     "strategies": {
-      "summary": "Based on the collective knowledge, here are 2-3 concise bullet points of the most important, actionable knowledge:\n\n* A trading strategy with a potential Sharpe ratio of 1.15 \u00b1 0.15 is implemented in `/strategies/equities.py` and uses a VWAP-EMA-RSI triple filter.\n* A variant strategy, \"SPY EMA-VWAP-MACD-ATR Momentum (5-min)\", has been proposed and is estimated to have a Sharpe ratio of 1.15 \u00b1 0.15, with entry long positions triggered above the 20-period VWAP.\n* The algo_agent is actively working on strategy exploration using the UCB1 bandit module, focusing on strategy performance in `backend` and updating configuration from `.github/workflows/signal_runner.yml`.",
-      "source_count": 53,
-      "updated_at": "2026-07-29T05:25:13.087123+00:00",
+      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **Arbitrage allocation**: Allocate approximately 70% of the available 2.2% NAV headroom (\u22481.54% NAV) to arbitrage strategies, with the remaining 30% (\u22480.66% NAV) allocated to direct strategies.\n\u2022 **stat_arb_etf performance**: The stat_arb_etf strategy has achieved a 93% win rate with a total return of +31.89% over 30 trades, averaging +1.06% per period (30d).\n\u2022 **time_series_momentum performance**: The time_series_momentum strategy has achieved a 74% win rate with a total return of +9.91% over 23 trades, averaging +0.43% per period (30d).",
+      "source_count": 77,
+      "updated_at": "2026-08-05T19:01:43.927323+00:00",
       "raw_recent": [
-        "[quick_backtest @ 2026-07-28T21:06] I am currently running a lightweight backtest on a newly implemented strategy in `/strategies/equities.py` to evaluate its Sharpe ratio and rank it ag",
-        "[quick_backtest in #desk-equities @ 2026-07-29T00:50] I\u2019d estimate a Sharpe around 1.0\u20131.2 because the VWAP\u2011EMA\u2011RSI triple filter should cut most false signals, but the 5\u2011minute frequency and RSI > 60 may",
-        "[strategy_generator in #desk-equities @ 2026-07-29T02:32] **Strategy Variant:** **\u201cSPY EMA\u2011VWAP\u2011MACD\u2011ATR Momentum (5\u2011min)\u201d** \u2013 Enter a long position when the 5\u2011minute price trades **above** the 20\u2011period VWAP",
-        "[quick_backtest in #desk-equities @ 2026-07-29T02:32] I\u2019d estimate a Sharpe around\u202f1.15\u202f\u00b1\u202f0.15 for the \u201cSPY EMA\u2011VWAP\u2011MACD\u2011ATR Momentum (5\u2011min)\u201d because the VWAP\u202f+\u202fEMA alignment plus a positive MACD histog",
-        "[algo_agent @ 2026-07-29T02:35] The user asks for a one-sentence status update: what am I actively working on right now. As the algo_agent with role UCB1 bandit for strategy explorat"
+        "[desk_trader in #risk @ 2026-08-05T17:43] Given the ~2.2\u202f%\u202fNAV headroom under the 5\u202f% gross\u2011exposure cap, I\u2019ll allocate roughly 1.54\u202f%\u202fNAV (\u224870\u202f% of the headroom) to our arb strategies and the",
+        "[attribution @ 2026-08-05T18:33] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
+        "[attribution @ 2026-08-05T18:33] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
+        "[attribution @ 2026-08-05T18:33] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
+        "[desk_trader in #risk @ 2026-08-05T18:33] Given the ~2.2\u202f%\u202fNAV headroom under the 5\u202f% gross\u2011exposure cap, I\u2019ll allocate roughly 1.54\u202f%\u202fNAV (\u224870\u202f% of the headroom) to arbitrage, concentrating t"
       ]
     },
     "risk": {
