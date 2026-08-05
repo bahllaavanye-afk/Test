@@ -268,3 +268,70 @@ def test_the_consumer_rechecks_age_rather_than_trusting_the_file():
     block = src.split("_INDIA_TILT_FILE", 1)[1][:2000]
     assert "max_age_hours" in block
     assert "stale" in block
+
+
+# ── The fallback that made live verification possible ────────────────────────
+
+def test_chart_api_parses_a_real_shaped_payload(monkeypatch):
+    """Bars are stamped at the session OPEN (03:45 UTC for NSE), so the date
+    must come from the timestamp and the close is reconstructed later. A `null`
+    close is a real thing Yahoo returns for a halted session and must be
+    dropped, not coerced to 0.0."""
+    payload = {"chart": {"result": [{
+        "timestamp": [1785900300, 1785986700, 1786073100],  # 03:45 UTC each
+        "indicators": {"quote": [{"close": [24774.3, None, 24624.65]}]},
+    }]}}
+
+    class _Resp:
+        status_code = 200
+        def json(self): return payload
+
+    import requests
+    monkeypatch.setattr(requests, "get", lambda *a, **k: _Resp())
+    rows = ins._via_chart_api("^NSEI")
+    assert [c for _, c in rows] == [24774.3, 24624.65]
+    assert all(isinstance(d, date) for d, _ in rows)
+
+
+def test_chart_api_raises_on_a_non_200(monkeypatch):
+    """The crypto feed returned HTTP 451 and the caller treated a bare None as
+    'no data', dropping every symbol with no log line at all. A non-200 here
+    must be loud."""
+    class _Resp:
+        status_code = 429
+        def json(self): return {}
+
+    import requests
+    monkeypatch.setattr(requests, "get", lambda *a, **k: _Resp())
+    with pytest.raises(RuntimeError, match="429"):
+        ins._via_chart_api("^NSEI")
+
+
+def test_a_yfinance_transport_failure_falls_through_rather_than_reading_flat(monkeypatch):
+    """yfinance ships its own HTTP stack (curl_cffi) which fails behind an
+    egress proxy while plain requests to the same URL succeeds. Without the
+    fallback that transport failure is indistinguishable from a flat session."""
+    monkeypatch.setattr(ins, "_via_chart_api",
+                        lambda sym: _closes(("2026-08-04", 100.0), ("2026-08-05", 102.0)))
+
+    class _Broken:
+        def Ticker(self, sym): raise OSError("Connection reset by peer")
+
+    monkeypatch.setitem(sys.modules, "yfinance", _Broken())
+    out = ins.fetch_closes(["INFY.NS"])
+    assert out["INFY.NS"], "the fallback was never consulted"
+    assert ins.session_move_pct(out["INFY.NS"])[1] == pytest.approx(2.0)
+
+
+def test_both_sources_failing_yields_no_entry_at_all(monkeypatch):
+    """Not an empty list, which `build_payload` would report as 'fewer than 2
+    closes' — the same message a genuinely thin ticker gets. Absent means the
+    fetch is what broke, and the log line above says so."""
+    def _boom(sym): raise RuntimeError("chart API down")
+    monkeypatch.setattr(ins, "_via_chart_api", _boom)
+
+    class _Broken:
+        def Ticker(self, sym): raise OSError("reset")
+
+    monkeypatch.setitem(sys.modules, "yfinance", _Broken())
+    assert ins.fetch_closes(["INFY.NS"]) == {}

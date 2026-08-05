@@ -35,10 +35,22 @@
   which top-K would rank on the pre-tilt number and the tilt would half-work.
 - [x] **A second consumer-side cap (`INDIA_TILT_HARD_CAP`) is not redundant.** The producer caps at ±0.06; a
   hand-edited or corrupted file claiming 0.9 would otherwise force any signal past any threshold.
-- [ ] **Unverified live — no network to NSE from the dev container.** End-to-end was proven on fabricated
-  closes (INFY −2% → INFY tilt −0.04, buy; +0.04, sell. ^NSEI +1.5% → INDA +0.03, SMIN +0.018). The first
-  scheduled run at 10:20 UTC is what confirms yfinance resolves `.NS` from an Actions runner; the Discord post
-  states which path it took either way.
+- [x] **VERIFIED LIVE on real NSE data, and the verification exposed a transport trap.** yfinance ships its own
+  HTTP stack (`curl_cffi`) which dies behind an egress proxy — `curl: (35) Recv failure: Connection reset` on
+  every one of the six symbols — while a plain `requests` call to *the identical Yahoo URL* returns the data.
+  Without a fallback, that transport failure is **indistinguishable from a flat Indian day**: same empty frame,
+  same zero tilts, same green log. Added `_via_chart_api` as the second source, and the log names which path
+  each symbol took, because a silent fallback is how you stop knowing your primary source is dead.
+- [x] **Real session 2026-08-05 read end to end**: Nifty 24,624.65 (+0.04%), HDFCBANK −0.94%, INFY +0.56%,
+  ICICIBANK −0.31%, Wipro +0.37%, Dr Reddy's +0.29% — all in INR / `Asia/Kolkata`. Produced 5 real tilts
+  (`HDB −0.0189`, `INFY +0.0111`, `WIT +0.0074`, `IBN −0.0062`, `RDY +0.0058`) and the desk consumer read them
+  back correctly, sign-flipped per side.
+- [x] **The index came back genuinely flat (+0.04%) on the first live run**, which is the best possible test of
+  the noise floor: four honest `skipped` entries naming the move, not four fabricated `0.0` tilts. Absent,
+  stale and flat stayed distinguishable on real data, not just in fixtures.
+- [x] **Daily bars are stamped at the session OPEN (03:45 UTC), not the close.** Worth knowing before anyone
+  "fixes" the timestamp handling — `build_payload` reconstructs the 10:00 UTC close from the bar's *date*, so
+  the open-stamp is harmless, but only because nothing reads the bar's time.
 
 ## 🧪 2026-08-05 18:10 — THE IMPROVER'S SIZE GUARD HAD NO TEST, AND ITS OTHER TESTS ONLY PASSED FROM ONE DIRECTORY
 
