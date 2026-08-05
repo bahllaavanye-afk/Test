@@ -46,6 +46,16 @@ TOGETHER_API_KEY  = _resolve_key("TOGETHER_API_KEY", "TOGETHER_API_KEY_1")
 
 STATE_FILE = Path(__file__).resolve().parents[2] / ".github" / "state" / "agent_memory.json"
 
+# Bounded `conversations` growth. Imported defensively: this module is executed
+# standalone in a workflow, and a missing sibling must not break the whole
+# conversation run just to skip a size trim.
+try:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from shared_context import trim_conversations as _trim_conversations
+except Exception:  # noqa: BLE001
+    def _trim_conversations(mem: dict) -> int:  # type: ignore[misc]
+        return 0
+
 def load_memory() -> dict:
     try:
         return json.loads(STATE_FILE.read_text())
@@ -55,6 +65,7 @@ def load_memory() -> dict:
 def save_memory(memory: dict):
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     memory["last_updated"] = datetime.now(timezone.utc).isoformat()
+    _trim_conversations(memory)
     STATE_FILE.write_text(json.dumps(memory, indent=2))
 
 # ── Channel → Employee mapping ─────────────────────────────────────────────────

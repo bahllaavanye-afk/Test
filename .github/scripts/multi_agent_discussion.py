@@ -410,6 +410,12 @@ def main():
     mem["platform_metrics"]["total_discussions"] = mem["platform_metrics"].get("total_discussions", 0) + 1
 
     MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    # Third writer of `conversations`; same unbounded-growth cap as the others.
+    try:
+        from shared_context import trim_conversations
+        trim_conversations(mem)
+    except Exception:  # noqa: BLE001 — a size trim must never fail a save
+        pass
     MEMORY_FILE.write_text(json.dumps(mem, indent=2))
 
     print(f"✓ {len(new_learnings)} new peer learnings added to shared memory")

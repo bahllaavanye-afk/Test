@@ -25,6 +25,47 @@ STATE_FILE = REPO_ROOT / ".github" / "state" / "agent_memory.json"
 SKILL_FILE = REPO_ROOT / ".github" / "state" / "skill_library.json"
 TASK_FILE  = REPO_ROOT / ".github" / "state" / "task_registry.json"
 
+# ── agent_memory.json size control ────────────────────────────────────────────
+#
+# `conversations` is a timestamp-keyed dict that all three writers
+# (claude_conversations.py, employee_conversation_runner.py,
+# multi_agent_discussion.py) append to and NONE of them trimmed. Measured
+# 2026-08-05: 915 entries / 576KB inside a 933KB agent_memory.json, growing
+# ~7KB per commit, and 200 of the last 200 commits rewrote the whole blob.
+# **59.1 MB of the 125 MB .git — 47% of the repository — is 2340 historical
+# copies of this one file.**
+#
+# The only reader is context_sync.py, which does `sorted(convs.items())[-20:]`
+# and displays 10. So ~900 entries were retained to serve a consumer that wants
+# 20. The same file already caps its other structures — `peer_learnings[-100:]`,
+# `failure_traces[-200:]` — the discipline just never reached the largest and
+# fastest-growing one.
+#
+# 300 keeps roughly six full conversation rounds (~48 employees each) and is 15x
+# what any reader asks for. Trimming is by sorted key: the keys are ISO-8601 UTC
+# timestamps, which sort lexicographically in chronological order.
+#
+# This does NOT shrink the existing 59 MB of history — that needs a rewrite,
+# which is not done here. It stops the growth.
+CONVERSATION_CAP = 300
+
+
+def trim_conversations(mem: dict, cap: int = CONVERSATION_CAP) -> int:
+    """Drop all but the newest `cap` conversation entries. Returns how many went.
+
+    Safe on a missing or malformed `conversations` value: agent_memory.json is
+    written by several unrelated scripts and repaired by system_watchdog, so a
+    non-dict here must degrade rather than raise inside somebody's save path.
+    """
+    convs = mem.get("conversations")
+    if not isinstance(convs, dict) or len(convs) <= cap:
+        return 0
+    keep = dict(sorted(convs.items())[-cap:])
+    dropped = len(convs) - len(keep)
+    mem["conversations"] = keep
+    return dropped
+
+
 AGENT_ROLES = {
     "continuous_improver":   "Improves Python code quality across backend + scripts",
     "signal_runner":         "Generates trading signals every 5 min, all desks",

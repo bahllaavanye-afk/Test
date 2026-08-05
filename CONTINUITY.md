@@ -29,6 +29,52 @@ each independently "found" after already being documented.
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
 
 
+## 🗜️ 2026-08-05 03:00 — 47% OF THE GIT REPOSITORY IS ONE UNBOUNDED STATE FILE (growth stopped)
+
+`agent_memory.json` has a `conversations` dict that three writers append to and **none** trimmed.
+
+Measured 2026-08-05:
+```
+conversations      576 KB   915 entries   <- no cap
+employee_context   231 KB    11 entries   <- capped (_HISTORY_CAP = 60/employee)
+peer_learnings      38 KB   200 entries   <- capped [-100:] / [-200:]
+failure_traces       7 KB    41 entries   <- capped [-200:]
+                   ------
+agent_memory.json  933 KB
+```
+Growth ~7 KB per commit (917,453 B at 00:15 → 933,178 B at 02:29). **200 of the last 200 commits touching
+the repo rewrote the whole blob**, so git holds 2340 copies: **59.1 MB of a 125 MB `.git`.**
+
+The retention bought nothing. The only reader is `context_sync.py`:
+`recent = sorted(convs.items())[-20:]`, then it displays 10. ~900 entries retained to serve a consumer
+that reads 20. The file already capped its other three structures; the discipline never reached the
+largest one.
+
+Capped at 300 in `shared_context.trim_conversations`. Applied against the live file: **915 → 300 entries,
+933,178 → 521,231 bytes, 44% smaller**, newest entry retained.
+
+**Only the three PRODUCERS trim, and that is sufficient — do not "finish the job" on the other eleven.**
+`agent_memory.json` has ~14 writers (`heartbeat`, `signal_runner`, `peer_reviewer`, `system_watchdog`,
+`agent_chat_handler`, …). Each is a separate short-lived process: load → mutate → rewrite. A writer that
+adds no conversation entries can only preserve what it read, so **trimmed entries are never resurrected**
+and the dict cannot pass the cap. Patching all 14 would be 11 no-op edits and 11 chances to regress. The
+producers are `claude_conversations.py`, `employee_conversation_runner.py`, `multi_agent_discussion.py`;
+a test fails if a fourth appears.
+
+**The trimmed file is deliberately NOT committed here.** Shipping a state snapshot from a branch reverts
+whatever the bots wrote to main in the meantime — the exact defect recorded at `IMPROVEMENTS.md:857`. The
+bots shrink it themselves on their next write.
+
+**This does not shrink the existing 59 MB of history.** That needs a history rewrite, which is an operator
+decision and is not done here. It stops the growth.
+
+**Two false alarms on the way, both from my own detectors:**
+- An AST scan flagged 11 "uncovered writers". Most were real writers but irrelevant (see above), and two
+  (`context_sync`, `token_usage_monitor`) were pure false positives — the scan matched any file that
+  *mentioned* the path and wrote *something*, including a different file.
+- A substring match on `"conversation"` flagged `agent_chat_handler`, which writes `agent_conversations` —
+  a different structure, already capped at `[-100:]`. Match the exact key.
+
 ## 🧠 2026-08-05 02:10 — THE RETRIEVAL UPGRADE DROPPED WHAT THE DESKS ACTUALLY DID (fixed)
 
 `memory_manager.SemanticRetriever` — pure-python TF-IDF, live for a while (`_MEMORY_MANAGER_OK` is True,

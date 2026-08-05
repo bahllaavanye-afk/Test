@@ -49,6 +49,13 @@ def _load_memory() -> dict:
 
 
 def _save_memory(mem: dict) -> None:
+    # `conversations` is unbounded across all three writers of this file; see
+    # shared_context.trim_conversations for the measurement.
+    try:
+        from shared_context import trim_conversations
+        trim_conversations(mem)
+    except Exception:  # noqa: BLE001 — a size trim must never fail a save
+        pass
     MEMORY_FILE.write_text(json.dumps(mem, indent=2, default=str))
 
 
