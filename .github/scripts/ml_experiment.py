@@ -157,6 +157,44 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     return out.dropna()
 
 
+def sub_window_stats(strat_ret, bench_ret, dates, n_windows: int = 3) -> list[dict]:
+    """Per-sub-period Sharpe for an already-computed out-of-sample series.
+
+    The 2026-08-05 19:22 run beat buy-and-hold on QQQ 1.201 vs 0.734 and NVDA
+    1.184 vs 1.130 — on **one** window. A single number cannot distinguish "the
+    model has an edge" from "the model was long through one good stretch and
+    flat through a crash", and those imply opposite decisions about wiring it
+    into orders.
+
+    This costs nothing: the walk-forward already produced both return series,
+    so slicing them adds no model fits. Equal-length slices by row count, which
+    for daily bars is equal trading time.
+    """
+    import numpy as np
+
+    out: list[dict] = []
+    total = len(strat_ret)
+    if total < n_windows * 30:      # <30 OOS days a slice says nothing
+        return out
+    edges = [round(i * total / n_windows) for i in range(n_windows + 1)]
+
+    def _sharpe(x) -> float:
+        return float(ANNUALIZE * x.mean() / x.std()) if len(x) and x.std() > 0 else 0.0
+
+    for i in range(n_windows):
+        lo, hi = edges[i], edges[i + 1]
+        s, b = strat_ret[lo:hi], bench_ret[lo:hi]
+        out.append({
+            "from": str(dates[lo])[:10],
+            "to": str(dates[hi - 1])[:10],
+            "days": hi - lo,
+            "strategy_sharpe": round(_sharpe(s), 3),
+            "buyhold_sharpe": round(_sharpe(b), 3),
+            "beats": bool(_sharpe(s) > _sharpe(b)),
+        })
+    return out
+
+
 def walk_forward(feat: pd.DataFrame) -> dict:
     from sklearn.ensemble import GradientBoostingClassifier
 
@@ -186,6 +224,9 @@ def walk_forward(feat: pd.DataFrame) -> dict:
     curve = np.cumprod(1 + strat_ret)
     dd = float((1 - curve / np.maximum.accumulate(curve)).max())
     return {
+        # Same arrays, sliced — no extra fits. Answers whether the headline
+        # edge is consistent or one lucky stretch.
+        "sub_windows": sub_window_stats(strat_ret, r, feat.index[mask]),
         "oos_days": int(mask.sum()),
         "hit_rate": round(hit, 4),
         "time_in_market": round(float(long_sig.mean()), 4),
