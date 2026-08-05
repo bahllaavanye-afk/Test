@@ -198,6 +198,35 @@ def main() -> int:
     return _summary()
 
 
+DURABLE_DB_CHECK = "durable database"
+
+
+def _emit_outputs() -> None:
+    """Hand the failure detail to the workflow BEFORE exiting non-zero.
+
+    The Discord page was a fixed string — "a deployed endpoint is broken or
+    serving fake data" — which describes one failure mode out of nine. With the
+    durable-database gate added it would actively misreport the most likely
+    failure. A page that names the wrong cause is worse than the generic one:
+    it sends the reader to the wrong place.
+
+    `only_known_degraded` marks the case where the ONLY failure is the paused
+    primary database. That is operator decision #2, unfixable from code, and it
+    recurs on every push to main (~10/day measured over 2026-08-03/04). The run
+    still goes RED — nothing is hidden, the step summary still lists it — but it
+    does not re-page a channel that already knows. A second, real failure in the
+    same run clears the flag and the page fires normally.
+    """
+    out = os.environ.get("GITHUB_OUTPUT")
+    if not out:
+        return
+    only_known = bool(failures) and all(DURABLE_DB_CHECK in f for f in failures)
+    detail = " · ".join(f.lstrip("❌ ").strip() for f in failures)[:1200]
+    with open(out, "a") as fh:
+        fh.write(f"only_known_degraded={'1' if only_known else '0'}\n")
+        fh.write("failed_checks<<SMOKE_EOF\n" + detail + "\nSMOKE_EOF\n")
+
+
 def _summary() -> int:
     print("── QuantEdge live smoke test ──", flush=True)
     for line in notes + failures:
@@ -208,6 +237,7 @@ def _summary() -> int:
             fh.write("### QuantEdge live smoke test\n\n")
             for line in notes + failures:
                 fh.write(f"- {line}\n")
+    _emit_outputs()
     if failures:
         print(f"\n{len(failures)} check(s) FAILED", flush=True)
         return 1

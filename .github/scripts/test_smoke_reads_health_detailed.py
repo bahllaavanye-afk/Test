@@ -148,6 +148,103 @@ def test_main_actually_calls_it(smoke):
     assert "/health/detailed" in src, "the endpoint is no longer requested"
 
 
+def _outputs(smoke, tmp_path, monkeypatch) -> dict:
+    """Run _emit_outputs against a temp GITHUB_OUTPUT and parse it back."""
+    f = tmp_path / "gh_output"
+    f.write_text("")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(f))
+    smoke._emit_outputs()
+    text = f.read_text()
+    out = {}
+    if "only_known_degraded=" in text:
+        out["only_known_degraded"] = text.split("only_known_degraded=")[1].split("\n")[0]
+    if "failed_checks<<SMOKE_EOF" in text:
+        out["failed_checks"] = text.split("failed_checks<<SMOKE_EOF\n")[1].split("\nSMOKE_EOF")[0]
+    return out
+
+
+def test_a_lone_db_failure_is_flagged_as_known(smoke, tmp_path, monkeypatch):
+    """~10 push-triggered runs/day must not each page an operator-blocked pause."""
+    smoke.health_detailed_checks(200, _payload(checks={
+        "database": {"ok": True, "fallback": "sqlite"},
+        "database_primary": {"ok": False, "error": "unreachable"},
+    }), strict_db=True)
+    out = _outputs(smoke, tmp_path, monkeypatch)
+    assert out["only_known_degraded"] == "1", (
+        "a run whose only failure is the paused primary DB did not set "
+        "only_known_degraded, so it will page #ci-failures on every push."
+    )
+
+
+def test_any_second_failure_clears_the_flag(smoke, tmp_path, monkeypatch):
+    """Suppression must never swallow a real, actionable failure."""
+    smoke.health_detailed_checks(200, _payload(checks={
+        "database": {"ok": True, "fallback": "sqlite"},
+        "database_primary": {"ok": False, "error": "unreachable"},
+    }), strict_db=True)
+    smoke.check("GET /positions/", False, "HTTP 500")
+    out = _outputs(smoke, tmp_path, monkeypatch)
+    assert out["only_known_degraded"] == "0", (
+        "a 500 on /positions/ was suppressed alongside the known DB failure. "
+        "Only a LONE known-degraded failure may skip the page."
+    )
+    assert "/positions/" in out["failed_checks"], (
+        "the real failure is missing from failed_checks, so the page would not "
+        "name it even when it does fire."
+    )
+
+
+def test_a_clean_run_is_not_marked_known_degraded(smoke, tmp_path, monkeypatch):
+    """`all()` over an empty list is True — the trap this test exists for."""
+    smoke.health_detailed_checks(200, _payload(), strict_db=True)
+    out = _outputs(smoke, tmp_path, monkeypatch)
+    assert out["only_known_degraded"] == "0", (
+        "a passing run reported only_known_degraded=1. all([]) is True, so the "
+        "flag needs the `bool(failures) and` guard."
+    )
+
+
+def test_outputs_are_written_before_the_nonzero_exit(smoke, tmp_path, monkeypatch):
+    """_summary() returns 1 — the outputs must already be on disk by then."""
+    smoke.check("GET /trades/", False, "HTTP 500")
+    f = tmp_path / "gh_output"
+    f.write_text("")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(f))
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    rc = smoke._summary()
+    assert rc == 1, "a failing run no longer exits non-zero"
+    assert "failed_checks" in f.read_text(), (
+        "_summary returned 1 without writing outputs, so the page step has "
+        "nothing to report and falls back to a bare link."
+    )
+
+
+def test_no_github_output_env_does_not_crash(smoke, monkeypatch):
+    """Local runs have no GITHUB_OUTPUT."""
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+    smoke.check("x", False, "y")
+    smoke._emit_outputs()  # must be a no-op, not a crash
+
+
+def test_the_workflow_consumes_both_outputs(smoke):
+    wf = (Path(__file__).resolve().parents[1] / "workflows" / "smoke-test.yml").read_text()
+    assert "steps.smoke.outputs.only_known_degraded != '1'" in wf, (
+        "the page step no longer gates on only_known_degraded — every push "
+        "during the pause re-pages #ci-failures."
+    )
+    assert "steps.smoke.outputs.failed_checks" in wf, (
+        "the page no longer receives failed_checks, so it is back to a fixed "
+        "string that names the wrong subsystem."
+    )
+    # The phrase survives in a comment explaining why it was removed, so match
+    # only executable lines — otherwise this test fails on its own rationale.
+    live = [ln for ln in wf.splitlines() if not ln.lstrip().startswith("#")]
+    assert not any("a deployed endpoint is broken or serving fake data" in ln for ln in live), (
+        "the old fixed page text is back. It describes one failure mode out of "
+        "nine and misreports the database gate."
+    )
+
+
 def test_the_strictness_flag_is_wired_to_the_environment(smoke):
     """The workflow passes SMOKE_FAIL_ON_DEGRADED_DB only on push."""
     src = Path(smoke.__file__).read_text()
