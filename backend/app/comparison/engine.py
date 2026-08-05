@@ -4,11 +4,12 @@ compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import date
 import numbers
+from typing import Optional
 
 import pandas as pd
+from pydantic import BaseModel, Field, validator
 from scipy import stats
 
 from app.backtest.engine import run_backtest, BacktestMetrics
@@ -58,23 +59,100 @@ MSG_SERIES_MUST_BE_NUMERIC: str = "series must contain numeric values."
 MSG_STRING_NON_EMPTY: str = "must be a non‑empty string."
 MSG_DATE_TYPE: str = "must be a datetime.date instance."
 
-@dataclass
-class ComparisonResult:
-    strategy_name: str
-    symbol: str
-    interval: str
-    start_date: date
-    end_date: date
-    manual: BacktestMetrics | None = None
-    ml_enhanced: BacktestMetrics | None = None
-    benchmark_curves: dict = field(default_factory=dict)
-    benchmark_stats: dict = field(default_factory=dict)
-    ml_improvement_sharpe: float = 0.0
-    t_statistic: float = 0.0
-    p_value: float = 1.0
-    is_significant: bool = False
-    winner: str = WINNER_NEITHER
+class ComparisonResult(BaseModel):
+    strategy_name: str = Field(
+        ...,
+        description="Name of the strategy under comparison.",
+        example="VWAP+EMA+RSI+MACD",
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol of the asset.",
+        example="AAPL",
+    )
+    interval: str = Field(
+        ...,
+        description="Data interval (e.g., '1d', '5m').",
+        example="1d",
+    )
+    start_date: date = Field(
+        ...,
+        description="Start date of the backtest period.",
+        example="2022-01-01",
+    )
+    end_date: date = Field(
+        ...,
+        description="End date of the backtest period.",
+        example="2022-12-31",
+    )
+    manual: Optional[BacktestMetrics] = Field(
+        None,
+        description="Backtest metrics for manual signals.",
+    )
+    ml_enhanced: Optional[BacktestMetrics] = Field(
+        None,
+        description="Backtest metrics for ML‑enhanced signals.",
+    )
+    benchmark_curves: dict = Field(
+        default_factory=dict,
+        description="Benchmark equity curves for the period.",
+        example={"SP500": [100000, 101000, 102500]},
+    )
+    benchmark_stats: dict = Field(
+        default_factory=dict,
+        description="Statistical summary of the benchmark curves.",
+        example={"mean": 0.05, "volatility": 0.12},
+    )
+    ml_improvement_sharpe: float = Field(
+        0.0,
+        description="Improvement in Sharpe ratio of ML over manual.",
+        example=0.12,
+    )
+    t_statistic: float = Field(
+        0.0,
+        description="t‑statistic from the Sharpe ratio significance test.",
+        example=2.34,
+    )
+    p_value: float = Field(
+        1.0,
+        description="p‑value from the Sharpe ratio significance test.",
+        example=0.0185,
+    )
+    is_significant: bool = Field(
+        False,
+        description="Whether the Sharpe improvement is statistically significant.",
+        example=True,
+    )
+    winner: str = Field(
+        WINNER_NEITHER,
+        description="Winner of the comparison: 'ml', 'manual', or 'neither'.",
+        example="ml",
+    )
 
+    @validator("start_date", "end_date", pre=True)
+    def validate_date_type(cls, v):
+        if not isinstance(v, date):
+            raise ValueError(MSG_DATE_TYPE)
+        return v
+
+    @validator("end_date")
+    def validate_date_order(cls, v, values):
+        start = values.get("start_date")
+        if start and v < start:
+            raise ValueError(ERROR_DATE_ORDER_MSG)
+        return v
+
+    @validator("ml_improvement_sharpe", pre=True, always=True)
+    def round_improvement(cls, v):
+        return round(v, IMPROVEMENT_ROUND)
+
+    @validator("t_statistic", pre=True, always=True)
+    def round_t_statistic(cls, v):
+        return round(v, T_STAT_ROUND)
+
+    @validator("p_value", pre=True, always=True)
+    def round_p_value(cls, v):
+        return round(v, P_VAL_FINAL_ROUND)
 
 class StrategyComparisonEngine:
     @staticmethod
@@ -195,9 +273,9 @@ class StrategyComparisonEngine:
             ml_enhanced=ml_metrics,
             benchmark_curves=benchmark_curves,
             benchmark_stats=benchmark_stats,
-            ml_improvement_sharpe=round(improvement, IMPROVEMENT_ROUND),
-            t_statistic=round(float(t_stat), T_STAT_ROUND),
-            p_value=round(float(p_val), P_VAL_FINAL_ROUND),
+            ml_improvement_sharpe=improvement,
+            t_statistic=t_stat,
+            p_value=p_val,
             is_significant=p_val < SIGNIFICANCE_LEVEL,
             winner=winner,
         )
