@@ -1,5 +1,30 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🇮🇳 2026-08-05 20:06 — INDIA MUTUAL FUNDS: FIRST SCHEDULED RUN, FULL PIPELINE VERIFIED
+
+`india-mf.yml` fired for the first time and every stage produced something. Not "exit 0" — output at each link:
+
+```
+14,241 schemes, 3,008 investable (Direct+Growth)
+364 and 501 schemes with usable NAV history (per-AMC fetches)
+category leaders (38 categories with enough peers)
+[notify] delivered #desk-india-mf via WEBHOOK
+[main 608eb26] india-mf: NAV ranking 2026-08-05 [skip ci]
+```
+
+- [x] **The category ranking is real: 38 categories cleared `min_peers`.** This is the half that was silently
+  lost when the workflow scraped stdout by leading character and captured **0 of 114** category lines; the
+  structured `/tmp/india_mf_discord.md` artifact replaced that, and this run is the proof it works.
+- [x] **State committed to main** (`608eb260`, 4,767 bytes, keys `runs`/`as_of`/`investable`) — so the history
+  accumulates rather than being recomputed and discarded, the failure `quick-backtest` lived with for months.
+- [ ] **[P2] The Discord post did NOT land in `#desk-india-mf`.** The log is explicit:
+  `no channel id for '#desk-india-mf' in this guild — webhook fallback`, then `delivered … (default → lands in
+  whichever channel the default webhook targets)`. So the ranking posted *somewhere*, not where it belongs.
+  **The notifier is behaving correctly** — it says exactly what it did instead of silently dropping the
+  message, which is the whole point of that fallback — but the channel does not exist in the guild. Creating
+  `#desk-india-mf` (and re-checking `desk-india-nse`) is an operator action; nothing in code can create a
+  Discord channel it has no ID for.
+
 ## 🚨 2026-08-05 19:10 — THE AUDIT FIRED ON ITS FIRST LIVE RUN: SOMETHING ELSE IS BUYING ON THIS ACCOUNT
 
 Run `31037485632`, the first desk run carrying `audit_order_origins()`:
@@ -188,7 +213,12 @@ numbers, and they hold:
   **High-frequency crons get their slots dropped; low-frequency crons fire reliably but LATE.** Every one of
   those five ml-experiments runs landed at **06:4x UTC against a nominal 04:17** — a consistent ~2.5 hour
   delay, never a miss.
-- [x] **CORRECTION 19:40 — the lag is 2.5–4.7 hours, not "~2.5".** One workflow was too small a sample:
+- [x] **CORRECTION 19:40, then AGAIN at 20:06 — the lag is *variable*, 1.5–4.7 hours, and quoting any range as
+  if it were a schedule is itself the mistake.** `india-mf` fired at **20:06:35 against a nominal 18:30 —
+  1h36m**, *shorter* than the "2.5–4.7h" I had published minutes earlier and outside the 21:00–23:15 arrival I
+  predicted from it. Two revisions of one number inside an hour. The durable lesson is not the range: **the
+  nominal minute predicts nothing, so a consumer must tolerate the whole spread** — which is exactly what the
+  tilt file's 30h age window does, and why no code changed either time. The samples:
 
   | workflow | nominal | actual | lag |
   |---|---|---|---|
@@ -198,8 +228,8 @@ numbers, and they hold:
 
   Ruled out along the way: **the minute is not the cause.** 41 of this repo's crons sit on `:00` and it is
   tempting to blame collision, but other `:30` workflows fire fine — `daily-standup` has **235** scheduled
-  runs, `strategy-auto-tune` 42. `india-mf` at `30 18` has 0 only because its first slot is not actually due
-  yet at this lag: **expected arrival 21:00–23:15 UTC**, not 18:30.
+  runs, `strategy-auto-tune` 42. `india-mf` at `30 18` showed 0 runs simply because it had not fired
+  yet — it arrived at **20:06:35**.
 - [x] **So the risk to the India workflows is lateness, not absence — but the margin is thinner than I first
   wrote.** `india-nse-signal.yml` (`20 10 * * 1-5`) has ~3h before the 13:30 UTC open, and at the **corrected**
   2.5–4.7h lag it may land at 12:50–15:00 — i.e. **it can miss the open**, where the 2.5h figure said it never
