@@ -52,6 +52,21 @@ _UA = {"User-Agent": "Mozilla/5.0 (compatible; QuantEdge/1.0)"}
 # entry, where an uncapped state file became 47% of the git repository.
 HISTORY_KEEP = 120
 
+# AMFI's `mf=` history parameter, resolved by probe on 2026-08-05 (the codes are
+# not published anywhere machine-readable). These are the large AMCs by AUM; the
+# ranking is computed within them rather than across all 52, because each AMC is
+# one HTTP request and 52 daily requests against a free public endpoint is
+# inconsiderate for very little added signal.
+AMC_CODES: dict[int, str] = {
+    9:  "HDFC",
+    22: "SBI",
+    21: "Nippon India",
+    3:  "Aditya Birla Sun Life",
+    53: "Axis",
+    28: "UTI",
+    27: "Franklin India",
+}
+
 
 @dataclass
 class Scheme:
@@ -74,7 +89,16 @@ class Scheme:
         'growth': many schemes name the growth option implicitly, and requiring
         the word drops them.
         """
-        return not re.search(r"\bIDCW\b|\bdividend\b|\bdiv\b", self.name, re.I)
+        return not re.search(
+            r"\bIDCW\b|\bdividend\b|\bdiv\b"
+            # AMFI also spells IDCW out in full, and that form defeated the
+            # abbreviation match: the 2026-08-05 live run ranked "SBI Innovative
+            # Opportunities Fund - Direct Plan - Growth" and "... - Income
+            # Distribution cum Capital Withdrawal" as two separate 13.58%
+            # entries, plus the same for SBI Automotive. Same portfolio, two
+            # slots, and the payout variant is the wrong one to hold.
+            r"|income\s+distribution",
+            self.name, re.I)
 
 
 def _get(url: str) -> str:
@@ -221,6 +245,28 @@ def main() -> int:
         return 1
 
     as_of = universe[0].date
+    names = {s.code: s.name for s in schemes}
+    codes = {s.code for s in universe}
+
+    # Ranking window. 90 calendar days is ~60 NAV points, enough for a trailing
+    # return that is not one week of noise.
+    hist: dict[str, list[tuple[str, float]]] = {}
+    for amc_code, label in AMC_CODES.items():
+        try:
+            got = fetch_nav_history(amc_code, days=90)
+            hist.update(got)
+            print(f"[india_mf]   {label}: {len(got)} schemes with history", flush=True)
+        except Exception as exc:  # noqa: BLE001 — one AMC must not sink the run
+            print(f"[india_mf]   {label}: history unavailable ({exc})", flush=True)
+
+    top = rank_by_momentum(hist, names, top_n=10, investable=codes)
+    if top:
+        print(f"\n[india_mf] top {len(top)} Direct-Growth funds by 90d NAV return:", flush=True)
+        for r in top:
+            print(f"    {r['return_pct']:>7.2f}%  NAV {r['nav']:>10.4f}  {r['name'][:64]}", flush=True)
+    else:
+        print("[india_mf] no fund cleared the ranking filters", flush=True)
+
     state = load_state()
     runs = state.get("runs") or []
     runs.append({
@@ -229,12 +275,20 @@ def main() -> int:
         "schemes_total": len(schemes),
         "investable": len(universe),
         "amcs": len(amcs),
+        "ranked": len(top),
+        "top": top[:5],
     })
     state["runs"] = runs
     state["as_of"] = as_of
     state["investable"] = len(universe)
     save_state(state)
-    print(f"[india_mf] NAV as of {as_of} — state written to {STATE_FILE}", flush=True)
+    print(f"\n[india_mf] NAV as of {as_of} — state written to {STATE_FILE}", flush=True)
+
+    try:
+        from india_broker import status_line
+        print(f"[india_mf] {status_line()}", flush=True)
+    except Exception:  # noqa: BLE001
+        pass
     return 0
 
 
