@@ -1,0 +1,79 @@
+name: India Mutual Funds — daily NAV + ranking
+
+# AMFI publishes NAV around 21:00-23:00 IST (15:30-17:30 UTC), so this runs at
+# 18:30 UTC to read a fresh file. Indian MFs price once a day and settle T+1/T+2
+# — there is no intraday quote — so a daily cadence is the correct one, not the
+# 50-minute desk beat.
+on:
+  schedule:
+    - cron: "30 18 * * 1-5"
+  workflow_dispatch: {}
+
+# Without this the token is read-only and the state commit 403s — the exact
+# failure that left quick-backtest with zero persisted results since inception.
+permissions:
+  contents: write
+
+concurrency:
+  group: india-mf
+  cancel-in-progress: false
+
+jobs:
+  nav:
+    runs-on: ubuntu-latest
+    # Eight AMFI requests (one universe + seven AMC histories) on a free public
+    # endpoint. 12 minutes is generous; a hang must not burn the runner budget.
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+
+      - name: Fetch NAV and rank
+        id: mf
+        run: python .github/scripts/india_mf.py 2>&1 | tee /tmp/mf.txt
+
+      - name: Post the ranking to Discord
+        if: always()
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, ".github/scripts")
+          import notify
+          try:
+              out = open("/tmp/mf.txt").read()
+          except FileNotFoundError:
+              out = ""
+          head = [l for l in out.splitlines() if l.startswith("[india_mf] 1")
+                  or "investable" in l]
+          top = [l.strip() for l in out.splitlines() if l.strip().startswith(("1", "2", "3", "4", "5", "6", "7", "8", "9", "-"))
+                 and "NAV" in l][:10]
+          if not top:
+              # Say so rather than posting an empty embed — a silent channel and
+              # a broken fetch must not look identical.
+              body = "🇮🇳 **India MF** — no ranking produced this run (see the workflow log)."
+          else:
+              body = ("🇮🇳 **India Mutual Funds** — top Direct-Growth by 90d NAV return\n"
+                      + (head[0] if head else "") + "\n```\n" + "\n".join(top) + "\n```")
+          notify.post("desk-india-mf", body, username="QuantEdge India MF")
+          PY
+
+      - name: Commit the NAV state
+        if: always()
+        continue-on-error: true
+        run: |
+          git config user.email "india-mf@quantedge.ai"
+          git config user.name "QuantEdge India MF"
+          git add -A .github/state/india_mf.json
+          if ! git diff --cached --quiet; then
+            git commit -m "india-mf: NAV ranking $(date -u +%Y-%m-%d) [skip ci]"
+            for i in 1 2 3 4; do
+              git pull --rebase --quiet origin main && git push origin HEAD:main && break || sleep $((i*2))
+            done
+          fi

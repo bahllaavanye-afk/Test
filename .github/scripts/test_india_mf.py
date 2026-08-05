@@ -173,3 +173,67 @@ def test_save_state_applies_the_cap(tmp_path, monkeypatch):
     kept = json.loads((tmp_path / "india_mf.json").read_text())["runs"]
     assert len(kept) == M.HISTORY_KEEP
     assert kept[-1]["n"] == M.HISTORY_KEEP + 39, "the cap kept the oldest runs"
+
+
+# ── the expanded-IDCW gap, and the daily workflow ─────────────────────────────
+
+@pytest.mark.parametrize("name,growth", [
+    ("X Fund - Direct Plan - Growth", True),
+    ("X Fund - Direct Plan - Growth Option", True),
+    ("X Fund - Direct Plan", True),
+    ("X Fund - Direct Plan - IDCW", False),
+    ("X Fund - Direct Plan - Monthly Dividend", False),
+    # AMFI spells IDCW out in full, and that defeated the abbreviation match.
+    # Live run 2026-08-05 ranked "SBI Innovative Opportunities Fund - Direct
+    # Plan - Growth" and "... - Income Distribution cum Capital Withdrawal" as
+    # two separate 13.58% entries, plus the same for SBI Automotive: one
+    # portfolio, two slots, and the payout variant is the wrong one to hold.
+    ("SBI Innovative Opportunities Fund - Direct Plan - Income Distribution cum "
+     "Capital Withdrawal", False),
+    ("X Fund - Direct - INCOME DISTRIBUTION CUM CAPITAL WITHDRAWAL", False),
+])
+def test_growth_detection_covers_both_spellings(name, growth):
+    s = M.Scheme(code="1", name=name, isin="", nav=10.0, date="", amc="")
+    assert s.is_growth is growth, f"is_growth={s.is_growth} for {name!r}"
+
+
+def test_the_amc_codes_are_present_and_plausible():
+    """Resolved by probe — they are not published machine-readably."""
+    assert len(M.AMC_CODES) >= 5, "the ranking universe shrank to a handful of AMCs"
+    assert all(isinstance(k, int) and v for k, v in M.AMC_CODES.items())
+    assert "HDFC" in M.AMC_CODES.values() and "SBI" in M.AMC_CODES.values(), (
+        "the two largest Indian AMCs are missing from the ranking universe"
+    )
+
+
+def test_the_workflow_can_commit_what_it_writes():
+    """quick-backtest had no permissions block and persisted nothing for months."""
+    yaml = pytest.importorskip("yaml")
+    wf = Path(__file__).resolve().parents[1] / "workflows" / "india-mf.yml"
+    assert wf.exists(), "the daily India MF workflow is gone"
+    doc = yaml.safe_load(wf.read_text())
+    assert (doc.get("permissions") or {}).get("contents") == "write", (
+        "india-mf.yml cannot write, so its NAV state can never be committed"
+    )
+    (job,) = doc["jobs"].values()
+    assert job.get("timeout-minutes"), "no timeout — a hung fetch burns the runner"
+
+
+def test_the_workflow_runs_daily_not_on_the_desk_beat():
+    """MFs price once a day; a 50-minute cadence would be 29 identical runs."""
+    yaml = pytest.importorskip("yaml")
+    wf = Path(__file__).resolve().parents[1] / "workflows" / "india-mf.yml"
+    doc = yaml.safe_load(wf.read_text())
+    sched = (doc.get("on") or doc.get(True)).get("schedule")
+    assert sched, "no schedule — the module would only run by hand"
+    cron = sched[0]["cron"].split()
+    assert cron[1] != "*", f"cron {sched[0]['cron']!r} fires hourly or faster"
+
+
+def test_the_discord_post_says_something_when_there_is_no_ranking():
+    """A silent channel and a broken fetch must not look identical."""
+    wf = (Path(__file__).resolve().parents[1] / "workflows" / "india-mf.yml").read_text()
+    assert "no ranking produced this run" in wf, (
+        "the Discord step posts nothing when the ranking is empty — the failure "
+        "this repo keeps rediscovering, in a brand-new channel."
+    )

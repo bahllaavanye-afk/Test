@@ -16,8 +16,13 @@
 - [x] **Universe is Direct + Growth deliberately.** Direct plans carry no distributor commission (~0.5-1.0%
   lower expense ratio); IDCW options pay out of NAV, so their series has discontinuities that look exactly like
   negative returns.
-- [ ] **[P1] Next:** daily workflow + `#desk-india-mf` channel, and category-relative ranking (a top-quartile
-  large-cap fund is a different claim from a sector fund that happened to run).
+- [x] **[P1] Daily workflow SHIPPED** — `india-mf.yml`, 18:30 UTC Mon-Fri (AMFI publishes 15:30-17:30 UTC), posts
+  the top 10 to `#desk-india-mf`, commits bounded state, `contents: write` so the commit cannot 403 the way
+  quick-backtest did. Live run ranks across 7 major AMCs (HDFC, SBI, Nippon, ABSL, Axis, UTI, Franklin).
+- [ ] **[P1] Category-relative ranking.** The current list is dominated by sector funds — the live top 10 is
+  transportation/logistics, healthcare, technology and automotive. A sector fund that happened to run is a
+  different claim from a top-quartile large-cap fund, and ranking them together is not a like-for-like
+  comparison. Needs the AMFI category header (already parsed as a section marker, currently discarded).
 
 ### 🔴 [USER] Zerodha cannot be the automated bot — pick AngelOne or Dhan
 - [ ] **Kite Connect issues `request_token` only via a browser redirect a human completes, and `access_token`
