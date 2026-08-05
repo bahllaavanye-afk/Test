@@ -1,0 +1,215 @@
+{
+  "runs": [
+    {
+      "ran_at": "2026-08-05T20:07:28.557819+00:00",
+      "as_of": "05-Aug-2026",
+      "schemes_total": 14241,
+      "investable": 3008,
+      "amcs": 52,
+      "ranked": 10,
+      "top": [
+        {
+          "code": "152158",
+          "name": "Aditya Birla Sun Life Transportation and Logistics Fund-Direct Growth",
+          "points": 63,
+          "return_pct": 16.23,
+          "nav": 18.05,
+          "as_of": "05-Aug-2026"
+        },
+        {
+          "code": "152776",
+          "name": "SBI Innovative Opportunities Fund - Direct Plan - Growth",
+          "points": 64,
+          "return_pct": 14.27,
+          "nav": 10.8511,
+          "as_of": "05-Aug-2026"
+        },
+        {
+          "code": "152657",
+          "name": "SBI Automotive Opportunities Fund - Direct Plan - Growth",
+          "points": 64,
+          "return_pct": 13.81,
+          "nav": 13.7043,
+          "as_of": "05-Aug-2026"
+        },
+        {
+          "code": "151901",
+          "name": "HDFC Transportation and Logistics Fund - Growth Option - Direct Plan",
+          "points": 63,
+          "return_pct": 13.77,
+          "nav": 20.688,
+          "as_of": "05-Aug-2026"
+        },
+        {
+          "code": "119783",
+          "name": "SBI HEALTHCARE OPPORTUNITIES FUND - DIRECT PLAN -GROWTH",
+          "points": 64,
+          "return_pct": 13.63,
+          "nav": 597.9557,
+          "as_of": "05-Aug-2026"
+        }
+      ],
+      "categories_ranked": 38,
+      "category_leaders": {
+        "Close Ended Schemes(Income)": [
+          {
+            "code": "151708",
+            "name": "Nippon India Fixed Maturity Plan-XLV-Series 5-Direct Plan-Growth Option",
+            "category": "Close Ended Schemes(Income)",
+            "return_pct": 2.54,
+            "nav": 13.291,
+            "points": 63,
+            "as_of": "05-Aug-2026",
+            "rank": 1,
+            "peers": 36
+          }
+        ],
+        "Open Ended Schemes(Debt Scheme - Banking and PSU Fund)": [
+          {
+            "code": "134547",
+            "name": "Nippon India Banking and PSU  Fund- Direct Plan-Growth Plan- Growth Option",
+            "category": "Open Ended Schemes(Debt Scheme - Banking and PSU Fund)",
+            "return_pct": 2.33,
+            "nav": 22.9233,
+            "points": 63,
+            "as_of": "05-Aug-2026",
+            "rank": 1,
+            "peers": 8
+          }
+        ],
+        "Open Ended Schemes(Debt Scheme - Corporate Bond Fund)": [
+          {
+            "code": "118987",
+            "name": "HDFC Corporate Bond Fund - Growth Option - Direct Plan",
+            "category": "Open Ended Schemes(Debt Scheme - Corporate Bond Fund)",
+            "return_pct": 2.4,
+            "nav": 35.3054,
+            "points": 63,
+            "as_of": "05-Aug-2026",
+            "rank": 1,
+            "peers": 8
+          }
+        ],
+        "Open Ended Schemes(Debt Scheme - Credit Risk Fund)": [
+          {
+            "code": "119798",
+            "name": "SBI CREDIT RISK FUND - DIRECT PLAN -GROWTH",
+            "category": "Open Ended Schemes(Debt Scheme - Credit Risk Fund)",
+            "return_pct": 2.92,
+            "nav": 53.7726,
+            "points": 64,
+            "as_of": "05-Aug-2026",
+            "rank": 1,
+            "peers": 7
+          }
+        ],
+        "Open Ended Schemes(Debt Scheme - Dynamic Bond)": [
+          {
+            "code": "120451",
+            "name": "Axis Dynamic Bond Fund - Direct Plan - Growth Option",
+            "category": "Open Ended Schemes(Debt Scheme - Dynamic Bond)",
+            "return_pct": 2.69,
+            "nav": 34.7837,
+            "points": 64,
+            "as_of": "05-Aug-2026",
+            "rank": 1,
+            "peers": 6
+          }
+        ],
+        "Open Ended Schemes(Debt Scheme - Floater Fund)": [
+          {
+            "code": "149049",
+            "name": "Axis Floater Fund - Direct Plan - Growth",
+            "category": "Open Ended Schemes(Debt Scheme - Floater Fund)",
+            "return_pct": 2.82,
+            "nav": 1422.0429,
+            "points": 64,
+            "as_of": "05-Aug-2026",
+            "rank": 1,
+            "peers": 7
+          }
+        ],
+        "Open Ended Schemes(Debt Scheme - Gilt Fund)": [
+          {
+            "code": "119116",
+            "name": "HDFC Gilt Fund - Growth Option - Direct Plan",
+            "category": "Open Ended Schemes(Debt Scheme - Gilt Fund)",
+            "return_pct": 2.52,
+            "nav": 60.7575,
+            "points": 63,
+            "as_of": "05-Aug-2026",
+            "rank": 1,
+            "peers": 11
+          }
+        ],
+        "Open Ended Schemes(Debt Scheme - Liquid Fund)": [
+          {
+            "code": "118577",
+            "name": "Franklin India Liquid Fund - Super Institutional - Direct - Growth",
+            "category": "Open Ended Schemes(Debt Scheme - Liquid Fund)",
+            "return_pct": 1.71,
+            "nav": 4243.8117,
+            "points": 91,
+            "as_of": "05-Aug-2026",
+            "rank": 1,
+            "peers": 6
+          }
+        ],
+        "Open Ended Schemes(Debt Scheme - Long Duration Fund)": [
+          {
+            "code": "143704",
+            "name": "Nippon India Nivesh Lakshya Long Duration Fund- Direct Plan- Growth Option",
+            "category": "Open Ended Schemes(Debt Scheme - Long Duration Fund)",
+            "return_pct": 2.67,
+            "nav": 18.8274,
+            "points": 63,
+            "as_of": "05-Aug-2026",
+            "rank": 1,
+            "peers": 7
+          }
+        ],
+        "Open Ended Schemes(Debt Scheme - Low Duration Fund)": [
+          {
+            "code": "118702",
+            "name": "Nippon India Low Duration Fund - Direct Plan Growth Plan - Bonus Option",
+            "category": "Open Ended Schemes(Debt Scheme - Low Duration Fund)",
+            "return_pct": 1.87,
+            "nav": 2476.9622,
+            "points": 63,
+            "as_of": "05-Aug-2026",
+            "rank": 1,
+            "peers": 8
+          }
+        ],
+        "Open Ended Schemes(Debt Scheme - Medium Duration Fund)": [
+          {
+            "code": "119824",
+            "name": "SBI MEDIUM DURATION FUND - DIRECT PLAN - GROWTH",
+            "category": "Open Ended Schemes(Debt Scheme - Medium Duration Fund)",
+            "return_pct": 2.74,
+            "nav": 59.5183,
+            "points": 64,
+            "as_of": "05-Aug-2026",
+            "rank": 1,
+            "peers": 7
+          }
+        ],
+        "Open Ended Schemes(Debt Scheme - Medium to Long Duration Fund)": [
+          {
+            "code": "152851",
+            "name": "Franklin India Medium to Long Duration Fund - Direct Growth",
+            "category": "Open Ended Schemes(Debt Scheme - Medium to Long Duration Fund)",
+            "return_pct": 2.83,
+            "nav": 11.3267,
+            "points": 63,
+            "as_of": "05-Aug-2026",
+            "rank": 1,
+            "peers": 8
+          }
+        ]
+      }
+    }
+  ],
+  "as_of": "05-Aug-2026",
+  "investable": 3008
+}
