@@ -1,5 +1,72 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🩺 2026-08-05 08:15 — DEEP REVIEW: desks, trades, Discord, and every web page
+
+Full sweep against the LIVE system, not the repo. Everything below is measured; run ids and figures included so
+none of it has to be re-derived.
+
+### 🔴 [P0][USER] THE ACCOUNT IS OUT OF MARGIN — nothing has traded for ~7 hours
+- [ ] **This is now the single binding constraint on the whole platform, ahead of every other item in this file.**
+  Buying power across the last ten desk runs:
+  ```
+  00:41 bp=$0.00     01:31 bp=$0.00     04:26 bp=$116.98
+  00:58 bp=$0.00     02:22 bp=$46.35    05:15 bp=$101.23
+  01:03 bp=$27.61    07:05 bp=$115.79   07:56 bp=$206.86
+  ```
+  **`cash` is pinned at exactly −$33,401.86 from 00:58 to 07:56** — an unchanging cash balance across eight runs
+  means **zero fills in that window**. Equity drifts $21,892 → $22,013 on mark-to-market alone.
+- [ ] **The desks are healthy; there is simply no capacity.** Latest run `30986611287` (07:56):
+  `funnel: 51 generated → 17 survived gate+topK (3 exploration) → 0 placed`, dropped as
+  `13 market closed · 3 no order path · 1 insufficient cash`. Signal generation, gating and top-K all work. With
+  `MIN_ORDER_USD = 25` and available = `0.95 × buying_power`, a $0–$200 book can place essentially nothing.
+- [ ] **The safety logic is correctly refusing to fix it.** `recover_negative_cash` declines to flatten while
+  `bp > 0` ("MARGIN DEBIT, not orphaned notional") — deliberately, because the 2026-07-27 incident showed
+  flattening a levered book realises losses, trips the daily loss cap, and freezes trading until session rollover.
+  **Do not "fix" this by making it flatten.**
+- [ ] **[USER] The decision is capital, not code.** Options: (a) reset the Alpaca paper account to restore buying
+  power — fastest, loses the position history; (b) let the book run and only trade on days positions close;
+  (c) add a margin-utilisation cap so desks stop sizing up before reaching 100%, which prevents recurrence but
+  does not free the currently-committed capital. This supersedes the crypto-starvation entry (2026-08-04 17:45)
+  — that described equity margin starving crypto; the equity margin is now exhausted too.
+
+### 🟠 [P1] 18 OF 55 FRONTEND ENDPOINTS SERVE EMPTY PAYLOADS — ~10 pages render blank
+- [ ] **Plumbing is sound: 54/55 genuine GET endpoints return HTTP 200** (the one 422 is `/market-data/bars`
+  missing a required `symbol`, i.e. a probe artefact, not a defect). No 404s, no 5xx. **Pages are not broken —
+  they are empty**, which to a user is indistinguishable.
+- [ ] **Empty, grouped by root cause:**
+  - **Ephemeral DB (unpause Supabase fixes all of these):** `/backtests/`, `/experiments/`, `/releases/`,
+    `/releases/ab-tests/active`, `/risk/events`, `/notifications/activity`, `/notifications/stats`,
+    `/archive/index`, `/comparison/results`, `/bots/?archived=true`, `/analytics/slippage`,
+    `/analytics/arb-opportunities`. Pages: BacktestLab, Experiments, Releases, RiskManager, Activity, Archive,
+    Comparison, Analytics, PnL, CryptoTrading.
+  - **`/analytics/slippage` has a second cause worth noting:** it reads `Trade.execution_algo`, and `/trades/`
+    returns **0 rows**. The desk measures slippage per fill (shipped 2026-08-04) but posts it to Discord and the
+    Actions log only — it never reaches the backend. Even with a live DB this stays empty until desk fills land
+    as `Trade` rows.
+  - **Agent subsystem (already logged as unreachable, 9 modules):** `/agents/code-reviews`, `/agents/memory`,
+    `/agents/skills`, `/agents/tasks` → AgentDashboard is entirely blank.
+  - **ML (operator decision — torch excluded from Render):** `/ml/models` → MLInsights blank.
+- [ ] **[P2] Empty-state honesty.** Several of these pages render an empty table with no explanation. A one-line
+  "no data yet — durable DB is paused" beats a blank grid that reads as a bug. Cheap, and it stops the next
+  reviewer re-deriving this list.
+
+### ✅ DESKS — all 9 verified correctly configured
+- [x] Equities, Crypto, Options, Polymarket, Macro/FX, StatArb, Commodities, TV Indicators, International.
+      Crypto is the only `always_open=True` (line 152); Polymarket the only `executable=False`, and it now reports
+      `NO ORDER PATH` honestly rather than "closed" — 3 such signals at conf=0.99 in the latest run.
+- [ ] **[P2] International shares `#desk-equities`** as its chat channel, so its output is indistinguishable from
+      the Equities desk in Discord. Give it `#desk-international` or prefix its lines.
+
+### 📣 DISCORD — 21 real channels targeted
+- [x] `cto-audit, desk-commodities, desk-crypto, desk-equities, desk-fx-rates, desk-lead-review, desk-options,
+      desk-polymarket, desk-research, desk-stat-arb, desk-tv-indicators, engineering, infra-alerts,
+      market-analysis, ml-experiments, pnl-daily, risk-alerts, signals, squad-backend, squad-data, strategy-lab`
+- [ ] **[P2] `#desk-kalshi` is referenced by the unbuilt Kalshi desk item** but no producer posts to it — it will
+      stay empty until that desk ships. Either build it or drop the channel from the plan.
+- [ ] **[P2] Desk channels only receive output when a desk PLACES an order.** With buying power at zero the desk
+      channels have been silent for hours while the desks ran fine — the same "silence means broken" ambiguity the
+      run summary fixed for `#pnl-daily`. Post the per-desk funnel line even on a zero-order run.
+
 ## 🔇 2026-08-04 09:50 — the OA scout committed 56 times having never found anything
 - [x] **Fixed: no-op runs no longer commit.** `oa_library.json` has read `{"known": []}` since it was created — every OA
   page redirects to a login and `OA_SESSION_COOKIE` has never been set, so the scout is a no-op by construction until a

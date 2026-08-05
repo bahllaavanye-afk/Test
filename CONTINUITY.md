@@ -29,6 +29,47 @@ each independently "found" after already being documented.
 | 10 | **Commit signing / merge path** | decision | Silences the recurring "Unverified commits" stop-hook. Those commits are GitHub squash-merges and repo state-bots, not mine — I have declined to rewrite them every time, since amending would reattribute other authors' merged work to me. |
 
 
+## 🔴 2026-08-05 08:15 — THE ACCOUNT IS OUT OF MARGIN. Nothing has traded for ~7 hours.
+
+**This is now the binding constraint on the entire platform**, ahead of everything else in this file. The desks
+are fine. There is no capacity.
+
+Buying power across the last ten desk runs:
+```
+00:41 bp=$0.00     01:31 bp=$0.00     04:26 bp=$116.98
+00:58 bp=$0.00     02:22 bp=$46.35    05:15 bp=$101.23
+01:03 bp=$27.61    07:05 bp=$115.79   07:56 bp=$206.86
+```
+**`cash` is pinned at exactly −$33,401.86 from 00:58 through 07:56.** An unchanging cash balance across eight
+consecutive runs means **zero fills** in that window. Equity drifts $21,892 → $22,013 on mark-to-market alone.
+
+**The desks are healthy — this is not a signal or code problem.** Run `30986611287` (07:56):
+```
+funnel: 51 generated → 17 survived gate+topK (3 exploration) → 0 placed
+⚠️ 17 dropped — 13 market closed · 3 no order path · 1 insufficient cash
+```
+Generation, gating and top-K all work. `MIN_ORDER_USD = 25` against `0.95 × buying_power` means a $0–$200 book
+places nothing.
+
+**The safety logic is correctly refusing to fix this, and must keep refusing.** `recover_negative_cash` declines
+to flatten while `bp > 0` ("MARGIN DEBIT, not orphaned notional"). That restraint is load-bearing: the
+2026-07-27 incident shows flattening a levered book realises losses, trips the daily loss cap and freezes
+trading until session rollover. **Do not make it flatten.**
+
+**[USER] The decision is capital, not code.**
+1. Reset the Alpaca paper account — fastest, restores buying power, loses position history.
+2. Let the book run and accept trading only as positions close.
+3. Add a margin-utilisation cap so desks stop sizing up before 100% — prevents recurrence, frees nothing now.
+
+**This supersedes the 2026-08-04 17:45 crypto-starvation entry.** That described equity margin consuming the
+non-marginable cash crypto needs. Equity margin is now exhausted as well, so both sides are stalled and the
+allocation-policy question has become urgent rather than theoretical.
+
+**Verified simultaneously, so it is not confused with the above:** 54 of 55 frontend GET endpoints return HTTP
+200 — no 404s, no 5xx. The web app's plumbing is sound; 18 endpoints simply have nothing to serve, ~10 pages
+render blank, and almost all of it traces to the paused durable DB. Full breakdown in `IMPROVEMENTS.md`
+under "DEEP REVIEW".
+
 ## 📉 2026-08-05 08:00 — KEY PRESENCE IS NOT CAPACITY. 5/47, and the declared limit was fiction.
 
 Run `30986127682` (07:43), the first with pacing:
