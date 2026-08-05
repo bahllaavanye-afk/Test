@@ -11,9 +11,35 @@ from app.bots.templates import BOT_TEMPLATES
 from app.brokers.tradestation import TradeStationBroker
 from app.schemas.bot import ActionConfig, BotCreate, OptionLeg
 
+# --------------------------------------------------------------------------- #
+# Constants
+# --------------------------------------------------------------------------- #
+TEST_DATE_CALL = date(2024, 1, 19)
+TEST_DATE_PUT = date(2024, 3, 15)
+
+EXPECTED_SYMBOL_CALL = "SPY 240119C447.5"
+EXPECTED_SYMBOL_PUT = "AAPL 240315P150"
+
+ACCOUNT_ID = "ACC123"
+ACCOUNT_ID_LIMIT = "ACC"
+
+LEG_SYMBOL_SELL = "SPY 240119P440"
+LEG_SYMBOL_BUY = "SPY 240119P430"
+LEG_SYMBOL_SINGLE = "QQQ 240119C400"
+
+ORDER_TYPE_MARKET = "Market"
+ORDER_TYPE_LIMIT = "Limit"
+
+TRADE_ACTION_SELL = "SELLTOOPEN"
+TRADE_ACTION_BUY = "BUYTOOPEN"
+TRADE_ACTION_BUY_CLOSE = "BUYTOCLOSE"
+
+QUANTITY = 2
+RATIO = 1
+LIMIT_PRICE = 1.25
 
 # --------------------------------------------------------------------------- #
-# Templates                                                                    #
+# Templates
 # --------------------------------------------------------------------------- #
 def test_every_template_parses_as_botcreate():
     """Catch malformed templates at build time, not at seed/runtime."""
@@ -55,7 +81,7 @@ def test_iron_condor_is_four_legged_and_balanced():
 
 
 # --------------------------------------------------------------------------- #
-# Schema                                                                       #
+# Schema
 # --------------------------------------------------------------------------- #
 def test_option_leg_defaults():
     leg = OptionLeg(side="sell", option_type="put")
@@ -68,47 +94,52 @@ def test_open_option_spread_is_valid_action_type():
 
 
 # --------------------------------------------------------------------------- #
-# TradeStation request-builders (pure, no creds/network)                       #
+# TradeStation request-builders (pure, no creds/network)
 # --------------------------------------------------------------------------- #
 def test_build_option_symbol_call_and_put():
     assert (
-        TradeStationBroker.build_option_symbol("spy", date(2024, 1, 19), 447.5, "call")
-        == "SPY 240119C447.5"
+        TradeStationBroker.build_option_symbol("spy", TEST_DATE_CALL, 447.5, "call")
+        == EXPECTED_SYMBOL_CALL
     )
     # whole-number strike drops the trailing .0
     assert (
-        TradeStationBroker.build_option_symbol("AAPL", date(2024, 3, 15), 150.0, "put")
-        == "AAPL 240315P150"
+        TradeStationBroker.build_option_symbol("AAPL", TEST_DATE_PUT, 150.0, "put")
+        == EXPECTED_SYMBOL_PUT
     )
 
 
 def test_build_option_order_body_bull_put_spread():
     legs = [
-        {"symbol": "SPY 240119P440", "side": "sell", "ratio": 1},
-        {"symbol": "SPY 240119P430", "side": "buy", "ratio": 1},
+        {"symbol": LEG_SYMBOL_SELL, "side": "sell", "ratio": RATIO},
+        {"symbol": LEG_SYMBOL_BUY, "side": "buy", "ratio": RATIO},
     ]
-    body = TradeStationBroker.build_option_order_body("ACC123", legs, quantity=2)
-    assert body["AccountID"] == "ACC123"
-    assert body["Quantity"] == "2"
-    assert body["OrderType"] == "Market"
+    body = TradeStationBroker.build_option_order_body(ACCOUNT_ID, legs, quantity=QUANTITY)
+    assert body["AccountID"] == ACCOUNT_ID
+    assert body["Quantity"] == str(QUANTITY)
+    assert body["OrderType"] == ORDER_TYPE_MARKET
     assert len(body["Legs"]) == 2
-    assert body["Legs"][0]["TradeAction"] == "SELLTOOPEN"
-    assert body["Legs"][1]["TradeAction"] == "BUYTOOPEN"
+    assert body["Legs"][0]["TradeAction"] == TRADE_ACTION_SELL
+    assert body["Legs"][1]["TradeAction"] == TRADE_ACTION_BUY
     # leg quantity = ratio * spread quantity
-    assert body["Legs"][0]["Quantity"] == "2"
+    assert body["Legs"][0]["Quantity"] == str(QUANTITY)
 
 
 def test_build_option_order_body_limit_and_closing():
-    legs = [{"symbol": "QQQ 240119C400", "side": "buy", "ratio": 2}]
+    legs = [{"symbol": LEG_SYMBOL_SINGLE, "side": "buy", "ratio": RATIO * 2}]
     body = TradeStationBroker.build_option_order_body(
-        "ACC", legs, quantity=1, order_type="limit", limit_price=1.25, opening=False
+        ACCOUNT_ID_LIMIT,
+        legs,
+        quantity=1,
+        order_type=ORDER_TYPE_LIMIT,
+        limit_price=LIMIT_PRICE,
+        opening=False,
     )
-    assert body["OrderType"] == "Limit"
-    assert body["LimitPrice"] == "1.25"
-    assert body["Legs"][0]["TradeAction"] == "BUYTOCLOSE"
-    assert body["Legs"][0]["Quantity"] == "2"
+    assert body["OrderType"] == ORDER_TYPE_LIMIT
+    assert body["LimitPrice"] == str(LIMIT_PRICE)
+    assert body["Legs"][0]["TradeAction"] == TRADE_ACTION_BUY_CLOSE
+    assert body["Legs"][0]["Quantity"] == str(RATIO * 2)
 
 
 def test_build_option_order_body_rejects_empty_legs():
     with pytest.raises(ValueError):
-        TradeStationBroker.build_option_order_body("ACC", [])
+        TradeStationBroker.build_option_order_body(ACCOUNT_ID, [])

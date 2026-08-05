@@ -16,9 +16,40 @@ except Exception:  # pragma: no cover
     def get_current_pnl() -> float:
         return 0.0
 
+# Constants
+PREFIX = "/regime"
+TAG = "regime"
+
+ENDPOINT_GET_CURRENT = "endpoint=get_current_regime"
+ENDPOINT_GET_STATES = "endpoint=get_regime_states"
+ENDPOINT_GET_SYMBOL = "endpoint=get_regime_for_symbol"
+ENDPOINT_GET_CORRELATION = "endpoint=get_correlation_matrix"
+ENDPOINT_GET_ALERTS = "endpoint=get_correlation_alerts"
+
+LOGGER_KEY_SIGNAL_COUNT = "signal_count"
+LOGGER_KEY_EXEC_TIME_MS = "execution_time_ms"
+LOGGER_KEY_PNL = "pnl"
+LOGGER_KEY_SYMBOL = "symbol"
+
+DEFAULT_REGIME = "unknown"
+DEFAULT_CONFIDENCE = 0.0
+
+LABEL_MAP = {
+    "trending": "bull",
+    "mean_reverting": "sideways",
+    "high_vol": "bear",
+    "unknown": "unknown",
+}
+
+ROUND_MS_PLACES = 2
+ROUND_CONF_PLACES = 3
+
+ALERT_LIMIT_DEFAULT = 10
+ALERT_LIMIT_MAX = 50
+
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/regime", tags=["regime"])
+router = APIRouter(prefix=PREFIX, tags=[TAG])
 
 
 @router.get("/current")
@@ -34,46 +65,38 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     if not states:
         elapsed_ms = (time.time() - start_time) * 1000
         logger.info(
-            "endpoint=get_current_regime",
+            ENDPOINT_GET_CURRENT,
             extra={
-                "signal_count": 0,
-                "execution_time_ms": round(elapsed_ms, 2),
-                "pnl": get_current_pnl(),
+                LOGGER_KEY_SIGNAL_COUNT: 0,
+                LOGGER_KEY_EXEC_TIME_MS: round(elapsed_ms, ROUND_MS_PLACES),
+                LOGGER_KEY_PNL: get_current_pnl(),
             },
         )
-        return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
-
-    # Map detector regimes → frontend-friendly labels
-    _label_map = {
-        "trending": "bull",
-        "mean_reverting": "sideways",
-        "high_vol": "bear",
-        "unknown": "unknown",
-    }
+        return {"regime": DEFAULT_REGIME, "confidence": DEFAULT_CONFIDENCE, "updated_at": None}
 
     label_counts: Counter = Counter()
     confidences: list[float] = []
     latest_updated: str | None = None
 
     for sym_state in states.values():
-        raw = sym_state.get("regime", "unknown")
-        label = _label_map.get(raw, "unknown")
+        raw = sym_state.get("regime", DEFAULT_REGIME)
+        label = LABEL_MAP.get(raw, DEFAULT_REGIME)
         label_counts[label] += 1
-        confidences.append(sym_state.get("confidence", 0.0))
+        confidences.append(sym_state.get("confidence", DEFAULT_CONFIDENCE))
         updated = sym_state.get("updated_at")
         if updated and (latest_updated is None or updated > latest_updated):
             latest_updated = updated
 
     overall_regime = label_counts.most_common(1)[0][0]
-    avg_confidence = round(sum(confidences) / len(confidences), 3) if confidences else 0.0
+    avg_confidence = round(sum(confidences) / len(confidences), ROUND_CONF_PLACES) if confidences else DEFAULT_CONFIDENCE
 
     elapsed_ms = (time.time() - start_time) * 1000
     logger.info(
-        "endpoint=get_current_regime",
+        ENDPOINT_GET_CURRENT,
         extra={
-            "signal_count": len(states),
-            "execution_time_ms": round(elapsed_ms, 2),
-            "pnl": get_current_pnl(),
+            LOGGER_KEY_SIGNAL_COUNT: len(states),
+            LOGGER_KEY_EXEC_TIME_MS: round(elapsed_ms, ROUND_MS_PLACES),
+            LOGGER_KEY_PNL: get_current_pnl(),
         },
     )
 
@@ -92,11 +115,11 @@ async def get_regime_states(current_user: User = Depends(get_current_user)):
     data = regime_monitor.all_states()
     elapsed_ms = (time.time() - start_time) * 1000
     logger.info(
-        "endpoint=get_regime_states",
+        ENDPOINT_GET_STATES,
         extra={
-            "signal_count": len(data),
-            "execution_time_ms": round(elapsed_ms, 2),
-            "pnl": get_current_pnl(),
+            LOGGER_KEY_SIGNAL_COUNT: len(data),
+            LOGGER_KEY_EXEC_TIME_MS: round(elapsed_ms, ROUND_MS_PLACES),
+            LOGGER_KEY_PNL: get_current_pnl(),
         },
     )
     return data
@@ -109,24 +132,24 @@ async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_cu
     if not state:
         elapsed_ms = (time.time() - start_time) * 1000
         logger.info(
-            "endpoint=get_regime_for_symbol",
+            ENDPOINT_GET_SYMBOL,
             extra={
-                "signal_count": 0,
-                "execution_time_ms": round(elapsed_ms, 2),
-                "pnl": get_current_pnl(),
-                "symbol": symbol,
+                LOGGER_KEY_SIGNAL_COUNT: 0,
+                LOGGER_KEY_EXEC_TIME_MS: round(elapsed_ms, ROUND_MS_PLACES),
+                LOGGER_KEY_PNL: get_current_pnl(),
+                LOGGER_KEY_SYMBOL: symbol,
             },
         )
         return {"error": f"No regime data for {symbol}. Feed price data first."}
     result = state.to_dict()
     elapsed_ms = (time.time() - start_time) * 1000
     logger.info(
-        "endpoint=get_regime_for_symbol",
+        ENDPOINT_GET_SYMBOL,
         extra={
-            "signal_count": 1,
-            "execution_time_ms": round(elapsed_ms, 2),
-            "pnl": get_current_pnl(),
-            "symbol": symbol,
+            LOGGER_KEY_SIGNAL_COUNT: 1,
+            LOGGER_KEY_EXEC_TIME_MS: round(elapsed_ms, ROUND_MS_PLACES),
+            LOGGER_KEY_PNL: get_current_pnl(),
+            LOGGER_KEY_SYMBOL: symbol,
         },
     )
     return result
@@ -138,14 +161,14 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
     start_time = time.time()
     matrix = correlation_monitor.matrix_as_list()
     reduced = list(correlation_monitor._reduced)
-    alerts = correlation_monitor.recent_alerts(10)
+    alerts = correlation_monitor.recent_alerts(ALERT_LIMIT_DEFAULT)
     elapsed_ms = (time.time() - start_time) * 1000
     logger.info(
-        "endpoint=get_correlation_matrix",
+        ENDPOINT_GET_CORRELATION,
         extra={
-            "signal_count": len(matrix),
-            "execution_time_ms": round(elapsed_ms, 2),
-            "pnl": get_current_pnl(),
+            LOGGER_KEY_SIGNAL_COUNT: len(matrix),
+            LOGGER_KEY_EXEC_TIME_MS: round(elapsed_ms, ROUND_MS_PLACES),
+            LOGGER_KEY_PNL: get_current_pnl(),
         },
     )
     return {
@@ -158,14 +181,14 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
 @router.get("/correlation/alerts")
 async def get_correlation_alerts(current_user: User = Depends(get_current_user)):
     start_time = time.time()
-    alerts = correlation_monitor.recent_alerts(50)
+    alerts = correlation_monitor.recent_alerts(ALERT_LIMIT_MAX)
     elapsed_ms = (time.time() - start_time) * 1000
     logger.info(
-        "endpoint=get_correlation_alerts",
+        ENDPOINT_GET_ALERTS,
         extra={
-            "signal_count": len(alerts),
-            "execution_time_ms": round(elapsed_ms, 2),
-            "pnl": get_current_pnl(),
+            LOGGER_KEY_SIGNAL_COUNT: len(alerts),
+            LOGGER_KEY_EXEC_TIME_MS: round(elapsed_ms, ROUND_MS_PLACES),
+            LOGGER_KEY_PNL: get_current_pnl(),
         },
     )
     return alerts

@@ -36,6 +36,7 @@ LOG_STRATEGY_FIELD: str = "strategy"
 LOG_MANUAL_SHARPE_FIELD: str = "manual_sharpe"
 LOG_ML_SHARPE_FIELD: str = "ml_sharpe"
 LOG_P_VALUE_FIELD: str = "p_value"
+LOG_ERROR_FIELD: str = "error"
 
 # Additional constants for string literals
 LOG_COMPARISON_COMPLETE_MSG: str = "Comparison complete"
@@ -153,7 +154,7 @@ class StrategyComparisonEngine:
         try:
             benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
         except Exception as exc:
-            logger.error(ERROR_FETCH_BENCHMARK_MSG, error=str(exc))
+            logger.error(ERROR_FETCH_BENCHMARK_MSG, **{LOG_ERROR_FIELD: str(exc)})
             benchmark_curves = {}
         benchmark_stats = get_benchmark_stats()
 
