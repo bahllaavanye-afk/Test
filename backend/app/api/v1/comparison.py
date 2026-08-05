@@ -37,6 +37,8 @@ class ComparisonOut(BaseModel):
 
     @classmethod
     def from_model(cls, m) -> "ComparisonOut":
+        if not hasattr(m, "id"):
+            raise ValueError("Comparison model must have an 'id' attribute")
         improvement = None
         if m.manual_sharpe is not None and m.ml_sharpe is not None:
             base = float(m.manual_sharpe) or MIN_MANUAL_SHARPE
@@ -56,6 +58,7 @@ class ComparisonOut(BaseModel):
 
 @router.get(ENDPOINT_BENCHMARKS)
 async def get_benchmarks():
+    """Return benchmark statistics."""
     return get_benchmark_stats()
 
 
@@ -65,6 +68,11 @@ async def list_comparisons(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """List recent comparison results for the current user."""
+    if not isinstance(db, AsyncSession):
+        raise ValueError("Invalid database session provided")
+    if not isinstance(current_user, User):
+        raise ValueError("Invalid user context provided")
     result = await db.execute(
         select(ComparisonModel).order_by(ComparisonModel.created_at.desc()).limit(DEFAULT_LIMIT)
     )
