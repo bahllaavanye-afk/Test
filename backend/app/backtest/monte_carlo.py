@@ -8,6 +8,15 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+# Constants
+START_EQUITY: int = 100_000
+TRADING_DAYS_PER_YEAR: int = 252
+DEFAULT_RNG_SEED: int = 42
+RISK_FREE_RATE_ANNUAL: float = 0.05
+SHARPE_ANNUALIZATION: float = np.sqrt(TRADING_DAYS_PER_YEAR)
+PERCENTILE_LOW: int = 5
+PERCENTILE_HIGH: int = 95
+ROUND_PRECISION: int = 4
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +92,8 @@ def _sample_returns(
 
 
 def _calculate_equity(sampled: np.ndarray) -> np.ndarray:
-    """Convert sampled returns into equity curves, assuming a $100,000 start."""
-    return np.cumprod(1 + sampled, axis=1) * 100_000
+    """Convert sampled returns into equity curves, assuming a start equity."""
+    return np.cumprod(1 + sampled, axis=1) * START_EQUITY
 
 
 def _calculate_max_dd(equity: np.ndarray) -> np.ndarray:
@@ -102,21 +111,21 @@ def _calculate_sharpe(sampled: np.ndarray, risk_free_daily: float) -> np.ndarray
     # Avoid division by zero; assign zero Sharpe when std is zero.
     return np.where(
         std_excess > 0,
-        mean_excess / std_excess * np.sqrt(252),
+        mean_excess / std_excess * SHARPE_ANNUALIZATION,
         0.0,
     )
 
 
 def _calculate_positive_return(equity: np.ndarray) -> int:
     """Count simulations that end with a positive return relative to the start."""
-    return int(np.sum(equity[:, -1] > 100_000))
+    return int(np.sum(equity[:, -1] > START_EQUITY))
 
 
 def monte_carlo_simulation(
     daily_returns: pd.Series,
     n_simulations: int = 1000,
     n_years: int = 3,
-    risk_free_daily: float = 0.05 / 252,
+    risk_free_daily: float = RISK_FREE_RATE_ANNUAL / TRADING_DAYS_PER_YEAR,
 ) -> MonteCarloResult:
     """Bootstrap daily returns to simulate N years of paths.
 
@@ -145,9 +154,9 @@ def monte_carlo_simulation(
     """
     _validate_inputs(daily_returns, n_simulations, n_years, risk_free_daily)
 
-    n_days = int(n_years * 252)
+    n_days = int(n_years * TRADING_DAYS_PER_YEAR)
     returns_array = daily_returns.dropna().values.astype(float)
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(DEFAULT_RNG_SEED)
 
     try:
         sampled = _sample_returns(rng, returns_array, n_simulations, n_days)
@@ -163,12 +172,12 @@ def monte_carlo_simulation(
         raise MonteCarloError("Monte Carlo simulation failed") from exc
 
     return MonteCarloResult(
-        median_sharpe=round(float(np.median(sharpe)), 4),
-        p5_sharpe=round(float(np.percentile(sharpe, 5)), 4),
-        p95_sharpe=round(float(np.percentile(sharpe, 95)), 4),
-        median_max_dd=round(float(np.median(max_dds)), 4),
-        p95_max_dd=round(float(np.percentile(max_dds, 95)), 4),
-        p5_max_dd=round(float(np.percentile(max_dds, 5)), 4),
-        prob_positive_return=round(positive / n_simulations, 4),
+        median_sharpe=round(float(np.median(sharpe)), ROUND_PRECISION),
+        p5_sharpe=round(float(np.percentile(sharpe, PERCENTILE_LOW)), ROUND_PRECISION),
+        p95_sharpe=round(float(np.percentile(sharpe, PERCENTILE_HIGH)), ROUND_PRECISION),
+        median_max_dd=round(float(np.median(max_dds)), ROUND_PRECISION),
+        p95_max_dd=round(float(np.percentile(max_dds, PERCENTILE_HIGH)), ROUND_PRECISION),
+        p5_max_dd=round(float(np.percentile(max_dds, PERCENTILE_LOW)), ROUND_PRECISION),
+        prob_positive_return=round(positive / n_simulations, ROUND_PRECISION),
         num_simulations=n_simulations,
     )
