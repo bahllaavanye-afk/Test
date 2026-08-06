@@ -8,6 +8,16 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+# Constants
+TRADING_DAYS_PER_YEAR: int = 252
+RANDOM_SEED: int = 42
+INITIAL_EQUITY: float = 100_000.0
+RISK_FREE_RATE_ANNUAL: float = 0.05
+RISK_FREE_DAILY_DEFAULT: float = RISK_FREE_RATE_ANNUAL / TRADING_DAYS_PER_YEAR
+PERCENTILE_LOW: int = 5
+PERCENTILE_HIGH: int = 95
+ROUND_DECIMALS: int = 4
+SHARPE_SQRT_DAYS: float = np.sqrt(TRADING_DAYS_PER_YEAR)
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +63,7 @@ def monte_carlo_simulation(
     daily_returns: pd.Series,
     n_simulations: int = 1000,
     n_years: int = 3,
-    risk_free_daily: float = 0.05 / 252,
+    risk_free_daily: float = RISK_FREE_DAILY_DEFAULT,
 ) -> MonteCarloResult:
     """Bootstrap daily returns to simulate N years of paths.
 
@@ -96,17 +106,17 @@ def monte_carlo_simulation(
     if not isinstance(risk_free_daily, numbers.Real):
         raise ValueError("risk_free_daily must be a real number.")
 
-    n_days = int(n_years * 252)
+    n_days = int(n_years * TRADING_DAYS_PER_YEAR)
     returns_array = daily_returns.dropna().values.astype(float)
 
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(RANDOM_SEED)
 
     try:
         # Vectorized sampling: shape (n_simulations, n_days)
         sampled = rng.choice(returns_array, size=(n_simulations, n_days), replace=True)
 
         # Equity curve per simulation
-        equity = np.cumprod(1 + sampled, axis=1) * 100_000
+        equity = np.cumprod(1 + sampled, axis=1) * INITIAL_EQUITY
 
         # Maximum drawdown per simulation
         peak = np.maximum.accumulate(equity, axis=1)
@@ -119,12 +129,12 @@ def monte_carlo_simulation(
         std_excess = excess.std(axis=1, ddof=0)
         sharpe = np.where(
             std_excess > 0,
-            mean_excess / std_excess * np.sqrt(252),
+            mean_excess / std_excess * SHARPE_SQRT_DAYS,
             0.0,
         )
 
         # Probability of positive return at horizon
-        positive = np.sum(equity[:, -1] > 100_000)
+        positive = np.sum(equity[:, -1] > INITIAL_EQUITY)
     except Exception as exc:  # pragma: no cover
         logger.exception(
             "Unexpected error during Monte Carlo simulation",
@@ -133,12 +143,12 @@ def monte_carlo_simulation(
         raise MonteCarloError("Monte Carlo simulation failed") from exc
 
     return MonteCarloResult(
-        median_sharpe=round(float(np.median(sharpe)), 4),
-        p5_sharpe=round(float(np.percentile(sharpe, 5)), 4),
-        p95_sharpe=round(float(np.percentile(sharpe, 95)), 4),
-        median_max_dd=round(float(np.median(max_dds)), 4),
-        p95_max_dd=round(float(np.percentile(max_dds, 95)), 4),
-        p5_max_dd=round(float(np.percentile(max_dds, 5)), 4),
-        prob_positive_return=round(positive / n_simulations, 4),
+        median_sharpe=round(float(np.median(sharpe)), ROUND_DECIMALS),
+        p5_sharpe=round(float(np.percentile(sharpe, PERCENTILE_LOW)), ROUND_DECIMALS),
+        p95_sharpe=round(float(np.percentile(sharpe, PERCENTILE_HIGH)), ROUND_DECIMALS),
+        median_max_dd=round(float(np.median(max_dds)), ROUND_DECIMALS),
+        p95_max_dd=round(float(np.percentile(max_dds, PERCENTILE_HIGH)), ROUND_DECIMALS),
+        p5_max_dd=round(float(np.percentile(max_dds, PERCENTILE_LOW)), ROUND_DECIMALS),
+        prob_positive_return=round(positive / n_simulations, ROUND_DECIMALS),
         num_simulations=n_simulations,
     )
