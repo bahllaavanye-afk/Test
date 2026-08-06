@@ -35,6 +35,33 @@ each independently "found" after already being documented.
 | 14 | **Set `ANGELONE_API_KEY` / `_CLIENT_ID` / `_PASSWORD` / `_TOTP_SECRET`** | ~5min | Turns the India work from research into execution. AngelOne SmartAPI is free and TOTP-derivable, so it is the only broker that can log in unattended — **Zerodha cannot** (browser redirect, daily token, ₹2,000/mo). `india_broker.py` reports what is missing; nothing places an Indian order until these exist. |
 
 
+## 🌏 2026-08-06 05:10 — THE OVERNIGHT READ COVERS SEVEN MARKETS (Asia-Pacific added; Europe cannot work)
+
+Same machinery as the NSE tilt — foreign close → state file → bounded nudge at the desk's confidence gate.
+Membership is decided by **close time vs the 13:30 UTC US open**, checked before extending:
+
+    Taiwan ^TWII 05:30 (-8h00)   Japan ^N225 06:00 (-7h30)   Australia ^AXJO 06:00 (-7h30)
+    Korea  ^KS11 06:30 (-7h00)   HK    ^HSI  08:00 (-5h30)   Singapore ^STI  09:00 (-4h30)
+    India  ^NSEI 10:00 (-3h30)
+
+**EUROPE IS EXCLUDED AND A TEST ENFORCES IT.** DAX/CAC close 15:30 UTC, FTSE 16:30 — *after* the US open, so a
+European close cannot inform an order at it. The desks trade EWG/EWQ/EWU, so this will look like an oversight
+to the next reader. It is not.
+
+Weights: 0.9 country index → MSCI tracker; **^HSI → FXI is 0.7** (a Hong Kong index against China H-shares).
+
+**Two bugs fell out, both more valuable than the feature:**
+1. The session close was ONE hardcoded constant (NSE's 10:00) — 4.5h wrong for Taiwan. Now per-market, with
+   half-hours (Korea 06:30) and ADRs inheriting their market by exchange suffix.
+2. **The live run produced a tilt from a session still trading.** `EWT -0.0107 ← ^TWII -0.60%` at 05:15, with
+   Taiwan 15 minutes from its close. The future guard tolerated ±1h — harmless when NSE was the only source and
+   the run happened at 10:20. Now clock-skew only (0.1h). **An intraday snapshot reported as a close is worse
+   than no read: it is indistinguishable from a real one.**
+
+**Tooling trap:** `__pycache__` made a mutation test lie — source read `0.1` while the import reported `1.0`,
+and a test passed alone but failed in the full suite. Clear the cache or set `PYTHONDONTWRITEBYTECODE=1`
+between mutation rounds.
+
 ## ✂️ 2026-08-06 04:40 — STRATEGY RETIREMENT WAS UNAUDITABLE **AND** IRREVERSIBLE
 
 The noise-floor lesson from the ML work applies to the path that retires live strategies. Each retirement's

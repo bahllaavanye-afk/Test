@@ -45,9 +45,21 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 STATE_FILE = REPO_ROOT / ".github" / "state" / "india_nse_signal.json"
 DISCORD_FILE = Path("/tmp/india_nse_discord.md")
 
-# NSE regular hours are 09:15-15:30 IST = 03:45-10:00 UTC. Daily bars carry a
-# session *date* and no time, so the close is reconstructed at this hour.
-NSE_CLOSE_UTC_HOUR = 10
+# Daily bars carry a session *date* and no time, so the close is reconstructed
+# at that market's closing hour. This was a single constant (10, for NSE) until
+# the Asia-Pacific sessions were added; using 10:00 for a market that closed at
+# 05:30 overstates the read's age by 4.5h, which a 30h window forgives and a
+# tighter one would not.
+SESSION_CLOSE_UTC: dict[str, float] = {
+    "^NSEI": 10.0,   # India      09:15-15:30 IST
+    "^N225": 6.0,    # Japan      09:00-15:00 JST
+    "^KS11": 6.5,    # Korea      09:00-15:30 KST
+    "^TWII": 5.5,    # Taiwan     09:00-13:30 CST
+    "^HSI": 8.0,     # Hong Kong  09:30-16:00 HKT
+    "^AXJO": 6.0,    # Australia  10:00-16:00 AEST
+    "^STI": 9.0,     # Singapore  09:00-17:00 SGT
+}
+DEFAULT_CLOSE_UTC_HOUR = 10.0
 
 # A US session reading the same day's NSE close is 3-10 hours behind it; the
 # previous session's close (a Monday US open reading Friday's NSE, when Monday
@@ -58,6 +70,10 @@ MAX_AGE_HOURS = float(os.environ.get("INDIA_TILT_MAX_AGE_H", "30") or 30)
 # saturates. Deliberately small: this is a prior, not a signal.
 TILT_GAIN = float(os.environ.get("INDIA_TILT_GAIN", "2.0") or 2.0)
 TILT_MAX = float(os.environ.get("INDIA_TILT_MAX", "0.06") or 0.06)
+
+# Clock skew only. See the partial-session guard in build_payload: this used to
+# be 1 hour, which silently admitted a market that was still trading.
+CLOCK_SKEW_TOLERANCE_H = 0.1
 
 # Moves this small are noise and get no tilt at all, so the file does not fill
 # with ±0.001 entries that read as signal.
@@ -82,6 +98,29 @@ ADR_MAP: dict[str, tuple[str, str]] = {
 # beta to a large-cap index, and pretending otherwise would overstate the edge.
 INDEX_MAP: dict[str, dict[str, float]] = {
     "^NSEI": {"INDA": 1.0, "INDY": 1.0, "EPI": 0.9, "SMIN": 0.6},
+
+    # ── Asia-Pacific, added 2026-08-06 ──────────────────────────────────────
+    # Every one of these closes BEFORE the 13:30 UTC US open, which is the only
+    # property that makes the read useful. Measured:
+    #   Taiwan 05:30 (-8h00)  Japan 06:00 (-7h30)  Australia 06:00 (-7h30)
+    #   Korea  06:30 (-7h00)  HK    08:00 (-5h30)  Singapore 09:00 (-4h30)
+    #
+    # EUROPE IS DELIBERATELY ABSENT. The DAX, CAC and FTSE close at 15:30-16:30
+    # UTC — two to three hours AFTER the US open — so a European close cannot
+    # inform an order at the open. Adding them would look like more coverage
+    # and deliver a stale read; the desks trade EWG/EWQ/EWU, so the temptation
+    # is real and this comment is the reason not to.
+    #
+    # Weights are the index-to-ETF correspondence, not enthusiasm. A country
+    # index and its MSCI tracker hold the same market with different weighting,
+    # so 0.9; FXI is China H-shares against a HONG KONG index, which is a
+    # weaker link at 0.7.
+    "^N225": {"EWJ": 0.9},     # Nikkei 225 -> MSCI Japan
+    "^KS11": {"EWY": 0.9},     # KOSPI      -> MSCI Korea
+    "^TWII": {"EWT": 0.9},     # TAIEX      -> MSCI Taiwan (both TSMC-heavy)
+    "^HSI":  {"FXI": 0.7},     # Hang Seng  -> China large-cap H-shares
+    "^AXJO": {"EWA": 0.9},     # ASX 200    -> MSCI Australia
+    "^STI":  {"EWS": 0.9},     # STI        -> MSCI Singapore
 }
 
 # MMYT (MakeMyTrip) is deliberately absent: it is a US-listed Indian company
@@ -89,9 +128,28 @@ INDEX_MAP: dict[str, dict[str, float]] = {
 # out is the honest answer; mapping it to the index would invent a link.
 
 
-def _session_close_utc(session: date) -> datetime:
+def _session_close_utc(session: date, source: str = "") -> datetime:
+    """When `source`'s session actually ended, in UTC, on `session`."""
+    hour = SESSION_CLOSE_UTC.get(source, _market_close_for(source))
+    h, m = int(hour), int(round((hour % 1) * 60))
     return datetime(session.year, session.month, session.day,
-                    NSE_CLOSE_UTC_HOUR, 0, tzinfo=timezone.utc)
+                    h, m, tzinfo=timezone.utc)
+
+
+def _market_close_for(source: str) -> float:
+    """A single-name's close is its home market's close.
+
+    `INFY.NS` is not in SESSION_CLOSE_UTC; its exchange suffix is. Without this
+    every ADR would fall back to the 10:00 default, which happens to be right
+    for India and wrong for anywhere else the map grows to.
+    """
+    suffix_market = {".NS": "^NSEI", ".BO": "^NSEI", ".T": "^N225",
+                     ".KS": "^KS11", ".TW": "^TWII", ".HK": "^HSI",
+                     ".AX": "^AXJO", ".SI": "^STI"}
+    for suffix, index in suffix_market.items():
+        if source.endswith(suffix):
+            return SESSION_CLOSE_UTC[index]
+    return DEFAULT_CLOSE_UTC_HOUR
 
 
 def session_move_pct(closes: list[tuple[date, float]]) -> tuple[date, float] | None:
@@ -136,13 +194,26 @@ def build_payload(quotes: dict[str, list[tuple[date, float]]],
             skipped[src] = "fewer than 2 usable daily closes"
             return
         session, move_pct = moved
-        age_h = (now - _session_close_utc(session)).total_seconds() / 3600.0
+        age_h = (now - _session_close_utc(session, src)).total_seconds() / 3600.0
         if age_h > MAX_AGE_HOURS:
             skipped[src] = (f"last close {session.isoformat()} is {age_h:.0f}h old "
                             f"(> {MAX_AGE_HOURS:.0f}h) — not an overnight read")
             return
-        if age_h < -1:
-            skipped[src] = f"last close {session.isoformat()} is in the future"
+        if age_h < -CLOCK_SKEW_TOLERANCE_H:
+            # NOT closed yet — the bar is a partial, in-progress session.
+            #
+            # This was `< -1`, a one-hour tolerance that was harmless while NSE
+            # was the only source: the workflow runs at 10:20 and NSE closes at
+            # 10:00. With markets closing 05:30-10:00 UTC it stopped being
+            # harmless. Caught live 2026-08-06 05:15, when a run produced
+            # `EWT -0.0107 <- ^TWII -0.60%` from a Taiwan session that had 15
+            # minutes left to trade — an intraday snapshot reported as a close.
+            #
+            # The tolerance now covers clock skew only. A session that has not
+            # ended is not a close, and reading one is worse than reading
+            # nothing because it looks identical to a real result.
+            skipped[src] = (f"session {session.isoformat()} has not closed yet "
+                            f"({-age_h:.1f}h to go) — a partial session is not a close")
             return
         sessions.add(session.isoformat())
         for us_sym, weight in targets.items():
