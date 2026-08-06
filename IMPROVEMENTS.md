@@ -1,5 +1,39 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔬 2026-08-06 07:00 — A GUARD BUILT SO A FLAKE COULDN'T FAIL CI WAS TURNING A FLAKE INTO A FAILURE
+
+CI went red on a PR that touches only `.github/scripts` and a markdown file. The failing test was in the
+backend, so it was not mine — but it was real, it was on main, and it blocked the merge.
+
+- [x] **The failure named its own cause if you read the numbers.** `test_tearsheet_clean_404_when_no_trades`
+  asked for a 404 on a user with no trades and got **200 with `n_trades: 5`**. The equity curve was verbatim
+  the seed from the test two functions above it:
+
+        +120, -40, +80, -20, +200   →   100120, 100080, 100160, 100140, 100340
+
+- [x] **`auth_headers` falls back to `/api/v1/auth/demo` when the 10/min auth limiter trips**, and that
+  endpoint is a **get-or-create on ONE shared user** (`demo@quantedge.app`, `auth.py:146`). Two tests that both
+  trip the limiter become the same user, every account they create lands under it, and `_user_account_ids`
+  then returns both — so the "no trades" test sees the other test's trades. The endpoint's own filtering was
+  never at fault; it filters by account correctly.
+- [x] **The fallback exists so a limiter artifact never turns the gate red, and for these tests it did the
+  exact opposite.** It converted a limiter artifact into a *false failure* — the outcome it was written to
+  prevent, arriving by a route nobody checked. **The theme again, third variant this session:** guards that
+  cannot fail, a guard that cannot pass, and now a guard that causes the failure it exists to prevent.
+- [x] **Fixed by making the substitution honest rather than removing it.** `auth_headers(isolated=True)` skips
+  on a limiter trip instead of quietly borrowing a shared identity; the plain fallback is untouched for the
+  many tests that only need *some* authenticated user, because deleting it would trade one flake class for
+  another. Opted in for the three modules that assert on per-user data (`analytics_honest`, `bot_performance`,
+  `bot_activity`), with a test that fails if a fourth is added without it.
+- [x] **2 mutations, 2 caught — but only after the first attempt lied.** Flipping the default to `True` made
+  the fallback test **skip**, and a skip is not a catch: it reads green while asserting nothing. The default is
+  now pinned by `inspect.signature` so the mutation fails instead of vanishing. Same trap as the
+  `pytest.raises(Skipped)` in the isolation test itself, which would otherwise have skipped *itself* and passed.
+- [ ] **[P2] The demo fallback is still reachable by any future test that needs isolation and forgets to say
+  so.** The new test names the three modules explicitly, which catches a regression in those but not a brand
+  new module. A stronger version would detect per-user assertions automatically; that is a bigger change than
+  a red CI run justifies right now.
+
 ## 🧹 2026-08-06 06:30 — THE TRACKER WAS CARRYING TWO ITEMS THAT REALITY HAD ALREADY ANSWERED
 
 Reconciled after the audit fix landed, because a tracker whose open items are stale is the thing that causes

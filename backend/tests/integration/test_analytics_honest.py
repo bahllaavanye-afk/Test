@@ -29,7 +29,10 @@ async def _auth_and_account(client):
 
     from tests.integration._auth_helper import auth_headers
 
-    headers = await auth_headers(client, prefix="analytics", password=_PASSWORD)
+    # isolated: every test here asserts on trades scoped to ITS user, so the
+    # shared demo fallback would merge two tests' accounts under one identity.
+    headers = await auth_headers(client, prefix="analytics", password=_PASSWORD,
+                                 isolated=True)
     # user id straight from the JWT sub claim — no /auth/me endpoint exists
     token = headers["Authorization"].split(" ", 1)[1]
     user_id = _jwt.get_unverified_claims(token)["sub"]
