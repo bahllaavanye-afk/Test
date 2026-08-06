@@ -2244,5 +2244,327 @@
         "last_date": "2026-08-05"
       }
     }
+  },
+  {
+    "experiment": "gbc_walkforward_daily",
+    "ran_at": "2026-08-06T14:04:33.867223+00:00",
+    "params": {
+      "min_train": 252,
+      "refit_every": 21,
+      "long_threshold": 0.55
+    },
+    "results": {
+      "SPY": {
+        "sub_windows": [
+          {
+            "from": "2022-01-07",
+            "to": "2023-07-18",
+            "days": 382,
+            "strategy_sharpe": 0.064,
+            "buyhold_sharpe": 0.106,
+            "margin": -0.042,
+            "noise_floor": 0.145,
+            "beats": false,
+            "verdict": "inconclusive"
+          },
+          {
+            "from": "2023-07-19",
+            "to": "2025-01-27",
+            "days": 383,
+            "strategy_sharpe": 0.79,
+            "buyhold_sharpe": 1.673,
+            "margin": -0.883,
+            "noise_floor": 0.145,
+            "beats": false,
+            "verdict": "loses"
+          },
+          {
+            "from": "2025-01-28",
+            "to": "2026-08-05",
+            "days": 382,
+            "strategy_sharpe": 0.699,
+            "buyhold_sharpe": 1.056,
+            "margin": -0.357,
+            "noise_floor": 0.145,
+            "beats": false,
+            "verdict": "loses"
+          }
+        ],
+        "oos_days": 1147,
+        "hit_rate": 0.517,
+        "time_in_market": 0.5004,
+        "strategy_sharpe": 0.439,
+        "buyhold_sharpe": 0.794,
+        "strategy_total_return": 0.2307,
+        "buyhold_total_return": 0.7578,
+        "max_drawdown": 0.1836,
+        "status": "ok",
+        "source": "yfinance",
+        "rows": 1399,
+        "first_date": "2021-01-08",
+        "last_date": "2026-08-05"
+      },
+      "QQQ": {
+        "sub_windows": [
+          {
+            "from": "2022-01-07",
+            "to": "2023-07-18",
+            "days": 382,
+            "strategy_sharpe": 1.933,
+            "buyhold_sharpe": 0.201,
+            "margin": 1.732,
+            "noise_floor": 0.145,
+            "beats": true,
+            "verdict": "beats"
+          },
+          {
+            "from": "2023-07-19",
+            "to": "2025-01-27",
+            "days": 383,
+            "strategy_sharpe": 1.318,
+            "buyhold_sharpe": 1.255,
+            "margin": 0.063,
+            "noise_floor": 0.145,
+            "beats": false,
+            "verdict": "inconclusive"
+          },
+          {
+            "from": "2025-01-28",
+            "to": "2026-08-05",
+            "days": 382,
+            "strategy_sharpe": 0.843,
+            "buyhold_sharpe": 1.039,
+            "margin": -0.196,
+            "noise_floor": 0.145,
+            "beats": false,
+            "verdict": "loses"
+          }
+        ],
+        "oos_days": 1147,
+        "hit_rate": 0.544,
+        "time_in_market": 0.4891,
+        "strategy_sharpe": 1.351,
+        "buyhold_sharpe": 0.736,
+        "strategy_total_return": 1.5277,
+        "buyhold_total_return": 0.935,
+        "max_drawdown": 0.1981,
+        "status": "ok",
+        "source": "yfinance",
+        "rows": 1399,
+        "first_date": "2021-01-08",
+        "last_date": "2026-08-05"
+      },
+      "NVDA": {
+        "sub_windows": [
+          {
+            "from": "2022-01-07",
+            "to": "2023-07-18",
+            "days": 382,
+            "strategy_sharpe": 0.876,
+            "buyhold_sharpe": 0.891,
+            "margin": -0.016,
+            "noise_floor": 0.145,
+            "beats": false,
+            "verdict": "inconclusive"
+          },
+          {
+            "from": "2023-07-19",
+            "to": "2025-01-27",
+            "days": 383,
+            "strategy_sharpe": 0.337,
+            "buyhold_sharpe": 1.567,
+            "margin": -1.231,
+            "noise_floor": 0.145,
+            "beats": false,
+            "verdict": "loses"
+          },
+          {
+            "from": "2025-01-28",
+            "to": "2026-08-05",
+            "days": 382,
+            "strategy_sharpe": 1.524,
+            "buyhold_sharpe": 1.052,
+            "margin": 0.472,
+            "noise_floor": 0.145,
+            "beats": true,
+            "verdict": "beats"
+          }
+        ],
+        "oos_days": 1147,
+        "hit_rate": 0.5248,
+        "time_in_market": 0.5065,
+        "strategy_sharpe": 0.888,
+        "buyhold_sharpe": 1.145,
+        "strategy_total_return": 2.2731,
+        "buyhold_total_return": 7.1767,
+        "max_drawdown": 0.3682,
+        "status": "ok",
+        "source": "yfinance",
+        "rows": 1399,
+        "first_date": "2021-01-08",
+        "last_date": "2026-08-05"
+      }
+    }
+  },
+  {
+    "experiment": "gbc_walkforward_daily",
+    "ran_at": "2026-08-06T14:07:30.190294+00:00",
+    "params": {
+      "min_train": 252,
+      "refit_every": 21,
+      "long_threshold": 0.55
+    },
+    "results": {
+      "SPY": {
+        "sub_windows": [
+          {
+            "from": "2022-01-07",
+            "to": "2023-07-18",
+            "days": 382,
+            "strategy_sharpe": -0.058,
+            "buyhold_sharpe": 0.106,
+            "margin": -0.164,
+            "noise_floor": 0.145,
+            "beats": false,
+            "verdict": "loses"
+          },
+          {
+            "from": "2023-07-19",
+            "to": "2025-01-24",
+            "days": 382,
+            "strategy_sharpe": 0.909,
+            "buyhold_sharpe": 1.631,
+            "margin": -0.723,
+            "noise_floor": 0.145,
+            "beats": false,
+            "verdict": "loses"
+          },
+          {
+            "from": "2025-01-27",
+            "to": "2026-08-04",
+            "days": 382,
+            "strategy_sharpe": 0.745,
+            "buyhold_sharpe": 1.082,
+            "margin": -0.337,
+            "noise_floor": 0.145,
+            "beats": false,
+            "verdict": "loses"
+          }
+        ],
+        "oos_days": 1146,
+        "hit_rate": 0.5183,
+        "time_in_market": 0.4974,
+        "strategy_sharpe": 0.428,
+        "buyhold_sharpe": 0.793,
+        "strategy_total_return": 0.225,
+        "buyhold_total_return": 0.7553,
+        "max_drawdown": 0.2069,
+        "status": "ok",
+        "source": "yfinance",
+        "rows": 1398,
+        "first_date": "2021-01-08",
+        "last_date": "2026-08-04"
+      },
+      "QQQ": {
+        "sub_windows": [
+          {
+            "from": "2022-01-07",
+            "to": "2023-07-18",
+            "days": 382,
+            "strategy_sharpe": 1.829,
+            "buyhold_sharpe": 0.201,
+            "margin": 1.628,
+            "noise_floor": 0.145,
+            "beats": true,
+            "verdict": "beats"
+          },
+          {
+            "from": "2023-07-19",
+            "to": "2025-01-24",
+            "days": 382,
+            "strategy_sharpe": 1.128,
+            "buyhold_sharpe": 1.204,
+            "margin": -0.077,
+            "noise_floor": 0.145,
+            "beats": false,
+            "verdict": "inconclusive"
+          },
+          {
+            "from": "2025-01-27",
+            "to": "2026-08-04",
+            "days": 382,
+            "strategy_sharpe": 0.717,
+            "buyhold_sharpe": 1.089,
+            "margin": -0.372,
+            "noise_floor": 0.145,
+            "beats": false,
+            "verdict": "loses"
+          }
+        ],
+        "oos_days": 1146,
+        "hit_rate": 0.5401,
+        "time_in_market": 0.4887,
+        "strategy_sharpe": 1.215,
+        "buyhold_sharpe": 0.739,
+        "strategy_total_return": 1.2929,
+        "buyhold_total_return": 0.9411,
+        "max_drawdown": 0.1838,
+        "status": "ok",
+        "source": "yfinance",
+        "rows": 1398,
+        "first_date": "2021-01-08",
+        "last_date": "2026-08-04"
+      },
+      "NVDA": {
+        "sub_windows": [
+          {
+            "from": "2022-01-07",
+            "to": "2023-07-18",
+            "days": 382,
+            "strategy_sharpe": 0.853,
+            "buyhold_sharpe": 0.891,
+            "margin": -0.039,
+            "noise_floor": 0.145,
+            "beats": false,
+            "verdict": "inconclusive"
+          },
+          {
+            "from": "2023-07-19",
+            "to": "2025-01-24",
+            "days": 382,
+            "strategy_sharpe": 0.174,
+            "buyhold_sharpe": 1.467,
+            "margin": -1.293,
+            "noise_floor": 0.145,
+            "beats": false,
+            "verdict": "loses"
+          },
+          {
+            "from": "2025-01-27",
+            "to": "2026-08-04",
+            "days": 382,
+            "strategy_sharpe": 1.54,
+            "buyhold_sharpe": 1.153,
+            "margin": 0.386,
+            "noise_floor": 0.145,
+            "beats": true,
+            "verdict": "beats"
+          }
+        ],
+        "oos_days": 1146,
+        "hit_rate": 0.5271,
+        "time_in_market": 0.507,
+        "strategy_sharpe": 0.841,
+        "buyhold_sharpe": 1.14,
+        "strategy_total_return": 2.0217,
+        "buyhold_total_return": 7.0711,
+        "max_drawdown": 0.379,
+        "status": "ok",
+        "source": "yfinance",
+        "rows": 1398,
+        "first_date": "2021-01-08",
+        "last_date": "2026-08-04"
+      }
+    }
   }
 ]
