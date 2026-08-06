@@ -17,7 +17,10 @@ _PASSWORD = "B0tPerf!2026x"
 async def _auth_headers(client) -> dict[str, str]:
     from tests.integration._auth_helper import auth_headers
 
-    return await auth_headers(client, prefix="botperf", password=_PASSWORD)
+    # isolated: these seed bot/trade rows under their own user and then
+    # assert on the counts, so the shared demo fallback would merge them.
+    return await auth_headers(client, prefix="botperf", password=_PASSWORD,
+                              isolated=True)
 
 
 def _bot_payload(name: str) -> dict:
