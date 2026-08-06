@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '../api/client'
+import EmptyState from '../components/ui/EmptyState'
 
 interface BenchmarkRow { name: string; annualReturn: number; sharpe: number; maxDd: number; ytd: number; color: string; isUs?: boolean }
 interface CompRow { strategy: string; symbol: string; manualSharpe: number; mlSharpe: number; pValue: number; winner: 'ML' | 'MANUAL' }
@@ -132,8 +133,8 @@ export default function Comparison() {
         ) : curveSeries.length > 0 ? (
           <EquityChart series={curveSeries} />
         ) : (
-          <div className="h-[280px] flex items-center justify-center text-xs text-[#555]">
-            No comparison runs yet — run a strategy comparison in Backtest Lab
+          <div className="h-[280px] flex items-center justify-center">
+            <EmptyState reason="ephemeral-db" />
           </div>
         )}
       </div>
@@ -147,9 +148,10 @@ export default function Comparison() {
         {benchmarksLoading ? (
           <div className="p-5 space-y-2">{[1,2,3,4,5].map(i => <div key={i} className="h-8 bg-[#0d0d0d] rounded animate-pulse" />)}</div>
         ) : !hasBenchmarks ? (
-          <div className="px-5 py-8 text-center text-xs text-[#555]">
-            No comparison runs yet — run a strategy comparison in Backtest Lab
-          </div>
+          <EmptyState
+            reason="ephemeral-db"
+            note="Runs started from Backtest Lab will show here, but are not retained across redeploys yet."
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -218,9 +220,10 @@ export default function Comparison() {
         {resultsLoading ? (
           <div className="p-5 space-y-2">{[1,2,3].map(i => <div key={i} className="h-8 bg-[#0d0d0d] rounded animate-pulse" />)}</div>
         ) : !hasComparisons ? (
-          <div className="px-5 py-8 text-center text-xs text-[#555]">
-            No comparison runs yet — run a strategy comparison in Backtest Lab
-          </div>
+          <EmptyState
+            reason="ephemeral-db"
+            note="Runs started from Backtest Lab will show here, but are not retained across redeploys yet."
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">

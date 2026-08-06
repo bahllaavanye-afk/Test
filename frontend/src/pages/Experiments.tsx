@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../api/client'
+import EmptyState from '../components/ui/EmptyState'
 
 interface Experiment {
   id: string
@@ -229,11 +230,11 @@ export default function Experiments() {
             {experiments.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center">
-                  <p className="text-sm text-[#888888]">No experiments yet</p>
-                  <p className="text-xs text-[#555] mt-1">
-                    Click "Train Model" above to queue your first training run, or run:
-                    python experiments/run_experiment.py --config lstm_btc_1h.yaml
-                  </p>
+                  <EmptyState
+                    reason="ml-runtime"
+                    note={'Queued runs are also not retained: the backend is on an ephemeral SQLite ' +
+                          'fallback, so experiment rows are wiped on every redeploy.'}
+                  />
                 </td>
               </tr>
             )}

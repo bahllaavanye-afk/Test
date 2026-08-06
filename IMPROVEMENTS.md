@@ -1,5 +1,35 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🖥️ 2026-08-06 14:40 — THE EMPTY PANELS WEREN'T SILENT. THEY WERE BLAMING THE OPERATOR.
+
+Shipped the `[P2] empty-state honesty` item. The item said pages "render an empty table with no explanation".
+Checking first — the habit this session keeps earning — showed that was not the fault.
+
+- [x] **Most pages already had empty states. Two were actively MISLEADING**, which is worse than blank:
+
+        Experiments → "Click \"Train Model\" above to queue your first training run"
+        Comparison  → "No comparison runs yet — run a strategy comparison in Backtest Lab"
+
+  Both instruct an action that **cannot help**. Rows are wiped on every redeploy by the ephemeral SQLite
+  fallback, and ML training needs PyTorch, deliberately excluded from the deployment image. Follow either
+  instruction and you get the same empty table, having concluded you did something wrong. **A panel that
+  attributes a platform cause to user inaction is the UI version of the defect this codebase keeps finding.**
+- [x] **`EmptyState` names the cause instead** — four reasons (`ephemeral-db`, `no-rows-yet`,
+  `subsystem-unreachable`, `ml-runtime`), house Tailwind style, optional page-specific note. The first draft
+  used inline styles; rewritten to match the design system rather than import a second convention.
+- [x] **The guard caught my own incomplete edit.** `Comparison.tsx` had the misleading string **three** times
+  and my `replace(..., 1)` fixed one. `test_no_page_tells_the_operator_to_retry_something_that_cannot_persist`
+  failed and named the survivors. **Same duplicate-anchor trap that produced three false mutations earlier
+  today — this time a test caught it instead of me.**
+- [x] **3 mutations, 3 caught**: restoring the misleading phrase, passing an undefined reason (which would
+  render blank copy — the original bug), and renaming a reason out of the component. Plus a guard-on-the-guard
+  pinning that the page scan finds ≥10 files, so a broken glob fails loudly rather than passing vacuously.
+- [x] **Verified: `tsc --noEmit` clean, `vite build` succeeds, scripts suite 1440 passed.**
+- [ ] **[P2] Remaining pages still render bare tables**, just without misleading advice — `Archive`,
+  `Activity`, `Releases`, `RiskManager`, `AgentDashboard`, `MLInsights`. `EmptyState` exists for them now;
+  applying it is mechanical. Left because two pages was enough to establish the pattern and prove the guard,
+  and a large unverifiable UI diff is worth less than a small verified one.
+
 ## 🎯 2026-08-06 14:10 — MARKET-OPEN LIVE TEST: A DELIBERATE SKIP WAS LOGGED AS A BROKER FAILURE
 
 First run with a working account and an open market in ~9 hours, so the first chance all session to exercise
@@ -1392,7 +1422,10 @@ none of it has to be re-derived.
   - **Agent subsystem (already logged as unreachable, 9 modules):** `/agents/code-reviews`, `/agents/memory`,
     `/agents/skills`, `/agents/tasks` → AgentDashboard is entirely blank.
   - **ML (operator decision — torch excluded from Render):** `/ml/models` → MLInsights blank.
-- [ ] **[P2] Empty-state honesty.** Several of these pages render an empty table with no explanation. A one-line
+- [x] **~~[P2] Empty-state honesty.~~ SHIPPED 2026-08-06 14:40 — and the diagnosis in this item was wrong.**
+  It said pages "render an empty table with no explanation". Most already had an empty state; the real fault
+  was **misdirection**, which is worse than silence. See the entry at the top of this file.
+- [ ] **~~[P2] superseded~~ — original text below.** [P2] Empty-state honesty.** Several of these pages render an empty table with no explanation. A one-line
   "no data yet — durable DB is paused" beats a blank grid that reads as a bug. Cheap, and it stops the next
   reviewer re-deriving this list.
 
