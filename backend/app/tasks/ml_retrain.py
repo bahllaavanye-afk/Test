@@ -8,7 +8,7 @@ import asyncio
 import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List, Optional
 
 import pandas as pd
 
@@ -22,7 +22,7 @@ MIN_HIST_LENGTH: int = 200
 MAX_EPOCHS: int = 30
 DEFAULT_TRAIN_DAYS: int = 730
 CONFIGS_DIR: Path = Path(__file__).parents[3] / "experiments" / "configs"
-DEFAULT_RETRAIN_CONFIGS: list[tuple[str, str, str]] = [
+DEFAULT_RETRAIN_CONFIGS: List[Tuple[str, str, str]] = [
     ("lstm", "BTC-USD", "1h"),
     ("lstm", "ETH-USD", "1h"),
     ("lstm", "SPY", "1d"),
@@ -58,13 +58,23 @@ except Exception:  # pragma: no cover
     _load_yaml = None
 
 
+def _is_valid_str(value: Optional[str]) -> bool:
+    """Return True if value is a non‑empty, non‑whitespace string."""
+    return isinstance(value, str) and bool(value.strip())
+
+
 async def _download_hist(symbol: str, interval: str, start: datetime, end: datetime) -> pd.DataFrame | None:
     """
     Retrieve historical price data, using an in‑process cache to avoid duplicate
     downloads within the same nightly run.
 
-    Returns a pandas DataFrame or ``None`` on failure.
+    Returns a pandas DataFrame or ``None`` on failure or invalid inputs.
     """
+    # Edge‑case handling for invalid inputs
+    if not (_is_valid_str(symbol) and _is_valid_str(interval) and isinstance(start, datetime) and isinstance(end, datetime)):
+        logger.warning("Invalid parameters for _download_hist", symbol=symbol, interval=interval, start=start, end=end)
+        return None
+
     cache_key = (symbol, interval)
     cached = _DATA_CACHE.get(cache_key)
     if cached:
@@ -95,6 +105,7 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
         return None
 
     if hist is None or len(hist) < MIN_HIST_LENGTH:
+        logger.info("Insufficient data downloaded", symbol=symbol, interval=interval, rows=len(hist) if hist is not None else 0)
         return None
 
     # Normalize column names once.
@@ -107,6 +118,14 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
 
 async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_INTERVAL) -> dict:
     """Download 2 years of data and retrain a model. Returns result dict."""
+    # Guard against None / empty inputs
+    if not (_is_valid_str(model_name) and _is_valid_str(symbol)):
+        logger.warning("Invalid model_name or symbol supplied to retrain_model", model=model_name, symbol=symbol)
+        return {"status": "skipped", "reason": "invalid parameters"}
+
+    if not _is_valid_str(interval):
+        interval = DEFAULT_INTERVAL
+
     try:
         end = datetime.now(timezone.utc)
         start = end - timedelta(days=DEFAULT_TRAIN_DAYS)
@@ -139,21 +158,25 @@ async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_IN
         return {"status": "error", "error": str(e)}
 
 
-def _load_retrain_configs() -> list[tuple[str, str, str]]:
+def _load_retrain_configs() -> List[Tuple[str, str, str]]:
     """
     Discover retrain targets dynamically from experiment configs (*.yaml).
     Falls back to a minimal default set if no configs exist or yaml is unavailable.
     Returns list of (model_name, symbol, interval).
     """
     configs_dir = CONFIGS_DIR
-    seen: set[tuple[str, str, str]] = set()
-    results: list[tuple[str, str, str]] = []
+    if not configs_dir.is_dir():
+        logger.warning("Config directory missing, using default retrain configs", path=str(configs_dir))
+        return list(DEFAULT_RETRAIN_CONFIGS)
+
+    seen: set[Tuple[str, str, str]] = set()
+    results: List[Tuple[str, str, str]] = []
 
     for cfg_path in sorted(configs_dir.glob("*.yaml")):
         try:
-            with open(cfg_path) as f:
+            with open(cfg_path, "r", encoding="utf-8") as f:
                 if _load_yaml:
-                    cfg = _load_yaml(f)
+                    cfg = _load_yaml(f) or {}
                 else:
                     # Minimal fallback: regex‑extract model/symbol/interval from YAML text
                     text = f.read()
@@ -167,15 +190,21 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
                             )
                         }
                     }
-            exp = cfg.get("experiment", {})
+            exp = cfg.get("experiment", {}) if isinstance(cfg, dict) else {}
             model = exp.get("model", "lstm")
             symbol = exp.get("symbol", "SPY")
             interval = exp.get("interval", "1d")
+
+            # Validate extracted values
+            if not (_is_valid_str(model) and _is_valid_str(symbol) and _is_valid_str(interval)):
+                continue
+
             key = (model, symbol, interval)
             if key not in seen:
                 seen.add(key)
                 results.append(key)
-        except Exception:
+        except Exception as exc:  # pragma: no cover
+            logger.error("Failed to parse config file", path=str(cfg_path), error=str(exc))
             continue
 
     if not results:
@@ -199,7 +228,11 @@ async def nightly_retrain() -> None:
         *(retrain_model(m, s, i) for m, s, i in retrain_configs),
         return_exceptions=True,
     )
-    successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
+    successes = sum(
+        1
+        for r in results
+        if isinstance(r, dict) and r.get("status") not in {"error", "skipped"}
+    )
     logger.info(
         "Nightly retrain complete",
         total=len(retrain_configs),
