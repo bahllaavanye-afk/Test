@@ -16,15 +16,12 @@ def _apply_entry_filters(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         - avg_volume: float
         - ma_cross: bool (moving‑average crossover confirmation)
     """
-    filtered = []
+    filtered: List[Dict[str, Any]] = []
     for sig in signals:
-        # Basic score threshold
         if sig.get("entry_score", 0) < 0.7:
             continue
-        # Volume confirmation (at least 20% above average)
         if sig.get("volume", 0) < sig.get("avg_volume", 0) * 1.2:
             continue
-        # Moving‑average crossover confirmation
         if not sig.get("ma_cross", False):
             continue
         filtered.append(sig)
@@ -39,11 +36,31 @@ def _apply_exit_logic(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         - trailing_stop_triggered: bool
     Signals that satisfy either condition are kept; otherwise they are removed.
     """
-    refined = []
+    refined: List[Dict[str, Any]] = []
     for sig in signals:
         if sig.get("profit_target_hit") or sig.get("trailing_stop_triggered"):
             refined.append(sig)
     return refined
+
+
+def _get_improver() -> Any:
+    """Retrieve the self‑improver instance from the application state."""
+    from app.main import app
+
+    return getattr(app.state, "self_improver", None)
+
+
+def _validate_and_extract_signals(improver: Any) -> List[Dict[str, Any]]:
+    """
+    Ensure the improver is initialized and return its latest signals.
+    Raises HTTPException on validation failures.
+    """
+    if improver is None:
+        raise HTTPException(status_code=404, detail="Improver not initialized")
+    raw_signals = getattr(improver, "latest_signals", [])
+    if not isinstance(raw_signals, list):
+        raise HTTPException(status_code=500, detail="Invalid signal format")
+    return raw_signals
 
 
 @router.get("/history")
@@ -78,14 +95,8 @@ async def get_signal_quality(current_user: User = Depends(get_current_user)):
     """
     Return signals after applying tightened entry conditions and improved exit logic.
     """
-    from app.main import app
-    improver = getattr(app.state, "self_improver", None)
-    if improver is None:
-        raise HTTPException(status_code=404, detail="Improver not initialized")
-    raw_signals = getattr(improver, "latest_signals", [])
-    if not isinstance(raw_signals, list):
-        raise HTTPException(status_code=500, detail="Invalid signal format")
-    # Apply entry filters then exit logic
+    improver = _get_improver()
+    raw_signals = _validate_and_extract_signals(improver)
     entry_filtered = _apply_entry_filters(raw_signals)
     final_signals = _apply_exit_logic(entry_filtered)
     return {"filtered_signals": final_signals, "count": len(final_signals)}
