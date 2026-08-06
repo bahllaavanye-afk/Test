@@ -188,3 +188,39 @@ def test_the_agent_tests_run_without_pytest_asyncio():
     assert not offenders, (
         f"{offenders} use @pytest.mark.asyncio but CI does not install pytest-asyncio — "
         f"use asyncio.run() in a sync test, or add the plugin to test.yml")
+
+
+# ── No test may locate source by an absolute path ────────────────────────────
+
+def test_no_test_hardcodes_an_absolute_path_to_the_repo():
+    """`test_regression.py` hardcoded `Path("/home/user/Test/backend/app")`.
+    On a CI runner that directory does not exist, so `rglob` yielded nothing,
+    `assert violations == []` was vacuously true, and BOTH guards in that class
+    had never checked anything where they are enforced — while one of them had
+    a live violation sitting in the tree.
+
+    Swept 2026-08-06: every other scan-based test derives its root from
+    `__file__`, so the defect was isolated rather than systemic. This keeps it
+    that way. Comments are exempt — the two remaining mentions are the ones
+    documenting the fix.
+    """
+    roots = [REPO / "backend" / "tests", REPO / ".github" / "scripts", REPO / ".github" / "tests"]
+    offenders = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for f in root.rglob("*.py"):
+            # TEST files only. The first draft swept every .py under
+            # .github/scripts and flagged agent_team.py's secret-redaction
+            # regexes (`r'/home/[^\s]+'`) — patterns whose whole job is to FIND
+            # such paths and strip them, which is the opposite of the defect.
+            if not f.name.startswith("test_") or f.name == Path(__file__).name:
+                continue
+            for i, line in enumerate(f.read_text().splitlines(), 1):
+                if line.lstrip().startswith("#"):
+                    continue
+                if re.search(r'["\']/(home|Users|root)/', line):
+                    offenders.append(f"{f.relative_to(REPO)}:{i}")
+    assert not offenders, (
+        "tests must derive paths from __file__, not hardcode them — an absolute "
+        f"path silently disables the scan wherever it does not exist: {offenders}")

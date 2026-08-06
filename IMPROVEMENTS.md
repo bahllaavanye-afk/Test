@@ -1,5 +1,27 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔎 2026-08-06 03:30 — THE VACUOUS-GUARD SWEEP CAME BACK NEGATIVE, AND THAT IS THE USEFUL RESULT
+
+`test_regression.py`'s hardcoded absolute path made two guards pass on an empty scan. The obvious next question
+is how many others do it. Answer: **none.**
+
+- [x] **Every other scan-based test derives its root from `__file__`.** Checked all seven:
+  `test_security_invariants` (parents[2]), `test_logger_kwargs`, `test_exit_path_wiring`,
+  `test_risk_gate_wiring`, `test_walk_forward_coverage`, `test_alembic_single_head`,
+  `test_agent_memory_is_bounded`, `test_fleet_liveness`. The defect was **isolated, not systemic**, so no
+  ceremony was added to seven files for a risk that construction already prevents.
+- [x] **My first heuristic was wrong and would have produced busywork.** It flagged 8 tests for "no scan guard",
+  including `test_app_state_risk_manager_is_actually_assigned` — which asserts `assert found, …`, i.e. it
+  *fails* on an empty scan. The dangerous shape is asserting **emptiness** (`assert violations == []`), not
+  non-emptiness. Re-running with that distinction found 10 candidates and all 10 were already guarded.
+- [x] **Shipped the recurrence guard instead:** `test_no_test_hardcodes_an_absolute_path_to_the_repo`. It is the
+  durable half — the sweep proves today is clean, the guard keeps it that way. Mutation-verified by putting
+  `Path("/home/user/Test")` back into `test_regression.py`, which turns it red.
+- [x] **Its first draft had a false positive worth recording.** Scoped to every `.py` under `.github/scripts`,
+  it flagged `agent_team.py`'s secret-redaction regexes — `r'/home/[^\s]+'`, patterns whose entire job is to
+  FIND such paths and strip them from agent output. **A pattern that matches the defect is not the defect.**
+  Now scoped to `test_*.py`, which is what the rule actually says.
+
 ## 📢 2026-08-06 02:45 — THE SUB-WINDOWS WERE COMPUTED, PERSISTED, AND INVISIBLE WHERE THE DECISION IS MADE
 
 I built the per-period split at 20:20 and the noise floor at 02:00, then checked who actually reads them. The
