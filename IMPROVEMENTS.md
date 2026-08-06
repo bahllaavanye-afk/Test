@@ -1,5 +1,28 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 📢 2026-08-06 02:45 — THE SUB-WINDOWS WERE COMPUTED, PERSISTED, AND INVISIBLE WHERE THE DECISION IS MADE
+
+I built the per-period split at 20:20 and the noise floor at 02:00, then checked who actually reads them. The
+`$GITHUB_STEP_SUMMARY` — the artifact a human opens after a run — printed **only the overall Sharpes**.
+
+- [x] **Worse than invisible: it closed by stating a promotion rule on the misleading number.**
+
+      "A strategy only earns promotion when its OOS Sharpe beats buy-and-hold"
+
+  That is the exact criterion the sub-windows disproved twice in one evening, written as policy in the one
+  place a reader would act on it.
+- [x] **Fixed: a per-period table in the summary** with `margin`, `noise_floor` and `verdict` per window, so
+  the aggregate can no longer be read alone. Rendered against the real 00:13 run to confirm it reads correctly
+  — QQQ shows `beats / beats / loses` and NVDA `inconclusive / loses / beats`, which is the whole point.
+- [x] **The promotion bar is rewritten to what the evidence supports:** an OOS Sharpe above buy-and-hold is
+  *necessary and not sufficient* — it must clear the noise floor and hold across periods — with QQQ's
+  1.36-vs-0.73 cited inline as the counterexample.
+- [x] **A run too short to split says so** (`too few out-of-sample days to split`) rather than printing an empty
+  section, since an empty table is indistinguishable from a broken one.
+- [x] **This is the same failure family as the rest of today, one layer further out.** The guards that could
+  not fail were *checks* nobody could trip; this was a *measurement* nobody could see. Computing the right
+  number is only half of it — the other half is putting it where the decision happens.
+
 ## 📏 2026-08-06 02:00 — A NOISE FLOOR ON `beats`, AND IT CORRECTS MY OWN 01:20 CLAIM
 
 The 01:20 entry logged `[P2] beats needs a magnitude floor` and then, three paragraphs earlier, **used the

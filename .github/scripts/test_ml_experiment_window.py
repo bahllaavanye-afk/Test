@@ -413,3 +413,34 @@ def test_a_SMALL_NEGATIVE_margin_is_inconclusive_not_a_loss():
     for w in mlx.sub_window_stats(strat, bench, dates):
         assert -w["noise_floor"] < w["margin"] < 0, w
         assert w["verdict"] == "inconclusive", w
+
+
+# ── The summary a human actually reads ──────────────────────────────────────
+
+def test_the_step_summary_surfaces_the_sub_windows_not_just_the_aggregate():
+    """Computed, persisted, and invisible is the failure mode this codebase
+    keeps hitting. The overall Sharpe is the statistic that misled twice in one
+    evening; a summary showing only it invites the same read."""
+    src = (SCRIPTS / "ml_experiment.py").read_text()
+    block = src.split("GITHUB_STEP_SUMMARY", 1)[1]
+    assert "sub_windows" in block, "the step summary never reads sub_windows"
+    for field in ("margin", "noise_floor", "verdict"):
+        assert field in block, f"the summary omits {field}"
+
+
+def test_the_promotion_bar_is_not_stated_on_the_bare_aggregate():
+    """It previously read 'a strategy only earns promotion when its OOS Sharpe
+    beats buy-and-hold' — the exact criterion the sub-windows disproved, stated
+    as policy in the artifact a human reads."""
+    src = (SCRIPTS / "ml_experiment.py").read_text()
+    block = src.split("GITHUB_STEP_SUMMARY", 1)[1]
+    assert "only earns promotion when its OOS Sharpe beats buy-and-hold" not in block
+    assert "noise floor" in block and "necessary and not" in block
+
+
+def test_a_run_too_short_to_split_says_so_rather_than_printing_nothing():
+    """An empty section is indistinguishable from a broken one."""
+    src = (SCRIPTS / "ml_experiment.py").read_text()
+    block = src.split("GITHUB_STEP_SUMMARY", 1)[1]
+    assert "any_windows" in block
+    assert "too few out-of-sample days" in block

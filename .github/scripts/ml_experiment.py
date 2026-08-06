@@ -368,8 +368,36 @@ def main() -> int:
                     f"| {m['buyhold_total_return']:.1%} | {m['max_drawdown']:.1%} "
                     f"| {m['time_in_market']:.1%} |\n"
                 )
-            fh.write("\nA strategy only earns promotion when its OOS Sharpe beats buy-and-hold — "
-                     "walk-forward numbers above are the honest bar, not in-sample fits.\n")
+            # THE SUB-WINDOWS BELONG HERE, not only in the JSON. The overall
+            # Sharpe above is the statistic that misled twice in one evening:
+            # on 2026-08-05 QQQ read "1.36 vs 0.73, beats" while its most
+            # recent third was 0.390 vs 1.089 — a decisive loss. A summary that
+            # shows only the aggregate invites exactly that read, and this file
+            # then closed by stating a promotion rule on it.
+            fh.write("\n### Per-period breakdown — is the edge consistent, or one stretch?\n\n")
+            fh.write("| Symbol | Period | Strat | B&H | Margin | Floor | Verdict |\n")
+            fh.write("|---|---|---|---|---|---|---|\n")
+            any_windows = False
+            for sym, m in results.items():
+                for w in (m.get("sub_windows") or []):
+                    any_windows = True
+                    mark = {"beats": "✅", "loses": "❌"}.get(w["verdict"], "➖")
+                    fh.write(
+                        f"| {sym} | {w['from']} → {w['to']} | {w['strategy_sharpe']} "
+                        f"| {w['buyhold_sharpe']} | {w['margin']:+.3f} | {w['noise_floor']:.3f} "
+                        f"| {mark} {w['verdict']} |\n"
+                    )
+            if not any_windows:
+                fh.write("| — | — | — | — | — | — | too few out-of-sample days to split |\n")
+
+            fh.write(
+                "\n**Promotion bar.** An OOS Sharpe above buy-and-hold is necessary and not "
+                "sufficient: it must clear the noise floor (`2·sqrt(2/n)`, ~0.145 over a "
+                "380-day window) and hold across periods. A single aggregate can be carried "
+                "entirely by one regime — measured 2026-08-06, QQQ's 1.36-vs-0.73 came from "
+                "the 2022 bear market while its latest third lost 0.390 to 1.089. "
+                "`inconclusive` means the margin is inside the floor: not a win, not a loss, "
+                "not evidence. Walk-forward only — no in-sample fits.\n")
 
     ok = [m for m in results.values() if m.get("status") == "ok"]
     return 0 if ok else 1  # no symbol trained at all → fail loudly
