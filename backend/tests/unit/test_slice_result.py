@@ -17,27 +17,34 @@ to stdlib logging, so caplog would pass for the wrong reason.
 from __future__ import annotations
 
 import pytest
+from functools import lru_cache
 
 from app.brokers.base import OrderRequest, OrderResult
-from app.execution.iceberg import IcebergExecution
 from app.execution.slice_result import build_slice_result
-from app.execution.twap import TWAPExecution
-from app.execution.vwap import VWAPExecution
 
 
-def _req(qty=100.0):
+@lru_cache(maxsize=None)
+def _req(qty: float = 100.0) -> OrderRequest:
+    """Create a reusable OrderRequest; cached to avoid repeated object construction."""
     return OrderRequest(
-        account_id="test", symbol="AAPL", side="buy", order_type="market",
-        quantity=qty, limit_price=None, stop_price=None, time_in_force="GTC",
-        execution_algo="market", risk_bucket="directional",
+        account_id="test",
+        symbol="AAPL",
+        side="buy",
+        order_type="market",
+        quantity=qty,
+        limit_price=None,
+        stop_price=None,
+        time_in_force="GTC",
+        execution_algo="market",
+        risk_bucket="directional",
     )
 
 
 class _Broker:
     """Fails the first `fail_first` slices, then fills. `fail_all` fails every one."""
 
-    def __init__(self, *, fail_all=False, fail_first=0, fill_price=100.0,
-                 fill_ratio=1.0):
+    def __init__(self, *, fail_all: bool = False, fail_first: int = 0,
+                 fill_price: float = 100.0, fill_ratio: float = 1.0):
         self.fail_all = fail_all
         self.fail_first = fail_first
         self.fill_price = fill_price
@@ -55,7 +62,7 @@ class _Broker:
             avg_fill_price=self.fill_price,
         )
 
-    async def get_bars(self, symbol, timeframe="30Min", limit=13):
+    async def get_bars(self, symbol, timeframe: str = "30Min", limit: int = 13):
         raise RuntimeError("no bars")      # forces the empirical VWAP profile
 
 
@@ -63,8 +70,14 @@ class _Broker:
 
 def test_zero_fill_is_rejected_not_partial(capsys):
     res = build_slice_result(
-        "TWAP", _req(), total_filled=0.0, total_cost=0.0, last_result=None,
-        slices_attempted=10, slices_failed=10, last_error="broker unreachable",
+        "TWAP",
+        _req(),
+        total_filled=0.0,
+        total_cost=0.0,
+        last_result=None,
+        slices_attempted=10,
+        slices_failed=10,
+        last_error="broker unreachable",
     )
 
     assert res.status == "rejected", "nothing filled is not a partial fill"
@@ -78,8 +91,12 @@ def test_zero_fill_is_rejected_not_partial(capsys):
 def test_complete_fill_is_filled():
     last = OrderResult(broker_order_id="ord-9", status="filled", filled_qty=10)
     res = build_slice_result(
-        "TWAP", _req(100), total_filled=100.0, total_cost=10_000.0,
-        last_result=last, slices_attempted=10,
+        "TWAP",
+        _req(100),
+        total_filled=100.0,
+        total_cost=10_000.0,
+        last_result=last,
+        slices_attempted=10,
     )
     assert res.status == "filled"
     assert res.broker_order_id == "ord-9"
@@ -89,8 +106,13 @@ def test_complete_fill_is_filled():
 def test_genuine_partial_still_reports_partial():
     last = OrderResult(broker_order_id="ord-3", status="filled", filled_qty=10)
     res = build_slice_result(
-        "TWAP", _req(100), total_filled=30.0, total_cost=3_000.0,
-        last_result=last, slices_attempted=10, slices_failed=7,
+        "TWAP",
+        _req(100),
+        total_filled=30.0,
+        total_cost=3_000.0,
+        last_result=last,
+        slices_attempted=10,
+        slices_failed=7,
     )
     assert res.status == "partial"
     assert res.filled_qty == 30.0
@@ -101,6 +123,9 @@ def test_genuine_partial_still_reports_partial():
 
 @pytest.mark.asyncio
 async def test_twap_total_failure_is_rejected():
+    # Local import to avoid loading heavy modules when not needed
+    from app.execution.twap import TWAPExecution
+
     broker = _Broker(fail_all=True)
     res = await TWAPExecution(broker, slices=10, duration_minutes=0).execute(_req())
 
@@ -111,6 +136,8 @@ async def test_twap_total_failure_is_rejected():
 
 @pytest.mark.asyncio
 async def test_vwap_total_failure_is_rejected():
+    from app.execution.vwap import VWAPExecution
+
     broker = _Broker(fail_all=True)
     vwap = VWAPExecution(broker)
     vwap.sleep_seconds = 0
@@ -123,6 +150,8 @@ async def test_vwap_total_failure_is_rejected():
 @pytest.mark.asyncio
 async def test_vwap_stops_hammering_a_dead_broker(capsys):
     """VWAP had no consecutive-failure abort — it worked the whole schedule."""
+    from app.execution.vwap import VWAPExecution
+
     broker = _Broker(fail_all=True)
     vwap = VWAPExecution(broker)
     vwap.sleep_seconds = 0
@@ -134,6 +163,8 @@ async def test_vwap_stops_hammering_a_dead_broker(capsys):
 
 @pytest.mark.asyncio
 async def test_iceberg_total_failure_is_rejected():
+    from app.execution.iceberg import IcebergExecution
+
     broker = _Broker(fail_all=True)
     ice = IcebergExecution(broker, refill_delay_seconds=0)
     res = await ice.execute(_req())
@@ -145,6 +176,8 @@ async def test_iceberg_total_failure_is_rejected():
 @pytest.mark.asyncio
 async def test_iceberg_does_not_spin_on_zero_fill_slices(capsys):
     """filled_qty=0 leaves `remaining` untouched — the loop used to never exit."""
+    from app.execution.iceberg import IcebergExecution
+
     broker = _Broker(fill_ratio=0.0)
     ice = IcebergExecution(broker, refill_delay_seconds=0)
 
@@ -158,6 +191,8 @@ async def test_iceberg_does_not_spin_on_zero_fill_slices(capsys):
 @pytest.mark.asyncio
 async def test_partial_run_keeps_the_real_order_id():
     """Some slices fail, some fill — the id must be a real one, status partial."""
+    from app.execution.twap import TWAPExecution
+
     broker = _Broker(fail_first=2)
     res = await TWAPExecution(broker, slices=10, duration_minutes=0).execute(_req(100))
 

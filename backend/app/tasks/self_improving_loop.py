@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import heapq
 from datetime import datetime, timedelta, timezone
 from typing import Any, List, Tuple
 
@@ -145,9 +146,16 @@ class SelfImprovingLoop:
         )
 
     def _select_top_bottom_strategies(self, metrics: List[dict]) -> Tuple[List[dict], List[dict]]:
-        """Return the top 5 and bottom 3 strategies based on Sharpe."""
-        top = sorted(metrics, key=lambda m: m["sharpe"], reverse=True)[:5]
-        bottom = sorted(metrics, key=lambda m: m["sharpe"])[:3]
+        """Return the top 5 and bottom 3 strategies based on Sharpe using heap operations."""
+        if len(metrics) <= 8:
+            # Small list – simple sort is fine
+            sorted_metrics = sorted(metrics, key=lambda m: m["sharpe"], reverse=True)
+            top = sorted_metrics[:5]
+            bottom = sorted_metrics[-3:] if len(sorted_metrics) >= 3 else sorted_metrics[:]
+        else:
+            # Use heapq for O(n log k) efficiency
+            top = heapq.nlargest(5, metrics, key=lambda m: m["sharpe"])
+            bottom = heapq.nsmallest(3, metrics, key=lambda m: m["sharpe"])
         return top, bottom
 
     def _build_llm_prompt(self, top: List[dict], bottom: List[dict]) -> str:
