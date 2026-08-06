@@ -1,5 +1,44 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🎯 2026-08-06 07:30 — HALF THE IMPROVER'S "TARGETING" WAS DECORATIVE, AND ONE OF ITS TYPES COULD NEVER RUN
+
+Shipped the `[P2]` pairing item. Measuring it first changed what the fix had to be — the tracker's description
+was directionally right and wrong in the specifics, twice over.
+
+- [x] **The tracker said type and target were chosen "independently". Half true.** The type is
+  `hour % 12`, fixed for a run; the pattern is `((hour + attempts) % 24) % 12`, rotating per attempt. So
+  attempt 0 pairs type *i* with pattern *i* **deterministically**, and only the retries drift. Both lists were
+  length 12, so the attempt-0 pairing was permanent and recurred every 12 hours:
+
+        test_cases     -> backend/app/ml/models/*.py    unit tests written INTO model source
+        strategy_logic -> backend/app/api/v1/*.py       route handlers have no entry/exit logic
+        monitoring     -> backend/tests/unit/*.py       P&L logging added to unit tests
+
+- [x] **The bigger finding was not in the item at all: 6 of the 12 patterns yielded ZERO usable files.** Once
+  `PROTECTED_PREFIXES` and the 8000-char guard applied, `strategies/manual`, `strategies/ml_enhanced`,
+  `ml/models`, `ml/features`, `execution` and `risk` were all empty. Those runs fell straight through to a glob
+  over the whole backend — so on **half of all hours the per-hour targeting did nothing at all**, silently.
+  That fallback is the mechanism behind `strategy_logic` reaching `models/account.py` (#1510).
+- [x] **`strategy_logic` is now removed rather than re-pointed.** Its prompt only means something inside
+  `backend/app/strategies/`, and that prefix is protected precisely because "behavior in the money-path is not
+  the improver's to touch". **A type whose only legal target is off-limits is not a type** — it just spends one
+  run in twelve aiming a strategy prompt at whatever it can reach.
+- [x] **`TYPE_TARGETS` maps each type to locations where the change is meaningful**, every pattern verified to
+  yield at least one usable file, and `test_every_improvement_type_has_a_live_target` **fails CI if that stops
+  being true**. That is the part that matters: the old design could degrade silently, and now it cannot.
+- [x] **The fallback announces itself.** A silent fallback is what let the targeting look like it was working.
+- [x] **6 mutations, 6 caught — after two of them turned out not to be mutations at all.** My first M5/M6
+  produced invalid Python, and pytest reported "2 errors", which is *not* a caught mutation: the suite never
+  ran. Re-done properly, both were caught. **A mutation that breaks the file tests nothing** — the same trap as
+  the skip-instead-of-fail one an hour ago, in a new costume.
+- [x] **One existing test had to be rewritten, and that deserves scrutiny.**
+  `test_both_candidate_lists_apply_the_filter` counted `_too_large` calls and demanded ≥2, one per candidate
+  list. Both lists now route through one `_usable()` helper, so counting would demand duplication that no
+  longer exists. Rewritten to assert the property directly — **no `glob()` result may reach the caller without
+  passing through `_usable()`** — which is strictly stronger, because it also catches a *third* candidate list
+  that the old count would have waved through. Rewriting a test to fit new code is how a guard gets quietly
+  neutered; this one is stated so it fails for more cases than before, not fewer.
+
 ## 🔬 2026-08-06 07:00 — A GUARD BUILT SO A FLAKE COULDN'T FAIL CI WAS TURNING A FLAKE INTO A FAILURE
 
 CI went red on a PR that touches only `.github/scripts` and a markdown file. The failing test was in the
@@ -226,11 +265,8 @@ Everything below is grounded in something measured today. Ordered by value per u
   longer depends on what Alpaca returns. **The egress item survives only as a speed/cost argument** (~25s of CI
   time), which is a much weaker case — re-filed at `[P2]` above rather than left at `[P1]` on a rationale that
   no longer holds. Deferring it three times is what created the room to read the code first.
-- [ ] **[P2] Pair the improver's improvement TYPE to plausible file paths.** `continuous_improver` picks the
-  type by `hour % len(IMPROVEMENT_TYPES)` and the target by `pick_target_file(hour, ...)` **independently**, so
-  a `strategy_logic` prompt landed on `models/account.py` and produced two unreferenced methods (#1510). This
-  attacks the source of the 813-dead-function measurement rather than gating on the symptom — which is why the
-  48%-flagging gate was rejected. Not shipped in a tick because it changes what the autonomous improver does.
+- [x] **~~[P2] Pair the improver's improvement TYPE to plausible file paths.~~ SHIPPED 2026-08-06 07:30** —
+  and the item under-described the fault. See the entry at the top of this file.
 - [x] **~~[P2] Extend the overnight-read pattern to other markets.~~ SHIPPED 2026-08-06 05:10 (#1533)** — seven
   markets: India, Japan, Korea, Taiwan, Hong Kong, Australia, Singapore. **This item's own suggestion was wrong
   and shipping it honestly meant contradicting it.** It proposed `EWG`/`EWQ` (Europe) and even wrote the reason
@@ -362,10 +398,10 @@ headline number and the period breakdown point in opposite directions.
   further." With the breakdown, **the most recent 18 months show the model behind on 2 of 3**, which is an
   argument against routing live orders through it, not for. The overall figures were never wrong — they were
   just the wrong statistic to decide on.
-- [ ] **[P2] `beats` needs a magnitude floor.** SPY's first window reports `0.102 vs 0.087 → BEATS`. Both are
-  statistically indistinguishable from zero, so the flag is technically true and evidentially worthless — and
-  it counts equally with QQQ's 2.057-vs-0.176 in any tally. A minimum spread (or an explicit `inconclusive`
-  state) would stop near-zero comparisons reading as support.
+- [x] **~~[P2] `beats` needs a magnitude floor.~~ ALREADY SHIPPED** — found stale 2026-08-06 07:30.
+  `ml_experiment.py:234` computes `beats = margin > floor` against `sharpe_noise_floor(n)`, and `verdict` has
+  the explicit third state this asked for: `inconclusive` when the margin sits inside the floor. The item was
+  describing work that had already landed.
 - [x] **This is what the 22:45 integration test was protecting.** Had the unmasked-index mutation shipped,
   every date above would be shifted by about a year and this table would have been quietly wrong while looking
   entirely reasonable.
@@ -426,10 +462,11 @@ suspects, all measured and discarded, which is the useful part.
   does not re-derive them. Deliberately not removing the egress — exercising these routes *with* credentials
   is the point, since it proves a broker auth failure surfaces as a handled error rather than a 5xx, the exact
   class the scanner-500 bug fell into.
-- [ ] **[P1] The real fix: bound the egress.** Point the broker base URL at a local stub returning a
-  deterministic auth failure. That keeps the "handled, not 5xx" coverage, removes the third party from the
-  verdict, and drops ~25s from every CI run. **Not shipped in a monitor tick** — it changes what a
-  safety-critical sweep actually exercises, which deserves a considered change rather than an incidental one.
+- [x] **~~[P1] The real fix: bound the egress.~~ SUPERSEDED** — duplicate of the item reconciled at the top of
+  this file, and resting on the same wrong diagnosis. The CI non-determinism was two twin sweeps applying
+  different criteria, not the third party. Bounding the egress survives only as a ~25s speed argument at
+  `[P2]`. **This is the second copy of one item found stale in a day**, which is the argument for reconciling
+  the tracker as work lands rather than in a sweep later.
 - [x] **Also worth recording: two of my background suite runs reported 510 and 1537 errors and both were my own
   artifacts** — I was editing app modules (`ml_model.py`, `improvements.py`) mid-run to mutation-test. A
   concurrent edit to a widely-imported module produces mass collection errors that look like catastrophic
