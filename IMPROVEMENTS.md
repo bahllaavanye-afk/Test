@@ -299,7 +299,19 @@ audit was wrong — not in its counting, which was exact, but in the sentence it
   `fromisoformat` truncates nanoseconds natively and the shim is a no-op there. It is kept for older
   interpreters, where the raise would return `None`, make every order look isolated, and bring the false alarm
   straight back. Noted in the code rather than dressed up as a caught mutation.
-- [ ] **[P1] The account still cannot trade, and this fix does not change that.** equity $21,801.52, cash
+- [x] **~~[P1] The account still cannot trade.~~ RESOLVED 2026-08-06 13:35 at the open, with no action taken.**
+  Cash went **-$48,472 → +$21,916**, buying power **$0.00 → $87,662**, the book is flat and the desk placed 13
+  orders. Total cost of the episode: **-$37.72 (-0.17%)**, and **the daily loss cap did not trip**. The recovery
+  loop had already stopped itself at 13:08 once buying power turned positive — its `bp > 0` guard is precisely
+  the check that distinguishes ordinary margin from the orphaned-notional pathology, and it worked.
+  **I over-weighted the severity.** The hazard is real and documented (it fired on 2026-07-27), so flagging it
+  was right; predicting the flatten "realises losses into the first prints" and could freeze the desk was the
+  part reality did not support. Recorded because a warning that lands badly is worth as much scrutiny as a
+  guard that reports wrongly — and this session has spent a day on the latter.
+- [x] **The order-origin fix verified in production in the same run**: it printed
+  `ⓘ ... all of them arrived in bulk bursts ... Not evidence of a third-party writer` rather than the intruder
+  alarm. First live confirmation since #1539.
+- [ ] **~~[P1] superseded~~ — original text kept below for the record.** equity $21,801.52, cash
   -$48,471.29, buying power **$0.00**, 17 positions queued to flatten at the open. The desk placed 0 orders
   with `reason=account_unavailable`. The flatten will realise losses into the open, which is exactly the
   documented "buy on margin, get liquidated, get frozen" path at `desk_order_placer.py:583`. **Operator
