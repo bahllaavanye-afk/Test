@@ -34,6 +34,41 @@ WIN_RATE_FLOOR    = 0.35    # combined with negative expectancy = no edge
 AVG_RETURN_FLOOR  = -0.50   # consistently negative per-trade expectancy
 
 
+def _dispersion_note(stats: dict) -> str:
+    """How concentrated the loss was — appended to magnitude-based reasons.
+
+    A cumulative-return rule is a claim about size, and size alone cannot
+    distinguish a strategy bleeding steadily from one that had a single bad
+    trade. `avellaneda` was permanently retired on "-7.9% over 10 trades" while
+    winning 6 of them (P=0.83 against a coin flip); the record held nothing that
+    could tell the two apart.
+
+    Returns "" when the producer has not yet written dispersion, so old records
+    and fresh deploys degrade to the previous wording rather than lying.
+    """
+    stdev = stats.get("stdev_return_pct")
+    worst = stats.get("worst_trade_pct")
+    if stdev is None and worst is None:
+        return ""
+    bits = []
+    if worst is not None:
+        total = float(stats.get("total_return_pct", 0.0) or 0.0)
+        share = (float(worst) / total * 100.0) if total else 0.0
+        if share > 100:
+            # The signature case: one trade lost MORE than the strategy's net
+            # loss, so the rest were net positive. That is a tail event wearing
+            # a bleed's clothing, and it is what `avellaneda` looked like.
+            bits.append(f"worst single trade {float(worst):.2f}% EXCEEDS the net loss "
+                        f"— the other {int(stats.get('trades', 0)) - 1} were net positive")
+        elif share > 0:
+            bits.append(f"worst single trade {float(worst):.2f}% = {share:.0f}% of the loss")
+        else:
+            bits.append(f"worst single trade {float(worst):.2f}%")
+    if stdev is not None:
+        bits.append(f"stdev {float(stdev):.2f}%")
+    return "  [" + ", ".join(bits) + "]"
+
+
 def evaluate_trim(stats: dict, min_trades: int = MIN_TRADES) -> tuple[bool, str]:
     """Decide whether a strategy should be retired. Pure + testable.
 
@@ -48,11 +83,13 @@ def evaluate_trim(stats: dict, min_trades: int = MIN_TRADES) -> tuple[bool, str]
     avg_ret = float(stats.get("avg_return_pct", 0.0) or 0.0)
 
     if total_ret <= RETURN_FLOOR_PCT:
-        return True, f"cumulative return {total_ret:.1f}% ≤ {RETURN_FLOOR_PCT}% over {trades} trades"
+        return True, (f"cumulative return {total_ret:.1f}% ≤ {RETURN_FLOOR_PCT}% "
+                      f"over {trades} trades{_dispersion_note(stats)}")
     if win_rate < WIN_RATE_FLOOR and avg_ret < 0:
         return True, f"no edge: win_rate {win_rate:.0%} < {WIN_RATE_FLOOR:.0%} and avg_return {avg_ret:.2f}% < 0"
     if avg_ret <= AVG_RETURN_FLOOR:
-        return True, f"negative expectancy: avg_return {avg_ret:.2f}% ≤ {AVG_RETURN_FLOOR}% over {trades} trades"
+        return True, (f"negative expectancy: avg_return {avg_ret:.2f}% ≤ "
+                      f"{AVG_RETURN_FLOOR}% over {trades} trades{_dispersion_note(stats)}")
     return False, "performing within tolerance"
 
 

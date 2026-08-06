@@ -35,6 +35,28 @@ each independently "found" after already being documented.
 | 14 | **Set `ANGELONE_API_KEY` / `_CLIENT_ID` / `_PASSWORD` / `_TOTP_SECRET`** | ~5min | Turns the India work from research into execution. AngelOne SmartAPI is free and TOTP-derivable, so it is the only broker that can log in unattended — **Zerodha cannot** (browser redirect, daily token, ₹2,000/mo). `india_broker.py` reports what is missing; nothing places an Indian order until these exist. |
 
 
+## ✂️ 2026-08-06 04:40 — STRATEGY RETIREMENT WAS UNAUDITABLE **AND** IRREVERSIBLE
+
+The noise-floor lesson from the ML work applies to the path that retires live strategies. Each retirement's
+win count tested against a coin flip:
+
+    avellaneda  6/10  P=0.828 (chance)   vol_of_vol 2/10 P=0.055   realized_vol_asymmetry 3/10 P=0.172
+    options_pcr_reversal 2/11 P=0.033    stat_arb_e 0/11 P<0.001
+
+`avellaneda` won 6 of 10 and was retired **permanently**. Its rule was a magnitude one, for which win rate is
+admittedly the wrong test — but **`fill_tracker` recorded no dispersion at all**, so nothing could distinguish
+"bleeds -0.79% every trade" from "flat nine times, lost 8.4% once". Both give the same `total_return_pct` at
+the same n. And nothing ever removes an entry from `strategy_trims.json` while a retired strategy places no
+orders, so the decision can never generate the evidence that would overturn it.
+
+**Shipped:** `fill_tracker` carries a running `sum_sq_return_pct` and `worst_trade_pct`; the trim reason now
+reads `[worst single trade -8.40% EXCEEDS the net loss — the other 9 were net positive, stdev 2.61%]` versus
+`[worst single trade -1.20% = 15% of the loss, stdev 0.31%]`. **Thresholds unchanged, with a test pinning
+that** — what gets retired is capital-allocation policy, not a reporting detail.
+
+**Operator question, now askable with evidence:** should a magnitude retirement require a dispersion bar, and
+should retirement carry a TTL or re-audition path? Both move real money, so neither shipped.
+
 ## 🚨 2026-08-05 19:10 — 10% OF THE BOOK HAS NO OWNER, AND NOTHING CAN SAY WHOSE IT IS
 
 `audit_order_origins()` shipped at 19:00 and fired on its first live desk run (`31037485632`):

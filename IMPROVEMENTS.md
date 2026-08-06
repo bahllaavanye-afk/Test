@@ -1,5 +1,92 @@
 # QuantEdge — Improvements & Task Tracker
 
+## ✂️ 2026-08-06 04:40 — A PERMANENT, IRREVERSIBLE RETIREMENT MADE ON UNAUDITABLE EVIDENCE
+
+The ML `beats` flag got a noise floor two hours ago. The same statistical error lives in the path that retires
+**live** strategies, where it costs capital rather than a table cell. Every retirement in
+`strategy_trims.json`, with each win count tested against a coin flip:
+
+    strategy                 n  wins   P(<=wins | 50%)   strength
+    avellaneda              10     6            0.828    indistinguishable from chance
+    vol_of_vol              10     2            0.055    weak
+    realized_vol_asymmetry  10     3            0.172    weak
+    options_pcr_reversal    11     2            0.033    strong
+    stat_arb_e              11     0            0.000    strong
+
+- [x] **`avellaneda` won 6 of 10 trades and was retired permanently.** Its rule was a *magnitude* one
+  (`cumulative return -7.9% <= -5.0%`), and win rate is admittedly the wrong test for that — a strategy can win
+  often and still lose money on a few large losers, which is a legitimate reason to retire. **The problem is
+  that nothing in the record could tell those apart.**
+- [x] **`fill_tracker` recorded no dispersion whatsoever** — `trades, wins, win_rate, avg_return_pct,
+  total_return_pct` and nothing else. A strategy bleeding -0.79% every trade and one that was flat nine times
+  and lost 8.4% once produce **the identical `total_return_pct` at the identical n**. The trimmer could not
+  distinguish them, and neither could a human reading the reason.
+- [x] **And the decision is self-sealing.** Nothing ever removes an entry from `strategy_trims.json` — the
+  trimmer only appends — while a retired strategy places no orders. So it can never accumulate the evidence
+  that would overturn its own retirement. **Unauditable and irreversible is a bad pair.**
+- [x] **SHIPPED — the record is now auditable.** `fill_tracker` carries a running `sum_sq_return_pct` (no
+  per-trade history needed: `stdev = sqrt(E[x^2] - E[x]^2)`) plus `worst_trade_pct`, and the trim reason
+  reports them. The two cases now read differently, which was the entire point:
+
+      one bad trade:  -7.9% over 10 trades  [worst single trade -8.40% EXCEEDS the net loss
+                                             — the other 9 were net positive, stdev 2.61%]
+      steady bleed:   -7.9% over 10 trades  [worst single trade -1.20% = 15% of the loss, stdev 0.31%]
+
+- [x] **Thresholds deliberately unchanged, and a test pins that.** What gets retired is capital-allocation
+  policy; making a decision auditable must never silently alter it.
+  `test_this_changes_REPORTING_not_WHICH_strategies_are_trimmed` fails if it does. 7 tests, 4 mutations, 4
+  caught. Records written before today degrade to the old wording rather than inventing numbers.
+- [ ] **[P1, OPERATOR] The policy question this exposes, now that it can be asked properly.** Two choices, both
+  yours: (a) require a magnitude-rule retirement to clear a dispersion bar — a loss concentrated in one trade
+  is a tail event, not a bleed; and (b) give retirement a **TTL or a re-audition path**, so a strategy retired
+  on n=10 is not silenced forever by evidence that was never conclusive. Neither is shippable unattended: (a)
+  keeps a losing strategy trading longer, (b) resumes a retired one. Both move real money.
+
+## 🗺️ 2026-08-06 04:40 — FORWARD QUEUE, written from this session's evidence rather than from ideas
+
+Everything below is grounded in something measured today. Ordered by value per unit of risk.
+
+### Tractable in code, not yet done
+- [ ] **[P1] Bound the 5xx sweep's egress.** Its verdict currently depends on a third party (measured: identical
+  command failed in 5.9s once and passed in 28-32s three times). Point the broker base URL at a local stub
+  returning a deterministic auth failure — keeps the "handled, not 5xx" coverage, removes Alpaca from the
+  verdict, and drops ~25s from every CI run. Deferred three times as too consequential for a monitor tick; it
+  wants one deliberate change.
+- [ ] **[P2] Pair the improver's improvement TYPE to plausible file paths.** `continuous_improver` picks the
+  type by `hour % len(IMPROVEMENT_TYPES)` and the target by `pick_target_file(hour, ...)` **independently**, so
+  a `strategy_logic` prompt landed on `models/account.py` and produced two unreferenced methods (#1510). This
+  attacks the source of the 813-dead-function measurement rather than gating on the symptom — which is why the
+  48%-flagging gate was rejected. Not shipped in a tick because it changes what the autonomous improver does.
+- [ ] **[P2] Extend the overnight-read pattern to the other markets whose sessions close before the US open.**
+  The NSE tilt is live and the machinery is generic: a foreign close, a bounded confidence nudge, a staleness
+  check, US-listed proxies that can actually be routed. The desks already trade `EWJ` (Japan, closes 06:00
+  UTC), `EWG`/`EWQ` (Europe, 15:30 UTC), `EWY`, `FXI`. Same code path, new rows in the map. **Do the weights
+  honestly** — an index-to-country-ETF link is weaker than an ADR's, exactly as `SMIN` is 0.6.
+- [ ] **[P3] Give `verdict` a fourth state for "the window is too short to judge".** Currently a sub-window
+  under 30 days returns nothing at all, so a symbol with thin history silently has no breakdown rather than an
+  explicit "insufficient". Same distinction the India feed already makes between absent, stale and flat.
+
+### Measured and deliberately NOT built
+- [x] **A repo-wide dead-code gate.** 813 of 1,710 functions flagged (48%); a gate that fires on half the
+  codebase gates nothing. Per-feature call-site guards instead — used ~6 times this week.
+- [x] **A vacuous-guard sweep beyond the one file.** All seven other scan-based tests derive their root from
+  `__file__`; the defect was isolated. A recurrence guard shipped instead of ceremony in seven files.
+- [x] **Tightening five of the six monitor entries that accept a 4xx.** 401/403/451 *prove* the host answered.
+  Only Polymarket's 404 was wrong, and only because its root returns 200.
+
+### The pattern worth carrying into the next session
+- [x] **Today's highest-value finds were not broken code — they were guards that could not fail.** Four
+  independent instances: two `test_regression.py` scans with hardcoded absolute paths (one hiding a live
+  violation), a frontend uptime monitor pointing at a stub *and* accepting 404, a schema-drift gate that has
+  reached a verdict once in 92 runs, and an order-origin report that only ran in a corner nobody reaches.
+  **The question that finds them is "under what input does this fail?" — asked of the check, not the code.**
+- [x] **The mirror-image rule, learned twice in one day.** A test that locates source by path must derive it
+  from `__file__`: a *relative* path breaks outside the repo root, an *absolute* one silently disables the scan
+  inside CI. Both failure modes are silent, and they point in opposite directions.
+- [x] **A degenerate fixture cannot test a threshold.** Two mutations survived the noise-floor work because the
+  fixture used `strat = bench.copy()`, making the margin *exactly* zero — so both `margin > 0` and
+  `margin > floor` passed. Thresholds need small-but-nonzero cases on both sides.
+
 ## 🔎 2026-08-06 03:30 — THE VACUOUS-GUARD SWEEP CAME BACK NEGATIVE, AND THAT IS THE USEFUL RESULT
 
 `test_regression.py`'s hardcoded absolute path made two guards pass on an empty scan. The obvious next question
