@@ -2,7 +2,7 @@
 Historical stress testing — overlay a strategy's signals on known crisis periods.
 
 Tests how a strategy would have performed during the most severe market dislocations,
-revealing tail-risk exposure that standard backtests can understate when they
+revealing tail‑risk exposure that standard backtests can understate when they
 average across calm and turbulent regimes.
 """
 from __future__ import annotations
@@ -148,12 +148,30 @@ def run_stress_tests(
     results: list[StressResult] = []
     price_index = prices.index
 
-    for scenario in scenarios:
-        start_ts = pd.Timestamp(scenario.start)
-        end_ts = pd.Timestamp(scenario.end)
+    # Pre‑convert scenario dates to pandas Timestamps once
+    scenario_ts = [(pd.Timestamp(s.start), pd.Timestamp(s.end)) for s in scenarios]
 
+    for scenario, (start_ts, end_ts) in zip(scenarios, scenario_ts):
         # Fast check: if the scenario window does not intersect the price index, skip early
-        if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
+        if not price_index.intersection(pd.Interval(start_ts, end_ts, closed="both")).empty:
+            # Determine number of price points without slicing the full series
+            idx_slice = price_index.slice_indexer(start_ts, end_ts)
+            if isinstance(idx_slice, slice):
+                point_count = len(price_index[idx_slice])
+            else:
+                point_count = len(idx_slice)
+
+            if point_count < MIN_DATA_POINTS:
+                results.append(
+                    StressResult(
+                        scenario=scenario,
+                        metrics=None,
+                        period_covered=False,
+                        data_points=point_count,
+                    )
+                )
+                continue
+        else:
             results.append(
                 StressResult(
                     scenario=scenario,
@@ -168,17 +186,6 @@ def run_stress_tests(
         s_prices = _slice_series(prices, start_ts, end_ts)
         s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
         s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
-
-        if s_prices is None or len(s_prices) < MIN_DATA_POINTS:
-            results.append(
-                StressResult(
-                    scenario=scenario,
-                    metrics=None,
-                    period_covered=False,
-                    data_points=len(s_prices) if s_prices is not None else ZERO_DATA_POINTS,
-                )
-            )
-            continue
 
         metrics = run_backtest(
             signals=s_signals,
