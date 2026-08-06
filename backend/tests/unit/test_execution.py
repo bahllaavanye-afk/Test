@@ -139,4 +139,48 @@ async def test_twap_exit_logic(request_obj: OrderRequest) -> None:
     assert len(broker.placed) == slices, "TWAP must place the configured number of slices"
     assert result.filled_qty > 0, "Result should contain filled quantity"
 
+
+@pytest.mark.asyncio
+async def test_twap_single_slice(request_obj: OrderRequest) -> None:
+    """TWAP with a single slice should place one order with the full quantity."""
+    broker = MockBroker()
+    twap = TWAPExecution(broker, slices=1, duration_minutes=0.001)
+    result = await twap.execute(request_obj)
+
+    assert len(broker.placed) == 1, "Exactly one order should be placed for a single slice"
+    assert broker.placed[0].quantity == request_obj.quantity, "Quantity should match the original request"
+    assert result.filled_qty == request_obj.quantity, "Result should reflect full fill for single slice"
+
+
+@pytest.mark.asyncio
+async def test_twap_zero_duration(request_obj: OrderRequest) -> None:
+    """TWAP with zero duration should execute immediately without sleeping."""
+    broker = MockBroker()
+    twap = TWAPExecution(broker, slices=3, duration_minutes=0)
+    start = datetime.utcnow()
+    result = await twap.execute(request_obj)
+    end = datetime.utcnow()
+
+    elapsed_seconds = (end - start).total_seconds()
+    # Expect the execution to be fast; allow a small margin for async overhead.
+    assert elapsed_seconds < 1.0, "Execution with zero duration should complete quickly"
+    assert len(broker.placed) == 3, "All slices should be placed even when duration is zero"
+    assert result.filled_qty == request_obj.quantity * 3, "Result should sum fills from all slices"
+
+
+@pytest.mark.asyncio
+async def test_limit_first_zero_fallback_immediate_market(request_obj: OrderRequest) -> None:
+    """LimitFirst with a zero fallback window should immediately place a market order after a non‑filled limit."""
+    broker = MockBrokerNoFill()
+    lf = LimitFirstExecution(broker, offset_bps=5, fallback_seconds=0)
+
+    result = await lf.execute(request_obj)
+
+    # Expect both limit and market orders to be placed, but the fallback should happen instantly.
+    assert len(broker.placed) == 2, "Both limit and immediate fallback market orders should be placed"
+    assert broker.placed[0].order_type == "limit", "First order must be a limit order"
+    assert broker.placed[1].order_type == "market", "Fallback order must be a market order"
+    assert result.status == "filled", "Result should be filled after immediate fallback"
+    assert result.filled_qty == request_obj.quantity, "Full quantity should be filled after fallback"
+
 """End of test_execution.py"""
