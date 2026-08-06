@@ -73,4 +73,28 @@ if __name__ == "__main__":
                 configure_logging()
                 self.assertEqual(logging.getLogger().level, logging.DEBUG)
 
+        def test_debug_none_uses_info_level_and_json_renderer(self):
+            """When settings.debug is None, INFO level and JSONRenderer should be used."""
+            with mock.patch.object(settings, "debug", None):
+                configure_logging()
+                self.assertEqual(logging.getLogger().level, logging.INFO)
+                processors = structlog.get_config()["processors"]
+                self.assertIsInstance(processors[-1], structlog.processors.JSONRenderer)
+
+        def test_logger_factory_is_print_logger_factory(self):
+            """The logger_factory should be an instance of PrintLoggerFactory."""
+            with mock.patch.object(settings, "debug", True):
+                configure_logging()
+                logger_factory = structlog.get_config()["logger_factory"]
+                self.assertIsInstance(logger_factory, structlog.PrintLoggerFactory)
+
+        def test_logging_format_is_message_only(self):
+            """The logging formatter should be set to only output the message."""
+            with mock.patch.object(settings, "debug", False):
+                configure_logging()
+                # There should be at least one handler configured by basicConfig
+                self.assertGreaterEqual(len(logging.root.handlers), 1)
+                formatter = logging.root.handlers[0].formatter
+                self.assertEqual(formatter._fmt, "%(message)s")
+
     unittest.main(argv=["first-arg-is-ignored"], exit=False)
