@@ -1,7 +1,9 @@
 """WebSocket connection manager with topic-based pub/sub."""
 from __future__ import annotations
+
 import asyncio
 import json
+import time
 from collections import defaultdict
 from fastapi import WebSocket
 from app.utils.logging import logger
@@ -14,7 +16,11 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket, topic: str) -> None:
         await websocket.accept()
         self._connections[topic].add(websocket)
-        logger.info("WebSocket connected", topic=topic, total=len(self._connections[topic]))
+        logger.info(
+            "WebSocket connected",
+            topic=topic,
+            total=len(self._connections[topic]),
+        )
 
     def disconnect(self, websocket: WebSocket, topic: str) -> None:
         self._connections[topic].discard(websocket)
@@ -34,17 +40,36 @@ class ConnectionManager:
         return targets
 
     async def broadcast(self, topic: str, data: dict) -> None:
+        """Send ``data`` to all subscribers of ``topic``.
+
+        Structured logging at INFO level captures:
+        - ``signal_count``: number of sockets the message was sent to.
+        - ``exec_time_ms``: time taken to perform the broadcast.
+        - ``pnl``: optional profit & loss metric from ``data`` if present.
+        """
+        start_time = time.perf_counter()
         message = json.dumps(data)
         dead = set()
-        for ws in self._targets_for(topic):
+        targets = self._targets_for(topic)
+        for ws in targets:
             try:
                 await ws.send_text(message)
             except Exception:
                 dead.add(ws)
-        # A dead socket may live under either the exact or the wildcard topic — purge both.
+
+        # Remove dead sockets from all topics they may belong to.
         if dead:
             for sockets in self._connections.values():
                 sockets -= dead
+
+        exec_time_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            "Broadcast sent",
+            topic=topic,
+            signal_count=len(targets),
+            exec_time_ms=exec_time_ms,
+            pnl=data.get("pnl"),
+        )
 
     async def broadcast_all(self, data: dict) -> None:
         for topic in list(self._connections.keys()):
