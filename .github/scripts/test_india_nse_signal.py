@@ -123,9 +123,11 @@ def test_a_stale_session_is_skipped_with_a_reason_not_tilted():
 
 
 def test_a_session_dated_in_the_future_is_skipped():
+    """A month-ahead date and a market that is merely still trading are the same
+    defect at different scales, so they share one guard and one message."""
     payload = ins.build_payload({"INFY.NS": _up_2pct("2026-09-01")}, now=NOW)
     assert "INFY" not in payload["tilts"]
-    assert "future" in payload["skipped"]["INFY.NS"]
+    assert "not closed yet" in payload["skipped"]["INFY.NS"]
 
 
 def test_a_genuinely_flat_session_is_recorded_as_such():
@@ -353,3 +355,95 @@ def test_the_tilt_log_line_states_the_side():
     block = stage.split("🇮🇳", 1)[1][:400]
     assert "_sd" in block or "side" in block, "the tilt log line omits the signal side"
     assert "agrees" in block, "the log does not say whether India agreed or disagreed"
+
+
+# ── Asia-Pacific extension (2026-08-06) ─────────────────────────────────────
+
+def test_every_source_market_closes_before_the_us_open():
+    """THE property that makes an overnight read useful. A market closing after
+    13:30 UTC cannot inform an order at the open, and adding one would look
+    like more coverage while delivering a stale number."""
+    US_OPEN_UTC = 13.5
+    late = {src: h for src, h in ins.SESSION_CLOSE_UTC.items() if h >= US_OPEN_UTC}
+    assert not late, f"these close at or after the US open: {late}"
+
+
+def test_europe_is_not_in_the_map():
+    """Explicit, because the desks trade EWG/EWQ/EWU so the temptation is real.
+    DAX/CAC close 15:30 UTC and the FTSE 16:30 — two to three hours late."""
+    euro = {"^GDAXI", "^FCHI", "^FTSE", "^STOXX50E", "^IBEX", "^AEX"}
+    assert not (euro & set(ins.INDEX_MAP)), "a European index cannot inform the US open"
+    assert not (euro & set(ins.SESSION_CLOSE_UTC))
+
+
+def test_each_market_uses_its_own_close_hour_not_a_shared_constant():
+    """A single constant (10, NSE's) overstated a 05:30 close's age by 4.5h.
+    Harmless inside a 30h window, wrong on its own terms, and a trap if the
+    window is ever tightened."""
+    from datetime import date as _date
+    tw = ins._session_close_utc(_date(2026, 8, 5), "^TWII")
+    ns = ins._session_close_utc(_date(2026, 8, 5), "^NSEI")
+    assert tw.hour == 5 and tw.minute == 30, tw
+    assert ns.hour == 10, ns
+    assert tw < ns
+
+
+def test_a_half_hour_close_is_not_truncated_to_the_hour():
+    """Korea closes 06:30 and Taiwan 05:30. Integer hours would lose both."""
+    from datetime import date as _date
+    assert ins._session_close_utc(_date(2026, 8, 5), "^KS11").minute == 30
+
+
+def test_an_adr_inherits_its_home_market_close():
+    """`INFY.NS` is not a key in SESSION_CLOSE_UTC; its suffix is. Without the
+    suffix lookup every single-name silently falls back to the 10:00 default —
+    right for India by luck, wrong everywhere the map grows to."""
+    assert ins._market_close_for("INFY.NS") == ins.SESSION_CLOSE_UTC["^NSEI"]
+    assert ins._market_close_for("7203.T") == ins.SESSION_CLOSE_UTC["^N225"]
+    assert ins._market_close_for("NOTAMARKET") == ins.DEFAULT_CLOSE_UTC_HOUR
+
+
+def test_every_new_target_is_a_symbol_some_desk_trades():
+    """Same rule as the India targets: a tilt for a symbol no desk holds is a
+    file nobody reads."""
+    import desk_order_placer as dop
+    traded = {s for d in dop.DESKS for s in d.symbols}
+    targets = {t for m in ins.INDEX_MAP.values() for t in m}
+    assert targets <= traded, f"tilt targets no desk trades: {sorted(targets - traded)}"
+
+
+def test_the_hong_kong_link_is_weighted_below_the_direct_ones():
+    """FXI holds China H-shares; the Hang Seng is a Hong Kong index. Related,
+    not the same market — the weight has to say so, exactly as SMIN's does."""
+    assert ins.INDEX_MAP["^HSI"]["FXI"] < ins.INDEX_MAP["^N225"]["EWJ"]
+
+
+def test_asia_sources_produce_tilts_end_to_end():
+    payload = ins.build_payload({"^N225": _up_2pct(), "^HSI": _up_2pct()}, now=NOW)
+    assert payload["tilts"]["EWJ"]["tilt"] > payload["tilts"]["FXI"]["tilt"] > 0
+    assert payload["tilts"]["EWJ"]["kind"] == "index"
+
+
+def test_a_session_that_has_not_closed_yet_is_refused():
+    """Caught live 2026-08-06 05:15: a run produced `EWT -0.0107 <- ^TWII
+    -0.60%` from a Taiwan session with 15 minutes left to trade. The old ±1h
+    tolerance was harmless when NSE (10:00) was the only source and the workflow
+    ran at 10:20; with markets closing 05:30-10:00 it admitted partial sessions.
+
+    An intraday snapshot reported as a close is worse than no read, because it
+    is indistinguishable from a real one."""
+    from datetime import datetime as _dt
+    # 05:15 UTC — Taiwan (05:30) is still trading.
+    mid_session = _dt(2026, 8, 6, 5, 15, tzinfo=timezone.utc)
+    payload = ins.build_payload(
+        {"^TWII": _up_2pct("2026-08-06")}, now=mid_session)
+    assert "EWT" not in payload["tilts"], "tilted on an unclosed session"
+    assert "not closed yet" in payload["skipped"]["^TWII"]
+
+
+def test_a_session_that_just_closed_is_accepted():
+    """The tolerance must not swing the other way and reject fresh closes."""
+    from datetime import datetime as _dt
+    just_closed = _dt(2026, 8, 6, 5, 35, tzinfo=timezone.utc)   # TW closed 05:30
+    payload = ins.build_payload({"^TWII": _up_2pct("2026-08-06")}, now=just_closed)
+    assert "EWT" in payload["tilts"], payload["skipped"]

@@ -1,5 +1,49 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🌏 2026-08-06 05:10 — THE OVERNIGHT READ NOW COVERS SIX MORE MARKETS, AND EUROPE IS EXCLUDED ON PURPOSE
+
+The `[P2]` item filed an hour ago, shipped. The NSE machinery is generic — a foreign close, a bounded
+confidence nudge, a staleness check, a US-listed proxy that can actually be routed — so extending it is rows in
+a map rather than new mechanism.
+
+- [x] **The property that decides membership is the close time, and I checked it before extending.** Every
+  source must close BEFORE the 13:30 UTC US open, or the read cannot inform an order at the open:
+
+        Taiwan  ^TWII  05:30  -8h00      Korea      ^KS11  06:30  -7h00
+        Japan   ^N225  06:00  -7h30      Hong Kong  ^HSI   08:00  -5h30
+        Austral ^AXJO  06:00  -7h30      Singapore  ^STI   09:00  -4h30
+        India   ^NSEI  10:00  -3h30
+
+- [x] **EUROPE IS DELIBERATELY EXCLUDED, and this is the part I would have got wrong by extending blindly.**
+  DAX and CAC close 15:30 UTC, the FTSE 16:30 — **two to three hours AFTER the US open**. A European close
+  cannot inform an order at the open. The desks trade `EWG`/`EWQ`/`EWU`, so the temptation is real; the map
+  carries the reason and `test_europe_is_not_in_the_map` enforces it.
+- [x] **Weights are correspondence, not enthusiasm.** A country index and its MSCI tracker hold the same market
+  with different weighting → 0.9. **`^HSI → FXI` is 0.7**: FXI holds China H-shares while the Hang Seng is a
+  Hong Kong index — related, not the same market. Same honesty as `SMIN`'s 0.6 against a large-cap Nifty.
+- [x] **A latent bug the extension forced out: the session close was one hardcoded constant** (10:00, NSE's).
+  Applied to Taiwan's 05:30 close it overstates the read's age by 4.5 hours — forgiven by a 30h window,
+  wrong on its own terms, and a trap the moment that window tightens. Now per-market, with half-hours preserved
+  (Korea 06:30, Taiwan 05:30) and single names inheriting their home market via exchange suffix — without
+  which every ADR silently fell back to 10:00, correct for India by luck.
+- [x] **8 new tests, 5 mutations, 5 caught** — adding Europe, collapsing to one close constant, truncating
+  half-hours, dropping the suffix lookup, and over-weighting the Hong Kong link.
+- [x] **The live run caught a bug the extension itself introduced, which is the best argument for running it.**
+  At 05:15 UTC it produced `EWT -0.0107 <- ^TWII -0.60%` — from a **Taiwan session with 15 minutes left to
+  trade**. The future-date guard tolerated ±1 hour, which was harmless while NSE (10:00) was the only source
+  and the workflow ran at 10:20; with markets closing 05:30-10:00 it silently admitted **partial sessions**.
+  An intraday snapshot reported as a close is worse than no read, because it is indistinguishable from a real
+  one. Tolerance is now clock-skew only (0.1h) and the message says `session … has not closed yet (0.2h to
+  go)`. Two more tests, both mutation-verified.
+- [x] **A tooling trap worth recording: `__pycache__` made a mutation test lie.** After restoring a mutated
+  file, the module still imported the mutated constant — the source read `0.1` while `ins.CLOCK_SKEW_TOLERANCE_H`
+  reported `1.0`, and a test passed alone but failed in the full suite. **Mutation testing writes bytecode;
+  clear `__pycache__` or set `PYTHONDONTWRITEBYTECODE=1` between rounds.** Stale cache biases toward mutations
+  appearing to *survive*, so it costs false alarms rather than false confidence — but it cost real time here.
+- [ ] **[P3] The module is still called `india_nse_signal.py` and now covers seven markets.** Renaming it would
+  also mean renaming the committed state file the desk reads by path, mid-flight, for a cosmetic gain. Left
+  deliberately, recorded so the next reader knows the name is historical rather than a mistake.
+
 ## ✂️ 2026-08-06 04:40 — A PERMANENT, IRREVERSIBLE RETIREMENT MADE ON UNAUDITABLE EVIDENCE
 
 The ML `beats` flag got a noise floor two hours ago. The same statistical error lives in the path that retires
