@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1786037042.9215796,
+    "last_updated": 1786047915.175034,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -110,59 +110,52 @@
     },
     "opinion_score": 4,
     "macro_score": 2,
-    "vix": 15.85,
-    "market_scan_ts": 1786027574.9848306,
+    "vix": 15.11,
+    "market_scan_ts": 1786047915.1463056,
     "sector_leaders": [
+      "Financials",
       "Energy",
-      "Tech",
-      "Financials"
+      "Materials"
     ],
     "sector_laggards": [
-      "Comm.",
       "Healthcare",
+      "Cons. Staples",
       "Utilities"
     ],
     "active_universe": [
-      "LLY",
-      "EOG",
-      "NEM",
       "NVDA",
-      "MSFT",
-      "FCX",
-      "NUE",
-      "AMZN",
-      "GOOGL",
+      "EOG",
       "CRWD",
       "PANW",
+      "MSFT",
+      "AMZN",
+      "BRK-B",
+      "LLY",
+      "GOOGL",
+      "AAPL",
+      "INTC",
+      "ADBE",
       "ORCL",
       "AVGO",
-      "MPC",
-      "ALB",
-      "C",
-      "XLV",
+      "META",
+      "SLB",
+      "COP",
       "XLK",
-      "AAPL",
-      "COP"
+      "QQQ",
+      "CVX"
     ],
     "top_momentum": [
       "MSFT",
-      "FCX",
-      "NUE",
+      "ADBE",
       "AMZN",
-      "NEM"
+      "INTU",
+      "NVDA"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1786010843.6188173
   },
   "episodic": [
-    {
-      "lesson": "Autonomous agent automation logged 0 tasks with 0% success rate and 41 failure traces \u2014 urgent debugging needed on automation scripts.",
-      "category": "code",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1785445406.1221743
-    },
     {
       "lesson": "Three autonomous PRs (modifying account.py, base.py, trade.py) had automerge revoked because they touch protected paths; previous edit #298 broke main \u2014 enforce mandatory human review for all protected file PRs.",
       "category": "risk",
@@ -1876,6 +1869,21 @@
       },
       "lesson": "Good morning. With a bull regime score of 4, tightening credit spreads, and strong sector breadth (9/11 sectors above 20-SMA), risk appetite remains elevated despite a flat yield curve. Favor long-biased momentum strategies today to capitalize on the persistent uptrend and falling VIX.",
       "ts": 1786032333.4627547
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Financials",
+        "Energy",
+        "Materials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Financials, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1786047915.1805508
     }
   ],
   "github_insights": [
