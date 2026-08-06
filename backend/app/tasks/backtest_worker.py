@@ -21,6 +21,11 @@ FETCH_LIMIT: int = 5
 DEFAULT_INITIAL_EQUITY: float = 100_000.0
 MAX_ERROR_MESSAGE_LENGTH: int = 500
 
+# Signal value constants
+DEFAULT_SIGNAL_VALUE: int = 0
+LONG_ENTRY_VALUE: int = 1
+SHORT_ENTRY_VALUE: int = -1
+
 # Status strings
 STATUS_QUEUED: str = "queued"
 STATUS_RUNNING: str = "running"
@@ -103,11 +108,11 @@ async def run_backtest_job(run_id: str | None) -> None:
             if entries is None or exits is None:
                 raise ValueError(MSG_SIGNALS_MUST_CONTAIN)
 
-            sig = pd.Series(0, index=df.index, dtype=int)
-            sig[entries.astype(bool)] = 1
-            sig[exits.astype(bool)] = 0
+            sig = pd.Series(DEFAULT_SIGNAL_VALUE, index=df.index, dtype=int)
+            sig[entries.astype(bool)] = LONG_ENTRY_VALUE
+            sig[exits.astype(bool)] = DEFAULT_SIGNAL_VALUE
             if raw_signals.short_entries is not None:
-                sig[raw_signals.short_entries.astype(bool)] = -1
+                sig[raw_signals.short_entries.astype(bool)] = SHORT_ENTRY_VALUE
             signals_series = sig
         else:
             # Expect a pandas Series; guard against empty or mismatched index
@@ -115,10 +120,10 @@ async def run_backtest_job(run_id: str | None) -> None:
                 raise TypeError(MSG_STRATEGY_SIGNALS_TYPE)
             if raw_signals.empty:
                 # An empty signal series is treated as no trades
-                signals_series = pd.Series(0, index=df.index, dtype=int)
+                signals_series = pd.Series(DEFAULT_SIGNAL_VALUE, index=df.index, dtype=int)
             else:
                 # Align index if needed
-                signals_series = raw_signals.reindex(df.index, fill_value=0).astype(int)
+                signals_series = raw_signals.reindex(df.index, fill_value=DEFAULT_SIGNAL_VALUE).astype(int)
 
         metrics = run_backtest(
             signals=signals_series,
