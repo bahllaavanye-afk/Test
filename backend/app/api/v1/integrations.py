@@ -1,5 +1,5 @@
 """Integrations endpoints: Notion sync, etc."""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.deps import get_current_user
 from app.integrations.notion_sync import get_notion_sync
 from app.models.user import User
@@ -21,10 +21,13 @@ router = APIRouter(prefix=INTEGRATIONS_PREFIX, tags=[INTEGRATIONS_TAG])
 
 
 @router.get(NOTION_STATUS_PATH)
-async def notion_status(current_user: User = Depends(get_current_user)):
+async def notion_status(current_user: User = Depends(get_current_user)) -> dict:
     """Whether Notion sync is configured."""
     if current_user is None:
-        raise ValueError("current_user must not be None")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
     sync = get_notion_sync()
     return {
         KEY_ENABLED: sync.enabled,
@@ -39,8 +42,14 @@ async def notion_status(current_user: User = Depends(get_current_user)):
 async def trigger_notion_sync(current_user: User = Depends(get_current_user)):
     """Trigger a bidirectional GitHub Issues ↔ Notion sync."""
     if current_user is None:
-        raise ValueError("current_user must not be None")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
     sync = get_notion_sync()
     if sync is None:
-        raise ValueError("sync instance must not be None")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Notion sync instance is unavailable",
+        )
     return await sync.sync_all()
