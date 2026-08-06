@@ -56,7 +56,7 @@ class SelfImprovingLoop:
     # ── Metric collection ─────────────────────────────────────────────────────
 
     async def _collect_strategy_metrics(self) -> List[dict]:
-        """Pull per-strategy Sharpe + win-rate from trade history (last 30d)."""
+        """Pull per‑strategy Sharpe + win‑rate from trade history (last 30 d)."""
         cutoff = datetime.now(timezone.utc) - timedelta(days=30)
         async with self._factory() as session:
             result = await session.execute(
@@ -94,10 +94,10 @@ class SelfImprovingLoop:
             )
         return metrics
 
-    # ── Auto-disable ──────────────────────────────────────────────────────────
+    # ── Auto‑disable ──────────────────────────────────────────────────────────
 
     async def _auto_disable_underperformers(self, metrics: List[dict]) -> None:
-        """Disable strategies with Sharpe < 0 and >= 10 trades in the last 30 days."""
+        """Disable strategies with Sharpe < 0 and ≥ 10 trades in the last 30 d."""
         underperformers = [m for m in metrics if m["sharpe"] < 0 and m["num_trades"] >= 10]
         if not underperformers:
             return
@@ -125,42 +125,47 @@ class SelfImprovingLoop:
     # ── LLM improvement pass ──────────────────────────────────────────────────
 
     async def _llm_improvement_pass(self, metrics: List[dict]) -> None:
+        """Generate improvement suggestions via a free LLM."""
         if not metrics:
             return
 
         top, bottom = self._select_top_bottom_strategies(metrics)
         prompt = self._build_llm_prompt(top, bottom)
 
-        response = await call_race(
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.4,
-            max_tokens=512,
-        )
+        response = await self._call_llm(prompt)
         if response:
             await self._store_llm_suggestion(response)
 
+    async def _call_llm(self, prompt: str) -> Any:
+        """Invoke the free LLM in race mode with a prepared prompt."""
+        try:
+            return await call_race(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.4,
+                max_tokens=512,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("LLM call failed: %s", exc)
+            return None
+
     def _select_top_bottom_strategies(self, metrics: List[dict]) -> Tuple[List[dict], List[dict]]:
-        """Return the top 5 and bottom 3 strategies based on Sharpe."""
+        """Return the top 5 and bottom 3 strategies based on Sharpe."""
         top = sorted(metrics, key=lambda m: m["sharpe"], reverse=True)[:5]
         bottom = sorted(metrics, key=lambda m: m["sharpe"])[:3]
         return top, bottom
 
     def _build_llm_prompt(self, top: List[dict], bottom: List[dict]) -> str:
         """Create the prompt sent to the LLM with formatted strategy data."""
-        return f"""You are a quantitative trading researcher.
-
-Top performing strategies (last 30d):
-{json.dumps(top, indent=2)}
-
-Underperforming strategies:
-{json.dumps(bottom, indent=2)}
-
-Suggest 3 specific, actionable improvements:
-1. Parameter tuning for the worst performer
-2. A new indicator combination to test
-3. A risk rule change to protect capital
-
-Be concise. Each suggestion under 2 sentences."""
+        return (
+            "You are a quantitative trading researcher.\n\n"
+            f"Top performing strategies (last 30d):\n{json.dumps(top, indent=2)}\n\n"
+            f"Underperforming strategies:\n{json.dumps(bottom, indent=2)}\n\n"
+            "Suggest 3 specific, actionable improvements:\n"
+            "1. Parameter tuning for the worst performer\n"
+            "2. A new indicator combination to test\n"
+            "3. A risk rule change to protect capital\n\n"
+            "Be concise. Each suggestion under 2 sentences."
+        )
 
     async def _store_llm_suggestion(self, response: Any) -> None:
         """Persist LLM suggestion to AgentMemory and log the provider."""
@@ -192,6 +197,8 @@ Be concise. Each suggestion under 2 sentences."""
         )
 
         try:
-            await self._redis.publish("platform:regime", json.dumps({"regime": regime, "health": health}))
+            await self._redis.publish(
+                "platform:regime", json.dumps({"regime": regime, "health": health})
+            )
         except Exception as exc:  # noqa: BLE001 — subscribers just miss one regime tick
             logger.debug("self-improving loop: regime publish failed: %s", exc)

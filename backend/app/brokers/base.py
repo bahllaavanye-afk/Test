@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, List, Dict
+
 
 @dataclass(slots=True)
 class OrderRequest:
@@ -53,7 +54,7 @@ class AbstractBroker(ABC):
         """Get current status of an order."""
 
     @abstractmethod
-    async def get_positions(self) -> list[dict]:
+    async def get_positions(self) -> List[dict]:
         """Return all open positions."""
 
     @abstractmethod
@@ -67,7 +68,7 @@ class AbstractBroker(ABC):
     @abstractmethod
     async def get_historical(
         self, symbol: str, interval: str, limit: int = 500
-    ) -> list[dict]:
+    ) -> List[dict]:
         """Return OHLCV bars. Each dict: {ts, open, high, low, close, volume}."""
 
 
@@ -77,12 +78,26 @@ class AbstractBroker(ABC):
 import unittest
 import asyncio
 
+
 class DummyBroker(AbstractBroker):
     """A minimal concrete broker used solely for unit testing."""
 
+    @staticmethod
+    def _determine_fill_price(request: OrderRequest) -> float:
+        """
+        Determine the fill price for a dummy order.
+
+        If a limit_price is supplied, use it; otherwise default to 1.0.
+        """
+        return request.limit_price if request.limit_price is not None else 1.0
+
     async def place_order(self, request: OrderRequest) -> OrderResult:
-        # Mimic simple fill logic: if limit_price is provided, use it; otherwise default to 1.0
-        avg_price = request.limit_price if request.limit_price is not None else 1.0
+        """
+        Mimic simple fill logic:
+        - Use the limit_price if provided, otherwise default to 1.0.
+        - Return a filled OrderResult with the requested quantity.
+        """
+        avg_price = self._determine_fill_price(request)
         return OrderResult(
             broker_order_id="dummy",
             status="filled",
@@ -97,7 +112,7 @@ class DummyBroker(AbstractBroker):
     async def get_order(self, broker_order_id: str) -> dict:
         return {"broker_order_id": broker_order_id, "status": "unknown"}
 
-    async def get_positions(self) -> list[dict]:
+    async def get_positions(self) -> List[dict]:
         return []
 
     async def get_account(self) -> dict:
@@ -108,7 +123,7 @@ class DummyBroker(AbstractBroker):
 
     async def get_historical(
         self, symbol: str, interval: str, limit: int = 500
-    ) -> list[dict]:
+    ) -> List[dict]:
         return []
 
 
