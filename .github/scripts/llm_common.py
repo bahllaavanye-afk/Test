@@ -133,7 +133,19 @@ def cascade_status(probe: bool = True) -> dict:
                 entry["error"] = str(e)[:140]
         out["providers"][name] = entry
     out["working"] = [n for n, v in out["providers"].items() if v.get("ok")]
+    out["keyed"] = [n for n, v in out["providers"].items() if v.get("has_key")]
     out["healthy"] = bool(out["working"])
+    # `healthy` answers "is the brain alive RIGHT NOW", which is the only thing
+    # the red/green gate should turn on. It cannot answer "how close is it to
+    # dead", and on 2026-08-06 that distinction mattered: the canary read
+    # healthy at 09:49 with exactly one provider answering (groq 171ms) while
+    # gemini was 429 and nvidia_nim had just timed out. One more failure was a
+    # full outage, and every signal available said OK.
+    #
+    # Reported separately rather than folded into `healthy` on purpose — when
+    # the alarm fires is the operator's call, and quietly widening it here would
+    # make that decision for them. This only makes the state legible.
+    out["single_point_of_failure"] = len(out["working"]) == 1
     return out
 
 # ── Provider config ───────────────────────────────────────────────────────────

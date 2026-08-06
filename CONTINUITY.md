@@ -81,7 +81,10 @@ across two providers were ignored; providers with keys went 1 → 3. Gemini curr
 exhausted), so adding more Gemini keys buys little — a distinct provider is the useful move.
 
 **Still open, both operator calls:**
-1. `healthy = bool(working)` means "at least one provider answers". That is not health for a platform whose
+1. **Partly addressed 11:15:** the canary now prints `⚠ BRAIN AT RISK — only 1 of N keyed provider(s)
+   answering` instead of `BRAIN OK`, and `cascade_status()` exposes `single_point_of_failure`. **The gate is
+   unchanged** — still exit 0, still no page. Whether a one-deep cascade should PAGE is the open decision.
+   `healthy = bool(working)` still means "at least one provider answers". That is not health for a platform whose
    agents, improver and desk commentary all need the cascade. A floor of 2 would make one-away-from-dark
    visible. Not changed unattended — it changes when the infra alarm fires.
 2. **Seven providers have no key at all**, all free tiers. Adding one (`GEMINI_API_KEY` is easiest) removes the
