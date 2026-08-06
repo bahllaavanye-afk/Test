@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -44,7 +44,8 @@ def _resolve_state_file() -> Path:
         candidate = parent / PIPELINE_STATE_FILENAME
         if candidate.exists():
             return candidate
-    idx = min(FALLBACK_PARENT_DEPTH, len(here.parents) - 1)
+    # Fallback to a reasonable ancestor depth without risking IndexError
+    idx = min(FALLBACK_PARENT_DEPTH, max(len(here.parents) - 1, 0))
     return here.parents[idx] / PIPELINE_STATE_FILENAME
 
 
@@ -86,45 +87,73 @@ PIPELINE_DEFS = {
 }
 
 
-def _load_runs(limit: int = DEFAULT_LOAD_LIMIT) -> list[dict]:
+def _load_runs(limit: int = DEFAULT_LOAD_LIMIT) -> List[Dict[str, Any]]:
+    """Load recent pipeline runs from the JSON state file.
+
+    Handles missing files, malformed JSON, and ensures the limit is a
+    positive integer. Returns an empty list on any error or when limit <= 0.
+    """
+    if limit <= 0:
+        return []
     if not _STATE_FILE.exists():
         return []
     try:
-        data = json.loads(_STATE_FILE.read_text())
+        raw_text = _STATE_FILE.read_text()
+        data = json.loads(raw_text)
         if not isinstance(data, list):
             return []
-        return sorted(data, key=lambda r: r.get("started_at", ""), reverse=True)[:limit]
+        # Sort by start time descending; missing keys default to empty string.
+        sorted_data = sorted(data, key=lambda r: r.get("started_at", ""), reverse=True)
+        return sorted_data[:limit]
     except Exception:
         return []
 
 
-def _enrich_run(run: dict) -> dict:
-    """Add stage definitions so the frontend knows the expected stage order."""
+def _enrich_run(run: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Add stage definitions so the frontend knows the expected stage order.
+
+    Gracefully handles None or malformed run dictionaries and ensures that
+    missing or empty stage collections do not raise errors.
+    """
+    if not isinstance(run, dict):
+        return {}
     pipeline = run.get("pipeline", "")
     defn = PIPELINE_DEFS.get(pipeline, {})
-    stage_order = [s["name"] for s in defn.get("stages", [])]
-    run = dict(run)
+    stage_defs = defn.get("stages", [])
+    stage_order = [s.get("name") for s in stage_defs if isinstance(s, dict)]
+
+    # Ensure stages is a list; fallback to empty list if malformed.
+    raw_stages = run.get("stages", [])
+    if not isinstance(raw_stages, list):
+        raw_stages = []
 
     # Index actual stage results by name
-    actual: dict[str, dict] = {s["name"]: s for s in run.get("stages", [])}
+    actual: Dict[str, Dict[str, Any]] = {
+        s.get("name"): s for s in raw_stages if isinstance(s, dict) and "name" in s
+    }
 
     # Build merged list: definition order, with actual data filled in
-    merged = []
-    for sdef in defn.get("stages", []):
-        sname = sdef["name"]
+    merged: List[Dict[str, Any]] = []
+    for sdef in stage_defs:
+        if not isinstance(sdef, dict):
+            continue
+        sname = sdef.get("name")
         if sname in actual:
             merged.append({**sdef, **actual[sname]})
         else:
             merged.append({**sdef, "status": "pending"})
 
-    # Append any extra stages not in definition
-    for s in run.get("stages", []):
+    # Append any extra stages not in definition, preserving order from raw_stages
+    for s in raw_stages:
+        if not isinstance(s, dict) or "name" not in s:
+            continue
         if s["name"] not in stage_order:
             merged.append(s)
 
-    run["stages"] = merged
-    run["pipeline_label"] = defn.get("label", pipeline)
-    return run
+    enriched = dict(run)  # shallow copy
+    enriched["stages"] = merged
+    enriched["pipeline_label"] = defn.get("label", pipeline)
+    return enriched
 
 
 @router.get("/status")
@@ -134,20 +163,24 @@ def pipeline_status(
     limit: int = Query(DEFAULT_QUERY_LIMIT, le=MAX_QUERY_LIMIT),
 ):
     """Return recent pipeline runs, optionally filtered by pipeline name or desk."""
+    # Guard against non‑positive limits
+    if limit <= 0:
+        return []
     runs = _load_runs(limit * DEFAULT_MULTIPLIER)
     if pipeline:
         runs = [r for r in runs if r.get("pipeline") == pipeline]
     if desk:
         runs = [r for r in runs if r.get("desk") == desk]
+    # Slice safely even if runs is shorter than limit
     return [_enrich_run(r) for r in runs[:limit]]
 
 
 @router.get("/status/latest")
 def pipeline_status_latest():
     """Return the most recent run for each pipeline type."""
-    runs    = _load_runs(DEFAULT_LATEST_LIMIT)
-    seen:   set[str] = set()
-    latest: list[dict] = []
+    runs = _load_runs(DEFAULT_LATEST_LIMIT)
+    seen: set[str] = set()
+    latest: List[Dict[str, Any]] = []
     for run in runs:
         key = f"{run.get('pipeline')}:{run.get('desk', '')}"
         if key not in seen:
@@ -159,6 +192,8 @@ def pipeline_status_latest():
 @router.get("/status/{run_id}")
 def pipeline_run_detail(run_id: str):
     """Return full detail for a specific pipeline run."""
+    if not run_id:
+        raise HTTPException(status_code=404, detail="Run identifier missing")
     for run in _load_runs(DEFAULT_LATEST_LIMIT):
         if run.get("run_id") == run_id:
             return _enrich_run(run)
