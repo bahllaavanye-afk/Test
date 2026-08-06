@@ -1,5 +1,26 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🧹 2026-08-06 06:30 — THE TRACKER WAS CARRYING TWO ITEMS THAT REALITY HAD ALREADY ANSWERED
+
+Reconciled after the audit fix landed, because a tracker whose open items are stale is the thing that causes
+rediscovery — the failure this file exists to prevent.
+
+- [x] **`[P1] Bound the 5xx sweep's egress` was resting on a wrong diagnosis** and has been marked superseded
+  rather than quietly deleted. The non-determinism was two twins disagreeing, not the network. Kept at `[P2]`
+  on its remaining (weaker, honest) speed argument.
+- [x] **`[P2] Extend the overnight-read pattern` shipped — and its own text contained a factual error.** It
+  proposed Europe and wrote *"Europe, 15:30 UTC"* right next to the proposal, without noticing 15:30 is two
+  hours AFTER the 13:30 US open. **A queued item is a hypothesis, not an instruction.** That error sat unread
+  across several sessions because a filed item gets re-read as a decision rather than re-checked as a claim.
+- [x] **The audit's alarm now names its candidates.** The old headline gave one — "a second writer is on this
+  account" — and it read as an intruder because it offered nothing else to think. It now lists all three
+  (`9jz0`'s PositionMonitor, the stale `agb8`, a hand-placed order), says two of them are ours, and states
+  plainly that they cannot be told apart until backend orders carry a `client_order_id`. **A warning that
+  names only its worst explanation will be read as its worst explanation.**
+- [ ] **[P0] unchanged and now clearly load-bearing: tag backend orders.** Everything above is mitigation for
+  the same root cause — `grep -c client_order_id backend/app/brokers/*.py` returns 0 for all eight files. Until
+  that changes, "who placed this order" is answerable only by inference. Blocked: those files are Do-Not-Modify.
+
 ## 🚨 2026-08-06 06:00 — I RAISED AN INTRUDER ALARM. IT WAS OUR OWN RECOVERY FLATTEN.
 
 I reported to the operator that "something placed orders on your account" and then, at the next tick, that it
@@ -165,21 +186,25 @@ The ML `beats` flag got a noise floor two hours ago. The same statistical error 
 Everything below is grounded in something measured today. Ordered by value per unit of risk.
 
 ### Tractable in code, not yet done
-- [ ] **[P1] Bound the 5xx sweep's egress.** Its verdict currently depends on a third party (measured: identical
-  command failed in 5.9s once and passed in 28-32s three times). Point the broker base URL at a local stub
-  returning a deterministic auth failure — keeps the "handled, not 5xx" coverage, removes Alpaca from the
-  verdict, and drops ~25s from every CI run. Deferred three times as too consequential for a monitor tick; it
-  wants one deliberate change.
+- [x] **~~[P1] Bound the 5xx sweep's egress.~~ SUPERSEDED 2026-08-06 05:30 — the diagnosis was wrong.** The
+  non-determinism was never the egress: the two sweeps were applying *different criteria* to the same response,
+  one using `_is_real_server_error` and its twin a raw `>= 500`. Both now share the helper, so the verdict no
+  longer depends on what Alpaca returns. **The egress item survives only as a speed/cost argument** (~25s of CI
+  time), which is a much weaker case — re-filed at `[P2]` above rather than left at `[P1]` on a rationale that
+  no longer holds. Deferring it three times is what created the room to read the code first.
 - [ ] **[P2] Pair the improver's improvement TYPE to plausible file paths.** `continuous_improver` picks the
   type by `hour % len(IMPROVEMENT_TYPES)` and the target by `pick_target_file(hour, ...)` **independently**, so
   a `strategy_logic` prompt landed on `models/account.py` and produced two unreferenced methods (#1510). This
   attacks the source of the 813-dead-function measurement rather than gating on the symptom — which is why the
   48%-flagging gate was rejected. Not shipped in a tick because it changes what the autonomous improver does.
-- [ ] **[P2] Extend the overnight-read pattern to the other markets whose sessions close before the US open.**
-  The NSE tilt is live and the machinery is generic: a foreign close, a bounded confidence nudge, a staleness
-  check, US-listed proxies that can actually be routed. The desks already trade `EWJ` (Japan, closes 06:00
-  UTC), `EWG`/`EWQ` (Europe, 15:30 UTC), `EWY`, `FXI`. Same code path, new rows in the map. **Do the weights
-  honestly** — an index-to-country-ETF link is weaker than an ADR's, exactly as `SMIN` is 0.6.
+- [x] **~~[P2] Extend the overnight-read pattern to other markets.~~ SHIPPED 2026-08-06 05:10 (#1533)** — seven
+  markets: India, Japan, Korea, Taiwan, Hong Kong, Australia, Singapore. **This item's own suggestion was wrong
+  and shipping it honestly meant contradicting it.** It proposed `EWG`/`EWQ` (Europe) and even wrote the reason
+  down — *"Europe, 15:30 UTC"* — without noticing that 15:30 is **two hours AFTER the 13:30 US open**, so a
+  European close cannot inform an order at the open. Europe is now excluded by `test_europe_is_not_in_the_map`.
+  The weights guidance was right and was followed (`^HSI → FXI` is 0.7, not 0.9: FXI holds China H-shares while
+  the Hang Seng is a Hong Kong index). **A queued item is a hypothesis, not an instruction** — this one carried
+  a factual error through several sessions because nobody checked its arithmetic before it was time to build.
 - [ ] **[P3] Give `verdict` a fourth state for "the window is too short to judge".** Currently a sub-window
   under 30 days returns nothing at all, so a symbol with thin history silently has no breakdown rather than an
   explicit "insufficient". Same distinction the India feed already makes between absent, stale and flat.

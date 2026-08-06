@@ -279,3 +279,17 @@ def test_a_bug_in_the_burst_analysis_cannot_take_the_desk_down(monkeypatch, caps
     ours, foreign, _ = asyncio.run(dop.audit_order_origins())
     assert (ours, foreign) == (0, 5)
     assert "burst analysis unavailable" in capsys.readouterr().out
+
+
+def test_the_alarm_names_its_candidates_instead_of_crying_intruder(monkeypatch, capsys):
+    """The old headline said only "a second writer is on this account" and was
+    escalated as an intruder. Two of the three real candidates are ours, and
+    none can be distinguished until backend orders carry a client_order_id."""
+    async def fake_get(path, params=None):
+        return [_o("qe-momentum-SPY-1"), _o("agb8-runner-7", "TSLA")]
+    monkeypatch.setattr(dop, "_alpaca_get", fake_get)
+    asyncio.run(dop.audit_order_origins())
+    out = capsys.readouterr().out
+    assert "PositionMonitor" in out
+    assert "agb8" in out
+    assert "CANNOT be told apart" in out

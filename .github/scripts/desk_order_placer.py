@@ -1175,10 +1175,18 @@ async def audit_order_origins(limit: int = 50) -> "tuple[int, int, list]":
                   f"close-all (this desk's own `recover_negative_cash`, or the backend's "
                   f"exit loop). Not evidence of a third-party writer.", flush=True)
         else:
+            # Name the candidates. The previous headline said only "a second
+            # writer is on this account", which reads as an intruder and was
+            # escalated as one. The honest set is short, and two of the three
+            # are ours — so whoever reads this next starts from the likely
+            # explanation rather than the alarming one.
             print(f"  ⚠️ ORDER-ORIGIN AUDIT: {isolated} of {ours + foreign} recent orders are "
                   f"untagged AND were not part of a bulk close-all — something other than this "
-                  f"desk is placing orders one at a time ({bulk} more are close-all bursts)",
-                  flush=True)
+                  f"desk is placing orders one at a time ({bulk} more are close-all bursts). "
+                  f"Candidates, in order: the backend's PositionMonitor exit loop (`9jz0`, "
+                  f"untagged by design), the stale `agb8` backend, or a hand-placed order. "
+                  f"These CANNOT be told apart until backend orders carry a client_order_id — "
+                  f"do not read this as an intruder without further evidence.", flush=True)
         for o in sample:
             print(f"       {o.get('submitted_at')} {o.get('symbol')} {o.get('side')} "
                   f"qty={o.get('qty')} [{o.get('status')}] "
