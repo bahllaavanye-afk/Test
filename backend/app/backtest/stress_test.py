@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from typing import List
 
 import pandas as pd
 
@@ -50,7 +51,7 @@ class StressScenario:
 
 
 # Canonical crisis windows used by institutional risk teams
-STRESS_SCENARIOS: list[StressScenario] = [
+STRESS_SCENARIOS: List[StressScenario] = [
     StressScenario(
         "gfc",
         "GFC 2008",
@@ -126,6 +127,45 @@ def _slice_series(
         return series.loc[mask]
 
 
+def _validate_series(name: str, series: pd.Series) -> None:
+    """Validate that a pandas Series is suitable for backtesting."""
+    if not isinstance(series, pd.Series):
+        raise ValueError(f"'{name}' must be a pandas Series.")
+    if series.empty:
+        raise ValueError(f"'{name}' cannot be empty.")
+    if not isinstance(series.index, pd.DatetimeIndex):
+        raise ValueError(f"'{name}' index must be a pandas DatetimeIndex.")
+    if not series.index.is_monotonic_increasing:
+        raise ValueError(f"'{name}' index must be monotonic increasing.")
+
+
+def _validate_float(name: str, value: float, *, positive: bool = False) -> None:
+    """Validate that a numeric value is a float and optionally positive."""
+    if not isinstance(value, (float, int)):
+        raise ValueError(f"'{name}' must be a numeric type.")
+    if positive and value <= 0:
+        raise ValueError(f"'{name}' must be greater than zero.")
+
+
+def _validate_percentage(name: str, value: float) -> None:
+    """Validate that a percentage value is between 0 and 1 inclusive."""
+    _validate_float(name, value)
+    if not (0.0 <= float(value) <= 1.0):
+        raise ValueError(f"'{name}' must be between 0 and 1 (inclusive).")
+
+
+def _validate_scenarios(scenarios: List[StressScenario] | None) -> List[StressScenario]:
+    """Validate that scenarios is a list of StressScenario instances."""
+    if scenarios is None:
+        return STRESS_SCENARIOS
+    if not isinstance(scenarios, list):
+        raise ValueError("'scenarios' must be a list of StressScenario objects.")
+    for i, s in enumerate(scenarios):
+        if not isinstance(s, StressScenario):
+            raise ValueError(f"Item {i} in 'scenarios' is not a StressScenario.")
+    return scenarios
+
+
 def run_stress_tests(
     signals: pd.Series,
     prices: pd.Series,
@@ -134,18 +174,30 @@ def run_stress_tests(
     initial_equity: float = DEFAULT_INITIAL_EQUITY,
     commission_pct: float = DEFAULT_COMMISSION_PCT,
     slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
-    scenarios: list[StressScenario] | None = None,
-) -> list[StressResult]:
+    scenarios: List[StressScenario] | None = None,
+) -> List[StressResult]:
     """
     Run the strategy through each stress scenario window.
 
     Only scenarios where the price series has ≥ MIN_DATA_POINTS data points are evaluated;
     others return period_covered=False with metrics=None.
     """
-    if scenarios is None:
-        scenarios = STRESS_SCENARIOS
+    # ---- Input validation ----
+    _validate_series("signals", signals)
+    _validate_series("prices", prices)
 
-    results: list[StressResult] = []
+    if opens is not None:
+        _validate_series("opens", opens)
+    if volume is not None:
+        _validate_series("volume", volume)
+
+    _validate_float("initial_equity", initial_equity, positive=True)
+    _validate_percentage("commission_pct", commission_pct)
+    _validate_percentage("slippage_pct", slippage_pct)
+
+    scenarios = _validate_scenarios(scenarios)
+
+    results: List[StressResult] = []
     price_index = prices.index
 
     for scenario in scenarios:
@@ -202,13 +254,19 @@ def run_stress_tests(
     return results
 
 
-def stress_summary(results: list[StressResult]) -> dict:
+def stress_summary(results: List[StressResult]) -> dict:
     """
     Compact summary dict suitable for JSON serialisation.
 
     Returns per‑scenario max_drawdown, total_return, and sharpe.
     Only includes scenarios where period_covered=True.
     """
+    if not isinstance(results, list):
+        raise ValueError("'results' must be a list of StressResult objects.")
+    for i, r in enumerate(results):
+        if not isinstance(r, StressResult):
+            raise ValueError(f"Item {i} in 'results' is not a StressResult.")
+
     out: dict = {}
     for r in results:
         if not r.period_covered or r.metrics is None:
