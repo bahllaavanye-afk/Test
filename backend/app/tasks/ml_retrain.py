@@ -8,7 +8,7 @@ import asyncio
 import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 
 import pandas as pd
 
@@ -22,7 +22,7 @@ MIN_HIST_LENGTH: int = 200
 MAX_EPOCHS: int = 30
 DEFAULT_TRAIN_DAYS: int = 730
 CONFIGS_DIR: Path = Path(__file__).parents[3] / "experiments" / "configs"
-DEFAULT_RETRAIN_CONFIGS: list[tuple[str, str, str]] = [
+DEFAULT_RETRAIN_CONFIGS: List[Tuple[str, str, str]] = [
     ("lstm", "BTC-USD", "1h"),
     ("lstm", "ETH-USD", "1h"),
     ("lstm", "SPY", "1d"),
@@ -49,16 +49,30 @@ except Exception as exc:  # pragma: no cover
     # crashes the scheduler at import — degrade instead: retrain simply skips
     # data downloads (matches how torch-backed models degrade elsewhere).
     yf = None
-    logger.error("yfinance unavailable — nightly retrain will skip downloads", error=str(exc))
+    logger.error(
+        "yfinance unavailable — nightly retrain will skip downloads",
+        error=str(exc),
+        exc_info=exc,
+    )
 
 try:
     import yaml as _yaml
     _load_yaml = _yaml.safe_load
-except Exception:  # pragma: no cover
+except Exception as exc:  # pragma: no cover
     _load_yaml = None
+    logger.error(
+        "yaml library unavailable — falling back to regex parsing",
+        error=str(exc),
+        exc_info=exc,
+    )
 
 
-async def _download_hist(symbol: str, interval: str, start: datetime, end: datetime) -> pd.DataFrame | None:
+async def _download_hist(
+    symbol: str,
+    interval: str,
+    start: datetime,
+    end: datetime,
+) -> pd.DataFrame | None:
     """
     Retrieve historical price data, using an in‑process cache to avoid duplicate
     downloads within the same nightly run.
@@ -75,6 +89,11 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
             return df.copy()
 
     if yf is None:
+        logger.warning(
+            "yfinance not available; cannot download data",
+            symbol=symbol,
+            interval=interval,
+        )
         return None  # yfinance not installed (CI / slim deploy) — skip download
 
     loop = asyncio.get_running_loop()
@@ -91,21 +110,39 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
             ),
         )
     except Exception as exc:  # pragma: no cover
-        logger.error("Failed to download data", symbol=symbol, interval=interval, error=str(exc))
+        logger.error(
+            "Failed to download data",
+            symbol=symbol,
+            interval=interval,
+            error=str(exc),
+            exc_info=exc,
+        )
         return None
 
     if hist is None or len(hist) < MIN_HIST_LENGTH:
+        logger.warning(
+            "Insufficient historical data returned",
+            symbol=symbol,
+            interval=interval,
+            rows=len(hist) if hist is not None else 0,
+        )
         return None
 
     # Normalize column names once.
-    hist.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in hist.columns]
+    hist.columns = [
+        c.lower() if isinstance(c, str) else c[0].lower() for c in hist.columns
+    ]
 
     # Store in cache for potential reuse.
     _DATA_CACHE[cache_key] = (datetime.now(timezone.utc), hist.copy())
     return hist
 
 
-async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_INTERVAL) -> dict:
+async def retrain_model(
+    model_name: str,
+    symbol: str,
+    interval: str = DEFAULT_INTERVAL,
+) -> dict:
     """Download 2 years of data and retrain a model. Returns result dict."""
     try:
         end = datetime.now(timezone.utc)
@@ -115,7 +152,17 @@ async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_IN
         if hist is None:
             return {"status": "skipped", "reason": "insufficient data"}
 
-        from app.ml.training.train_lstm import train
+        try:
+            from app.ml.training.train_lstm import train
+        except ImportError as exc:
+            logger.error(
+                "Training module missing",
+                model=model_name,
+                symbol=symbol,
+                error=str(exc),
+                exc_info=exc,
+            )
+            return {"status": "error", "error": "training module unavailable"}
 
         experiment_name = f"{model_name}_{symbol.lower()}_{datetime.now(timezone.utc).strftime(DATE_FORMAT)}"
         result = await train(hist, experiment_name=experiment_name, max_epochs=MAX_EPOCHS)
@@ -129,31 +176,41 @@ async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_IN
         )
         return result
 
-    except Exception as e:
+    except Exception as e:  # pragma: no cover
         logger.error(
             "Retrain failed",
             model=model_name,
             symbol=symbol,
             error=str(e),
+            exc_info=e,
         )
         return {"status": "error", "error": str(e)}
 
 
-def _load_retrain_configs() -> list[tuple[str, str, str]]:
+def _load_retrain_configs() -> List[Tuple[str, str, str]]:
     """
     Discover retrain targets dynamically from experiment configs (*.yaml).
     Falls back to a minimal default set if no configs exist or yaml is unavailable.
     Returns list of (model_name, symbol, interval).
     """
     configs_dir = CONFIGS_DIR
-    seen: set[tuple[str, str, str]] = set()
-    results: list[tuple[str, str, str]] = []
+    seen: set[Tuple[str, str, str]] = set()
+    results: List[Tuple[str, str, str]] = []
 
     for cfg_path in sorted(configs_dir.glob("*.yaml")):
         try:
-            with open(cfg_path) as f:
+            with open(cfg_path, "r", encoding="utf-8") as f:
                 if _load_yaml:
-                    cfg = _load_yaml(f)
+                    try:
+                        cfg = _load_yaml(f)
+                    except _yaml.YAMLError as exc:
+                        logger.error(
+                            "YAML parsing error",
+                            path=str(cfg_path),
+                            error=str(exc),
+                            exc_info=exc,
+                        )
+                        continue
                 else:
                     # Minimal fallback: regex‑extract model/symbol/interval from YAML text
                     text = f.read()
@@ -175,10 +232,33 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
             if key not in seen:
                 seen.add(key)
                 results.append(key)
-        except Exception:
+        except FileNotFoundError as exc:
+            logger.error(
+                "Config file not found",
+                path=str(cfg_path),
+                error=str(exc),
+                exc_info=exc,
+            )
+            continue
+        except PermissionError as exc:
+            logger.error(
+                "Permission denied when reading config",
+                path=str(cfg_path),
+                error=str(exc),
+                exc_info=exc,
+            )
+            continue
+        except Exception as exc:  # pragma: no cover
+            logger.error(
+                "Unexpected error loading config",
+                path=str(cfg_path),
+                error=str(exc),
+                exc_info=exc,
+            )
             continue
 
     if not results:
+        logger.info("No valid config files found; using default retrain set")
         results = list(DEFAULT_RETRAIN_CONFIGS)
 
     return results
@@ -199,9 +279,25 @@ async def nightly_retrain() -> None:
         *(retrain_model(m, s, i) for m, s, i in retrain_configs),
         return_exceptions=True,
     )
-    successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
+    successes = 0
+    errors = 0
+    for r in results:
+        if isinstance(r, dict):
+            if r.get("status") != "error":
+                successes += 1
+            else:
+                errors += 1
+        else:
+            # An exception object was returned because of return_exceptions=True
+            errors += 1
+            logger.error(
+                "Retrain task raised exception",
+                exception=str(r),
+                exc_info=r if isinstance(r, BaseException) else None,
+            )
     logger.info(
         "Nightly retrain complete",
         total=len(retrain_configs),
         succeeded=successes,
+        errors=errors,
     )
