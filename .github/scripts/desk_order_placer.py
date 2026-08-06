@@ -15,6 +15,7 @@ import asyncio
 import json
 import math
 import os
+import re
 import sys
 import time
 import traceback
@@ -559,7 +560,7 @@ def _alpaca_delete_sync(path: str) -> dict:
 AUTO_FLATTEN_ON_NEGATIVE_CASH = os.environ.get("AUTO_FLATTEN_ON_NEGATIVE_CASH", "1") == "1"
 
 
-async def recover_negative_cash(account: dict) -> bool:
+async def recover_negative_cash(account: dict, market_is_open: "bool | None" = None) -> bool:
     """Auto-recovery for the account state that blocked the first trade for
     days: cash deeply negative with $0 available (orphaned notional buys that
     nothing tracks — Alpaca then 403s every crypto order with
@@ -604,8 +605,20 @@ async def recover_negative_cash(account: dict) -> bool:
         await asyncio.to_thread(_alpaca_delete_sync, "/v2/orders")
         out = await asyncio.to_thread(_alpaca_delete_sync, "/v2/positions?cancel_orders=true")
         closed = out.get("body") or []
-        print(f"  🚑 RECOVERY: close-all accepted for {len(closed)} position(s) — "
-              f"cash frees as closes fill; next run trades normally", flush=True)
+        # "next run trades normally" was asserted unconditionally and was FALSE
+        # whenever the market was shut. Measured 2026-08-06: the 04:06 and 04:45
+        # runs both flattened the same 17 positions and reported identical
+        # cash (-$48,471.29 to the cent) and $0.00 buying power, because closes
+        # submitted into a closed market sit `accepted` and cannot free cash.
+        # The recovery then re-fires every run, promising a recovery it has no
+        # way to deliver until the session opens.
+        if market_is_open is not False:
+            print(f"  🚑 RECOVERY: close-all accepted for {len(closed)} position(s) — "
+                  f"cash frees as closes fill; next run trades normally", flush=True)
+        else:
+            print(f"  🚑 RECOVERY: close-all accepted for {len(closed)} position(s), but the "
+                  f"market is CLOSED — these sit unfilled, cash stays negative, and every run "
+                  f"until the open will re-issue this flatten", flush=True)
         return True
     except Exception as exc:  # noqa: BLE001
         print(f"  🚑 RECOVERY failed: {str(exc)[:120]}", flush=True)
@@ -1021,6 +1034,60 @@ async def _report_recent_closes(limit: int = 8) -> None:
               flush=True)
 
 
+# A bulk close-all is ONE server-side action, so Alpaca stamps every order it
+# creates with the same `submitted_at` to within milliseconds. Independent
+# decisions by a strategy loop never land that tightly. 2s is ~1000x the
+# observed spread (5 orders inside 2.1ms on 2026-08-06T04:07:09) and still far
+# under any plausible gap between two deliberate orders.
+BULK_BURST_WINDOW_S = 2.0
+BULK_BURST_MIN = 3
+
+
+def _parse_ts(value) -> "float | None":
+    """Alpaca RFC-3339 → epoch seconds. None when unparseable, so a missing or
+    malformed timestamp degrades to 'not part of a burst' rather than raising
+    inside a diagnostic."""
+    if not value:
+        return None
+    text = str(value).strip().replace("Z", "+00:00")
+    # Alpaca stamps NANOSECONDS ('...09.55037457Z'). Python 3.11 — which every
+    # workflow pins — truncates those itself, so this line is a no-op there and
+    # a mutation to it survives the suite. It is kept for older interpreters,
+    # where fromisoformat raises above 6 digits: that raise is caught below and
+    # returns None, which would make every order look isolated and bring the
+    # false alarm straight back. Cheap insurance against a silent reversal.
+    text = re.sub(r"(\.\d{6})\d+", r"\1", text)
+    try:
+        return datetime.fromisoformat(text).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
+def bulk_burst_count(orders: list, window_s: float = BULK_BURST_WINDOW_S,
+                     min_size: int = BULK_BURST_MIN) -> int:
+    """How many of `orders` were submitted as part of a bulk server-side action.
+
+    `DELETE /v2/positions` (what `recover_negative_cash` calls) closes the whole
+    book in one request, and Alpaca creates each closing order itself — untagged,
+    all stamped within the same handful of milliseconds. Grouping by that
+    signature separates "our own flatten" from "somebody is trading here", which
+    `client_order_id` alone cannot do: neither carries a `qe-` tag.
+    """
+    stamps = sorted(t for t in (_parse_ts(o.get("submitted_at")) for o in orders or [])
+                    if t is not None)
+    counted = 0
+    i = 0
+    while i < len(stamps):
+        j = i
+        while j + 1 < len(stamps) and stamps[j + 1] - stamps[i] <= window_s:
+            j += 1
+        size = j - i + 1
+        if size >= min_size:
+            counted += size
+        i = j + 1
+    return counted
+
+
 def summarise_origins(orders: list) -> "tuple[int, int, list]":
     """(ours, foreign, sample_of_foreign) from a list of Alpaca orders.
 
@@ -1028,6 +1095,10 @@ def summarise_origins(orders: list) -> "tuple[int, int, list]":
     is the only discriminator that survives everything else being unavailable:
     it lives at the broker, not in any storage this project controls, and the
     backend DB has been on its ephemeral sqlite fallback for days.
+
+    "foreign" here means UNTAGGED — not attributable to this desk. It does not
+    mean third-party: see `audit_order_origins` for why that distinction cost a
+    false alarm.
     """
     ours = foreign = 0
     sample = []
@@ -1056,6 +1127,25 @@ async def audit_order_origins(limit: int = 50) -> "tuple[int, int, list]":
     the only origin report (`_report_recent_closes`) ran solely when the daily
     loss cap tripped on a flat book — a corner almost never reached — so a
     second writer on the account was invisible on every ordinary run.
+
+    THE HEADLINE USED TO OVERSTATE ITS OWN EVIDENCE, and it cost a false alarm.
+    On 2026-08-06 it reported "50 of 50 ... a second writer is on this account"
+    and that was escalated as an intruder. The 50 orders were THIS DESK'S OWN
+    recovery flatten: `recover_negative_cash` had fired one run earlier at
+    04:07:09 and closed 17 positions via `DELETE /v2/positions`, which Alpaca
+    fulfils by creating the closing orders itself — untagged, by construction.
+
+    An untagged order is not a foreign order. Nothing we run tags anything
+    except this placer: `grep -c client_order_id backend/app/brokers/*.py`
+    returns 0 for all eight broker files, so the backend's PositionMonitor
+    exits are untagged too. "Not tagged `qe-`" is therefore evidence of almost
+    nothing on its own, and a guard that cannot tell our own recovery from an
+    intruder will cry wolf on every ordinary flatten.
+
+    What DOES separate them is timing: a bulk close-all is one server-side
+    action and lands inside a few milliseconds (`bulk_burst_count`), while a
+    live strategy loop decides one order at a time. Only untagged orders that
+    are NOT part of such a burst are worth alarming about.
     """
     try:
         orders = await _alpaca_get("/v2/orders", {"status": "all", "limit": limit,
@@ -1066,8 +1156,29 @@ async def audit_order_origins(limit: int = 50) -> "tuple[int, int, list]":
 
     ours, foreign, sample = summarise_origins(orders)
     if foreign:
-        print(f"  ⚠️ ORDER-ORIGIN AUDIT: {foreign} of {ours + foreign} recent orders were "
-              f"NOT placed by this desk — a second writer is on this account", flush=True)
+        # Fail-soft like the fetch above, and for the same reason: this is a
+        # diagnostic, and a diagnostic must never be why a trading run dies.
+        # A missing `import re` in the burst logic did exactly that in
+        # development — caught by the suite, but only because the suite runs
+        # the audit rather than merely reading it.
+        try:
+            untagged = [o for o in orders or []
+                        if _order_origin(o.get("client_order_id")) != "this desk placer"]
+            bulk = bulk_burst_count(untagged)
+        except Exception as exc:  # noqa: BLE001
+            print(f"  (burst analysis unavailable: {str(exc)[:70]})", flush=True)
+            bulk = 0
+        isolated = foreign - bulk
+        if isolated <= 0:
+            print(f"  ⓘ order-origin audit: {foreign} of {ours + foreign} recent orders are "
+                  f"untagged, and all of them arrived in bulk bursts — the signature of a "
+                  f"close-all (this desk's own `recover_negative_cash`, or the backend's "
+                  f"exit loop). Not evidence of a third-party writer.", flush=True)
+        else:
+            print(f"  ⚠️ ORDER-ORIGIN AUDIT: {isolated} of {ours + foreign} recent orders are "
+                  f"untagged AND were not part of a bulk close-all — something other than this "
+                  f"desk is placing orders one at a time ({bulk} more are close-all bursts)",
+                  flush=True)
         for o in sample:
             print(f"       {o.get('submitted_at')} {o.get('symbol')} {o.get('side')} "
                   f"qty={o.get('qty')} [{o.get('status')}] "
@@ -2046,7 +2157,7 @@ async def main() -> None:
                 # cap and is_risk_reducing — so if one exists, it belongs at the
                 # top of the log rather than inferred later from a surprise.
                 await audit_order_origins()
-                await recover_negative_cash(account)
+                await recover_negative_cash(account, market_is_open=is_open)
                 if _loss_cap_hit:
                     print(f"  🛑 DAILY LOSS CAP: equity down {1.0 - equity / last_equity:.2%} vs prior "
                           f"close (cap {DAILY_LOSS_CAP_PCT:.0%}) — no new orders this run", flush=True)

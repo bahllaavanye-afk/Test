@@ -1,5 +1,51 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🚨 2026-08-06 06:00 — I RAISED AN INTRUDER ALARM. IT WAS OUR OWN RECOVERY FLATTEN.
+
+I reported to the operator that "something placed orders on your account" and then, at the next tick, that it
+had escalated to **50 of 50 orders**. Both readings came from this desk's own `audit_order_origins`, and the
+audit was wrong — not in its counting, which was exact, but in the sentence it wrapped around the count.
+
+- [x] **What the orders actually were.** All five sampled orders share a `submitted_at` of
+  `2026-08-06T04:07:09.548–.550Z` — **five orders inside 2.1 milliseconds**. That is one server-side action,
+  not five decisions. Run `31070310789` fired `recover_negative_cash` at 04:07, which calls
+  `DELETE /v2/positions?cancel_orders=true`; Alpaca fulfils that by creating the closing orders **itself**,
+  untagged by construction. The `TSLA buy qty=3` that looked out of place in a liquidation is a **short being
+  covered** — `ichimoku_cloud_tv/TSLA` is short TSLA, and closing a short is a buy.
+- [x] **The audit could never have been right.** `_order_origin` returns the honest label —
+  `"EXTERNAL (backend exit loop / broker / manual)"`, and its docstring names all three — and then the headline
+  collapsed it to *"a second writer is on this account."* Nothing we run tags anything except this placer:
+  `grep -c client_order_id backend/app/brokers/*.py` returns **0 for all eight broker files**, so the backend's
+  `PositionMonitor` exits are untagged too. **"Untagged" was being read as "foreign", and almost everything we
+  own is untagged.**
+- [x] **A guard that cannot tell our own recovery from an intruder will cry wolf on every ordinary flatten** —
+  and it did, on every run, and I relayed it twice. This is the session's own failure mode arriving from the
+  other side: the running theme has been *guards that cannot fail*, and this is a guard that **cannot pass**.
+  Both are the same defect — a check whose output does not depend on the thing it claims to measure.
+- [x] **The fix uses the one signal that does separate them: timing.** `bulk_burst_count` groups untagged
+  orders submitted within 2.0s (≈1000× the observed 2.1ms spread). Orders inside a burst are reported as a
+  close-all; only untagged orders *outside* one raise the alarm, with the wolf case still loud and still named.
+  The real 5-order flatten is pinned verbatim as a fixture. **6 mutations, 5 caught** — the sixth is recorded
+  below rather than hidden.
+- [x] **A missing `import re` turned up because the suite RUNS the audit rather than reading it.** It would
+  have crashed a live trading run: the fetch was fail-soft but the burst logic added after it was not. Now
+  both are, with a test that injects a failure into the analysis itself.
+- [x] **The recovery was also promising something it cannot deliver.** It printed *"cash frees as closes fill;
+  next run trades normally"* unconditionally. Measured across runs `31070310789` (04:06) and `31072118909`
+  (04:45): **the same 17 positions flattened twice, cash identical at -$48,471.29 to the cent, buying power
+  $0.00 both times.** Closes submitted into a shut market sit `accepted` and free nothing, so the recovery
+  re-fires every run until the open. The message is now conditional on the market state the caller already
+  knows.
+- [x] **Recorded honestly: mutation 3 survives on Python 3.11**, which every workflow pins, because 3.11's
+  `fromisoformat` truncates nanoseconds natively and the shim is a no-op there. It is kept for older
+  interpreters, where the raise would return `None`, make every order look isolated, and bring the false alarm
+  straight back. Noted in the code rather than dressed up as a caught mutation.
+- [ ] **[P1] The account still cannot trade, and this fix does not change that.** equity $21,801.52, cash
+  -$48,471.29, buying power **$0.00**, 17 positions queued to flatten at the open. The desk placed 0 orders
+  with `reason=account_unavailable`. The flatten will realise losses into the open, which is exactly the
+  documented "buy on margin, get liquidated, get frozen" path at `desk_order_placer.py:583`. **Operator
+  decision**, because unwinding it deliberately is not something to do unattended.
+
 ## 🎯 2026-08-06 05:30 — THE CI NON-DETERMINISM WAS NOT THE EGRESS. TWO TWIN GUARDS DISAGREED.
 
 Filed as `[P1] bound the 5xx sweep's egress` and deferred three times as too consequential for a tick. Reading
