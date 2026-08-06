@@ -81,8 +81,7 @@ class DummyBroker(AbstractBroker):
     """A minimal concrete broker used solely for unit testing."""
 
     async def place_order(self, request: OrderRequest) -> OrderResult:
-        # Mimic simple fill logic: if limit_price is provided, use it; otherwise default to 1.0
-        avg_price = request.limit_price if request.limit_price is not None else 1.0
+        avg_price = self._determine_fill_price(request)
         return OrderResult(
             broker_order_id="dummy",
             status="filled",
@@ -90,6 +89,10 @@ class DummyBroker(AbstractBroker):
             avg_fill_price=avg_price,
             raw_payload={"request": request},
         )
+
+    def _determine_fill_price(self, request: OrderRequest) -> float:
+        """Return the fill price based on request details."""
+        return request.limit_price if request.limit_price is not None else 1.0
 
     async def cancel_order(self, broker_order_id: str) -> bool:
         return True
