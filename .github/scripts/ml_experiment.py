@@ -157,6 +157,28 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     return out.dropna()
 
 
+def sharpe_noise_floor(n_days: int) -> float:
+    """Smallest Sharpe difference worth calling a win over `n_days` samples.
+
+    A Sharpe estimated from n daily returns carries a standard error of roughly
+    `sqrt(1/n)` annualised out; the difference of two such estimates is about
+    `sqrt(2/n)`. Two of those is the usual bar for "not noise", so the floor is
+    `2 * sqrt(2 / n)` — about **0.145 over a 380-day sub-window**, tightening as
+    the window grows.
+
+    This is an approximation, deliberately. It ignores the correlation between
+    the strategy and its benchmark (which makes the true SE smaller, so the
+    floor is conservative) and the fat tails of daily returns (which makes it
+    larger). It exists to stop near-zero comparisons being reported as
+    evidence, not to be a significance test.
+    """
+    import math
+
+    if n_days <= 1:
+        return float("inf")     # nothing is distinguishable from one sample
+    return 2.0 * math.sqrt(2.0 / n_days)
+
+
 def sub_window_stats(strat_ret, bench_ret, dates, n_windows: int = 3) -> list[dict]:
     """Per-sub-period Sharpe for an already-computed out-of-sample series.
 
@@ -193,13 +215,26 @@ def sub_window_stats(strat_ret, bench_ret, dates, n_windows: int = 3) -> list[di
     for i in range(n_windows):
         lo, hi = edges[i], edges[i + 1]
         s, b = strat_ret[lo:hi], bench_ret[lo:hi]
+        ss, bs = _sharpe(s), _sharpe(b)
+        margin = ss - bs
+        floor = sharpe_noise_floor(hi - lo)
         out.append({
             "from": str(dates[lo])[:10],
             "to": str(dates[hi - 1])[:10],
             "days": hi - lo,
-            "strategy_sharpe": round(_sharpe(s), 3),
-            "buyhold_sharpe": round(_sharpe(b), 3),
-            "beats": bool(_sharpe(s) > _sharpe(b)),
+            "strategy_sharpe": round(ss, 3),
+            "buyhold_sharpe": round(bs, 3),
+            "margin": round(margin, 3),
+            "noise_floor": round(floor, 3),
+            # `beats` now REQUIRES the margin to clear the floor, so a caller
+            # tallying it is not counting noise. See the 2026-08-06 01:20 entry:
+            # SPY reported 0.102 vs 0.087 as `beats`, which is arithmetically
+            # true, indistinguishable from zero, and counted equally with QQQ's
+            # 2.057 vs 0.176 in the same table.
+            "beats": bool(margin > floor),
+            "verdict": ("beats" if margin > floor
+                        else "loses" if margin < -floor
+                        else "inconclusive"),
         })
     return out
 
