@@ -1,5 +1,34 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 📉 2026-08-06 01:20 — THE SUB-WINDOWS LANDED AND THEY ARGUE **AGAINST** WIRING ML INTO ORDERS
+
+Run `2026-08-06T00:13`, the first carrying `sub_windows`. This is why the split was worth building: the
+headline number and the period breakdown point in opposite directions.
+
+| symbol | overall | 2022-01→2023-07 | 2023-07→2025-01 | 2025-01→2026-08 |
+|---|---|---|---|---|
+| SPY | 0.606 vs 0.788 loses | 0.102 vs 0.087 "beats" | 1.028 vs 1.641 loses | 0.982 vs 1.082 loses |
+| QQQ | **1.360 vs 0.729 beats** | 2.057 vs 0.176 beats | 1.697 vs 1.202 beats | **0.390 vs 1.089 LOSES** |
+| NVDA | **1.196 vs 1.125 beats** | 1.000 vs 0.864 beats | 1.268 vs 1.453 loses | 1.508 vs 1.153 beats |
+
+- [x] **QQQ's "1.36 vs 0.73" is carried by the 2022 bear market.** Its first sub-window is 2.057 vs 0.176 —
+  an enormous beat while the benchmark was flat on its back. In the **most recent** window it does the
+  opposite: **0.390 vs 1.089**, a clear loss. A single Sharpe over the full span hides a reversal.
+- [x] **The pattern is consistent with the defensive-model hypothesis and now measured rather than asserted:**
+  the edge concentrates where the benchmark suffers, and decays as the benchmark recovers. SPY loses in the
+  two recent windows; QQQ loses badly in the latest; NVDA is the only one still ahead recently.
+- [ ] **So the honest recommendation flips.** Last night's headline read as "beats buy-and-hold on 2 of 3, look
+  further." With the breakdown, **the most recent 18 months show the model behind on 2 of 3**, which is an
+  argument against routing live orders through it, not for. The overall figures were never wrong — they were
+  just the wrong statistic to decide on.
+- [ ] **[P2] `beats` needs a magnitude floor.** SPY's first window reports `0.102 vs 0.087 → BEATS`. Both are
+  statistically indistinguishable from zero, so the flag is technically true and evidentially worthless — and
+  it counts equally with QQQ's 2.057-vs-0.176 in any tally. A minimum spread (or an explicit `inconclusive`
+  state) would stop near-zero comparisons reading as support.
+- [x] **This is what the 22:45 integration test was protecting.** Had the unmasked-index mutation shipped,
+  every date above would be shifted by about a year and this table would have been quietly wrong while looking
+  entirely reasonable.
+
 ## 🧱 2026-08-06 01:00 — A MIGRATION THAT CANNOT APPLY TO POSTGRES, AND IT BLOCKS OPERATOR ITEM #2
 
 The Schema Drift Gate failed on my PR. It is not my change — my diff touches four lines of dead test code in
