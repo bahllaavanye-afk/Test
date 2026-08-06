@@ -139,7 +139,6 @@ class SelfImprover:
         best_iter_sharpe = current_best
         best_iter_params = None
 
-        # Random configs per iteration
         for _ in range(CONFIGS_PER_ITERATION):
             params = self._sample_params(strategy)
             sharpe = await self._evaluate(strategy, symbol, params)
@@ -147,7 +146,6 @@ class SelfImprover:
                 best_iter_sharpe = sharpe
                 best_iter_params = params
 
-        # Promote if improvement exceeds threshold and Sharpe is above minimum
         if (
             best_iter_params
             and best_iter_sharpe > current_best * IMPROVEMENT_FACTOR
