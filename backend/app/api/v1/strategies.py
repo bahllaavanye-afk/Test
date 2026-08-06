@@ -72,6 +72,50 @@ async def list_strategy_desks(current_user: User = Depends(get_current_user)):
     }
 
 
+def _get_active_from_state(app_state) -> list[dict] | None:
+    """Retrieve active strategies from FastAPI app state if available."""
+    return getattr(app_state, "active_strategies", None)
+
+
+async def _fetch_active_strategies_from_db() -> list[dict]:
+    """Query the database for enabled strategies meeting confidence criteria."""
+    async with AsyncSessionLocal() as db:
+        stmt = (
+            select(
+                Strategy.name,
+                Strategy.symbols,
+                Strategy.tick_interval_seconds,
+                Strategy.confidence_threshold,
+            )
+            .where(Strategy.is_enabled.is_(True))
+            .where(Strategy.confidence_threshold >= 0.7)
+        )
+        result = await db.execute(stmt)
+        rows = result.mappings().all()
+        return _process_strategy_rows(rows)
+
+
+def _process_strategy_rows(rows: list[dict]) -> list[dict]:
+    """Validate and transform raw DB rows into the response format."""
+    filtered: list[dict] = []
+    for row in rows:
+        tick = row.get("tick_interval_seconds", 3600)
+        conf = row.get("confidence_threshold", 0.6)
+        # Sanity checks
+        if tick <= 0 or not (0.0 <= conf <= 1.0):
+            continue
+        filtered.append(
+            {
+                "name": row["name"],
+                "symbols": row["symbols"] if isinstance(row["symbols"], list) else [],
+                "tick_interval_seconds": int(tick),
+                "confidence_threshold": float(conf),
+                "is_running": True,
+            }
+        )
+    return filtered
+
+
 @router.get("/active")
 async def list_active(
     request: Request,
@@ -82,43 +126,12 @@ async def list_active(
     Reads from app.state.active_strategies (populated at startup by main.py).
     Falls back to querying the DB when app state is not yet populated.
     """
-    # Try in-process state first (populated by lifespan at startup)
-    active = getattr(request.app.state, "active_strategies", None)
+    active = _get_active_from_state(request.app.state)
     if active is not None:
         return active
 
-    # Fallback: query DB directly with a lightweight column selection
     try:
-        async with AsyncSessionLocal() as db:
-            stmt = (
-                select(
-                    Strategy.name,
-                    Strategy.symbols,
-                    Strategy.tick_interval_seconds,
-                    Strategy.confidence_threshold,
-                )
-                .where(Strategy.is_enabled.is_(True))
-                .where(Strategy.confidence_threshold >= 0.7)  # enforce tighter entry confidence
-            )
-            result = await db.execute(stmt)
-            rows = result.mappings().all()
-            filtered = []
-            for row in rows:
-                tick = row.get("tick_interval_seconds", 3600)
-                conf = row.get("confidence_threshold", 0.6)
-                # Additional sanity checks
-                if tick <= 0 or not (0.0 <= conf <= 1.0):
-                    continue
-                filtered.append(
-                    {
-                        "name": row["name"],
-                        "symbols": row["symbols"] if isinstance(row["symbols"], list) else [],
-                        "tick_interval_seconds": int(tick),
-                        "confidence_threshold": float(conf),
-                        "is_running": True,
-                    }
-                )
-            return filtered
+        return await _fetch_active_strategies_from_db()
     except Exception:
         # Return empty list rather than crashing — frontend must handle this gracefully
         return []

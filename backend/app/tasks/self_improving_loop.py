@@ -125,19 +125,27 @@ class SelfImprovingLoop:
     # ── LLM improvement pass ──────────────────────────────────────────────────
 
     async def _llm_improvement_pass(self, metrics: List[dict]) -> None:
+        """Orchestrate the LLM call to generate improvement suggestions."""
         if not metrics:
             return
 
-        top, bottom = self._select_top_bottom_strategies(metrics)
-        prompt = self._build_llm_prompt(top, bottom)
+        prompt = self._prepare_llm_prompt(metrics)
+        response = await self._invoke_llm(prompt)
+        if response:
+            await self._store_llm_suggestion(response)
 
-        response = await call_race(
+    def _prepare_llm_prompt(self, metrics: List[dict]) -> str:
+        """Select top/bottom strategies and build the LLM prompt."""
+        top, bottom = self._select_top_bottom_strategies(metrics)
+        return self._build_llm_prompt(top, bottom)
+
+    async def _invoke_llm(self, prompt: str) -> Any:
+        """Call the free LLM in race mode with the given prompt."""
+        return await call_race(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.4,
             max_tokens=512,
         )
-        if response:
-            await self._store_llm_suggestion(response)
 
     def _select_top_bottom_strategies(self, metrics: List[dict]) -> Tuple[List[dict], List[dict]]:
         """Return the top 5 and bottom 3 strategies based on Sharpe."""
