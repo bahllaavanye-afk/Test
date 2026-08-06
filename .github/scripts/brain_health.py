@@ -36,7 +36,18 @@ def main() -> int:
     print(json.dumps(st, indent=2))
 
     if st["healthy"]:
-        print(f"BRAIN OK — working providers: {st['working']}")
+        if st.get("single_point_of_failure"):
+            # Still exit 0: whether a degraded cascade should page anyone is an
+            # operator decision, and this must not widen the alarm on its own.
+            # But "BRAIN OK" alone was actively misleading here — see the
+            # comment on `single_point_of_failure` in llm_common.
+            print(
+                f"⚠ BRAIN AT RISK — only 1 of {len(st.get('keyed', []))} keyed provider(s) "
+                f"answering: {st['working']}. One more failure is a full outage. "
+                f"Not paging: raising the alarm floor is an operator decision."
+            )
+        else:
+            print(f"BRAIN OK — working providers: {st['working']}")
         return 0
 
     keyed = [n for n, v in st["providers"].items() if v.get("has_key")]

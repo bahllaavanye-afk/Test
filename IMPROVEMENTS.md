@@ -170,7 +170,14 @@ are harmless superseded duplicates, but probing the live cascade found a capabil
   (one slow provider), after it (one fast provider), and would have reported `false` only when the count hit
   zero. **A health check that cannot distinguish "one provider" from "one provider, and the spare just died"
   is not measuring resilience** — it is measuring whether the platform is already broken.
-- [ ] **[P1, OPERATOR] The canary's threshold is a policy question, deliberately not changed.** `healthy` means
+- [x] **SHIPPED 2026-08-06 11:15 — the state is now REPORTED, while the alarm floor stays yours.**
+  `cascade_status()` gained `single_point_of_failure` (true at exactly one working provider) and a `keyed`
+  list, and the canary prints **`⚠ BRAIN AT RISK — only 1 of 3 keyed provider(s) answering`** instead of
+  `BRAIN OK`. **The gate is deliberately untouched**: still `exit 0`, still no Discord page. Widening the alarm
+  would make the operator's decision for them; saying "OK" over a one-deep cascade was simply false. Same
+  split as the order-origin audit fix — correct the message, leave the gate. 5 mutations, 5 caught, including
+  two that try to turn the at-risk path red or make it page.
+- [ ] **[P1, OPERATOR] Whether at-risk should PAGE is still a policy question, deliberately not changed.** `healthy` means
   "≥1 provider answers". On a platform whose agents, improver and desk commentary all depend on the cascade,
   one provider is not health — it is a single point of failure that already failed once today. A floor of 2,
   or a warning below 3, would say so. Not shipped unattended: it changes when the infra alarm fires, and a
