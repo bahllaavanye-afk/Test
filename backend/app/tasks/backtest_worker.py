@@ -1,14 +1,17 @@
 """
-Backtest worker — polls for queued BacktestRun rows every POLL_INTERVAL_SECONDS s and executes them.
+Backtest worker — polls for queued BacktestRun rows every POLL_INTERVAL_SECONDS seconds
+and executes them.
 
 Runs as a background asyncio task started from main.py lifespan.
 Uses yfinance for free OHLCV data — no broker keys required.
 """
+
 from __future__ import annotations
 
 import asyncio
 import uuid
 from datetime import datetime, timezone
+from typing import List, Optional
 
 import pandas as pd
 from sqlalchemy import select
@@ -40,8 +43,28 @@ MSG_BACKTEST_COMPLETE = "Backtest {run_id} complete"
 MSG_BACKTEST_FAILED = "Backtest {run_id} failed: {exc}"
 
 
-async def run_backtest_job(run_id: str | None) -> None:
-    """Fetch one queued BacktestRun, execute it, write results back to DB."""
+async def run_backtest_job(run_id: Optional[str]) -> None:
+    """
+    Execute a single backtest job.
+
+    This function retrieves a queued ``BacktestRun`` record from the database,
+    validates its parameters, fetches the required OHLCV data, runs the selected
+    strategy's signal generation, and then executes the backtest engine.
+    Results are persisted to ``BacktestResult`` and the run status is updated.
+
+    Parameters
+    ----------
+    run_id: Optional[str]
+        The primary key of the ``BacktestRun`` to process. If ``None`` or an
+        empty string is provided, the function logs a warning and returns
+        without performing any work.
+
+    Returns
+    -------
+    None
+        The function performs its work via side‑effects (database updates and
+        logging) and does not return a value.
+    """
     if not run_id:
         logger.warning(MSG_RUN_BACKTEST_JOB_NONE_ID)
         return
@@ -69,17 +92,21 @@ async def run_backtest_job(run_id: str | None) -> None:
         run.started_at = datetime.now(timezone.utc)
         await db.commit()
         # capture fields before session closes
-        symbol = run.symbol
-        start_date = run.start_date
-        end_date = run.end_date
-        interval = run.interval
-        strategy_name = run.strategy_name
-        initial_equity = (run.params or {}).get("initial_equity", DEFAULT_INITIAL_EQUITY)
+        symbol: str = run.symbol
+        start_date: datetime = run.start_date
+        end_date: datetime = run.end_date
+        interval: str = run.interval
+        strategy_name: str = run.strategy_name
+        initial_equity: float = (run.params or {}).get("initial_equity", DEFAULT_INITIAL_EQUITY)
 
     try:
-        df = await fetch_ohlcv(symbol=symbol, start=start_date, end=end_date, interval=interval)
+        df: pd.DataFrame = await fetch_ohlcv(
+            symbol=symbol, start=start_date, end=end_date, interval=interval
+        )
         if df.empty:
-            raise ValueError(MSG_NO_OHLCV_DATA.format(symbol=symbol, start_date=start_date, end_date=end_date))
+            raise ValueError(
+                MSG_NO_OHLCV_DATA.format(symbol=symbol, start_date=start_date, end_date=end_date)
+            )
 
         StratClass = STRATEGY_REGISTRY.get(strategy_name)
         if StratClass is None:
@@ -167,7 +194,19 @@ async def run_backtest_job(run_id: str | None) -> None:
 
 
 async def backtest_worker_loop() -> None:
-    """Poll for queued BacktestRun rows every POLL_INTERVAL_SECONDS s and run them concurrently."""
+    """
+    Continuously poll for queued backtest runs and dispatch them.
+
+    The worker queries the database for up to ``FETCH_LIMIT`` rows with a status
+    of ``STATUS_QUEUED`` every ``POLL_INTERVAL_SECONDS`` seconds. For each
+    discovered run, a background task is created to execute ``run_backtest_job``.
+    Errors encountered while polling are logged but do not stop the loop.
+
+    Returns
+    -------
+    None
+        The function runs indefinitely as a background coroutine.
+    """
     from app.database import AsyncSessionLocal
     from app.models.backtest import BacktestRun
 
@@ -181,8 +220,8 @@ async def backtest_worker_loop() -> None:
                     .order_by(BacktestRun.created_at)
                     .limit(FETCH_LIMIT)
                 )
-                queued = result.scalars().all() or []
-                run_ids = [r.id for r in queued if r.id]
+                queued: List[BacktestRun] = result.scalars().all() or []
+                run_ids: List[str] = [r.id for r in queued if r.id]
 
             for run_id in run_ids:
                 asyncio.create_task(run_backtest_job(run_id))
