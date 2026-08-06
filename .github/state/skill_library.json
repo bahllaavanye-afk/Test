@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Monitor drift signals",
-    "Test API payloads",
-    "Run back-test suites",
     "* The `backend/app/trading/execution_engine.py` file also requires auditing to remove `Any` and improve type safety, potentially starting with the `execute_order` method.",
     "* **Revert to 70/30 Split**: Given the 2.2% NAV headroom under the 5% gross-exposure cap, stick to a 70/30 split between arbitrage and other strategies (desk_trader @ 2026-08-06).",
     "Test retry mechanisms",
@@ -199,8 +196,11 @@
     "Track performance metrics",
     "Monitor system memory",
     "Validate timestamps",
-    "Scan for malware"
+    "Scan for malware",
+    "Disambiguate overloaded code",
+    "Replace type Any with specifics",
+    "Add explicit error checks"
   ],
-  "last_updated": "2026-08-06T14:51:51.911236+00:00",
+  "last_updated": "2026-08-06T22:51:17.984461+00:00",
   "total": 200
 }
