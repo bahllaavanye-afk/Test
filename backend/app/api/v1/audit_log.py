@@ -84,8 +84,6 @@ async def list_audit_log(
     ------
     HTTPException
         If the user is not authenticated.
-    ValueError
-        If ``limit`` is ``None`` or outside the allowed range.
     """
     if current_user is None:
         raise HTTPException(
@@ -93,16 +91,11 @@ async def list_audit_log(
             detail="Authenticated user not found.",
         )
 
-    if limit is None:
-        raise ValueError("limit must not be None")
-    if limit < 1 or limit > 500:
-        raise ValueError(f"limit must be between 1 and 500, got {limit}")
-
     result = await db.execute(
         select(AuditLog)
         .where(AuditLog.user_id == current_user.id)
         .order_by(AuditLog.created_at.desc())
         .limit(limit)
     )
-    rows = result.scalars().all()
-    return rows
+    audit_logs = result.scalars().all()
+    return audit_logs

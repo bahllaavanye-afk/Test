@@ -1,6 +1,6 @@
 """Real-time order status WebSocket endpoint."""
 import logging
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket
 from app.ws.manager import manager
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,5 @@ async def orders_ws(websocket: WebSocket):
             except Exception as exc:
                 logger.warning("orders_ws receive error: %s", exc)
                 break
-    except WebSocketDisconnect:
-        pass
     finally:
         manager.disconnect(websocket, topic)

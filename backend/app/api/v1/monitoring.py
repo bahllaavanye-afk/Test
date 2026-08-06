@@ -48,7 +48,10 @@ def _load_health_report() -> Dict[str, Any]:
     try:
         return json.loads(HEALTH_REPORT_PATH.read_text())
     except Exception as exc:
-        raise HTTPException(status_code=HTTP_STATUS_INTERNAL_ERROR, detail=HEALTH_REPORT_CORRUPTED_DETAIL) from exc
+        raise HTTPException(
+            status_code=HTTP_STATUS_INTERNAL_ERROR,
+            detail=HEALTH_REPORT_CORRUPTED_DETAIL,
+        ) from exc
 
 
 def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
@@ -67,7 +70,10 @@ def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
         recent_lines = lines[-limit:]
         return [json.loads(line) for line in recent_lines]
     except Exception as exc:
-        raise HTTPException(status_code=HTTP_STATUS_INTERNAL_ERROR, detail=FIX_LOG_READ_ERROR_DETAIL.format(exc)) from exc
+        raise HTTPException(
+            status_code=HTTP_STATUS_INTERNAL_ERROR,
+            detail=FIX_LOG_READ_ERROR_DETAIL.format(exc),
+        ) from exc
 
 
 @router.get(ENDPOINT_HEALTH)
