@@ -1,5 +1,33 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🎯 2026-08-06 05:30 — THE CI NON-DETERMINISM WAS NOT THE EGRESS. TWO TWIN GUARDS DISAGREED.
+
+Filed as `[P1] bound the 5xx sweep's egress` and deferred three times as too consequential for a tick. Reading
+the code before building that turned up the actual cause, which needed no egress change at all.
+
+- [x] **The two sweeps applied different criteria to the same question.**
+
+      test_no_parameterised_get_endpoint_returns_5xx   →  if _is_real_server_error(r)
+      test_no_get_endpoint_returns_5xx                 →  if r.status_code >= 500
+
+- [x] **`_is_real_server_error` exists precisely for this**, and its docstring already said so: a **502/503
+  carrying a structured `detail`** is a *handled* upstream outage — `{"detail": "Alpaca bars error: 401 ..."}`
+  when the broker rejects our credentials — while a bare 500 is the unhandled exception the sweep was written
+  for. Its twin has always used it. The parameterless one never did.
+- [x] **That is the whole non-determinism.** With CI's env the identical command failed both sweeps in 5.9s on
+  one run and passed 28–32s on three others: when Alpaca answered with a handled 502, the parameterless sweep
+  called it our bug. **A guard whose verdict a third party decides is not a guard** — and the fix was to apply
+  a helper that was already there, not to restructure the test.
+- [x] **Both twins now share the criterion, and a test pins that they cannot drift again**
+  (`test_both_5xx_sweeps_use_the_same_criterion`), plus one pinning the helper's contract directly. 2 mutations,
+  2 caught.
+- [x] **The deferral was right, and so was eventually reading the code.** Three ticks of "this deserves a
+  deliberate change" kept a risky restructure out of unattended hours; the deliberate look then found a
+  two-line fix. **Deferring is not the same as dropping.**
+- [ ] **[P2] The egress item survives, reduced.** The sweep still makes real outbound calls, so its *runtime*
+  stays load-dependent (1.4s without credentials, 14.9s with) even though its *verdict* no longer is. That is
+  a speed and cost argument now, not a correctness one — much weaker, and correctly lower priority.
+
 ## 🌏 2026-08-06 05:10 — THE OVERNIGHT READ NOW COVERS SIX MORE MARKETS, AND EUROPE IS EXCLUDED ON PURPOSE
 
 The `[P2]` item filed an hour ago, shipped. The NSE machinery is generic — a foreign close, a bounded

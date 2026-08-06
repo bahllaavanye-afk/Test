@@ -127,7 +127,19 @@ async def test_no_get_endpoint_returns_5xx(client):
     for path in paths:
         try:
             r = await client.get(path, headers=headers)
-            if r.status_code >= 500:
+            # `_is_real_server_error`, NOT a raw `>= 500`. Its twin below has
+            # always used the helper; this one did not, so the two guards
+            # applied different criteria to the same question.
+            #
+            # The helper exists because a 502/503 carrying a structured
+            # `detail` is a *handled* upstream outage — `{"detail": "Alpaca
+            # bars error: 401 ..."}` when the broker rejects our credentials —
+            # while a bare 500 is an unhandled exception, which is the bug this
+            # sweep was written for. Failing on the former makes the verdict
+            # depend on whether a third party answered, which is exactly the
+            # non-determinism measured 2026-08-06: the identical command failed
+            # both sweeps in 5.9s once and passed three consecutive times.
+            if _is_real_server_error(r):
                 failures.append(f"{path} → {r.status_code}: {r.text[:120]}")
         except Exception as exc:  # noqa: BLE001 — an unhandled exception IS a 5xx
             failures.append(f"{path} → raised {type(exc).__name__}: {exc}")
@@ -254,3 +266,51 @@ async def test_no_parameterised_get_endpoint_returns_5xx(client):
             failures.append(f"{template} (as {concrete}) → raised {type(exc).__name__}: {exc}")
 
     assert not failures, "Parameterised endpoints with server errors:\n" + "\n".join(failures)
+
+
+def test_both_5xx_sweeps_use_the_same_criterion():
+    """They ask the same question and must answer it the same way.
+
+    Until 2026-08-06 the parameterless sweep used a raw `>= 500` while its
+    parameterised twin used `_is_real_server_error`. The helper exists because
+    a 502/503 carrying a structured `detail` is a HANDLED upstream outage —
+    `{"detail": "Alpaca bars error: 401 ..."}` when the broker rejects our
+    credentials — whereas a bare 500 is the unhandled exception this sweep was
+    written to catch.
+
+    The consequence was measured: with CI's env the identical command failed
+    both sweeps in 5.9s on one run and passed three consecutive times, because
+    the verdict depended on whether Alpaca happened to answer. A guard whose
+    result a third party decides is not a guard.
+    """
+    from pathlib import Path
+    import re
+
+    src = Path(__file__).read_text()
+    for name in ("test_no_get_endpoint_returns_5xx",
+                 "test_no_parameterised_get_endpoint_returns_5xx"):
+        body = src.split(f"async def {name}(", 1)[1].split("\nasync def ", 1)[0]
+        assert "_is_real_server_error(r)" in body, (
+            f"{name} does not use the shared criterion")
+        assert not re.search(r"if r\.status_code >= 500", body), (
+            f"{name} still uses a raw status check alongside the helper")
+
+
+def test_a_handled_upstream_outage_is_not_counted_as_our_bug():
+    """The helper's contract, pinned separately from its callers: a 502/503
+    WITH `detail` is deliberate, the same code WITHOUT it means something
+    escaped, and 500 is always ours."""
+    class _R:
+        def __init__(self, code, payload):
+            self.status_code, self._p = code, payload
+        def json(self):
+            if self._p is None:
+                raise ValueError("not json")
+            return self._p
+
+    assert _is_real_server_error(_R(502, {"detail": "Alpaca bars error: 401"})) is False
+    assert _is_real_server_error(_R(503, {"detail": "Redis unavailable"})) is False
+    assert _is_real_server_error(_R(502, {"oops": 1})) is True
+    assert _is_real_server_error(_R(502, None)) is True
+    assert _is_real_server_error(_R(500, {"detail": "anything"})) is True
+    assert _is_real_server_error(_R(404, {"detail": "nope"})) is False
