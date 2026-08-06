@@ -72,6 +72,10 @@ the 03:32 run had already failed outright — so the cascade has been fully dark
 `_call_parallel_race` builds the live cascade from `_has_key` — was **excluded from every actual LLM call**.
 Three keys at 30 rpm each, unused, while the platform ran on `nvidia_nim` alone at 18.5 s per call.
 
+**VERIFIED LIVE 09:49, run `31090685392`:** `groq` now answers with 3 keys in **171 ms** (nvidia_nim was
+18,550 ms). In that same probe **`nvidia_nim` timed out** — so without this fix the run would have had zero
+working providers and the cascade would have gone dark for the second time today.
+
 **Still open, both operator calls:**
 1. `healthy = bool(working)` means "at least one provider answers". That is not health for a platform whose
    agents, improver and desk commentary all need the cascade. A floor of 2 would make one-away-from-dark

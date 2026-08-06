@@ -141,6 +141,22 @@ are harmless superseded duplicates, but probing the live cascade found a capabil
   changed**. Re-applied inside `_provider_keys` only, it was caught. **Third false mutation this session**
   (after two that produced invalid Python) — the check is always the same: confirm the mutation landed where
   you aimed it, not merely that the suite reacted or didn't.
+- [x] **LIVE VERIFICATION 2026-08-06 09:49, run `31090685392` on the fixed commit — and the timing is the
+  point.**
+
+        groq:       has_key: true,  keys: 3,  ok: true,   ms: 171
+        nvidia_nim: has_key: true,  keys: 1,  ok: false,  error: "The read operation timed out"
+        "working": ["groq"]
+
+  Groq is detected with all three keys and answers in **171 ms — 108x faster** than the 18,550 ms nvidia_nim
+  was taking. **And nvidia_nim timed out on this very run.** Without the fix this run had ZERO working
+  providers: the cascade would have gone dark for the second time today. The fix landed roughly two minutes
+  before the provider it replaced failed. That is luck, not design, and it is the argument for the two
+  operator items below rather than a reason to feel good about the save.
+- [x] **Still 1 of 8, and `healthy: true` both times.** The canary reported the same verdict before the fix
+  (one slow provider), after it (one fast provider), and would have reported `false` only when the count hit
+  zero. **A health check that cannot distinguish "one provider" from "one provider, and the spare just died"
+  is not measuring resilience** — it is measuring whether the platform is already broken.
 - [ ] **[P1, OPERATOR] The canary's threshold is a policy question, deliberately not changed.** `healthy` means
   "≥1 provider answers". On a platform whose agents, improver and desk commentary all depend on the cascade,
   one provider is not health — it is a single point of failure that already failed once today. A floor of 2,
