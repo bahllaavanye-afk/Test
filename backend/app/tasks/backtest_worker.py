@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.utils.logging import logger
 
@@ -45,6 +46,25 @@ MSG_BACKTEST_COMPLETE = "Backtest {run_id} complete"
 MSG_BACKTEST_FAILED = "Backtest {run_id} failed: {exc}"
 
 
+async def _fail_backtest_run(run_id: str, exc: Exception) -> None:
+    """Utility to mark a BacktestRun as failed and record the error message."""
+    try:
+        async with AsyncSessionLocal() as db:
+            run = await db.get(BacktestRun, run_id)
+            if run:
+                run.status = STATUS_FAILED
+                run.error_message = str(exc)[:MAX_ERROR_MESSAGE_LENGTH]
+                run.completed_at = datetime.now(timezone.utc)
+                await db.commit()
+    except SQLAlchemyError as db_exc:
+        logger.exception(
+            "Failed to update BacktestRun status to failed",
+            run_id=run_id,
+            original_error=str(exc),
+            db_error=str(db_exc),
+        )
+
+
 async def run_backtest_job(run_id: str | None) -> None:
     """Fetch one queued BacktestRun, execute it, write results back to DB."""
     if not run_id:
@@ -63,7 +83,11 @@ async def run_backtest_job(run_id: str | None) -> None:
             return
         # Validate essential fields
         if not all([run.symbol, run.start_date, run.end_date, run.interval, run.strategy_name]):
-            logger.error(f"BacktestRun {run_id} {MSG_MISSING_PARAMS}")
+            logger.error(
+                f"BacktestRun {run_id} {MSG_MISSING_PARAMS}",
+                run_id=run_id,
+                missing_fields=True,
+            )
             run.status = STATUS_FAILED
             run.error_message = MSG_MISSING_PARAMS
             run.completed_at = datetime.now(timezone.utc)
@@ -81,17 +105,38 @@ async def run_backtest_job(run_id: str | None) -> None:
         strategy_name = run.strategy_name
         initial_equity = (run.params or {}).get("initial_equity", DEFAULT_INITIAL_EQUITY)
 
+    # -------------------------------------------------------------------------
+    # Data fetching
+    # -------------------------------------------------------------------------
     try:
         df = await fetch_ohlcv(symbol=symbol, start=start_date, end=end_date, interval=interval)
         if df.empty:
             raise ValueError(MSG_NO_OHLCV_DATA.format(symbol=symbol, start_date=start_date, end_date=end_date))
+    except (ValueError, RuntimeError) as exc:
+        logger.error(
+            MSG_BACKTEST_FAILED.format(run_id=run_id, exc=exc),
+            run_id=run_id,
+            error_type=type(exc).__name__,
+        )
+        await _fail_backtest_run(run_id, exc)
+        return
+    except Exception as exc:
+        logger.exception(
+            MSG_BACKTEST_FAILED.format(run_id=run_id, exc=exc),
+            run_id=run_id,
+        )
+        await _fail_backtest_run(run_id, exc)
+        return
 
+    # -------------------------------------------------------------------------
+    # Strategy execution
+    # -------------------------------------------------------------------------
+    try:
         StratClass = STRATEGY_REGISTRY.get(strategy_name)
         if StratClass is None:
             raise ValueError(MSG_UNKNOWN_STRATEGY.format(strategy_name=strategy_name))
 
         strategy = StratClass()
-        # backtest_signals may be sync or async depending on the strategy
         import inspect
         from app.strategies.base import BacktestSignals as _BSig
 
@@ -102,7 +147,6 @@ async def run_backtest_job(run_id: str | None) -> None:
         if isinstance(raw_signals, _BSig):
             import numpy as np
 
-            # Ensure entries/exits are not None and have matching index
             entries = raw_signals.entries
             exits = raw_signals.exits
             if entries is None or exits is None:
@@ -115,16 +159,32 @@ async def run_backtest_job(run_id: str | None) -> None:
                 sig[raw_signals.short_entries.astype(bool)] = SHORT_ENTRY_VALUE
             signals_series = sig
         else:
-            # Expect a pandas Series; guard against empty or mismatched index
             if not isinstance(raw_signals, pd.Series):
                 raise TypeError(MSG_STRATEGY_SIGNALS_TYPE)
             if raw_signals.empty:
-                # An empty signal series is treated as no trades
                 signals_series = pd.Series(DEFAULT_SIGNAL_VALUE, index=df.index, dtype=int)
             else:
-                # Align index if needed
                 signals_series = raw_signals.reindex(df.index, fill_value=DEFAULT_SIGNAL_VALUE).astype(int)
+    except (ValueError, TypeError) as exc:
+        logger.error(
+            MSG_BACKTEST_FAILED.format(run_id=run_id, exc=exc),
+            run_id=run_id,
+            error_type=type(exc).__name__,
+        )
+        await _fail_backtest_run(run_id, exc)
+        return
+    except Exception as exc:
+        logger.exception(
+            MSG_BACKTEST_FAILED.format(run_id=run_id, exc=exc),
+            run_id=run_id,
+        )
+        await _fail_backtest_run(run_id, exc)
+        return
 
+    # -------------------------------------------------------------------------
+    # Backtest execution
+    # -------------------------------------------------------------------------
+    try:
         metrics = run_backtest(
             signals=signals_series,
             prices=df["close"],
@@ -132,7 +192,19 @@ async def run_backtest_job(run_id: str | None) -> None:
             volume=df["volume"],
             initial_equity=initial_equity,
         )
+    except Exception as exc:
+        logger.exception(
+            MSG_BACKTEST_FAILED.format(run_id=run_id, exc=exc),
+            run_id=run_id,
+            stage="backtest_execution",
+        )
+        await _fail_backtest_run(run_id, exc)
+        return
 
+    # -------------------------------------------------------------------------
+    # Persist results
+    # -------------------------------------------------------------------------
+    try:
         async with AsyncSessionLocal() as db:
             run = await db.get(BacktestRun, run_id)
             if run:
@@ -156,19 +228,24 @@ async def run_backtest_job(run_id: str | None) -> None:
                 await db.commit()
         logger.info(
             MSG_BACKTEST_COMPLETE.format(run_id=run_id),
+            run_id=run_id,
             sharpe=round(metrics.sharpe, 2),
             ret=f"{metrics.total_return:.1%}",
         )
-
+    except SQLAlchemyError as db_exc:
+        logger.exception(
+            "Database error while persisting backtest results",
+            run_id=run_id,
+            db_error=str(db_exc),
+        )
+        await _fail_backtest_run(run_id, db_exc)
     except Exception as exc:
-        logger.error(MSG_BACKTEST_FAILED.format(run_id=run_id, exc=exc))
-        async with AsyncSessionLocal() as db:
-            run = await db.get(BacktestRun, run_id)
-            if run:
-                run.status = STATUS_FAILED
-                run.error_message = str(exc)[:MAX_ERROR_MESSAGE_LENGTH]
-                run.completed_at = datetime.now(timezone.utc)
-                await db.commit()
+        logger.exception(
+            "Unexpected error while persisting backtest results",
+            run_id=run_id,
+            error=str(exc),
+        )
+        await _fail_backtest_run(run_id, exc)
 
 
 async def backtest_worker_loop() -> None:
@@ -192,7 +269,15 @@ async def backtest_worker_loop() -> None:
             for run_id in run_ids:
                 asyncio.create_task(run_backtest_job(run_id))
 
+        except SQLAlchemyError as db_exc:
+            logger.exception(
+                MSG_WORKER_POLL_ERROR.format(exc=db_exc),
+                error_type="SQLAlchemyError",
+            )
         except Exception as exc:
-            logger.warning(MSG_WORKER_POLL_ERROR.format(exc=exc))
+            logger.exception(
+                MSG_WORKER_POLL_ERROR.format(exc=exc),
+                error_type=type(exc).__name__,
+            )
 
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
