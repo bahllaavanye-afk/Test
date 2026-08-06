@@ -32,6 +32,28 @@ def test_compute_clusters_perfect_correlation():
     assert any(len(members) >= 2 for members in clusters.values())
 
 
+def test_compute_clusters_single_asset():
+    # Single asset should form one cluster regardless of threshold
+    corr = np.array([[1.0]])
+    returns = _make_returns(corr, n=50)
+    clusters = compute_correlation_clusters(returns, threshold=0.80)
+    assert len(clusters) == 1
+    # The only cluster must contain the single asset
+    assert list(clusters.values())[0] == ["S0"]
+
+
+def test_compute_clusters_threshold_boundary():
+    # Two assets with correlation exactly at the threshold should be clustered together
+    corr = np.array([[1.0, 0.70],
+                     [0.70, 1.0]])
+    returns = _make_returns(corr, n=200)
+    clusters = compute_correlation_clusters(returns, threshold=0.70)
+    # Expect a single cluster containing both assets
+    assert len(clusters) == 1
+    members = list(clusters.values())[0]
+    assert set(members) == {"S0", "S1"}
+
+
 def test_check_cluster_limits_blocks():
     clusters = {"cluster_0": ["AAPL", "MSFT", "GOOGL"]}
     positions = {"AAPL": 20_000, "MSFT": 15_000}
@@ -52,6 +74,18 @@ def test_check_cluster_limits_allows():
         clusters=clusters, max_cluster_pct=0.30, total_equity=100_000,
     )
     # 5k + 5k = 10k = 10% < 30%
+    assert allowed
+
+
+def test_check_cluster_limits_boundary_exact():
+    # New position brings cluster exposure exactly to the limit; should be allowed
+    clusters = {"cluster_0": ["AAPL", "MSFT"]}
+    positions = {"AAPL": 30_000}
+    allowed, _ = check_cluster_limits(
+        "MSFT", new_value_usd=20_000, current_positions=positions,
+        clusters=clusters, max_cluster_pct=0.50, total_equity=100_000,
+    )
+    # Total exposure = 30k + 20k = 50k = 50% of equity (exact limit)
     assert allowed
 
 
