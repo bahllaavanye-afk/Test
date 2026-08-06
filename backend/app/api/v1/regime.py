@@ -2,7 +2,7 @@
 import logging
 import time
 from collections import Counter
-from typing import List, Optional
+from typing import List, Optional, Tuple, Dict, Any
 
 from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user
@@ -21,40 +21,33 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/regime", tags=["regime"])
 
+_LABEL_MAP = {
+    "trending": "bull",
+    "mean_reverting": "sideways",
+    "high_vol": "bear",
+    "unknown": "unknown",
+}
 
-@router.get("/current")
-async def get_current_regime(current_user: User = Depends(get_current_user)):
-    """Overall market regime — aggregated across all tracked symbols.
 
-    Returns the most common regime (bull/bear/sideways mapped from detector enums)
-    and average confidence. Falls back to safe defaults when no data is available.
+def _map_regime(regime: str) -> str:
+    """Map internal detector regime to frontend-friendly label."""
+    return _LABEL_MAP.get(regime, "unknown")
+
+
+def _aggregate_states(states: Dict[str, Any]) -> Tuple[str, float, Optional[str]]:
     """
-    start_time = time.time()
+    Determine overall regime, average confidence and latest update timestamp.
 
-    states = regime_monitor.all_states()
+    Returns:
+        overall_regime (str): Most common mapped regime.
+        avg_confidence (float): Rounded average confidence.
+        latest_updated (Optional[str]): Most recent update timestamp.
+    """
     if not states:
-        elapsed_ms = (time.time() - start_time) * 1000
-        logger.info(
-            "endpoint=get_current_regime",
-            extra={
-                "signal_count": 0,
-                "execution_time_ms": round(elapsed_ms, 2),
-                "pnl": get_current_pnl(),
-            },
-        )
-        return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
+        return "unknown", 0.0, None
 
-    # Map detector regimes → frontend-friendly labels
-    _label_map = {
-        "trending": "bull",
-        "mean_reverting": "sideways",
-        "high_vol": "bear",
-        "unknown": "unknown",
-    }
-
-    # Use comprehensions and Counter for efficient aggregation
-    label_counts: Counter = Counter(
-        _label_map.get(sym_state.get("regime", "unknown"), "unknown")
+    label_counts = Counter(
+        _map_regime(sym_state.get("regime", "unknown"))
         for sym_state in states.values()
     )
     confidences: List[float] = [
@@ -64,25 +57,46 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
         (sym_state.get("updated_at") for sym_state in states.values() if sym_state.get("updated_at")),
         default=None,
     )
-
     overall_regime = label_counts.most_common(1)[0][0]
     avg_confidence = round(sum(confidences) / len(confidences), 3) if confidences else 0.0
+    return overall_regime, avg_confidence, latest_updated
 
+
+def _log_endpoint(endpoint: str, signal_count: int, start_time: float, symbol: Optional[str] = None) -> None:
+    """Log endpoint execution details."""
     elapsed_ms = (time.time() - start_time) * 1000
-    logger.info(
-        "endpoint=get_current_regime",
-        extra={
-            "signal_count": len(states),
-            "execution_time_ms": round(elapsed_ms, 2),
-            "pnl": get_current_pnl(),
-        },
+    extra = {
+        "signal_count": signal_count,
+        "execution_time_ms": round(elapsed_ms, 2),
+        "pnl": get_current_pnl(),
+    }
+    if symbol:
+        extra["symbol"] = symbol
+    logger.info(f"endpoint={endpoint}", extra=extra)
+
+
+@router.get("/current")
+async def get_current_regime(current_user: User = Depends(get_current_user)):
+    """Overall market regime — aggregated across all tracked symbols.
+
+    Returns the most common regime (bull/bear/sideways mapped from detector enums)
+    and average confidence. Falls back to safe defaults when no data is available.
+    """
+    start_time = time.time()
+    states = regime_monitor.all_states()
+    overall_regime, avg_confidence, latest_updated = _aggregate_states(states)
+
+    _log_endpoint(
+        endpoint="get_current_regime",
+        signal_count=len(states) if states else 0,
+        start_time=start_time,
     )
 
     return {
         "regime": overall_regime,
         "confidence": avg_confidence,
         "updated_at": latest_updated,
-        "symbol_count": len(states),
+        "symbol_count": len(states) if states else 0,
     }
 
 
@@ -91,14 +105,10 @@ async def get_regime_states(current_user: User = Depends(get_current_user)):
     """Current regime classification for all tracked symbols."""
     start_time = time.time()
     data = regime_monitor.all_states()
-    elapsed_ms = (time.time() - start_time) * 1000
-    logger.info(
-        "endpoint=get_regime_states",
-        extra={
-            "signal_count": len(data),
-            "execution_time_ms": round(elapsed_ms, 2),
-            "pnl": get_current_pnl(),
-        },
+    _log_endpoint(
+        endpoint="get_regime_states",
+        signal_count=len(data),
+        start_time=start_time,
     )
     return data
 
@@ -108,27 +118,19 @@ async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_cu
     start_time = time.time()
     state = regime_monitor.get(symbol.upper())
     if not state:
-        elapsed_ms = (time.time() - start_time) * 1000
-        logger.info(
-            "endpoint=get_regime_for_symbol",
-            extra={
-                "signal_count": 0,
-                "execution_time_ms": round(elapsed_ms, 2),
-                "pnl": get_current_pnl(),
-                "symbol": symbol,
-            },
+        _log_endpoint(
+            endpoint="get_regime_for_symbol",
+            signal_count=0,
+            start_time=start_time,
+            symbol=symbol,
         )
         return {"error": f"No regime data for {symbol}. Feed price data first."}
     result = state.to_dict()
-    elapsed_ms = (time.time() - start_time) * 1000
-    logger.info(
-        "endpoint=get_regime_for_symbol",
-        extra={
-            "signal_count": 1,
-            "execution_time_ms": round(elapsed_ms, 2),
-            "pnl": get_current_pnl(),
-            "symbol": symbol,
-        },
+    _log_endpoint(
+        endpoint="get_regime_for_symbol",
+        signal_count=1,
+        start_time=start_time,
+        symbol=symbol,
     )
     return result
 
@@ -140,14 +142,10 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
     matrix = correlation_monitor.matrix_as_list()
     reduced = list(correlation_monitor._reduced)
     alerts = correlation_monitor.recent_alerts(10)
-    elapsed_ms = (time.time() - start_time) * 1000
-    logger.info(
-        "endpoint=get_correlation_matrix",
-        extra={
-            "signal_count": len(matrix),
-            "execution_time_ms": round(elapsed_ms, 2),
-            "pnl": get_current_pnl(),
-        },
+    _log_endpoint(
+        endpoint="get_correlation_matrix",
+        signal_count=len(matrix),
+        start_time=start_time,
     )
     return {
         "matrix": matrix,
@@ -160,13 +158,9 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
 async def get_correlation_alerts(current_user: User = Depends(get_current_user)):
     start_time = time.time()
     alerts = correlation_monitor.recent_alerts(50)
-    elapsed_ms = (time.time() - start_time) * 1000
-    logger.info(
-        "endpoint=get_correlation_alerts",
-        extra={
-            "signal_count": len(alerts),
-            "execution_time_ms": round(elapsed_ms, 2),
-            "pnl": get_current_pnl(),
-        },
+    _log_endpoint(
+        endpoint="get_correlation_alerts",
+        signal_count=len(alerts),
+        start_time=start_time,
     )
     return alerts
