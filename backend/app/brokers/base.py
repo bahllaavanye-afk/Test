@@ -1,6 +1,12 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
+
+_ALLOWED_SIDES = {"buy", "sell"}
+_ALLOWED_ORDER_TYPES = {"market", "limit", "stop", "bracket"}
+_ALLOWED_TIME_IN_FORCE = {"GTC", "IOC", "FOK", "Day"}
+_ALLOWED_EXEC_ALGOS = {"market", "limit_first", "twap", "vwap"}
+
 
 @dataclass(slots=True)
 class OrderRequest:
@@ -17,6 +23,44 @@ class OrderRequest:
     strategy_id: str | None = None
     risk_bucket: str = "directional"   # for risk manager routing
     execution_algo: str = "limit_first"  # market|limit_first|twap|vwap
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.symbol, str) or not self.symbol:
+            raise ValueError("symbol must be a non‑empty string")
+        if self.side not in _ALLOWED_SIDES:
+            raise ValueError(f"side must be one of {_ALLOWED_SIDES}, got '{self.side}'")
+        if self.order_type not in _ALLOWED_ORDER_TYPES:
+            raise ValueError(
+                f"order_type must be one of {_ALLOWED_ORDER_TYPES}, got '{self.order_type}'"
+            )
+        if not isinstance(self.quantity, (int, float)) or self.quantity < 0:
+            raise ValueError("quantity must be a non‑negative number")
+        if self.limit_price is not None:
+            if not isinstance(self.limit_price, (int, float)) or self.limit_price <= 0:
+                raise ValueError("limit_price must be a positive number when provided")
+        if self.stop_price is not None:
+            if not isinstance(self.stop_price, (int, float)) or self.stop_price <= 0:
+                raise ValueError("stop_price must be a positive number when provided")
+        if self.stop_loss is not None:
+            if not isinstance(self.stop_loss, (int, float)) or self.stop_loss <= 0:
+                raise ValueError("stop_loss must be a positive number when provided")
+        if self.take_profit is not None:
+            if not isinstance(self.take_profit, (int, float)) or self.take_profit <= 0:
+                raise ValueError("take_profit must be a positive number when provided")
+        if self.time_in_force not in _ALLOWED_TIME_IN_FORCE:
+            raise ValueError(
+                f"time_in_force must be one of {_ALLOWED_TIME_IN_FORCE}, got '{self.time_in_force}'"
+            )
+        if not isinstance(self.account_id, str):
+            raise ValueError("account_id must be a string")
+        if self.strategy_id is not None and not isinstance(self.strategy_id, str):
+            raise ValueError("strategy_id must be a string when provided")
+        if not isinstance(self.risk_bucket, str) or not self.risk_bucket:
+            raise ValueError("risk_bucket must be a non‑empty string")
+        if self.execution_algo not in _ALLOWED_EXEC_ALGOS:
+            raise ValueError(
+                f"execution_algo must be one of {_ALLOWED_EXEC_ALGOS}, got '{self.execution_algo}'"
+            )
 
 
 @dataclass(slots=True)
@@ -35,6 +79,16 @@ class QuoteResult:
     ask: float
     last: float
     volume: float | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.symbol, str) or not self.symbol:
+            raise ValueError("symbol must be a non‑empty string")
+        for field_name in ("bid", "ask", "last"):
+            value = getattr(self, field_name)
+            if not isinstance(value, (int, float)) or value < 0:
+                raise ValueError(f"{field_name} must be a non‑negative number")
+        if self.volume is not None and (not isinstance(self.volume, (int, float)) or self.volume < 0):
+            raise ValueError("volume must be a non‑negative number when provided")
 
 
 class AbstractBroker(ABC):
@@ -76,6 +130,7 @@ class AbstractBroker(ABC):
 # ----------------------------------------------------------------------
 import unittest
 import asyncio
+
 
 class DummyBroker(AbstractBroker):
     """A minimal concrete broker used solely for unit testing."""

@@ -16,7 +16,7 @@ import json
 import logging
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, List, Tuple
+from typing import Any, List, Tuple, Callable
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,15 +29,48 @@ logger = logging.getLogger(__name__)
 
 class SelfImprovingLoop:
     def __init__(self, db_session_factory: Any, redis_client: Any):
+        """
+        Initialize the SelfImprovingLoop.
+
+        Args:
+            db_session_factory: Callable that returns an AsyncSession context manager.
+            redis_client: Redis client with a ``publish`` coroutine method.
+
+        Raises:
+            ValueError: If inputs are not of the expected type or lack required attributes.
+        """
+        if not callable(db_session_factory):
+            raise ValueError("db_session_factory must be a callable returning an AsyncSession.")
+        # Optional deeper check: ensure it returns an object supporting async context manager
+        try:
+            sess = db_session_factory()
+            if not hasattr(sess, "__aenter__") or not hasattr(sess, "__aexit__"):
+                raise ValueError
+        except Exception as exc:
+            raise ValueError("db_session_factory must return an async context manager.") from exc
+
+        if not hasattr(redis_client, "publish"):
+            raise ValueError("redis_client must implement a 'publish' method.")
+        if not callable(getattr(redis_client, "publish")):
+            raise ValueError("redis_client.publish must be callable.")
+
         self._factory = db_session_factory
         self._memory = AgentMemory(redis_client)
         self._redis = redis_client
 
     async def run_cycle(self) -> None:
+        """
+        Execute a full self‑improving cycle.
+
+        Raises:
+            ValueError: If internal metrics collection returns malformed data.
+        """
         logger.info("SelfImprovingLoop: starting hourly cycle")
         start_time = time.perf_counter()
         try:
             metrics = await self._collect_strategy_metrics()
+            if not isinstance(metrics, list):
+                raise ValueError("Collected metrics must be a list of dictionaries.")
             await self._auto_disable_underperformers(metrics)
             await self._llm_improvement_pass(metrics)
             await self._broadcast_regime(metrics)
