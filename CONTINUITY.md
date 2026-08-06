@@ -146,7 +146,18 @@ window, and `first_date`/`last_date` in the payload. On that pinned window:
     SPY   0.634 vs 0.791  loses      QQQ  1.201 vs 0.734  BEATS      NVDA  1.184 vs 1.130  BEATS
 
 Expected shape for a defensive model (`time_in_market` ≈ 0.5): gives up upside in a bull run, earns its keep in
-a drawdown. **Do not replace "it loses" with "it wins"** — the honest claim is that the window decides, and
+a drawdown. **✅ 01:20 — THE SUB-WINDOWS ARRIVED AND THEY FLIP THE RECOMMENDATION.** Run `2026-08-06T00:13`:
+
+    QQQ  overall 1.360 vs 0.729 BEATS   but 2022-01→2023-07: 2.057 vs 0.176 beats
+                                            2025-01→2026-08: 0.390 vs 1.089 LOSES
+    NVDA overall 1.196 vs 1.125 BEATS   recent window still ahead (1.508 vs 1.153)
+    SPY  overall 0.606 vs 0.788 loses   loses both recent windows
+
+QQQ's headline is carried entirely by the 2022 bear market. **In the most recent 18 months the model is behind
+on 2 of 3.** The overall figures were never wrong — they were the wrong statistic to decide on. This argues
+**against** routing live orders through ML, not for it.
+
+**Do not replace "it loses" with "it wins"** — the honest claim is that the window decides, and
 `ml_experiment.py` now pins one: longest-history source, both ends clamped to what every symbol covers, and
 `first_date`/`last_date` in the payload. Confirmation is the next scheduled run, **Sundays 04:17 UTC**.
 
