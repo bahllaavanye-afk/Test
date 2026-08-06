@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user
 from app.integrations.notion_sync import get_notion_sync
 from app.models.user import User
+from typing import Any, Dict
 
 # Constants
 INTEGRATIONS_PREFIX: str = "/integrations"
@@ -20,11 +21,25 @@ KEY_GITHUB_REPO: str = "github_repo"
 router = APIRouter(prefix=INTEGRATIONS_PREFIX, tags=[INTEGRATIONS_TAG])
 
 
-@router.get(NOTION_STATUS_PATH)
-async def notion_status(current_user: User = Depends(get_current_user)):
-    """Whether Notion sync is configured."""
-    if current_user is None:
+def _validate_user(user: User | None) -> User:
+    """Ensure a user object is provided."""
+    if user is None:
         raise ValueError("current_user must not be None")
+    return user
+
+
+def _get_sync_instance() -> Any:
+    """Retrieve the Notion sync instance, validating its existence."""
+    sync = get_notion_sync()
+    if sync is None:
+        raise ValueError("sync instance must not be None")
+    return sync
+
+
+@router.get(NOTION_STATUS_PATH)
+async def notion_status(current_user: User = Depends(get_current_user)) -> Dict[str, Any]:
+    """Whether Notion sync is configured."""
+    _validate_user(current_user)
     sync = get_notion_sync()
     return {
         KEY_ENABLED: sync.enabled,
@@ -36,11 +51,8 @@ async def notion_status(current_user: User = Depends(get_current_user)):
 
 
 @router.post(NOTION_SYNC_PATH)
-async def trigger_notion_sync(current_user: User = Depends(get_current_user)):
+async def trigger_notion_sync(current_user: User = Depends(get_current_user)) -> Any:
     """Trigger a bidirectional GitHub Issues ↔ Notion sync."""
-    if current_user is None:
-        raise ValueError("current_user must not be None")
-    sync = get_notion_sync()
-    if sync is None:
-        raise ValueError("sync instance must not be None")
+    _validate_user(current_user)
+    sync = _get_sync_instance()
     return await sync.sync_all()

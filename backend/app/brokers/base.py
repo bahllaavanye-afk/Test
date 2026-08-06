@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, List, Dict, Optional
+
 
 @dataclass(slots=True)
 class OrderRequest:
@@ -8,13 +9,13 @@ class OrderRequest:
     side: str               # buy|sell
     order_type: str         # market|limit|stop|bracket
     quantity: float
-    limit_price: float | None = None
-    stop_price: float | None = None
-    stop_loss: float | None = None      # for bracket orders
-    take_profit: float | None = None    # for bracket orders
+    limit_price: Optional[float] = None
+    stop_price: Optional[float] = None
+    stop_loss: Optional[float] = None      # for bracket orders
+    take_profit: Optional[float] = None    # for bracket orders
     time_in_force: str = "GTC"
     account_id: str = ""
-    strategy_id: str | None = None
+    strategy_id: Optional[str] = None
     risk_bucket: str = "directional"   # for risk manager routing
     execution_algo: str = "limit_first"  # market|limit_first|twap|vwap
 
@@ -24,8 +25,8 @@ class OrderResult:
     broker_order_id: str
     status: str
     filled_qty: float = 0.0
-    avg_fill_price: float | None = None
-    raw_payload: dict | None = None
+    avg_fill_price: Optional[float] = None
+    raw_payload: Optional[Dict[str, Any]] = None
 
 
 @dataclass(slots=True)
@@ -34,7 +35,7 @@ class QuoteResult:
     bid: float
     ask: float
     last: float
-    volume: float | None = None
+    volume: Optional[float] = None
 
 
 class AbstractBroker(ABC):
@@ -53,7 +54,7 @@ class AbstractBroker(ABC):
         """Get current status of an order."""
 
     @abstractmethod
-    async def get_positions(self) -> list[dict]:
+    async def get_positions(self) -> List[dict]:
         """Return all open positions."""
 
     @abstractmethod
@@ -67,7 +68,7 @@ class AbstractBroker(ABC):
     @abstractmethod
     async def get_historical(
         self, symbol: str, interval: str, limit: int = 500
-    ) -> list[dict]:
+    ) -> List[dict]:
         """Return OHLCV bars. Each dict: {ts, open, high, low, close, volume}."""
 
 
@@ -75,14 +76,14 @@ class AbstractBroker(ABC):
 # Unit tests for boundary conditions
 # ----------------------------------------------------------------------
 import unittest
-import asyncio
+
 
 class DummyBroker(AbstractBroker):
     """A minimal concrete broker used solely for unit testing."""
 
     async def place_order(self, request: OrderRequest) -> OrderResult:
-        # Mimic simple fill logic: if limit_price is provided, use it; otherwise default to 1.0
-        avg_price = request.limit_price if request.limit_price is not None else 1.0
+        """Mimic simple fill logic: use limit_price if provided; otherwise default to 1.0."""
+        avg_price = self._determine_fill_price(request)
         return OrderResult(
             broker_order_id="dummy",
             status="filled",
@@ -91,13 +92,18 @@ class DummyBroker(AbstractBroker):
             raw_payload={"request": request},
         )
 
+    @staticmethod
+    def _determine_fill_price(request: OrderRequest) -> float:
+        """Return the price to use for a filled order."""
+        return request.limit_price if request.limit_price is not None else 1.0
+
     async def cancel_order(self, broker_order_id: str) -> bool:
         return True
 
     async def get_order(self, broker_order_id: str) -> dict:
         return {"broker_order_id": broker_order_id, "status": "unknown"}
 
-    async def get_positions(self) -> list[dict]:
+    async def get_positions(self) -> List[dict]:
         return []
 
     async def get_account(self) -> dict:
@@ -108,7 +114,7 @@ class DummyBroker(AbstractBroker):
 
     async def get_historical(
         self, symbol: str, interval: str, limit: int = 500
-    ) -> list[dict]:
+    ) -> List[dict]:
         return []
 
 

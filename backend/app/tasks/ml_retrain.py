@@ -8,7 +8,7 @@ import asyncio
 import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 
 import pandas as pd
 
@@ -49,7 +49,10 @@ except Exception as exc:  # pragma: no cover
     # crashes the scheduler at import — degrade instead: retrain simply skips
     # data downloads (matches how torch-backed models degrade elsewhere).
     yf = None
-    logger.error("yfinance unavailable — nightly retrain will skip downloads", error=str(exc))
+    logger.error(
+        "yfinance unavailable — nightly retrain will skip downloads",
+        error=str(exc),
+    )
 
 try:
     import yaml as _yaml
@@ -58,7 +61,12 @@ except Exception:  # pragma: no cover
     _load_yaml = None
 
 
-async def _download_hist(symbol: str, interval: str, start: datetime, end: datetime) -> pd.DataFrame | None:
+async def _download_hist(
+    symbol: str,
+    interval: str,
+    start: datetime,
+    end: datetime,
+) -> pd.DataFrame | None:
     """
     Retrieve historical price data, using an in‑process cache to avoid duplicate
     downloads within the same nightly run.
@@ -91,14 +99,22 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
             ),
         )
     except Exception as exc:  # pragma: no cover
-        logger.error("Failed to download data", symbol=symbol, interval=interval, error=str(exc))
+        logger.error(
+            "Failed to download data",
+            symbol=symbol,
+            interval=interval,
+            error=str(exc),
+        )
         return None
 
     if hist is None or len(hist) < MIN_HIST_LENGTH:
         return None
 
     # Normalize column names once.
-    hist.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in hist.columns]
+    hist.columns = [
+        c.lower() if isinstance(c, str) else c[0].lower()
+        for c in hist.columns
+    ]
 
     # Store in cache for potential reuse.
     _DATA_CACHE[cache_key] = (datetime.now(timezone.utc), hist.copy())
@@ -184,11 +200,24 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
     return results
 
 
+def _cap_configs(configs: List[tuple[str, str, str]]) -> List[tuple[str, str, str]]:
+    """Cap the number of retrain configurations to avoid resource exhaustion."""
+    return configs[:MAX_RETRAIN_PER_NIGHT]
+
+
+def _count_successes(results: List[object]) -> int:
+    """Count non‑error results in the gather output."""
+    return sum(
+        1
+        for r in results
+        if isinstance(r, dict) and r.get("status") != "error"
+    )
+
+
 async def nightly_retrain() -> None:
     """Retrain all models discovered from experiment configs. Called by APScheduler at 02:00 UTC."""
-    retrain_configs = _load_retrain_configs()
-    # Cap at 10 per night to avoid overwhelming free‑tier CPU
-    retrain_configs = retrain_configs[:MAX_RETRAIN_PER_NIGHT]
+    raw_configs = _load_retrain_configs()
+    retrain_configs = _cap_configs(raw_configs)
 
     if not retrain_configs:
         logger.info("No retrain configurations found")
@@ -199,7 +228,7 @@ async def nightly_retrain() -> None:
         *(retrain_model(m, s, i) for m, s, i in retrain_configs),
         return_exceptions=True,
     )
-    successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
+    successes = _count_successes(results)
     logger.info(
         "Nightly retrain complete",
         total=len(retrain_configs),
