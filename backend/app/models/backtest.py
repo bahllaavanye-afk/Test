@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date, timezone
 from sqlalchemy import String, ForeignKey, Numeric, DateTime, Date, Integer, JSON, Text, create_engine
-from sqlalchemy.orm import Mapped, mapped_column, relationship, sessionmaker
+from sqlalchemy.orm import Mapped, mapped_column, relationship, sessionmaker, validates
 from app.database import Base
 
 
@@ -24,6 +24,38 @@ class BacktestRun(Base):
 
     result: Mapped["BacktestResult | None"] = relationship("BacktestResult", back_populates="run", uselist=False)
 
+    @validates('user_id', 'strategy_name', 'symbol', 'interval')
+    def _validate_non_empty_string(self, key: str, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{key} must be a non‑empty string")
+        return value
+
+    @validates('start_date', 'end_date')
+    def _validate_date(self, key: str, value: date) -> date:
+        if not isinstance(value, date):
+            raise ValueError(f"{key} must be a datetime.date instance")
+        return value
+
+    @validates('created_at')
+    def _validate_created_at(self, key: str, value: datetime) -> datetime:
+        if not isinstance(value, datetime):
+            raise ValueError("created_at must be a datetime instance")
+        if value.tzinfo is None:
+            raise ValueError("created_at must be timezone‑aware")
+        return value
+
+    @validates('start_date', 'end_date')
+    def _validate_date_order(self, key: str, value: date) -> date:
+        # This validator runs for each date field; order check is performed after both are set
+        # Defer ordering logic to a separate check on attribute set
+        return value
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Ensure start_date is not after end_date
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValueError("start_date cannot be later than end_date")
+
 
 class BacktestResult(Base):
     __tablename__ = "backtest_results"
@@ -43,6 +75,25 @@ class BacktestResult(Base):
     trades_log: Mapped[list | None] = mapped_column(JSON)     # [{entry, exit, pnl}, ...]
 
     run: Mapped["BacktestRun"] = relationship("BacktestRun", back_populates="result")
+
+    @validates('total_return', 'annualized_return', 'sharpe_ratio', 'sortino_ratio',
+               'calmar_ratio', 'max_drawdown', 'win_rate', 'profit_factor')
+    def _validate_float_or_none(self, key: str, value):
+        if value is not None and not isinstance(value, (float, int)):
+            raise ValueError(f"{key} must be a float, int, or None")
+        return float(value) if isinstance(value, (float, int)) else None
+
+    @validates('total_trades')
+    def _validate_int_or_none(self, key: str, value):
+        if value is not None and not isinstance(value, int):
+            raise ValueError(f"{key} must be an int or None")
+        return value
+
+    @validates('equity_curve', 'trades_log')
+    def _validate_list_or_none(self, key: str, value):
+        if value is not None and not isinstance(value, list):
+            raise ValueError(f"{key} must be a list or None")
+        return value
 
 
 # ----------------------------------------------------------------------
