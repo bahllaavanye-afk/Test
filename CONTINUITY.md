@@ -62,6 +62,23 @@ Earlier the same day it was `https://pypi.org/simple/rsa/`. Read the FAILING STE
 `test` job here means nothing about the code. `rerun_failed_jobs` is **not available** to the MCP token
 (403 "Resource not accessible by integration"), so the retrigger is a fresh push.
 
+## 🧠 THE LLM CASCADE IS ONE PROVIDER DEEP — partly fixed 2026-08-06 09:30
+
+Brain-health run `31078219842` (06:42) reported `healthy: true` with **one of eight providers answering**, and
+the 03:32 run had already failed outright — so the cascade has been fully dark once today.
+
+**Fixed in code:** `_has_key()` checked only `key_env`/`key_env_alt` while `_provider_keys()` also collects
+`_1.._3`. With `GROQ_API_KEY` empty and `GROQ_API_KEY_1/2/3` set, Groq reported `has_key: false` and — because
+`_call_parallel_race` builds the live cascade from `_has_key` — was **excluded from every actual LLM call**.
+Three keys at 30 rpm each, unused, while the platform ran on `nvidia_nim` alone at 18.5 s per call.
+
+**Still open, both operator calls:**
+1. `healthy = bool(working)` means "at least one provider answers". That is not health for a platform whose
+   agents, improver and desk commentary all need the cascade. A floor of 2 would make one-away-from-dark
+   visible. Not changed unattended — it changes when the infra alarm fires.
+2. **Seven providers have no key at all**, all free tiers. Adding one (`GEMINI_API_KEY` is easiest) removes the
+   single point of failure with no code change.
+
 ## 🎯 OPERATOR DECISIONS — everything now blocked on a human, ranked
 Nothing below can be done from code. Each line says what it unblocks, so it can be
 triaged without reading the 2,600 lines under it. Detail for every item is further

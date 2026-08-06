@@ -110,6 +110,45 @@ backend, so it was not mine — but it was real, it was on main, and it blocked 
   alongside `auth_headers` is precise with zero false positives — about ten lines. **That is now four stated
   blockers in two days that dissolved on contact**, three of them mine.
 
+## 🧠 2026-08-06 09:30 — THREE CONFIGURED GROQ KEYS WERE EXCLUDED FROM EVERY LLM CALL
+
+Chasing the LLM item from the last tick. **The guess was wrong and the worry was right**: the dead functions
+are harmless superseded duplicates, but probing the live cascade found a capability bug behind a green canary.
+
+- [x] **Brain-health run `31078219842` (06:42) reported `healthy: true` on ONE of eight providers.**
+
+        gemini/sambanova/cerebras/groq/deepseek/together/hyperbolic → has_key: false
+        nvidia_nim → ok, 18550 ms
+        "working": ["nvidia_nim"],  "healthy": true
+
+  `healthy = bool(working)` — at least one. The 03:32 run had already **failed outright**, so the cascade has
+  been to zero once today and nothing about "BRAIN OK" conveys one-away-from-dark.
+- [x] **Groq was not keyless. The same job's env block showed three keys.**
+
+        GROQ_API_KEY:    (empty)
+        GROQ_API_KEY_1:  ***      GROQ_API_KEY_2:  ***      GROQ_API_KEY_3:  ***
+
+  `_provider_keys()` collects `_1.._3` and documents them as multiplied rate-limit headroom. **`_has_key()`
+  checked only `key_env` and `key_env_alt`.** Two functions answering "does this provider have a key?" and
+  disagreeing.
+- [x] **NOT a reporting bug — a capability one.** `_call_parallel_race` builds the live cascade with
+  `available = [p for p in _PROVIDERS if _has_key(p)]`, so Groq was excluded from **actual calls**, not merely
+  from the report. The platform ran on one provider at 18.5s when it had a second with 3 rotating keys at
+  30 rpm each. `_has_key` now delegates to `_provider_keys`, so the two answers cannot diverge again.
+- [x] **3 mutations, 3 caught — after the third turned out not to be a mutation.** The anchor string
+  `if v and v != "disabled" and v not in keys:` appears **twice** in the file, and `replace(..., 1)` hit the
+  copy at line 435, in an unrelated function. The suite passed because **the code under test was never
+  changed**. Re-applied inside `_provider_keys` only, it was caught. **Third false mutation this session**
+  (after two that produced invalid Python) — the check is always the same: confirm the mutation landed where
+  you aimed it, not merely that the suite reacted or didn't.
+- [ ] **[P1, OPERATOR] The canary's threshold is a policy question, deliberately not changed.** `healthy` means
+  "≥1 provider answers". On a platform whose agents, improver and desk commentary all depend on the cascade,
+  one provider is not health — it is a single point of failure that already failed once today. A floor of 2,
+  or a warning below 3, would say so. Not shipped unattended: it changes when the infra alarm fires, and a
+  noisier alarm is your call, not mine.
+- [ ] **[P2, OPERATOR] Seven providers have no key at all.** All are free tiers. Adding even one more
+  (`GEMINI_API_KEY` is the cheapest to obtain) removes the single-point-of-failure without any code change.
+
 ## 📉 2026-08-06 08:45 — THE "48% DEAD CODE" FIGURE WAS WRONG BY ~17×, AND SO WAS MY FIRST CORRECTION
 
 `813 of 1,710 module-level functions never referenced (48%)` has been quoted since 2026-08-05 and was cited as
@@ -140,11 +179,10 @@ Doing that took two rounds, because the first correction was wrong too.
   unreferenced methods on a SQLAlchemy model were verified directly, by reading the diff. But **813 never
   demonstrated scale**; it mostly counted tests. The improver-pairing fix (#1549) stands on the direct evidence,
   not on this number. **A headline figure that drove design decisions was never checked, for a day.**
-- [ ] **[P2] A real side-finding: five of the 23 are LLM plumbing** — `call_claude`, `call_openrouter`,
-  `get_llm`, `llm_chat`, `cached_call`. If those are dead, the free-LLM cascade may have fewer live providers
-  than assumed, which matters because provider exhaustion is a standing operational risk. Worth confirming
-  which providers are actually reachable; not fixed here because deleting or rewiring LLM routing unattended is
-  not a monitor-tick change.
+- [x] **~~[P2] Five of the 23 are LLM plumbing.~~ INVESTIGATED 2026-08-06 09:30 — my stated mechanism was
+  wrong and the underlying worry was right.** The dead functions are superseded per-provider duplicates in
+  `agent_team.py`/`claude_conversations.py`; the live cascade is data-driven from `_PROVIDERS` and is complete
+  at 8. **But probing it found a worse bug than the one I guessed** — see the entry at the top of this file.
 
 ## 🛡️ 2026-08-06 08:30 — A SCAN THAT FINDS NOTHING PASSES. SO THE SCAN NEEDED ITS OWN GUARD.
 
