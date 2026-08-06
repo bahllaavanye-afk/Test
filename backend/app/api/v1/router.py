@@ -64,43 +64,54 @@ def _include(router_obj: Optional[APIRouter], name: str) -> None:
         return
     try:
         api_router.include_router(router_obj)
+        logger.debug("Successfully included router %s.", name)
     except Exception as exc:  # pragma: no cover
         logger.error("Failed to include router %s: %s", name, exc)
 
 
-# List of (router, name) tuples for systematic inclusion
-_routers: List[Tuple[Optional[APIRouter], str]] = [
-    (auth.router, "auth"),
-    (accounts.router, "accounts"),
-    (orders.router, "orders"),
-    (positions.router, "positions"),
-    (trades.router, "trades"),
-    (strategies.router, "strategies"),
-    (backtests.router, "backtests"),
-    (comparison.router, "comparison"),
-    (experiments.router, "experiments"),
-    (ml.router, "ml"),
-    (risk.router, "risk"),
-    (market_data.router, "market_data"),
-    (getattr(market_data, "router_underscore", None), "market_data_underscore"),
-    (analytics.router, "analytics"),
-    (agents.router, "agents"),
-    (notifications.router, "notifications"),
-    (archive.router, "archive"),
-    (improvements.router, "improvements"),
-    (monitoring.router, "monitoring"),
-    (options_router, "options"),
-    (regime_router, "regime"),
-    (audit_log_router, "audit_log"),
-    (integrations.router, "integrations"),
-    (pipeline.router, "pipeline"),
-    (leaderboard.router, "leaderboard"),
-    (releases.router, "releases"),
-    (bots_router, "bots"),
-    (scanners_router, "scanners"),
-    (discord_router, "discord"),
-    (webhooks_router, "webhooks"),
-]
+def _register_routers() -> None:
+    """Register all sub‑routers with ``api_router``.
 
-for r, n in _routers:
-    _include(r, n)
+    The routers are defined as a list of ``(router, name)`` tuples. Each router
+    is added via the ``_include`` helper, which isolates inclusion errors and
+    logs informative messages.
+    """
+    routers: List[Tuple[Optional[APIRouter], str]] = [
+        (auth.router, "auth"),
+        (accounts.router, "accounts"),
+        (orders.router, "orders"),
+        (positions.router, "positions"),
+        (trades.router, "trades"),
+        (strategies.router, "strategies"),
+        (backtests.router, "backtests"),
+        (comparison.router, "comparison"),
+        (experiments.router, "experiments"),
+        (ml.router, "ml"),
+        (risk.router, "risk"),
+        (market_data.router, "market_data"),
+        (getattr(market_data, "router_underscore", None), "market_data_underscore"),
+        (analytics.router, "analytics"),
+        (agents.router, "agents"),
+        (notifications.router, "notifications"),
+        (archive.router, "archive"),
+        (improvements.router, "improvements"),
+        (monitoring.router, "monitoring"),
+        (options_router, "options"),
+        (regime_router, "regime"),
+        (audit_log_router, "audit_log"),
+        (integrations.router, "integrations"),
+        (pipeline.router, "pipeline"),
+        (leaderboard.router, "leaderboard"),
+        (releases.router, "releases"),
+        (bots_router, "bots"),
+        (scanners_router, "scanners"),
+        (discord_router, "discord"),
+        (webhooks_router, "webhooks"),
+    ]
+
+    for router_obj, name in routers:
+        _include(router_obj, name)
+
+
+# Execute router registration at import time
+_register_routers()
