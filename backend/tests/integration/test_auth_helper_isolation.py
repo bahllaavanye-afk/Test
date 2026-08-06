@@ -17,6 +17,8 @@ failure by another route.
 from __future__ import annotations
 
 import asyncio
+import pathlib
+import re
 
 import pytest
 
@@ -77,12 +79,45 @@ def test_non_isolated_still_falls_back_so_a_limiter_trip_stays_green():
     assert any(p.endswith("/auth/demo") for p in client.paths)
 
 
-def test_the_tests_that_assert_on_their_own_data_opt_in():
-    """Named explicitly: each of these seeds rows under its own user and then
-    asserts on the counts, so a shared identity corrupts the assertion."""
-    from pathlib import Path
-    here = Path(__file__).resolve().parent
-    for name in ("test_analytics_honest.py", "test_bot_performance.py",
-                 "test_bot_activity.py"):
-        src = (here / name).read_text()
-        assert "isolated=True" in src, f"{name} asserts on per-user data without isolated=True"
+# A module seeds per-user data if it constructs Trade/Account rows or calls a
+# seeding helper. Bare `Trade(`/`Account(` only — `SomeTrade(` or `x.Account(`
+# are different things and must not count.
+_SEEDS_PER_USER_DATA = re.compile(r"_seed_trades|(?<![\w.])Trade\(|(?<![\w.])Account\(")
+
+
+def _modules_seeding_per_user_data() -> list[pathlib.Path]:
+    here = pathlib.Path(__file__).resolve().parent
+    found = []
+    for path in sorted(here.glob("test_*.py")):
+        src = path.read_text()
+        if "auth_headers" in src and _SEEDS_PER_USER_DATA.search(src):
+            found.append(path)
+    return found
+
+
+def test_the_scan_actually_finds_modules():
+    """THE GUARD ON THE GUARD. If the regex or the glob breaks, the check below
+    iterates an empty list, finds no offenders and passes while verifying
+    nothing — the failure mode this whole session has been about. Pinning a
+    non-zero count means a broken scan fails loudly instead of going quiet."""
+    found = _modules_seeding_per_user_data()
+    assert len(found) >= 3, (
+        f"the scan found only {[p.name for p in found]}; it is supposed to match "
+        f"at least test_analytics_honest, test_bot_performance and test_bot_activity. "
+        f"An empty or shrunken scan makes the opt-in check below vacuous.")
+
+
+def test_every_module_that_seeds_per_user_data_opts_into_isolation():
+    """Scans every integration module instead of naming three.
+
+    The named-list version could not see a module added tomorrow — and a new
+    module that seeds Trades and calls `auth_headers` without `isolated=True` is
+    exactly the regression that produced the CI failure this file documents.
+    Measured 2026-08-06: three modules match and all three opt in, so the scan
+    is precise here rather than merely broad."""
+    offenders = [p.name for p in _modules_seeding_per_user_data()
+                 if "isolated=True" not in p.read_text()]
+    assert not offenders, (
+        f"{offenders} seed data scoped to their own user but call auth_headers "
+        f"without isolated=True. On a limiter trip they fall back to the shared "
+        f"demo user and their accounts merge with another test's.")

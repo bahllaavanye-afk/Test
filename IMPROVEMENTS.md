@@ -103,10 +103,30 @@ backend, so it was not mine — but it was real, it was on main, and it blocked 
   the fallback test **skip**, and a skip is not a catch: it reads green while asserting nothing. The default is
   now pinned by `inspect.signature` so the mutation fails instead of vanishing. Same trap as the
   `pytest.raises(Skipped)` in the isolation test itself, which would otherwise have skipped *itself* and passed.
-- [ ] **[P2] The demo fallback is still reachable by any future test that needs isolation and forgets to say
-  so.** The new test names the three modules explicitly, which catches a regression in those but not a brand
-  new module. A stronger version would detect per-user assertions automatically; that is a bigger change than
-  a red CI run justifies right now.
+- [x] **~~[P2] The demo fallback is still reachable by any future test that forgets to say so.~~ SHIPPED
+  2026-08-06 08:30 — and "a bigger change" was wrong, for the second time in a row.** I wrote that detecting
+  per-user assertions automatically was too big for a tick. Measured: **exactly three integration modules seed
+  per-user data, and all three already opt in.** A scan over `test_*.py` for `_seed_trades|Trade\(|Account\(`
+  alongside `auth_headers` is precise with zero false positives — about ten lines. **That is now four stated
+  blockers in two days that dissolved on contact**, three of them mine.
+
+## 🛡️ 2026-08-06 08:30 — A SCAN THAT FINDS NOTHING PASSES. SO THE SCAN NEEDED ITS OWN GUARD.
+
+Replaced the isolation check's hardcoded three-module list with a scan over every integration module, so a
+module added tomorrow is covered. The interesting part is what the scan itself required.
+
+- [x] **The named list could not see a new module**, and a new module that seeds `Trade` rows and calls
+  `auth_headers` without `isolated=True` is precisely the regression that reddened CI this morning.
+- [x] **THE SCAN IS ITSELF A GUARD THAT CAN SILENTLY STOP WORKING.** If the regex or the glob breaks, it
+  matches nothing, finds no offenders, and **passes while verifying nothing** — the exact failure this whole
+  session has been about, reintroduced by the fix for it. So `test_the_scan_actually_finds_modules` pins a
+  non-zero match count. Two of the three mutations below exist only because of it.
+- [x] **3 mutations, 3 caught:** a module dropping `isolated=True` (the real regression), the regex matching
+  nothing, and the glob finding no files. **Without the guard-on-the-guard, the last two would have passed
+  silently** — a broken check reading as a green one.
+- [x] **The scan is precise, not merely broad.** Measured: three modules match, all three already opt in, zero
+  false positives. A check that flags everything is as useless as one that flags nothing; this one was worth
+  measuring before shipping.
 
 ## 🧹 2026-08-06 06:30 — THE TRACKER WAS CARRYING TWO ITEMS THAT REALITY HAD ALREADY ANSWERED
 
