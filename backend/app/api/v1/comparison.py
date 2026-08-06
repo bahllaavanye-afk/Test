@@ -1,7 +1,9 @@
 """Manual vs ML strategy comparison endpoints."""
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.comparison import ComparisonResult as ComparisonModel
@@ -23,6 +25,8 @@ router = APIRouter(prefix=PREFIX, tags=[TAG])
 
 
 class ComparisonOut(BaseModel):
+    """API response model for a comparison result."""
+
     id: str
     strategy_name: str
     symbol: str
@@ -36,7 +40,8 @@ class ComparisonOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     @classmethod
-    def from_model(cls, m) -> "ComparisonOut":
+    def from_model(cls, m: ComparisonModel) -> "ComparisonOut":
+        """Create a ComparisonOut instance from a ComparisonModel."""
         improvement = None
         if m.manual_sharpe is not None and m.ml_sharpe is not None:
             base = float(m.manual_sharpe) or MIN_MANUAL_SHARPE
@@ -55,7 +60,8 @@ class ComparisonOut(BaseModel):
 
 
 @router.get(ENDPOINT_BENCHMARKS)
-async def get_benchmarks():
+async def get_benchmarks() -> dict:
+    """Return benchmark statistics."""
     return get_benchmark_stats()
 
 
@@ -64,9 +70,12 @@ async def get_benchmarks():
 async def list_comparisons(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
+) -> list[ComparisonOut]:
+    """List recent comparison results for the current user."""
     result = await db.execute(
-        select(ComparisonModel).order_by(ComparisonModel.created_at.desc()).limit(DEFAULT_LIMIT)
+        select(ComparisonModel)
+        .order_by(ComparisonModel.created_at.desc())
+        .limit(DEFAULT_LIMIT)
     )
     rows = result.scalars().all()
     return [ComparisonOut.from_model(r) for r in rows]

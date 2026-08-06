@@ -1,5 +1,6 @@
 """Screenshot capture utility. Uses Playwright if installed, falls back to dummy."""
 from __future__ import annotations
+
 import asyncio
 import os
 from datetime import datetime, timezone
@@ -23,8 +24,14 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://quantedge-eight.vercel.ap
 
 async def capture_dashboard(url: str = FRONTEND_URL, page: str = "") -> str | None:
     """
-    Capture a screenshot of the dashboard. Returns the filepath or None on failure.
-    Requires `playwright` installed: pip install playwright && playwright install chromium
+    Capture a screenshot of the dashboard.
+
+    Args:
+        url: Base URL of the dashboard.
+        page: Specific page path to capture.
+
+    Returns:
+        The file path of the saved screenshot, or None on failure.
     """
     try:
         from playwright.async_api import async_playwright
@@ -39,13 +46,15 @@ async def capture_dashboard(url: str = FRONTEND_URL, page: str = "") -> str | No
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            ctx = await browser.new_context(viewport={"width": 1920, "height": 1080})
-            pg = await ctx.new_page()
-            await pg.goto(f"{url}/{page}", wait_until="networkidle", timeout=15_000)
-            await pg.screenshot(path=str(filepath), full_page=True)
-            await browser.close()
-        logger.info("Screenshot captured", path=str(filepath))
-        return str(filepath)
+            try:
+                ctx = await browser.new_context(viewport={"width": 1920, "height": 1080})
+                pg = await ctx.new_page()
+                await pg.goto(f"{url}/{page}", wait_until="networkidle", timeout=15_000)
+                await pg.screenshot(path=str(filepath), full_page=True)
+                logger.info("Screenshot captured", path=str(filepath))
+                return str(filepath)
+            finally:
+                await browser.close()
     except Exception as e:
         logger.warning("Screenshot failed", error=str(e))
         return None
@@ -53,11 +62,22 @@ async def capture_dashboard(url: str = FRONTEND_URL, page: str = "") -> str | No
 
 async def capture_all_pages(base_url: str = FRONTEND_URL) -> list[str]:
     """Capture all main dashboard pages."""
-    pages = ["", "equity", "crypto", "comparison", "backtest", "experiments", "analytics", "risk"]
-    results = []
+    pages = [
+        "",
+        "equity",
+        "crypto",
+        "comparison",
+        "backtest",
+        "experiments",
+        "analytics",
+        "risk",
+    ]
+    results: list[str] = []
     for page in pages:
         path = await capture_dashboard(base_url, page)
         if path:
             results.append(path)
         await asyncio.sleep(0.5)
     return results
+
+__all__ = ["capture_dashboard", "capture_all_pages"]
