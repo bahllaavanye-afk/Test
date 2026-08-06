@@ -106,7 +106,12 @@ def test_crypto_market_order_refuses_zero_quote(monkeypatch):
     async def fake_get(path, params=None, data_api=False):
         return {"quotes": {"ETH/USD": {"ap": 0}}}
     monkeypatch.setattr(dop, "_alpaca_get", fake_get)
-    assert asyncio.run(dop._place_order("ETH/USD", "buy", 400.0)) is None
+    # Was `is None`. Now asserts the STRONGER property: the desk DECLINED to
+    # place (SKIPPED_BY_DESIGN) rather than tried and failed. `is None` accepted
+    # either, and the caller printed "✗ order placement returned no ID" for a
+    # deliberate skip because of exactly that conflation.
+    out = asyncio.run(dop._place_order("ETH/USD", "buy", 400.0))
+    assert dop._was_skipped(out), f"expected a deliberate skip, got {out!r}"
     assert "body" not in cap                                # no POST was made
 
 

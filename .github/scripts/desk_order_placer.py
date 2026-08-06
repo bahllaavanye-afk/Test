@@ -1351,6 +1351,29 @@ async def _cached_position_map() -> dict[str, float]:
     return _position_map_cache
 
 
+# Returned when the desk DECIDES not to place an order — an unshortable asset,
+# a fractional short that floors to zero, an asset Alpaca already rejected this
+# run. Distinct from None, which means the placement was attempted and failed.
+#
+# Both used to return None, and the caller printed "✗ order placement returned
+# no ID" for either. Measured live 2026-08-06 13:35, the first run after the
+# account recovered:
+#
+#   · META sell 0.56 would be a fractional SHORT (held 0.0) — Alpaca rejects
+#     those, and flooring gives 0. Skipping instead of failing at the broker.
+#   ✗ order placement returned no ID
+#
+# The skip line explains a correct decision; the ✗ immediately contradicts it.
+# A deliberate choice logged as a broker failure is the same defect class this
+# codebase keeps finding: the message does not depend on what actually happened.
+SKIPPED_BY_DESIGN: dict = {"skipped": True}
+
+
+def _was_skipped(order) -> bool:
+    """True when the desk chose not to place, rather than tried and failed."""
+    return isinstance(order, dict) and order.get("skipped") is True
+
+
 async def _place_order(
     symbol: str,
     side: str,
@@ -1362,7 +1385,7 @@ async def _place_order(
         if symbol.strip().upper() in _inactive_assets:
             print(f"    · {symbol}: skipped — Alpaca already rejected it as "
                   f"not active earlier this run", flush=True)
-            return None
+            return SKIPPED_BY_DESIGN
         is_crypto = "/" in symbol
         body: dict = {
             "symbol":        symbol,
@@ -1386,11 +1409,15 @@ async def _place_order(
                     f"(raw={raw_lp!r}) — skipping rather than dividing by it",
                     flush=True,
                 )
-                return None
+                return SKIPPED_BY_DESIGN
             qty = round(notional_usd / lp, 6 if is_crypto else 2)
             qty = await _equity_short_safe_qty(symbol, side, qty, is_crypto)
             if qty is None:
-                return None
+                # `_equity_short_safe_qty` already printed WHY (unshortable
+                # asset, or a fractional short that floors to zero). Both are
+                # deliberate — the desk declined to send something the broker
+                # would reject — so this must not read as a placement failure.
+                return SKIPPED_BY_DESIGN
             body["type"]        = "limit"
             body["limit_price"] = str(lp)
             body["qty"]         = str(qty)
@@ -1402,7 +1429,13 @@ async def _place_order(
             )
             ask = float((quote_data.get("quotes", {}).get(symbol, {}) or {}).get("ap", 0))
             if ask <= 0:
-                return None
+                # Was a SILENT `return None`: no reason logged, and the caller
+                # then printed "✗ order placement returned no ID", so an
+                # unpriceable symbol looked like a broker failure with no
+                # explanation anywhere in the run.
+                print(f"    · {symbol}: no ask in the crypto quote — cannot size "
+                      f"an order, skipping rather than guessing a price", flush=True)
+                return SKIPPED_BY_DESIGN
             body["type"] = "market"
             body["qty"]  = str(round(notional_usd / ask, 6))
         else:
@@ -1428,7 +1461,9 @@ async def _place_order(
                         symbol, side, round(notional_usd / px, 2), is_crypto=False
                     )
                     if qty_for_short is None:
-                        return None
+                        # Same deliberate skip as the limit path above;
+                        # `_equity_short_safe_qty` already printed the reason.
+                        return SKIPPED_BY_DESIGN
             if qty_for_short is not None:
                 body["qty"] = str(qty_for_short)
             else:
@@ -1450,6 +1485,12 @@ async def _ensure_filled(order: dict | None, symbol: str, side: str,
     fill within FILL_WAIT_S are cancelled and replaced with a market order,
     so signals stop dying as stale unfilled limits. Double-fill safe: if the
     cancel races a fill, the fill wins and NO replacement is sent."""
+    # A SKIPPED_BY_DESIGN sentinel carries no "id", so the check below already
+    # returns it untouched — nothing was placed, so there is nothing to chase.
+    # An explicit `if _was_skipped(order)` guard here was removed after mutation
+    # testing showed it could be deleted with the suite still green: a guard
+    # that cannot fail reads as load-bearing and is not.
+    # `test_ensure_filled_passes_a_skip_straight_through` pins the behaviour.
     oid = (order or {}).get("id")
     if not oid or (order or {}).get("type") != "limit":
         return order
@@ -2723,6 +2764,10 @@ async def main() -> None:
                     all_orders.append(record)
                     total_notional += kelly_notional
                     desk_orders_map.setdefault(desk.name, []).append(record)
+                elif _was_skipped(order):
+                    # The skip already printed its own reason on the line above.
+                    # Saying "✗ returned no ID" here contradicts it.
+                    pass
                 else:
                     print(f"    ✗ order placement returned no ID", flush=True)
 

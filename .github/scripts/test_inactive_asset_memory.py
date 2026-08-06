@@ -101,7 +101,10 @@ def test_a_rejected_asset_is_not_resubmitted_by_the_next_desk(monkeypatch):
     posted = _capture_posts(monkeypatch)
     for _ in range(4):                       # the four later desks
         out = asyncio.run(dop._place_order("MKR/USD", "buy", 100.0, limit_price=1000.0))
-        assert out is None
+        # Stronger than the previous `is None`: a known-inactive asset is a
+        # deliberate skip, not a placement failure, and the two must stay
+        # distinguishable so the run log does not report a decision as an error.
+        assert dop._was_skipped(out), f"expected a deliberate skip, got {out!r}"
     assert posted == [], f"re-submitted a known-inactive asset: {posted}"
 
 

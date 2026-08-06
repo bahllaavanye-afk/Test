@@ -1,5 +1,41 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🎯 2026-08-06 14:10 — MARKET-OPEN LIVE TEST: A DELIBERATE SKIP WAS LOGGED AS A BROKER FAILURE
+
+First run with a working account and an open market in ~9 hours, so the first chance all session to exercise
+the money path for real. It works — limits filling in 5-15s, market fallback after 20s, slippage measured in
+single-digit bps. One defect fell out of the log.
+
+- [x] **The desk reported its own correct decisions as failures.** Verbatim from run `31106632302`:
+
+        · META sell 0.56 would be a fractional SHORT (held 0.0) — Alpaca rejects those,
+          and flooring gives 0. Skipping instead of failing at the broker.
+        ✗ order placement returned no ID
+
+  The skip line explains a correct choice; the ✗ on the next line contradicts it. Twice in one run (META,
+  TSLA). **`_place_order` returned `None` both when it CHOSE not to place and when placement genuinely
+  failed**, and the caller could not tell them apart. Same defect class as the order-origin audit and the
+  brain-health canary: the message did not depend on what actually happened.
+- [x] **`SKIPPED_BY_DESIGN` now distinguishes them**, and the caller prints nothing extra for a skip because
+  the reason was already printed. A genuine failure still says `✗ ... returned no ID` — pinned by a test, so
+  the fix cannot swallow the case it was written for.
+- [x] **A scan test found MORE skip sites than I did.** I fixed two; `test_every_deliberate_skip_inside_
+  place_order_returns_the_sentinel` walks the function's AST and found **three**. The third was the market-order
+  short-safety path. It also surfaced a **silent** `return None` on a missing crypto ask — no reason logged
+  anywhere, so an unpriceable symbol read as a broker failure with no explanation in the entire run. Now
+  announced.
+- [x] **A guard I added was dead and mutation testing proved it.** An explicit `if _was_skipped(order)` early
+  return in `_ensure_filled` could be deleted with the suite still green — the existing `not oid` check already
+  passes the sentinel through. **Removed rather than kept**: a guard that cannot fail reads as load-bearing and
+  is not. Replaced with a real mutation (break the passthrough) which the suite does catch.
+- [x] **Two existing tests updated, and the change is a strengthening.** Both asserted `_place_order(...) is
+  None`, which accepted a skip OR a failure indifferently — the very conflation being fixed. They now assert
+  `_was_skipped(...)`, and both already carried the property assertion (`no POST was made`, `posted == []`)
+  that proves intent is preserved.
+- [x] **4 mutations, 4 caught**, with the mutation script asserting each anchor appears exactly once before
+  applying — after three false mutations earlier today, uniqueness is now checked by the tool rather than by me.
+- [x] **Suites: scripts 1435 passed, backend 2035 passed.**
+
 ## 🔑 2026-08-06 08:00 — THE IMPROVER REWROTE THE ALPACA CREDENTIAL PATH, AND CI HAD NOTHING TO SAY
 
 Checked #1547 (`improve(optimization): autonomous run — 5 file(s)`) because it merged into main this cycle and
