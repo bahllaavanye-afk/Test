@@ -13,6 +13,10 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+class ActivityTrackerError(Exception):
+    """Base exception for ActivityTracker related errors."""
+
+
 @dataclass
 class TrackedEvent:
     timestamp: datetime
@@ -22,13 +26,21 @@ class TrackedEvent:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        return {
-            "timestamp": self.timestamp.isoformat(),
-            "event_type": self.event_type,
-            "category": self.category,
-            "summary": self.summary,
-            "metadata": self.metadata,
-        }
+        """Convert the event to a serialisable dictionary."""
+        try:
+            return {
+                "timestamp": self.timestamp.isoformat(),
+                "event_type": self.event_type,
+                "category": self.category,
+                "summary": self.summary,
+                "metadata": self.metadata,
+            }
+        except Exception as exc:  # pragma: no cover
+            logger.exception(
+                "Failed to convert TrackedEvent to dict",
+                extra={"event": asdict(self), "exception": str(exc)},
+            )
+            raise ActivityTrackerError("Unable to serialize TrackedEvent") from exc
 
 
 class ActivityTracker:
@@ -46,45 +58,79 @@ class ActivityTracker:
         self._counts: dict[str, int] = {}
 
     def record(
-        self, event_type: str | None, category: str | None, summary: str | None, **metadata
+        self,
+        event_type: str | None,
+        category: str | None,
+        summary: str | None,
+        **metadata,
     ) -> TrackedEvent:
         """
         Record a new event.
 
         Handles None values by substituting sensible defaults to avoid crashes.
         """
-        # Defensive defaults for mandatory string fields
-        event_type = event_type or "unknown_event"
-        category = category or "unknown_category"
-        summary = summary or ""
+        try:
+            # Defensive defaults for mandatory string fields
+            event_type = event_type or "unknown_event"
+            category = category or "unknown_category"
+            summary = summary or ""
 
-        event = TrackedEvent(
-            timestamp=datetime.now(timezone.utc),
-            event_type=event_type,
-            category=category,
-            summary=summary,
-            metadata=metadata,
-        )
-        self._events.append(event)
+            if not isinstance(event_type, str):
+                raise TypeError("event_type must be a string")
+            if not isinstance(category, str):
+                raise TypeError("category must be a string")
+            if not isinstance(summary, str):
+                raise TypeError("summary must be a string")
 
-        key = f"{category}.{event_type}"
-        self._counts[key] = self._counts.get(key, 0) + 1
+            event = TrackedEvent(
+                timestamp=datetime.now(timezone.utc),
+                event_type=event_type,
+                category=category,
+                summary=summary,
+                metadata=metadata,
+            )
+            self._events.append(event)
 
-        # Structured logging of key metrics at INFO level
-        log_payload: dict[str, Any] = {
-            "timestamp": event.timestamp.isoformat(),
-            "event_type": event_type,
-            "category": category,
-            "summary": summary,
-        }
-        # Include optional metrics if present
-        for metric in ("signal_count", "execution_time", "pnl"):
-            if metric in metadata:
-                log_payload[metric] = metadata[metric]
+            key = f"{category}.{event_type}"
+            self._counts[key] = self._counts.get(key, 0) + 1
 
-        logger.info("Tracked event recorded", extra=log_payload)
+            # Structured logging of key metrics at INFO level
+            log_payload: dict[str, Any] = {
+                "timestamp": event.timestamp.isoformat(),
+                "event_type": event_type,
+                "category": category,
+                "summary": summary,
+            }
+            # Include optional metrics if present
+            for metric in ("signal_count", "execution_time", "pnl"):
+                if metric in metadata:
+                    log_payload[metric] = metadata[metric]
 
-        return event
+            logger.info("Tracked event recorded", extra=log_payload)
+            return event
+        except (TypeError, ValueError) as exc:
+            logger.error(
+                "Invalid input while recording event",
+                extra={
+                    "event_type": event_type,
+                    "category": category,
+                    "summary": summary,
+                    "metadata": metadata,
+                    "exception": str(exc),
+                },
+            )
+            raise
+        except Exception as exc:  # pragma: no cover
+            logger.exception(
+                "Unexpected error during event recording",
+                extra={
+                    "event_type": event_type,
+                    "category": category,
+                    "summary": summary,
+                    "metadata": metadata,
+                },
+            )
+            raise ActivityTrackerError("Failed to record event") from exc
 
     def recent(self, limit: int | None = 100, category: str | None = None) -> list[dict]:
         """
@@ -94,27 +140,48 @@ class ActivityTracker:
         - Safely works when the internal collection is empty.
         - Guarantees the slice does not exceed the collection size (off‑by‑one safe).
         """
-        # Validate limit
-        if not isinstance(limit, int) or limit <= 0:
-            logger.debug(
-                "Invalid limit %s supplied to recent(); using default of 100", limit
+        try:
+            # Validate limit
+            if limit is None:
+                limit = 100
+            if not isinstance(limit, int) or limit <= 0:
+                logger.debug(
+                    "Invalid limit %s supplied to recent(); using default of 100", limit
+                )
+                limit = 100
+
+            events = list(self._events)  # snapshot for thread‑safety
+            if category:
+                if not isinstance(category, str):
+                    raise TypeError("category must be a string")
+                events = [e for e in events if e.category == category]
+
+            # Slice safely: min(limit, len(events)) prevents off‑by‑one errors
+            slice_end = min(limit, len(events))
+            recent_slice = events[-slice_end:] if slice_end else []
+
+            # Return in reverse chronological order
+            return [e.to_dict() for e in reversed(recent_slice)]
+        except (TypeError, ValueError) as exc:
+            logger.error(
+                "Invalid parameters for recent()",
+                extra={"limit": limit, "category": category, "exception": str(exc)},
             )
-            limit = 100
-
-        events = list(self._events)  # snapshot for thread‑safety
-        if category:
-            events = [e for e in events if e.category == category]
-
-        # Slice safely: min(limit, len(events)) prevents off‑by‑one errors
-        slice_end = min(limit, len(events))
-        recent_slice = events[-slice_end:] if slice_end else []
-
-        # Return in reverse chronological order
-        return [e.to_dict() for e in reversed(recent_slice)]
+            raise
+        except Exception as exc:  # pragma: no cover
+            logger.exception(
+                "Unexpected error while fetching recent events",
+                extra={"limit": limit, "category": category},
+            )
+            raise ActivityTrackerError("Failed to retrieve recent events") from exc
 
     def stats(self) -> dict:
         """Return simple statistics about the tracked events."""
-        return {"total_events": len(self._events), "by_type": dict(self._counts)}
+        try:
+            return {"total_events": len(self._events), "by_type": dict(self._counts)}
+        except Exception as exc:  # pragma: no cover
+            logger.exception("Failed to generate stats")
+            raise ActivityTrackerError("Failed to generate stats") from exc
 
 
 tracker = ActivityTracker()

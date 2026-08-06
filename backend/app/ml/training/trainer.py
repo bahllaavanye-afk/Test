@@ -3,9 +3,10 @@ Generic PyTorch Lightning Trainer wrapper with MLflow experiment tracking.
 Supports LSTM, Transformer, and any nn.Module wrapped as a LightningModule.
 """
 from __future__ import annotations
+
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 
 import torch
 import torch.nn as nn
@@ -75,7 +76,7 @@ def train_with_lightning(
     patience: int = 10,
     lr: float = 1e-3,
     mlflow_uri: str = "mlruns",
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """
     Train model with PyTorch Lightning + MLflow logging.
     Returns dict with val_loss, val_acc, best_checkpoint_path.
@@ -94,39 +95,85 @@ def train_with_lightning(
                 run_name=experiment_name,
             )
         except Exception as exc:
-            logger.debug("MLflow logger init failed — proceeding without tracking", error=str(exc))
+            logger.error(
+                "Failed to initialise MLflow logger",
+                experiment=experiment_name,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
 
-    lightning_module = TradingLightningModule(model, lr=lr)
-    checkpoint_cb = ModelCheckpoint(
-        dirpath=str(ARTIFACTS_DIR / experiment_name),
-        filename="best-{epoch:02d}-{val_loss:.4f}",
-        monitor="val_loss",
-        mode="min",
-        save_top_k=1,
-    )
-    early_stop_cb = EarlyStopping(monitor="val_loss", patience=patience, mode="min")
-    lr_monitor = LearningRateMonitor(logging_interval="epoch")
+    try:
+        lightning_module = TradingLightningModule(model, lr=lr)
+    except Exception as exc:
+        logger.exception(
+            "Error creating TradingLightningModule",
+            experiment=experiment_name,
+            error_type=type(exc).__name__,
+        )
+        return _fallback_train(model, train_loader, val_loader, max_epochs, lr, patience)
 
-    trainer = L.Trainer(
-        max_epochs=max_epochs,
-        callbacks=[checkpoint_cb, early_stop_cb, lr_monitor],
-        logger=mlflow_logger,
-        enable_progress_bar=False,
-        log_every_n_steps=1,
-        accelerator="auto",
-        devices=1,
-    )
+    try:
+        checkpoint_cb = ModelCheckpoint(
+            dirpath=str(ARTIFACTS_DIR / experiment_name),
+            filename="best-{epoch:02d}-{val_loss:.4f}",
+            monitor="val_loss",
+            mode="min",
+            save_top_k=1,
+        )
+        early_stop_cb = EarlyStopping(monitor="val_loss", patience=patience, mode="min")
+        lr_monitor = LearningRateMonitor(logging_interval="epoch")
+    except Exception as exc:
+        logger.exception(
+            "Failed to configure Lightning callbacks",
+            experiment=experiment_name,
+            error_type=type(exc).__name__,
+        )
+        return _fallback_train(model, train_loader, val_loader, max_epochs, lr, patience)
 
-    trainer.fit(lightning_module, train_loader, val_loader)
+    try:
+        trainer = L.Trainer(
+            max_epochs=max_epochs,
+            callbacks=[checkpoint_cb, early_stop_cb, lr_monitor],
+            logger=mlflow_logger,
+            enable_progress_bar=False,
+            log_every_n_steps=1,
+            accelerator="auto",
+            devices=1,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Failed to instantiate Lightning Trainer",
+            experiment=experiment_name,
+            error_type=type(exc).__name__,
+        )
+        return _fallback_train(model, train_loader, val_loader, max_epochs, lr, patience)
 
-    results = {
-        "val_loss": float(trainer.callback_metrics.get("val_loss", 999)),
-        "val_acc": float(trainer.callback_metrics.get("val_acc", 0)),
-        "best_model_path": checkpoint_cb.best_model_path,
-        "epochs_trained": trainer.current_epoch,
-    }
-    logger.info("Lightning training complete", experiment=experiment_name, **results)
-    return results
+    try:
+        trainer.fit(lightning_module, train_loader, val_loader)
+    except Exception as exc:
+        logger.exception(
+            "Lightning training failed during fit",
+            experiment=experiment_name,
+            error_type=type(exc).__name__,
+        )
+        return _fallback_train(model, train_loader, val_loader, max_epochs, lr, patience)
+
+    try:
+        results = {
+            "val_loss": float(trainer.callback_metrics.get("val_loss", 999)),
+            "val_acc": float(trainer.callback_metrics.get("val_acc", 0)),
+            "best_model_path": checkpoint_cb.best_model_path,
+            "epochs_trained": trainer.current_epoch,
+        }
+        logger.info("Lightning training complete", experiment=experiment_name, **results)
+        return results
+    except Exception as exc:
+        logger.exception(
+            "Error processing Lightning training results",
+            experiment=experiment_name,
+            error_type=type(exc).__name__,
+        )
+        return _fallback_train(model, train_loader, val_loader, max_epochs, lr, patience)
 
 
 def _fallback_train(model, train_loader, val_loader, max_epochs, lr, patience):
@@ -138,26 +185,43 @@ def _fallback_train(model, train_loader, val_loader, max_epochs, lr, patience):
     best_val_loss = float("inf")
     patience_count = 0
     best_state = None
+    epoch_trained = 0
 
     for epoch in range(max_epochs):
-        model.train()
-        for x, y in train_loader:
-            x, y = x.to(device), y.to(device)
-            optimizer.zero_grad()
-            pred = model(x).squeeze(-1)
-            loss = criterion(pred, y.float())
-            loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-
-        model.eval()
-        val_losses, val_accs = [], []
-        with torch.no_grad():
-            for x, y in val_loader:
+        try:
+            model.train()
+            for x, y in train_loader:
                 x, y = x.to(device), y.to(device)
+                optimizer.zero_grad()
                 pred = model(x).squeeze(-1)
-                val_losses.append(criterion(pred, y.float()).item())
-                val_accs.append(((torch.sigmoid(pred) > 0.5) == y.bool()).float().mean().item())
+                loss = criterion(pred, y.float())
+                loss.backward()
+                nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
+        except (RuntimeError, ValueError) as exc:
+            logger.exception(
+                "Runtime error during training epoch",
+                epoch=epoch,
+                error_type=type(exc).__name__,
+            )
+            break
+
+        try:
+            model.eval()
+            val_losses, val_accs = [], []
+            with torch.no_grad():
+                for x, y in val_loader:
+                    x, y = x.to(device), y.to(device)
+                    pred = model(x).squeeze(-1)
+                    val_losses.append(criterion(pred, y.float()).item())
+                    val_accs.append(((torch.sigmoid(pred) > 0.5) == y.bool()).float().mean().item())
+        except (RuntimeError, ValueError) as exc:
+            logger.exception(
+                "Runtime error during validation epoch",
+                epoch=epoch,
+                error_type=type(exc).__name__,
+            )
+            break
 
         val_loss = sum(val_losses) / len(val_losses) if val_losses else 999
         val_acc = sum(val_accs) / len(val_accs) if val_accs else 0
@@ -165,12 +229,34 @@ def _fallback_train(model, train_loader, val_loader, max_epochs, lr, patience):
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             patience_count = 0
-            best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+            try:
+                best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+            except Exception as exc:
+                logger.exception(
+                    "Failed to clone model state dict",
+                    epoch=epoch,
+                    error_type=type(exc).__name__,
+                )
+                best_state = None
         else:
             patience_count += 1
             if patience_count >= patience:
                 break
 
+        epoch_trained = epoch + 1
+
     if best_state:
-        model.load_state_dict(best_state)
-    return {"val_loss": best_val_loss, "val_acc": val_acc, "best_model_path": "", "epochs_trained": epoch + 1}
+        try:
+            model.load_state_dict(best_state)
+        except Exception as exc:
+            logger.exception(
+                "Failed to load best model state after training",
+                error_type=type(exc).__name__,
+            )
+
+    return {
+        "val_loss": best_val_loss,
+        "val_acc": val_acc,
+        "best_model_path": "",
+        "epochs_trained": epoch_trained,
+    }
