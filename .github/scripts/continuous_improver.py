@@ -107,6 +107,15 @@ def record_success(mem: dict, file_path: str, improvement_type: str, tests_passe
 MAX_FILE_CHARS = 8000
 
 
+# LEGACY. Since TYPE_TARGETS landed, `main()` always passes an improvement type,
+# so this list is only reached by `pick_target_file(..., improvement_type=None)`
+# — which now happens only in the tests that pin the protection and size filters
+# through that path. It is kept for them, not because the improver consults it.
+#
+# `backend/app/brokers/*.py` was removed 2026-08-06: brokers became a protected
+# prefix in #1554, so the entry could only ever yield nothing. A dead row in a
+# list that reads like configuration is how the next reader concludes the
+# improver may touch brokers.
 CANDIDATE_PATTERNS = [
     "backend/app/strategies/manual/*.py",
     "backend/app/strategies/ml_enhanced/*.py",
@@ -114,7 +123,6 @@ CANDIDATE_PATTERNS = [
     "backend/app/ml/features/*.py",
     "backend/app/execution/*.py",
     "backend/app/risk/*.py",
-    "backend/app/brokers/*.py",
     "backend/app/backtest/*.py",
     "backend/app/comparison/*.py",
     "backend/app/tasks/*.py",

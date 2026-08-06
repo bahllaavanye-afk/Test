@@ -25,10 +25,12 @@ API keys are assembled.
 - [x] **Trailing newline was stripped from the file** by the improver's rewrite. Cosmetic, not fixed here:
   `brokers/*.py` is Do-Not-Modify for me too, and the right move is to leave the money-path file alone rather
   than touch it for whitespace.
-- [ ] **[P2] `CANDIDATE_PATTERNS` still lists `backend/app/brokers/*.py`.** Harmless — `_usable()` filters
-  protected files, so it yields nothing — but it is now a dead entry in a list that reads like configuration.
-  Left because several existing tests index that list positionally and rewriting them is a bigger change than
-  the tidiness earns.
+- [x] **~~[P2] `CANDIDATE_PATTERNS` still lists `backend/app/brokers/*.py`.~~ SHIPPED 2026-08-06 08:00 — and
+  the reason I gave for deferring it was false.** I wrote "several existing tests index that list positionally".
+  They do not: `grep` finds exactly one positional use in the whole repo, `continuous_improver.py:256`, in the
+  legacy `improvement_type=None` branch. The entry came out in seconds. **I deferred my own item on a blocker I
+  never checked** — the same failure as the queued items below whose text turned out wrong, except this one was
+  mine and one day old.
 - [ ] **[P1, OPERATOR] The real gap is unchanged: improver PRs still bypass CI.** Protecting one more
   directory narrows the blast radius; it does not fix the mechanism. A whole-file LLM rewrite still merges to
   main without the gate, and today it happened to be harmless.
@@ -558,12 +560,13 @@ The 11:30 entry measured 813 unreferenced functions, rejected a gate built on it
   — it is being *manufactured*, a few functions per improver run, because the improvement type is chosen by
   `hour % len(IMPROVEMENT_TYPES)` and the target file by `pick_target_file(hour, ...)`, **independently**.
   Nothing checks that a `strategy_logic` prompt landed on a file containing strategy logic.
-- [ ] **[P2] The cheap fix is pairing, not a dead-code gate.** Constrain `strategy_logic` (and `schemas`, and
-  `optimization`) to files whose paths plausibly match — `strategies/`, `execution/`, `risk/` — instead of
-  whatever `hour % N` selects. That is a small change to `continuous_improver.py`'s pairing and it attacks the
-  source rather than measuring the symptom, which is exactly why the 48%-flagging gate was rejected.
-  **Deliberately not shipped in this tick**: it changes what the autonomous improver does to the codebase
-  unattended, and that deserves to be a decision rather than a side effect of a monitor run.
+- [x] **~~[P2] The cheap fix is pairing, not a dead-code gate.~~ SHIPPED 2026-08-06 07:30 (#1549) — and this
+  item's own prescription was wrong.** It said to constrain `strategy_logic` to "`strategies/`, `execution/`,
+  `risk/`". **All three are in `PROTECTED_PREFIXES`**, so following it literally would have aimed a type at
+  directories the improver is forbidden to touch — the item proposed the one thing that cannot work. What
+  shipped instead: `strategy_logic` was REMOVED, because those protected paths are the only places its prompt
+  means anything. **Third queued item in one day whose text carried a factual error** (after Europe's close
+  time and the "picked independently" mischaracterisation).
 
 ## 🧪 2026-08-05 22:45 — `walk_forward` HAD NEVER BEEN EXECUTED BY A TEST, ONLY STRING-MATCHED
 
