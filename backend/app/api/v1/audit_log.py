@@ -57,6 +57,38 @@ class AuditLogOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+def _ensure_authenticated(user: Optional[User]) -> User:
+    """Validate that a user is present, otherwise raise an authentication error."""
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authenticated user not found.",
+        )
+    return user
+
+
+def _validate_limit(limit: Optional[int]) -> int:
+    """Validate the ``limit`` parameter ensuring it is within the allowed range."""
+    if limit is None:
+        raise ValueError("limit must not be None")
+    if limit < 1 or limit > 500:
+        raise ValueError(f"limit must be between 1 and 500, got {limit}")
+    return limit
+
+
+async def _fetch_audit_logs(
+    db: AsyncSession, user_id: str, limit: int
+) -> List[AuditLog]:
+    """Retrieve audit log rows for a user limited by ``limit``."""
+    result = await db.execute(
+        select(AuditLog)
+        .where(AuditLog.user_id == user_id)
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
 @router.get("/", response_model=List[AuditLogOut])
 async def list_audit_log(
     limit: Optional[int] = Query(default=100, ge=1, le=500),
@@ -87,22 +119,7 @@ async def list_audit_log(
     ValueError
         If ``limit`` is ``None`` or outside the allowed range.
     """
-    if current_user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authenticated user not found.",
-        )
-
-    if limit is None:
-        raise ValueError("limit must not be None")
-    if limit < 1 or limit > 500:
-        raise ValueError(f"limit must be between 1 and 500, got {limit}")
-
-    result = await db.execute(
-        select(AuditLog)
-        .where(AuditLog.user_id == current_user.id)
-        .order_by(AuditLog.created_at.desc())
-        .limit(limit)
-    )
-    rows = result.scalars().all()
+    user = _ensure_authenticated(current_user)
+    validated_limit = _validate_limit(limit)
+    rows = await _fetch_audit_logs(db, user.id, validated_limit)
     return rows
