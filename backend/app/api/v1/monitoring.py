@@ -1,4 +1,13 @@
-"""Monitoring and health check endpoints for the QA subsystem."""
+"""Monitoring and health check endpoints for the QA subsystem.
+
+Provides three endpoints:
+- ``GET /monitoring/health`` – public health status of the QA monitor.
+- ``GET /monitoring/fixes`` – recent auto‑fixes applied by the QA monitor
+  (authentication required).
+- ``POST /monitoring/run-now`` – trigger an immediate QA cycle (authentication
+  required).
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -40,15 +49,21 @@ router = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
 def _load_health_report() -> Dict[str, Any]:
     """Load the health report JSON from disk.
 
-    Returns a dictionary with the report contents. Raises HTTPException if the
-    file exists but cannot be parsed.
+    Returns:
+        A dictionary containing the health report. If the file does not exist,
+        returns a placeholder with ``status`` set to ``unknown`` and a default
+        message. Raises:
+        HTTPException: If the file exists but cannot be parsed.
     """
     if not HEALTH_REPORT_PATH.exists():
         return {"status": DEFAULT_HEALTH_STATUS, "message": DEFAULT_HEALTH_MESSAGE}
     try:
         return json.loads(HEALTH_REPORT_PATH.read_text())
     except Exception as exc:
-        raise HTTPException(status_code=HTTP_STATUS_INTERNAL_ERROR, detail=HEALTH_REPORT_CORRUPTED_DETAIL) from exc
+        raise HTTPException(
+            status_code=HTTP_STATUS_INTERNAL_ERROR,
+            detail=HEALTH_REPORT_CORRUPTED_DETAIL,
+        ) from exc
 
 
 def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
@@ -56,6 +71,12 @@ def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
 
     The log is stored as newline‑delimited JSON. Empty or missing files result in
     an empty list. Any parsing error raises an HTTPException.
+
+    Args:
+        limit: Maximum number of recent entries to return.
+
+    Returns:
+        A list of dictionaries representing the most recent fix‑log entries.
     """
     if not FIX_LOG_PATH.exists():
         return []
@@ -67,11 +88,14 @@ def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
         recent_lines = lines[-limit:]
         return [json.loads(line) for line in recent_lines]
     except Exception as exc:
-        raise HTTPException(status_code=HTTP_STATUS_INTERNAL_ERROR, detail=FIX_LOG_READ_ERROR_DETAIL.format(exc)) from exc
+        raise HTTPException(
+            status_code=HTTP_STATUS_INTERNAL_ERROR,
+            detail=FIX_LOG_READ_ERROR_DETAIL.format(exc),
+        ) from exc
 
 
 @router.get(ENDPOINT_HEALTH)
-async def get_health_report():
+async def get_health_report() -> Dict[str, Any]:
     """Public health status (no auth required).
 
     Returns the most recent QA health report written by the QAMonitor background
@@ -84,10 +108,17 @@ async def get_health_report():
 async def get_fix_log(
     limit: int = DEFAULT_FIX_LOG_LIMIT,
     current_user: User = Depends(get_current_user),
-):
+) -> List[Dict[str, Any]]:
     """Recent auto‑fixes applied by the QA monitor (requires auth).
 
     Returns the last *limit* entries from the fix log (newest last).
+
+    Args:
+        limit: Maximum number of entries to return.
+        current_user: Authenticated user provided by FastAPI dependency injection.
+
+    Returns:
+        A list of fix‑log entries.
     """
     return _read_fix_log(limit)
 
@@ -95,10 +126,18 @@ async def get_fix_log(
 @router.post(ENDPOINT_RUN_NOW)
 async def trigger_qa_cycle(
     current_user: User = Depends(get_current_user),
-):
+) -> Dict[str, str]:
     """Trigger an immediate QA cycle in the background (requires auth).
 
-    The cycle runs asynchronously; poll GET /monitoring/health to see the result.
+    The cycle runs asynchronously; poll ``GET /monitoring/health`` to see the
+    result.
+
+    Args:
+        current_user: Authenticated user provided by FastAPI dependency injection.
+
+    Returns:
+        A dictionary containing a message indicating that the QA cycle has been
+        started.
     """
     from app.tasks.qa_monitor import run_one_cycle
 
