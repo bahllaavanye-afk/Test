@@ -1,5 +1,37 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 📏 2026-08-06 02:00 — A NOISE FLOOR ON `beats`, AND IT CORRECTS MY OWN 01:20 CLAIM
+
+The 01:20 entry logged `[P2] beats needs a magnitude floor` and then, three paragraphs earlier, **used the
+unfloored flag to make a recommendation**. Shipping the floor re-judges the same run and moves 3 of 9 verdicts.
+
+- [x] **`sharpe_noise_floor(n) = 2·sqrt(2/n)`** — a Sharpe from n daily returns has SE ≈ `sqrt(1/n)`; the
+  difference of two has ≈ `sqrt(2/n)`; two of those is the usual "not noise" bar. **≈0.145 over a 382-day
+  sub-window**, tightening as the window grows. Deliberately an approximation: it ignores strategy/benchmark
+  correlation (making it conservative) and fat tails (making it optimistic). It exists to stop near-zero
+  comparisons being reported as evidence, not to be a significance test.
+- [x] **`verdict` is now three-state** — `beats` / `loses` / `inconclusive` — and `beats` requires the margin to
+  clear the floor, so a caller tallying it is not counting noise. `margin` and `noise_floor` are both in the
+  payload, because a verdict the reader cannot check is just an assertion.
+- [x] **Re-judging run `2026-08-06T00:13`, 3 of 9 windows change:**
+
+  | window | margin | floor | was | now |
+  |---|---|---|---|---|
+  | SPY w1 | +0.015 | 0.145 | beats | **inconclusive** |
+  | SPY w3 | −0.100 | 0.145 | loses | **inconclusive** |
+  | NVDA w1 | +0.136 | 0.145 | beats | **inconclusive** |
+
+  The decisive ones survive untouched: QQQ w1 (+1.881), QQQ w3 (−0.699), SPY w2 (−0.613).
+- [ ] **CORRECTION to 01:20.** I wrote that in the most recent 18 months "the model is behind on 2 of 3", and
+  built the recommendation on it. Under the floor that window reads **QQQ decisively loses, NVDA decisively
+  beats, SPY inconclusive** — 1 loss, 1 win, 1 unknown. The honest statement is narrower: **QQQ's edge has
+  clearly decayed**; the three-symbol picture is mixed, not adverse. The direction of my advice (do not wire ML
+  into live orders yet) still holds, but on thinner evidence than I gave it.
+- [x] **Two mutations survived the first pass, and both were the bug itself** — `margin > 0` for `beats`, and
+  `margin < 0` for `loses`. My fixture used `strat = bench.copy()`, so the margin was *exactly* zero and both
+  mutants passed. **A degenerate fixture cannot test a threshold.** Fixed with small-but-nonzero margins
+  (±3e-5 offset → ±0.05 margin against a 0.145 floor), which is precisely the real SPY case.
+
 ## 📉 2026-08-06 01:20 — THE SUB-WINDOWS LANDED AND THEY ARGUE **AGAINST** WIRING ML INTO ORDERS
 
 Run `2026-08-06T00:13`, the first carrying `sub_windows`. This is why the split was worth building: the

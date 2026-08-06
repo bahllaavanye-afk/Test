@@ -153,8 +153,11 @@ a drawdown. **✅ 01:20 — THE SUB-WINDOWS ARRIVED AND THEY FLIP THE RECOMMENDA
     NVDA overall 1.196 vs 1.125 BEATS   recent window still ahead (1.508 vs 1.153)
     SPY  overall 0.606 vs 0.788 loses   loses both recent windows
 
-QQQ's headline is carried entirely by the 2022 bear market. **In the most recent 18 months the model is behind
-on 2 of 3.** The overall figures were never wrong — they were the wrong statistic to decide on. This argues
+QQQ's headline is carried entirely by the 2022 bear market. ~~In the most recent 18 months the model is behind
+on 2 of 3.~~ **CORRECTED 02:00** — under the noise floor shipped since (`2·sqrt(2/n)`, ≈0.145 over a 382-day
+window), the recent window reads **QQQ decisively loses, NVDA decisively beats, SPY inconclusive** (its −0.100
+margin is inside the floor). So: **QQQ's edge has clearly decayed; the three-symbol picture is mixed, not
+adverse.** The overall figures were never wrong — they were the wrong statistic to decide on. This argues
 **against** routing live orders through ML, not for it.
 
 **Do not replace "it loses" with "it wins"** — the honest claim is that the window decides, and

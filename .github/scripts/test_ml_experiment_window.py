@@ -314,3 +314,102 @@ def test_sub_window_stats_rejects_a_date_index_that_does_not_match():
     dates = pd.date_range("2021-01-04", periods=500, freq="B")
     with pytest.raises(ValueError, match="masked"):
         mlx.sub_window_stats(np.zeros(300), np.zeros(300), dates)
+
+
+# ── The noise floor: stop near-zero comparisons reading as evidence ──────────
+
+def test_the_floor_tightens_as_the_window_grows():
+    """More samples, smaller detectable difference. If this ever inverted, long
+    windows would demand a bigger edge than short ones."""
+    assert mlx.sharpe_noise_floor(100) > mlx.sharpe_noise_floor(380) > mlx.sharpe_noise_floor(1147)
+
+
+def test_a_single_sample_distinguishes_nothing():
+    """`inf`, not a small number. One observation supports no verdict at all,
+    and returning e.g. 0.0 would make every comparison decisive."""
+    assert mlx.sharpe_noise_floor(1) == float("inf")
+    assert mlx.sharpe_noise_floor(0) == float("inf")
+
+
+def test_the_real_spy_window_that_motivated_this_is_now_inconclusive():
+    """Run 2026-08-06T00:13 reported SPY 0.102 vs 0.087 over 382 days as
+    `beats`. Arithmetically true, indistinguishable from zero, and it counted
+    equally with QQQ's 2.057 vs 0.176 in the same table."""
+    import numpy as np
+    n = 382 * 3
+    rng = np.random.default_rng(3)
+    bench = rng.normal(0.00002, 0.01, n)
+    strat = bench.copy()                       # margin ~0 by construction
+    dates = pd.date_range("2022-01-06", periods=n, freq="B")
+    for w in mlx.sub_window_stats(strat, bench, dates):
+        assert w["verdict"] == "inconclusive", w
+        assert w["beats"] is False, "a zero margin must not read as a win"
+
+
+def test_a_decisive_edge_still_reads_as_a_win():
+    """The floor must not swallow QQQ's 2.057-vs-0.176 case."""
+    import numpy as np
+    n = 382 * 3
+    rng = np.random.default_rng(4)
+    bench = rng.normal(0.0, 0.01, n)
+    strat = bench + 0.004                       # large, sustained
+    dates = pd.date_range("2022-01-06", periods=n, freq="B")
+    for w in mlx.sub_window_stats(strat, bench, dates):
+        assert w["verdict"] == "beats" and w["beats"] is True, w
+        assert w["margin"] > w["noise_floor"]
+
+
+def test_a_decisive_loss_is_named_as_one_not_merely_not_a_win():
+    """Three states, not two. 'loses' and 'inconclusive' imply different
+    decisions, and collapsing them would hide a real underperformance."""
+    import numpy as np
+    n = 382 * 3
+    rng = np.random.default_rng(5)
+    bench = rng.normal(0.0, 0.01, n)
+    strat = bench - 0.004
+    dates = pd.date_range("2022-01-06", periods=n, freq="B")
+    for w in mlx.sub_window_stats(strat, bench, dates):
+        assert w["verdict"] == "loses" and w["beats"] is False, w
+
+
+def test_margin_and_floor_are_both_reported():
+    """A verdict the reader cannot check is just an assertion. Both inputs to
+    it are in the payload."""
+    import numpy as np
+    n = 382 * 3
+    dates = pd.date_range("2022-01-06", periods=n, freq="B")
+    w = mlx.sub_window_stats(np.zeros(n), np.zeros(n), dates)[0]
+    assert "margin" in w and "noise_floor" in w
+    assert w["noise_floor"] == round(mlx.sharpe_noise_floor(w["days"]), 3)
+
+
+def test_a_SMALL_POSITIVE_margin_is_inconclusive_not_a_win():
+    """The case the floor exists for, and the one an identical-copy fixture
+    cannot reach. SPY's real window was +0.015 against a 0.145 floor: a genuine
+    positive margin that is still noise. `margin > 0` passes an exact-zero
+    fixture, so without this the old bug survives mutation testing."""
+    import numpy as np
+    n = 382 * 3
+    rng = np.random.default_rng(11)
+    bench = rng.normal(0.0, 0.01, n)
+    strat = bench + 3e-5                      # margin ~+0.05, floor ~0.145
+    dates = pd.date_range("2022-01-06", periods=n, freq="B")
+    for w in mlx.sub_window_stats(strat, bench, dates):
+        assert 0 < w["margin"] < w["noise_floor"], w
+        assert w["verdict"] == "inconclusive", w
+        assert w["beats"] is False, "a positive margin inside the floor is not a win"
+
+
+def test_a_SMALL_NEGATIVE_margin_is_inconclusive_not_a_loss():
+    """Symmetric, and it matters for the recommendation: SPY's most recent
+    window was -0.100 against a 0.145 floor. Reporting that as `loses` is how
+    'behind on 2 of 3' got overstated."""
+    import numpy as np
+    n = 382 * 3
+    rng = np.random.default_rng(12)
+    bench = rng.normal(0.0, 0.01, n)
+    strat = bench - 3e-5
+    dates = pd.date_range("2022-01-06", periods=n, freq="B")
+    for w in mlx.sub_window_stats(strat, bench, dates):
+        assert -w["noise_floor"] < w["margin"] < 0, w
+        assert w["verdict"] == "inconclusive", w
