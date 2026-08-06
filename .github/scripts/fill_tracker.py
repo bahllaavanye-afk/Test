@@ -16,6 +16,7 @@ Run daily at 22:00 UTC via fill-tracking.yml workflow.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import urllib.parse
@@ -225,14 +226,37 @@ def main() -> None:
         total_wins   = prev.get("wins", 0)   + sum(added_wins)
         total_ret    = prev.get("total_return_pct", 0.0) + sum(added_returns)
 
+        # DISPERSION. Without it the trimmer cannot tell a strategy that bleeds
+        # -0.8% every trade from one that was flat nine times and lost 8% once —
+        # both report total_return_pct = -7.9% over 10 trades, and the first
+        # deserves retirement while the second may be a single tail event.
+        #
+        # Measured 2026-08-06: `avellaneda` was PERMANENTLY retired on
+        # "cumulative return -7.9% <= -5.0% over 10 trades" while winning 6 of
+        # those 10 (P=0.83 against a coin flip). Nothing in the record could
+        # settle which case it was, and nothing ever removes an entry from
+        # strategy_trims.json, so the decision is unauditable and irreversible.
+        #
+        # Kept as a running sum of squares so no per-trade history is stored —
+        # stdev = sqrt(E[x^2] - E[x]^2) — plus the single worst trade, which is
+        # what actually answers "was this one disaster?".
+        sum_sq = prev.get("sum_sq_return_pct", 0.0) + sum(r * r for r in added_returns)
+        worst = min([prev.get("worst_trade_pct", 0.0)] + list(added_returns)) \
+            if (added_returns or "worst_trade_pct" in prev) else 0.0
+
         win_rate = total_wins / total_trades if total_trades > 0 else 0.0
         avg_ret  = total_ret  / total_trades if total_trades > 0 else 0.0
+        variance = (sum_sq / total_trades - avg_ret ** 2) if total_trades > 0 else 0.0
+        stdev    = math.sqrt(variance) if variance > 0 else 0.0
         updated_perf[sname] = {
             "trades":           total_trades,
             "wins":             total_wins,
             "win_rate":         round(win_rate, 4),
             "avg_return_pct":   round(avg_ret, 4),
             "total_return_pct": round(total_ret, 4),
+            "stdev_return_pct": round(stdev, 4),
+            "worst_trade_pct":  round(worst, 4),
+            "sum_sq_return_pct": round(sum_sq, 6),   # carried, not for reading
             "last_updated":     now_str,
         }
 
