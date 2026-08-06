@@ -1,56 +1,97 @@
 {
-  "generated_at": "2026-08-05T18:00:47Z",
+  "generated_at": "2026-08-06T12:22:55Z",
   "sessions": [
-    "2026-08-05"
+    "2026-08-06"
   ],
   "max_age_hours": 30.0,
   "tilt_max": 0.06,
   "tilts": {
     "INFY": {
-      "tilt": 0.0111,
+      "tilt": -0.0153,
       "source": "INFY.NS",
       "kind": "adr",
-      "move_pct": 0.557,
+      "move_pct": -0.767,
       "weight": 1.0,
-      "session": "2026-08-05"
-    },
-    "HDB": {
-      "tilt": -0.0189,
-      "source": "HDFCBANK.NS",
-      "kind": "adr",
-      "move_pct": -0.943,
-      "weight": 1.0,
-      "session": "2026-08-05"
+      "session": "2026-08-06"
     },
     "IBN": {
-      "tilt": -0.0062,
+      "tilt": 0.0102,
       "source": "ICICIBANK.NS",
       "kind": "adr",
-      "move_pct": -0.309,
+      "move_pct": 0.51,
       "weight": 1.0,
-      "session": "2026-08-05"
+      "session": "2026-08-06"
     },
     "WIT": {
-      "tilt": 0.0074,
+      "tilt": -0.0154,
       "source": "WIPRO.NS",
       "kind": "adr",
-      "move_pct": 0.37,
+      "move_pct": -0.77,
       "weight": 1.0,
-      "session": "2026-08-05"
+      "session": "2026-08-06"
     },
     "RDY": {
-      "tilt": 0.0058,
+      "tilt": -0.0085,
       "source": "DRREDDY.NS",
       "kind": "adr",
-      "move_pct": 0.29,
+      "move_pct": -0.425,
       "weight": 1.0,
-      "session": "2026-08-05"
+      "session": "2026-08-06"
+    },
+    "EWJ": {
+      "tilt": -0.0168,
+      "source": "^N225",
+      "kind": "index",
+      "move_pct": -0.931,
+      "weight": 0.9,
+      "session": "2026-08-06"
+    },
+    "EWY": {
+      "tilt": -0.06,
+      "source": "^KS11",
+      "kind": "index",
+      "move_pct": -4.575,
+      "weight": 0.9,
+      "session": "2026-08-06"
+    },
+    "EWT": {
+      "tilt": -0.0087,
+      "source": "^TWII",
+      "kind": "index",
+      "move_pct": -0.482,
+      "weight": 0.9,
+      "session": "2026-08-06"
+    },
+    "FXI": {
+      "tilt": -0.0208,
+      "source": "^HSI",
+      "kind": "index",
+      "move_pct": -1.488,
+      "weight": 0.7,
+      "session": "2026-08-06"
+    },
+    "EWA": {
+      "tilt": 0.0085,
+      "source": "^AXJO",
+      "kind": "index",
+      "move_pct": 0.475,
+      "weight": 0.9,
+      "session": "2026-08-06"
+    },
+    "EWS": {
+      "tilt": 0.0163,
+      "source": "^STI",
+      "kind": "index",
+      "move_pct": 0.907,
+      "weight": 0.9,
+      "session": "2026-08-06"
     }
   },
   "skipped": {
-    "^NSEI->INDA": "move +0.04% below the 0.15% noise floor",
-    "^NSEI->INDY": "move +0.04% below the 0.15% noise floor",
-    "^NSEI->EPI": "move +0.04% below the 0.15% noise floor",
-    "^NSEI->SMIN": "move +0.04% below the 0.15% noise floor"
+    "HDFCBANK.NS->HDB": "move -0.10% below the 0.15% noise floor",
+    "^NSEI->INDA": "move +0.05% below the 0.15% noise floor",
+    "^NSEI->INDY": "move +0.05% below the 0.15% noise floor",
+    "^NSEI->EPI": "move +0.05% below the 0.15% noise floor",
+    "^NSEI->SMIN": "move +0.05% below the 0.15% noise floor"
   }
 }
