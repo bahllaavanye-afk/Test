@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1786027575.0166838,
+    "last_updated": 1786032333.4577308,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -63,35 +63,35 @@
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
-      "generated_at": "2026-08-05T15:52:51.576571+00:00",
+      "generated_at": "2026-08-06T16:05:10.707975+00:00",
       "signals": {
         "vix": {
-          "value": 16.33,
+          "value": 15.43,
           "trend": "falling"
         },
         "spy": {
-          "price": 771.18,
-          "sma50": 745.75,
-          "sma200": 699.05,
+          "price": 767.99,
+          "sma50": 746.11,
+          "sma200": 699.59,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0129,
-          "median": 1.0506,
+          "ratio": 1.0088,
+          "median": 1.0505,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 0.745,
+          "hyg_lqd_momentum_20d": 0.993,
           "signal": "tightening"
         },
         "breadth": {
-          "sectors_above_sma20": 8,
+          "sectors_above_sma20": 9,
           "total_sectors": 11,
-          "breadth_pct": 72.7
+          "breadth_pct": 81.8
         },
         "btc": {
-          "price": 64451,
-          "24h_pct": 0.5
+          "price": 64599,
+          "24h_pct": 0.36
         }
       },
       "score": 4,
@@ -101,7 +101,7 @@
         "min_confidence": 0.6,
         "size_multiplier": 1.0
       },
-      "summary": "The tape is bullish with strong SPY momentum, tightening credit spreads, and broad sector participation, while a falling VIX and flat yield curve support risk-on positioning. Favor long gamma or trend-following strategies today to capture continued upside without fighting the VIX compression."
+      "summary": "Good morning. With a bull regime score of 4, tightening credit spreads, and strong sector breadth (9/11 sectors above 20-SMA), risk appetite remains elevated despite a flat yield curve. Favor long-biased momentum strategies today to capitalize on the persistent uptrend and falling VIX."
     },
     "strategy_gates": {
       "directional": true,
@@ -156,13 +156,6 @@
     "last_brain_update": 1786010843.6188173
   },
   "episodic": [
-    {
-      "lesson": "Equities, commodities, and Polymarket desks placed 7 orders with high confidence (94-100%), while FX and crypto desks placed zero orders despite 9 signals \u2014 investigate bid/ask spread or liquidity constraints on crypto and FX.",
-      "category": "execution",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1785445406.117183
-    },
     {
       "lesson": "Autonomous agent automation logged 0 tasks with 0% success rate and 41 failure traces \u2014 urgent debugging needed on automation scripts.",
       "category": "code",
@@ -1871,6 +1864,18 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Tech. Gaps: 7, Breakouts: 1, Risk flags: 0.",
       "ts": 1786027575.022712
+    },
+    {
+      "source": "market_opinion",
+      "regime": "bull",
+      "score": 4,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.6,
+        "size_multiplier": 1.0
+      },
+      "lesson": "Good morning. With a bull regime score of 4, tightening credit spreads, and strong sector breadth (9/11 sectors above 20-SMA), risk appetite remains elevated despite a flat yield curve. Favor long-biased momentum strategies today to capitalize on the persistent uptrend and falling VIX.",
+      "ts": 1786032333.4627547
     }
   ],
   "github_insights": [
