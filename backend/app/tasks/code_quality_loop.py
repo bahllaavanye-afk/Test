@@ -14,6 +14,18 @@ from typing import Dict, Tuple
 
 from app.utils.logging import logger
 
+# ----------------------------------------------------------------------
+# Constants
+# ----------------------------------------------------------------------
+DEFAULT_INTERVAL_SECONDS = 3600
+HISTORY_LIMIT = 200
+SKIP_PATTERNS = ("__pycache__", ".pytest_cache", "test.db")
+
+MANUAL_STRATEGY_REL = "app/strategies/manual"
+ML_STRATEGY_REL = "app/strategies/ml_enhanced"
+UNIT_TEST_REL = "tests/unit"
+INTEGRATION_TEST_REL = "tests/integration"
+
 QUALITY_FILE = Path(__file__).parents[3] / "experiments" / "results" / "code_quality.json"
 QUALITY_FILE.parent.mkdir(parents=True, exist_ok=True)
 
@@ -66,7 +78,7 @@ def _count_loc(root: Path) -> dict:
     current_files = [
         py_file
         for py_file in root.rglob("*.py")
-        if not any(skip in str(py_file) for skip in ("__pycache__", ".pytest_cache", "test.db"))
+        if not any(skip in str(py_file) for skip in SKIP_PATTERNS)
     ]
 
     # Remove cache entries for files that disappeared
@@ -101,8 +113,8 @@ def _count_loc(root: Path) -> dict:
 
 
 def _count_strategies(root: Path) -> dict:
-    manual = list((root / "app" / "strategies" / "manual").glob("*.py"))
-    ml = list((root / "app" / "strategies" / "ml_enhanced").glob("*.py"))
+    manual = list((root / MANUAL_STRATEGY_REL).glob("*.py"))
+    ml = list((root / ML_STRATEGY_REL).glob("*.py"))
     return {
         "manual_strategies": len([f for f in manual if not f.name.startswith("__")]),
         "ml_strategies": len([f for f in ml if not f.name.startswith("__")]),
@@ -110,8 +122,8 @@ def _count_strategies(root: Path) -> dict:
 
 
 def _count_tests(root: Path) -> dict:
-    unit = list((root / "tests" / "unit").glob("test_*.py"))
-    integration = list((root / "tests" / "integration").glob("test_*.py"))
+    unit = list((root / UNIT_TEST_REL).glob("test_*.py"))
+    integration = list((root / INTEGRATION_TEST_REL).glob("test_*.py"))
     return {
         "unit_test_files": len(unit),
         "integration_test_files": len(integration),
@@ -119,7 +131,7 @@ def _count_tests(root: Path) -> dict:
 
 
 class CodeQualityLoop:
-    def __init__(self, interval_seconds: int = 3600):
+    def __init__(self, interval_seconds: int = DEFAULT_INTERVAL_SECONDS):
         self.interval_seconds = interval_seconds
         self._running = False
 
@@ -139,7 +151,7 @@ class CodeQualityLoop:
         try:
             history = json.loads(QUALITY_FILE.read_text()) if QUALITY_FILE.exists() else []
             history.append(snapshot)
-            history = history[-200:]
+            history = history[-HISTORY_LIMIT:]
             QUALITY_FILE.write_text(json.dumps(history, indent=2))
         except Exception as e:
             logger.warning("code_quality: failed to persist snapshot", error=str(e))
