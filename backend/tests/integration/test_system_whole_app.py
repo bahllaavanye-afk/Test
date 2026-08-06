@@ -35,6 +35,38 @@ import uuid
 
 import pytest
 
+# ── Why these two carry their own timeout ────────────────────────────────────
+#
+# The suite runs with a global `--timeout=60`. These two sweeps walk EVERY GET
+# route, and CI supplies real-looking Alpaca credentials
+# (ALPACA_API_KEY="test"), so every broker-backed route attempts a genuine
+# outbound call to paper-api.alpaca.markets and waits for it to fail auth.
+# Their runtime is therefore network-bound, not compute-bound, and varies with
+# runner load and egress latency.
+#
+# Measured 2026-08-06 with CI's exact env: 14.9s + 11.1s locally, against a
+# 60s cap — a 4x margin that CI exhausted. Both timed out on the first CI run
+# after improver PR #1510, which made it look like that PR broke them.
+# It did not: removing the endpoint it added (`GET /signal_quality`) and
+# re-timing gives 14.2s + 10.8s, a difference of ~1.1s.
+#
+# The cap is raised rather than the network removed ON PURPOSE. Exercising
+# these routes WITH credentials present is the point — it proves a broker auth
+# failure surfaces as a handled error instead of a 5xx, which is the exact
+# class the scanner-500 bug fell into. Stubbing the egress would delete the
+# coverage.
+#
+# BUT THE TIMEOUT IS ONLY HALF THE PROBLEM, so do not read this as "fixed".
+# The same egress makes the RESULT non-deterministic, not just the duration:
+# on one local run with CI's env these two failed in 5.9s while three
+# consecutive runs of the identical command passed in 28-32s. A 5xx from the
+# upstream host propagates through the route and the sweep reports it, which
+# is indistinguishable here from a 5xx we caused. The real fix is to bound the
+# egress — point the broker base URL at a local stub that returns a
+# deterministic auth failure, keeping the "handled, not 5xx" coverage while
+# removing the third party from the verdict. Logged in IMPROVEMENTS 2026-08-06.
+TIMEOUT_NETWORK_BOUND_S = 240
+
 _PASSWORD = "Syst3m!2026xx"
 
 # Endpoints that legitimately need query params or external services and have
@@ -80,6 +112,7 @@ def _parameterless_get_paths() -> list[str]:
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(TIMEOUT_NETWORK_BOUND_S)
 async def test_no_get_endpoint_returns_5xx(client):
     """Every parameterless GET must respond without a server error.
 
@@ -201,6 +234,7 @@ def test_every_path_parameter_has_a_placeholder():
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(TIMEOUT_NETWORK_BOUND_S)
 async def test_no_parameterised_get_endpoint_returns_5xx(client):
     """The 25 routes the parameterless walk could never reach.
 

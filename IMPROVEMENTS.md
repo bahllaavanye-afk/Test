@@ -1,5 +1,37 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🎲 2026-08-06 00:40 — THE 5xx ENDPOINT SWEEP LETS A THIRD PARTY DECIDE WHETHER CI IS GREEN
+
+CI went red on `test_no_get_endpoint_returns_5xx` and its parameterised twin. Diagnosing it took three wrong
+suspects, all measured and discarded, which is the useful part.
+
+- [x] **Not my change.** It touched a regression test's path resolution and dead test code in a model.
+- [x] **Not the improver, though it looked exactly like it.** This was the first CI run whose base included
+  #1510 (main's last green CI at 23:34 predates it — checked with `merge-base --is-ancestor`), and #1510 added
+  a **new GET route** (`/signal_quality`) that the sweep now walks. Measured by disabling that route and
+  re-timing: **14.2s + 10.8s without it, 14.9s + 11.1s with it — a ~1.1s difference**, not the 45s needed.
+- [x] **The mechanism: CI supplies real-looking Alpaca credentials** (`ALPACA_API_KEY="test"`), so every
+  broker-backed route in the sweep makes a genuine outbound call to `paper-api.alpaca.markets` and waits for
+  it to fail auth. With no keys locally the first test takes **1.4s**; with CI's env it takes **14.9s** — a
+  10x swing driven entirely by egress. Runtime is network-bound, and the global `--timeout=60` left a margin
+  CI exhausted.
+- [x] **And the outcome is non-deterministic, not just the duration — which is the worse half.** One local run
+  with CI's exact env failed both tests in **5.9s**; three consecutive runs of the identical command passed in
+  28–32s. A 5xx from the upstream host propagates through the route, and the sweep cannot distinguish that
+  from a 5xx we caused. **A third party currently decides whether this repo's CI is green.**
+- [x] **Shipped: `@pytest.mark.timeout(240)` on both**, with the measurements in a comment so the next reader
+  does not re-derive them. Deliberately not removing the egress — exercising these routes *with* credentials
+  is the point, since it proves a broker auth failure surfaces as a handled error rather than a 5xx, the exact
+  class the scanner-500 bug fell into.
+- [ ] **[P1] The real fix: bound the egress.** Point the broker base URL at a local stub returning a
+  deterministic auth failure. That keeps the "handled, not 5xx" coverage, removes the third party from the
+  verdict, and drops ~25s from every CI run. **Not shipped in a monitor tick** — it changes what a
+  safety-critical sweep actually exercises, which deserves a considered change rather than an incidental one.
+- [x] **Also worth recording: two of my background suite runs reported 510 and 1537 errors and both were my own
+  artifacts** — I was editing app modules (`ml_model.py`, `improvements.py`) mid-run to mutation-test. A
+  concurrent edit to a widely-imported module produces mass collection errors that look like catastrophic
+  breakage. **Do not run the full suite in the background while editing.**
+
 ## 🚨 2026-08-06 00:05 — TWO REGRESSION GUARDS HAVE NEVER RUN IN CI, AND ONE HAD A LIVE VIOLATION
 
 `test_no_datetime_utcnow_in_source` failed the local backend suite tonight while CI stayed green. I had noted
