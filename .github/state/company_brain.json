@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1786058230.55004,
+    "last_updated": 1786060415.8763716,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -111,7 +111,7 @@
     "opinion_score": 4,
     "macro_score": 2,
     "vix": 15.15,
-    "market_scan_ts": 1786058230.5220616,
+    "market_scan_ts": 1786060415.8544016,
     "sector_leaders": [
       "Financials",
       "Energy",
@@ -156,13 +156,6 @@
     "last_brain_update": 1786010843.6188173
   },
   "episodic": [
-    {
-      "lesson": "Signal generation funnel shows 16 generated \u2192 1 survived gate+topK \u2192 0 placed for equities; high confidence orders (100%) were placed from other strategies \u2014 review gate/topK parameters for missed opportunities.",
-      "category": "strategy",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1785445406.1360335
-    },
     {
       "lesson": "Equity desk generated 16 signals but only 1 passed gate+topK and 0 placed; funnel efficiency is critically low and needs immediate review of filtering criteria or signal quality.",
       "category": "strategy",
@@ -1900,6 +1893,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Financials, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1786058230.5554106
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Financials",
+        "Energy",
+        "Materials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Financials, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1786060415.880576
     }
   ],
   "github_insights": [
