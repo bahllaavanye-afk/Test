@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785993168.2043674,
+    "last_updated": 1785994144.1116378,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -108,60 +108,53 @@
       "size_multiplier": 1.0
     },
     "opinion_score": 4,
-    "macro_score": 2,
-    "vix": 15.81,
-    "market_scan_ts": 1785991589.069831,
+    "macro_score": 3,
+    "vix": 15.86,
+    "market_scan_ts": 1785994144.0832374,
     "sector_leaders": [
       "Energy",
       "Tech",
       "Financials"
     ],
     "sector_laggards": [
-      "Comm.",
-      "Healthcare",
-      "Utilities"
+      "Real Estate",
+      "Materials",
+      "Comm."
     ],
     "active_universe": [
-      "AMD",
-      "LLY",
-      "EOG",
-      "NVDA",
-      "MSFT",
-      "AMZN",
-      "GOOGL",
-      "INTC",
-      "CRWD",
-      "PANW",
-      "ORCL",
-      "AVGO",
-      "MPC",
-      "C",
-      "XLV",
-      "XLK",
       "AAPL",
-      "COP",
-      "QQQ",
-      "GS"
+      "MSFT",
+      "NVDA",
+      "GOOGL",
+      "AMZN",
+      "META",
+      "TSLA",
+      "BRK-B",
+      "JPM",
+      "V",
+      "MA",
+      "UNH",
+      "XOM",
+      "AVGO",
+      "LLY",
+      "MRK",
+      "HD",
+      "COST",
+      "NFLX",
+      "ADBE"
     ],
     "top_momentum": [
       "MSFT",
-      "AMZN",
-      "PANW",
-      "INTU",
-      "CRWD"
+      "NVDA",
+      "AAPL",
+      "GOOGL",
+      "AMZN"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1785978310.483174
   },
   "episodic": [
-    {
-      "lesson": "Equities desk proposes SPY/AAPL long vs QQQ short spread \u2014 backtest agent to estimate Sharpe and suggest out-of-sample period from similar strategies.",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1785441164.5462918
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -1862,6 +1855,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Energy, Tech. Gaps: 7, Breakouts: 0, Risk flags: 0.",
       "ts": 1785991589.1035964
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 3,
+      "sector_leaders": [
+        "Energy",
+        "Tech",
+        "Financials"
+      ],
+      "gap_count": 1,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=3). Leading: Energy, Tech. Gaps: 1, Breakouts: 0, Risk flags: 0.",
+      "ts": 1785994144.117048
     }
   ],
   "github_insights": [
