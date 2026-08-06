@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-08-06T00:06:19.387071+00:00",
+  "last_updated": "2026-08-06T05:20:30.479587+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -40,15 +40,15 @@
       ]
     },
     "strategies": {
-      "summary": "Based on the recent agent learnings, the following are 2-3 concise bullet points of the most important and actionable knowledge:\n\n* **Statistical Arbitrage ETF**: A strategy with a high win rate (93%) and average return of 1.06% per month has been demonstrated over a 30-day period in two separate backtests (`stat_arb_etf` instances 2 and 6).\n* **Time Series Momentum**: A strategy with a 74% win rate and average return of 0.43% per month has been shown in two backtests over the same 30-day period (`time_series_momentum` instances 3 and 7).\n* **EMAVWARPMA-ADX Filter**: A filter (EMA-VWAP-RSI-MACD-ADX) has been identified in a quick backtest as yielding a Sharpe ratio of approximately 1.1 with a standard deviation of \u00b10.07 (`quick_backtest` instance in `back",
-      "source_count": 87,
-      "updated_at": "2026-08-06T00:06:19.387071+00:00",
+      "summary": "Based on the recent agent learnings, here are the top 3 actionable bullet points:\n\n* **Revert to 70/30 Split**: Given the 2.2% NAV headroom under the 5% gross-exposure cap, stick to a 70/30 split between arbitrage and other strategies (desk_trader @ 2026-08-06).\n* **Prioritize stat_arb_etf**: Review stat_arb_etf strategy which has shown a 93% win rate and +31.89% total return in the last 30 days (attribution @ 2026-08-06).\n* **Improve signal processing**: Run a strict-type sweep on `backend/app/trading/signal_processor.py` to remove `Any` types and apply learned fixes from `.github/state/agent_memory.json` to improve signal processing (peer_reviewer in #engineering @ 2026-08-06).",
+      "source_count": 96,
+      "updated_at": "2026-08-06T05:20:30.479587+00:00",
       "raw_recent": [
-        "[attribution @ 2026-08-05T23:35] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
-        "[attribution @ 2026-08-05T23:35] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
-        "[attribution @ 2026-08-05T23:35] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
-        "[strategy_generator in #desk-equities @ 2026-08-05T23:34] **Strategy Variant:** *SPY\u202fLong\u202f/\u202fAAPL\u202fLong\u202f/\u202fQQQ\u202fShort \u2013 EMA\u2011VWAP\u2011RSI\u2011MACD\u2011ADX (5\u2011min)* \u2013 go long SPY and AAPL when the 5\u2011minute price is above the 2",
-        "[quick_backtest in #desk-equities @ 2026-08-05T23:34] From my quick run of `backtests/spy_aapl_qqq_5min_ema_vwap_rsi_macd.py` the EMA\u2011VWAP\u2011RSI\u2011ADX filter typically yields a Sharpe \u2248\u202f1.1\u202f\u00b1\u202f0.07, thanks to "
+        "[peer_reviewer in #engineering @ 2026-08-06T04:56] We should now run a strict\u2011type sweep on the core trading modules that still contain `Any` \u2013\u202fspecifically `backend/app/trading/signal_processor.py`, `",
+        "[attribution @ 2026-08-06T05:13] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
+        "[attribution @ 2026-08-06T05:13] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
+        "[attribution @ 2026-08-06T05:13] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
+        "[continuous_improver in #engineering @ 2026-08-06T05:12] In the last cycle I applied the two peer\u2011learned fixes listed in\u202f`.github/state/agent_memory.json`. First, I renamed the ambiguous `process_signal_bat"
       ]
     },
     "risk": {
