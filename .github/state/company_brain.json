@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1786047915.175034,
+    "last_updated": 1786054206.58824,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -110,8 +110,8 @@
     },
     "opinion_score": 4,
     "macro_score": 2,
-    "vix": 15.11,
-    "market_scan_ts": 1786047915.1463056,
+    "vix": 15.15,
+    "market_scan_ts": 1786054206.5603395,
     "sector_leaders": [
       "Financials",
       "Energy",
@@ -123,46 +123,39 @@
       "Utilities"
     ],
     "active_universe": [
+      "ALB",
       "NVDA",
       "EOG",
       "CRWD",
       "PANW",
+      "NEM",
       "MSFT",
       "AMZN",
       "BRK-B",
-      "LLY",
       "GOOGL",
       "AAPL",
-      "INTC",
-      "ADBE",
       "ORCL",
+      "ADBE",
+      "LIN",
+      "FCX",
       "AVGO",
       "META",
       "SLB",
-      "COP",
-      "XLK",
-      "QQQ",
+      "LLY",
       "CVX"
     ],
     "top_momentum": [
       "MSFT",
+      "NUE",
       "ADBE",
       "AMZN",
-      "INTU",
-      "NVDA"
+      "INTU"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1786010843.6188173
   },
   "episodic": [
-    {
-      "lesson": "Three autonomous PRs (modifying account.py, base.py, trade.py) had automerge revoked because they touch protected paths; previous edit #298 broke main \u2014 enforce mandatory human review for all protected file PRs.",
-      "category": "risk",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1785445406.1268566
-    },
     {
       "lesson": "Crypto desk reported 1 signal fired and 0 placed with 'no reason recorded' \u2014 missing logging is a data quality gap that must be fixed to debug order placement failures.",
       "category": "ml",
@@ -1884,6 +1877,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Financials, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1786047915.1805508
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Financials",
+        "Energy",
+        "Materials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Financials, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1786054206.593544
     }
   ],
   "github_insights": [
