@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -49,9 +48,7 @@ class MonteCarloResult:
             if not isinstance(value, numbers.Real):
                 raise ValueError(f"{name} must be a real number, got {type(value)}.")
         if not (0.0 <= self.prob_positive_return <= 1.0):
-            raise ValueError(
-                "prob_positive_return must be between 0 and 1 inclusive."
-            )
+            raise ValueError("prob_positive_return must be between 0 and 1 inclusive.")
         if not isinstance(self.num_simulations, int) or self.num_simulations <= 0:
             raise ValueError("num_simulations must be a positive integer.")
 
@@ -94,7 +91,10 @@ def monte_carlo_simulation(
         raise ValueError("daily_returns series cannot be empty.")
     if not np.issubdtype(daily_returns.dtype, np.number):
         raise ValueError("daily_returns must contain numeric values.")
-    if not np.isfinite(daily_returns.dropna()).all():
+    cleaned_returns = daily_returns.dropna()
+    if cleaned_returns.empty:
+        raise ValueError("daily_returns series cannot contain only NaN values.")
+    if not np.isfinite(cleaned_returns).all():
         raise ValueError("daily_returns contains non‑finite values (NaN or Inf).")
     if not isinstance(n_simulations, int) or n_simulations <= 0:
         raise ValueError("n_simulations must be a positive integer.")
@@ -102,9 +102,11 @@ def monte_carlo_simulation(
         raise ValueError("n_years must be a positive number.")
     if not isinstance(risk_free_daily, numbers.Real):
         raise ValueError("risk_free_daily must be a real number.")
+    if not np.isfinite(risk_free_daily):
+        raise ValueError("risk_free_daily must be a finite number.")
 
     n_days = int(n_years * 252)
-    returns_array = daily_returns.dropna().values
+    returns_array = cleaned_returns.values
     sharpes: list[float] = []
     max_dds: list[float] = []
     positive = 0
