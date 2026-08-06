@@ -129,49 +129,87 @@ class SelfImprover:
             logger.debug("Self-improver eval failed", strategy=strategy, error=str(e))
             return 0.0
 
-    async def _improve_strategy(self, strategy: str, symbol: str) -> dict | None:
-        """Sweep params for one strategy. Returns promoted result or None."""
-        space = PARAM_SPACES.get(strategy)
-        if not space:
-            return None
+    # ------------------------------------------------------------------
+    # Helper methods for _improve_strategy
+    # ------------------------------------------------------------------
+    def _get_param_space(self, strategy: str) -> dict | None:
+        return PARAM_SPACES.get(strategy)
 
-        current_best = self._best_sharpe.get(f"{strategy}:{symbol}", 0.0)
-        best_iter_sharpe = current_best
-        best_iter_params = None
+    def _key(self, strategy: str, symbol: str) -> str:
+        return f"{strategy}:{symbol}"
 
-        # Random configs per iteration
+    async def _search_best_params(self, strategy: str, symbol: str, current_best: float) -> tuple[float, dict | None]:
+        """Randomly sample CONFIGS_PER_ITERATION configs and return the best Sharpe with its params."""
+        best_sharpe = current_best
+        best_params = None
         for _ in range(CONFIGS_PER_ITERATION):
             params = self._sample_params(strategy)
             sharpe = await self._evaluate(strategy, symbol, params)
-            if sharpe > best_iter_sharpe:
-                best_iter_sharpe = sharpe
-                best_iter_params = params
+            if sharpe > best_sharpe:
+                best_sharpe = sharpe
+                best_params = params
+        return best_sharpe, best_params
 
-        # Promote if improvement exceeds threshold and Sharpe is above minimum
-        if (
-            best_iter_params
-            and best_iter_sharpe > current_best * IMPROVEMENT_FACTOR
-            and best_iter_sharpe > MIN_SHARPE_THRESHOLD
-        ):
-            key = f"{strategy}:{symbol}"
-            self._best_params[key] = best_iter_params
-            self._best_sharpe[key] = best_iter_sharpe
-            promotion = {
-                "id": str(uuid.uuid4()),
-                "strategy": strategy,
-                "symbol": symbol,
-                "params": best_iter_params,
-                "new_sharpe": round(best_iter_sharpe, 4),
-                "previous_sharpe": round(current_best, 4),
-                "improvement_pct": round(
-                    (best_iter_sharpe - current_best) / max(abs(current_best), 0.1), 4
-                ),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-            self._persist(promotion)
-            logger.info("Self-improver PROMOTED params", **promotion)
-            return promotion
-        return None
+    def _should_promote(self, candidate_sharpe: float, current_best: float) -> bool:
+        """Determine if the candidate Sharpe justifies promotion."""
+        return (
+            candidate_sharpe > current_best * IMPROVEMENT_FACTOR
+            and candidate_sharpe > MIN_SHARPE_THRESHOLD
+        )
+
+    def _store_promotion(self, key: str, params: dict, sharpe: float) -> None:
+        """Persist the new best parameters and Sharpe in memory."""
+        self._best_params[key] = params
+        self._best_sharpe[key] = sharpe
+
+    def _build_promotion_entry(
+        self,
+        strategy: str,
+        symbol: str,
+        params: dict,
+        new_sharpe: float,
+        previous_sharpe: float,
+    ) -> dict:
+        """Create a dict describing the promotion event."""
+        improvement_pct = round(
+            (new_sharpe - previous_sharpe) / max(abs(previous_sharpe), 0.1), 4
+        )
+        return {
+            "id": str(uuid.uuid4()),
+            "strategy": strategy,
+            "symbol": symbol,
+            "params": params,
+            "new_sharpe": round(new_sharpe, 4),
+            "previous_sharpe": round(previous_sharpe, 4),
+            "improvement_pct": improvement_pct,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    async def _improve_strategy(self, strategy: str, symbol: str) -> dict | None:
+        """Sweep params for one strategy. Returns promoted result or None."""
+        if not self._get_param_space(strategy):
+            return None
+
+        key = self._key(strategy, symbol)
+        current_best = self._best_sharpe.get(key, 0.0)
+
+        best_sharpe, best_params = await self._search_best_params(strategy, symbol, current_best)
+
+        if best_params is None or not self._should_promote(best_sharpe, current_best):
+            return None
+
+        self._store_promotion(key, best_params, best_sharpe)
+
+        promotion = self._build_promotion_entry(
+            strategy=strategy,
+            symbol=symbol,
+            params=best_params,
+            new_sharpe=best_sharpe,
+            previous_sharpe=current_best,
+        )
+        self._persist(promotion)
+        logger.info("Self-improver PROMOTED params", **promotion)
+        return promotion
 
     def _persist(self, entry: dict) -> None:
         try:
@@ -183,7 +221,7 @@ class SelfImprover:
             logger.debug("self_improver persist failed", error=str(exc))
 
     def get_best_params(self, strategy: str, symbol: str) -> dict | None:
-        return self._best_params.get(f"{strategy}:{symbol}")
+        return self._best_params.get(self._key(strategy, symbol))
 
     def get_history(self) -> list[dict]:
         if not RESULTS_FILE.exists():
