@@ -54,8 +54,6 @@ def _count_loc(root: Path) -> dict:
     Count lines of code under ``root`` with caching.
     Only files whose modification time has changed are re‑processed.
     """
-    global _loc_cache
-
     total_files = 0
     total_lines = 0
     code_lines = 0
