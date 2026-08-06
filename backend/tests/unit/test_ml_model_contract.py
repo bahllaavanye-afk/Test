@@ -33,13 +33,36 @@ import pathlib
 
 import pytest
 
+# File system
 MODELS_DIR = pathlib.Path(__file__).resolve().parents[2] / "app" / "ml" / "models"
 
 # Declared @abstractmethod on AbstractModel (app/ml/models/base_model.py).
-REQUIRED_METHODS = {"forward", "train_epoch", "evaluate"}
+REQUIRED_METHODS: set[str] = {"forward", "train_epoch", "evaluate"}
 
 # Modules that are not model implementations.
-SKIP_MODULES = {"__init__", "base_model"}
+SKIP_MODULES: set[str] = {"__init__", "base_model"}
+
+# Validation thresholds
+MIN_EXPECTED_MODELS: int = 10
+
+# Error messages
+ERROR_MODEL_DISCOVERY: str = "expected the model package, found {} modules"
+ERROR_MISSING_METHODS: str = (
+    "AbstractModel subclass does not implement the interface. torch is not "
+    "in the CI dep list, so nothing else exercises these files:\n  "
+)
+ERROR_SYNTAX: str = "model module(s) with syntax errors:\n  "
+ERROR_DICT_RETURN: str = "evaluate() returns a dict"
+ERROR_UNPARSEABLE: str = "{}: unparseable — {}"
+ERROR_MISSING_FORMAT: str = "{}::{} missing {}"
+ERROR_REQUIRED_NOT_IN_BASE: str = (
+    "REQUIRED_METHODS lists {!r}, but AbstractModel does not declare "
+    "it as @abstractmethod. Declared: {}"
+)
+
+# AST attribute names
+ATTR_ABSTRACTMETHOD: str = "abstractmethod"
+ATTR_ABSTRACTMODEL: str = "AbstractModel"
 
 
 def _model_modules() -> list[pathlib.Path]:
@@ -68,14 +91,14 @@ def _subclasses_abstract_model(tree: ast.Module) -> list[str]:
             continue
         for base in node.bases:
             base_name = getattr(base, "id", None) or getattr(base, "attr", None)
-            if base_name == "AbstractModel":
+            if base_name == ATTR_ABSTRACTMODEL:
                 names.append(node.name)
     return names
 
 
 def test_model_modules_are_discoverable():
     mods = _model_modules()
-    assert len(mods) >= 10, f"expected the model package, found {len(mods)} modules"
+    assert len(mods) >= MIN_EXPECTED_MODELS, ERROR_MODEL_DISCOVERY.format(len(mods))
 
 
 def test_every_abstractmodel_subclass_declares_the_required_methods():
@@ -86,7 +109,7 @@ def test_every_abstractmodel_subclass_declares_the_required_methods():
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except (SyntaxError, UnicodeDecodeError) as exc:
-            violations.append(f"{path.name}: unparseable — {exc}")
+            violations.append(ERROR_UNPARSEABLE.format(path.name, exc))
             continue
 
         classes = _classes_with_methods(tree)
@@ -94,14 +117,12 @@ def test_every_abstractmodel_subclass_declares_the_required_methods():
             missing = REQUIRED_METHODS - classes.get(cls, set())
             if missing:
                 violations.append(
-                    f"{path.name}::{cls} missing {', '.join(sorted(missing))}"
+                    ERROR_MISSING_FORMAT.format(
+                        path.name, cls, ", ".join(sorted(missing))
+                    )
                 )
 
-    assert not violations, (
-        "AbstractModel subclass does not implement the interface. torch is not "
-        "in the CI dep list, so nothing else exercises these files:\n  "
-        + "\n  ".join(violations)
-    )
+    assert not violations, ERROR_MISSING_METHODS + "\n  ".join(violations)
 
 
 def test_every_model_module_parses():
@@ -112,7 +133,7 @@ def test_every_model_module_parses():
             ast.parse(path.read_text(encoding="utf-8"))
         except SyntaxError as exc:
             broken.append(f"{path.name}:{exc.lineno} {exc.msg}")
-    assert not broken, "model module(s) with syntax errors:\n  " + "\n  ".join(broken)
+    assert not broken, ERROR_SYNTAX + "\n  ".join(broken)
 
 
 def test_no_model_calls_evaluate_returning_a_bare_dict():
@@ -129,7 +150,7 @@ def test_no_model_calls_evaluate_returning_a_bare_dict():
                 continue
             for sub in ast.walk(node):
                 if isinstance(sub, ast.Return) and isinstance(sub.value, ast.Dict):
-                    offenders.append(f"{path.name}:{sub.lineno} evaluate() returns a dict")
+                    offenders.append(f"{path.name}:{sub.lineno} {ERROR_DICT_RETURN}")
     assert not offenders, "\n  ".join(offenders)
 
 
@@ -141,15 +162,14 @@ def test_required_method_list_matches_the_abstract_base(required):
 
     declared = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and node.name == "AbstractModel":
+        if isinstance(node, ast.ClassDef) and node.name == ATTR_ABSTRACTMODEL:
             for item in node.body:
                 if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     for dec in item.decorator_list:
                         name = getattr(dec, "id", None) or getattr(dec, "attr", None)
-                        if name == "abstractmethod":
+                        if name == ATTR_ABSTRACTMETHOD:
                             declared.add(item.name)
 
-    assert required in declared, (
-        f"REQUIRED_METHODS lists {required!r}, but AbstractModel does not declare "
-        f"it as @abstractmethod. Declared: {sorted(declared)}"
+    assert required in declared, ERROR_REQUIRED_NOT_IN_BASE.format(
+        required, sorted(declared)
     )

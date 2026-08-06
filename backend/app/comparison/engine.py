@@ -31,6 +31,7 @@ P_VAL_FINAL_ROUND: int = 6
 # Default statistical values
 DEFAULT_T_STAT: float = 0.0
 DEFAULT_P_VAL: float = 1.0
+DEFAULT_IMPROVEMENT_SHARPE: float = 0.0
 
 # Log field names
 LOG_STRATEGY_FIELD: str = "strategy"
@@ -80,9 +81,9 @@ class ComparisonResult:
     ml_enhanced: BacktestMetrics | None = None
     benchmark_curves: dict = field(default_factory=dict)
     benchmark_stats: dict = field(default_factory=dict)
-    ml_improvement_sharpe: float = 0.0
-    t_statistic: float = 0.0
-    p_value: float = 1.0
+    ml_improvement_sharpe: float = DEFAULT_IMPROVEMENT_SHARPE
+    t_statistic: float = DEFAULT_T_STAT
+    p_value: float = DEFAULT_P_VAL
     is_significant: bool = False
     winner: str = WINNER_NEITHER
 
