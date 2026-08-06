@@ -2,28 +2,54 @@
 Unified ML inference service. Loaded once at app startup.
 Provides ensemble predictions for any symbol.
 """
+
 import time
-import pandas as pd
-from typing import Any
-from app.ml.features.engineer import engineer_features, create_sequences, FEATURE_COLS
-from app.ml.features.normalization import FeatureScaler
-from app.config import settings
 from pathlib import Path
+from typing import Any, Dict, Optional
+
+import pandas as pd
 import structlog
+
+from app.config import settings
+from app.ml.features.engineer import FEATURE_COLS, create_sequences, engineer_features
+from app.ml.features.normalization import FeatureScaler
+from app.ml.models.gemini_signal import get_gemini_engine
 
 logger = structlog.get_logger()
 
-_inference_service: "InferenceService | None" = None
+_inference_service: Optional["InferenceService"] = None
 
 
 class InferenceService:
-    def __init__(self):
-        self.models: dict[str, Any] = {}
-        self.scalers: dict[str, FeatureScaler] = {}
-        self.weights = {"lstm": 0.50, "xgboost": 0.35, "lorentzian": 0.15}
+    """
+    Service that loads ML model artifacts and provides ensemble predictions.
+
+    The service loads LSTM, XGBoost, Lorentzian KNN, and Gemini signal models
+    (when an API key is configured). It also loads a feature scaler used by
+    the LSTM model. Models are weighted to produce a single probability
+    which is then translated into an up/down/neutral signal.
+    """
+
+    def __init__(self) -> None:
+        self.models: Dict[str, Any] = {}
+        self.scalers: Dict[str, FeatureScaler] = {}
+        self.weights: Dict[str, float] = {
+            "lstm": 0.50,
+            "xgboost": 0.35,
+            "lorentzian": 0.15,
+        }
 
     def load_models(self) -> None:
-        """Load all active model artifacts from disk."""
+        """
+        Load all active model artifacts from disk.
+
+        The method looks for model files in the directory specified by
+        ``settings.models_dir``. If a file is found, the corresponding model
+        class is imported and the model is loaded. Missing files are ignored,
+        and any loading errors are logged. The Gemini signal engine is always
+        attempted; if it reports availability, it is added to the model set
+        and the ensemble weights are re‑scaled accordingly.
+        """
         models_dir = Path(settings.models_dir)
         if not models_dir.exists():
             logger.warning("models_artifacts directory not found — ML predictions disabled")
@@ -34,6 +60,7 @@ class InferenceService:
         if lstm_path.exists():
             try:
                 from app.ml.models.lstm import LSTMPredictor
+
                 self.models["lstm"] = LSTMPredictor.load(str(lstm_path))
                 logger.info("LSTM model loaded", path=str(lstm_path))
             except Exception as e:
@@ -44,6 +71,7 @@ class InferenceService:
         if xgb_path.exists():
             try:
                 from app.ml.models.xgboost_model import XGBoostClassifier
+
                 self.models["xgboost"] = XGBoostClassifier.load(str(xgb_path))
                 logger.info("XGBoost model loaded")
             except Exception as e:
@@ -54,6 +82,7 @@ class InferenceService:
         if lk_path.exists():
             try:
                 from app.ml.models.lorentzian_knn import LorentzianKNN
+
                 self.models["lorentzian"] = LorentzianKNN.load(str(lk_path))
                 logger.info("Lorentzian KNN loaded")
             except Exception as e:
@@ -65,7 +94,6 @@ class InferenceService:
             self.scalers["default"] = FeatureScaler.load(str(scaler_path))
 
         # Load Gemini signal engine (always available when API key is set)
-        from app.ml.models.gemini_signal import get_gemini_engine
         gemini = get_gemini_engine()
         if gemini.is_available:
             self.models["gemini"] = gemini
@@ -79,16 +107,33 @@ class InferenceService:
             logger.info("Gemini signal engine loaded", weight=0.20)
 
     def has_any_model(self) -> bool:
-        """Returns True if at least one model (lstm, xgboost, lorentzian, gemini) is loaded."""
+        """
+        Return ``True`` if at least one model (LSTM, XGBoost, Lorentzian, Gemini)
+        is successfully loaded.
+        """
         return any(
             self.models.get(k) is not None
             for k in ("lstm", "xgboost", "lorentzian", "gemini")
         )
 
-    async def predict(self, data: pd.DataFrame, symbol: str) -> dict | None:
+    async def predict(self, data: pd.DataFrame, symbol: str) -> Optional[Dict[str, Any]]:
         """
-        Generate ensemble prediction for the latest bar in data.
-        Returns: {prediction: 'up'|'down'|'neutral', confidence: float, ...}
+        Generate an ensemble prediction for the latest bar in ``data``.
+
+        Parameters
+        ----------
+        data: pd.DataFrame
+            Raw market data containing at least the columns required by the
+            feature engineering pipeline.
+        symbol: str
+            Ticker symbol for which the prediction is being made.
+
+        Returns
+        -------
+        dict | None
+            A dictionary with keys ``prediction``, ``probability``, ``confidence``,
+            and ``individual`` (per‑model probabilities). Returns ``None`` if no
+            models are loaded, the data is insufficient, or an error occurs.
         """
         if not self.models:
             return None
@@ -102,7 +147,7 @@ class InferenceService:
                 return None
 
             # Gather individual predictions
-            predictions = {}
+            predictions: Dict[str, float] = {}
 
             if "lstm" in self.models:
                 scaler = self.scalers.get("default")
@@ -112,20 +157,27 @@ class InferenceService:
                     X, _ = create_sequences(feat_df_norm, seq_len=60)
                     if len(X) > 0:
                         import torch
+
                         prob = float(self.models["lstm"].predict_proba(X[-1:]).item())
                         predictions["lstm"] = prob
 
             if "xgboost" in self.models:
                 import numpy as np
+
                 X_flat = feat_df[FEATURE_COLS].values[-1:]
                 prob = float(self.models["xgboost"].predict_proba(X_flat)[0])
                 predictions["xgboost"] = prob
 
             if "lorentzian" in self.models:
-                from app.ml.models.lorentzian_knn import compute_lorentzian_features, LORENTZIAN_FEATURES
-                import torch, numpy as np
+                from app.ml.models.lorentzian_knn import LORENTZIAN_FEATURES, compute_lorentzian_features
+
+                import torch
+                import numpy as np
+
                 lf = compute_lorentzian_features(data)
-                x = torch.tensor(lf[LORENTZIAN_FEATURES].fillna(0).values[-1:], dtype=torch.float32)
+                x = torch.tensor(
+                    lf[LORENTZIAN_FEATURES].fillna(0).values[-1:], dtype=torch.float32
+                )
                 prob = float(self.models["lorentzian"].forward(x).item())
                 predictions["lorentzian"] = prob
 
@@ -145,7 +197,9 @@ class InferenceService:
 
             # Weighted ensemble
             total_w = sum(self.weights.get(n, 1.0) for n in predictions)
-            ensemble_prob = sum(v * self.weights.get(n, 1.0) for n, v in predictions.items()) / total_w
+            ensemble_prob = sum(
+                v * self.weights.get(n, 1.0) for n, v in predictions.items()
+            ) / total_w
             confidence = abs(ensemble_prob - 0.5) * 2
 
             if ensemble_prob > 0.5 + 0.05:
@@ -187,6 +241,12 @@ class InferenceService:
 
 
 def get_inference_service() -> InferenceService:
+    """
+    Retrieve a singleton instance of :class:`InferenceService`.
+
+    The service is instantiated on first call and its models are loaded
+    immediately. Subsequent calls return the cached instance.
+    """
     global _inference_service
     if _inference_service is None:
         _inference_service = InferenceService()
