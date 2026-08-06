@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -24,7 +23,56 @@ from app.tasks.agent_memory import AgentMemory
 
 logger = logging.getLogger(__name__)
 
+# --------------------------------------------------------------------------- #
+# Constants
+# --------------------------------------------------------------------------- #
+
+# Filesystem
 STAGING_DIR = Path(__file__).parent.parent / "strategies" / "staging"
+
+# Default strategy parameters
+DEFAULT_TICK_INTERVAL = 3600
+DEFAULT_CONFIDENCE_THRESHOLD = 0.60
+DEFAULT_ANALYZE_CONFIDENCE = 0.65
+DEFAULT_MIN_DATA_LENGTH = 50
+
+# Indicator defaults
+DEFAULT_RSI_LENGTH = 14
+DEFAULT_EMA_LENGTH = 21
+DEFAULT_ENTRY_RSI_THRESHOLD = 35
+DEFAULT_EXIT_RSI_THRESHOLD = 65
+
+# Validation
+STRATEGY_NAME_REGEX = r'^[a-z][a-z0-9_]*$'
+
+# Prompt templates
+SYSTEM_PROMPT = """You are a senior quantitative analyst. Propose trading strategy parameters.
+Output ONLY a JSON array of exactly 2 strategies, no other text."""
+
+USER_PROMPT = """Propose 2 novel indicator-based trading strategy configurations.
+
+Available indicators: RSI(14), EMA(8/21/55), MACD(12,26,9), Bollinger Bands(20,2), ATR(14), ADX(14), Stochastic(14,3), VWAP.
+
+For each strategy, provide:
+{
+  "name": "snake_case_name",
+  "class_name": "PascalCaseName",
+  "hypothesis": "one sentence why this works",
+  "market_type": "equity|crypto",
+  "risk_bucket": "directional|arbitrage",
+  "tick_interval": 3600,
+  "expected_sharpe": 0.8,
+  "entry_conditions": ["rsi < 30", "price > ema_21"],
+  "exit_conditions": ["rsi > 70"]
+}"""
+
+# Default condition placeholders
+DEFAULT_ENTRY_CONDITIONS = ["rsi < 30"]
+DEFAULT_EXIT_CONDITIONS = ["rsi > 70"]
+
+# --------------------------------------------------------------------------- #
+# Strategy template
+# --------------------------------------------------------------------------- #
 
 _STRATEGY_TEMPLATE = '''"""
 Auto-generated strategy proposal by AIStrategyGenerator.
@@ -45,10 +93,10 @@ class {class_name}(AbstractStrategy):
     strategy_type = "manual"
     risk_bucket = "{risk_bucket}"
     tick_interval_seconds = {tick_interval}
-    confidence_threshold = 0.60
+    confidence_threshold = {confidence_threshold}
 
     def backtest_signals(self, df: pd.DataFrame) -> BacktestSignals:
-        if len(df) < 50:
+        if len(df) < {min_data_length}:
             return BacktestSignals(entries=pd.Series(False, index=df.index),
                                    exits=pd.Series(False, index=df.index))
 {backtest_body}
@@ -58,7 +106,7 @@ class {class_name}(AbstractStrategy):
         )
 
     async def analyze(self, data: pd.DataFrame, symbol: str) -> Signal | None:
-        if len(data) < 50:
+        if len(data) < {min_data_length}:
             return None
 {analyze_body}
         return None
@@ -85,35 +133,21 @@ class AIStrategyGenerator:
                     written.append(p)
 
             if self._memory and written:
-                await self._memory.write("strategy_proposals", {
-                    "count": len(written),
-                    "proposals": [w.get("name", "?") for w in written],
-                    "status": "staging",
-                })
+                await self._memory.write(
+                    "strategy_proposals",
+                    {
+                        "count": len(written),
+                        "proposals": [w.get("name", "?") for w in written],
+                        "status": "staging",
+                    },
+                )
             logger.info("AIStrategyGenerator: wrote %d staging strategies", len(written))
         except Exception as e:
             logger.exception("AIStrategyGenerator error: %s", e)
 
     async def _generate_proposals(self) -> list[dict]:
-        system = """You are a senior quantitative analyst. Propose trading strategy parameters.
-Output ONLY a JSON array of exactly 2 strategies, no other text."""
-
-        user = """Propose 2 novel indicator-based trading strategy configurations.
-
-Available indicators: RSI(14), EMA(8/21/55), MACD(12,26,9), Bollinger Bands(20,2), ATR(14), ADX(14), Stochastic(14,3), VWAP.
-
-For each strategy, provide:
-{
-  "name": "snake_case_name",
-  "class_name": "PascalCaseName",
-  "hypothesis": "one sentence why this works",
-  "market_type": "equity|crypto",
-  "risk_bucket": "directional|arbitrage",
-  "tick_interval": 3600,
-  "expected_sharpe": 0.8,
-  "entry_conditions": ["rsi < 30", "price > ema_21"],
-  "exit_conditions": ["rsi > 70"]
-}"""
+        system = SYSTEM_PROMPT
+        user = USER_PROMPT
 
         responses = await call_consensus(
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -144,34 +178,34 @@ For each strategy, provide:
 
     def _write_staging_file(self, proposal: dict) -> Path | None:
         name = proposal.get("name", "")
-        if not name or not re.match(r'^[a-z][a-z0-9_]*$', name):
+        if not name or not re.match(STRATEGY_NAME_REGEX, name):
             return None
 
         path = STAGING_DIR / f"{name}.py"
         if path.exists():
             return None
 
-        entry_conditions = proposal.get("entry_conditions", ["rsi < 30"])
-        exit_conditions = proposal.get("exit_conditions", ["rsi > 70"])
+        entry_conditions = proposal.get("entry_conditions", DEFAULT_ENTRY_CONDITIONS)
+        exit_conditions = proposal.get("exit_conditions", DEFAULT_EXIT_CONDITIONS)
 
         # Build simple backtest body from entry/exit conditions
         backtest_body = "        close = df['close']\n"
-        backtest_body += "        rsi = ta.rsi(close, length=14).fillna(50)\n"
-        backtest_body += "        ema_21 = ta.ema(close, length=21).fillna(close)\n"
+        backtest_body += f"        rsi = ta.rsi(close, length={DEFAULT_RSI_LENGTH}).fillna(50)\n"
+        backtest_body += f"        ema_21 = ta.ema(close, length={DEFAULT_EMA_LENGTH}).fillna(close)\n"
         backtest_body += "        entries = pd.Series(False, index=df.index)\n"
         backtest_body += "        exits = pd.Series(False, index=df.index)\n"
         backtest_body += f"        # Entry: {', '.join(entry_conditions)}\n"
-        backtest_body += "        entries = (rsi < 35) & (close > ema_21)\n"
+        backtest_body += f"        entries = (rsi < {DEFAULT_ENTRY_RSI_THRESHOLD}) & (close > ema_21)\n"
         backtest_body += f"        # Exit: {', '.join(exit_conditions)}\n"
-        backtest_body += "        exits = rsi > 65\n"
+        backtest_body += f"        exits = rsi > {DEFAULT_EXIT_RSI_THRESHOLD}\n"
 
         analyze_body = "        close = data['close']\n"
-        analyze_body += "        rsi = ta.rsi(close, length=14)\n"
+        analyze_body += f"        rsi = ta.rsi(close, length={DEFAULT_RSI_LENGTH})\n"
         analyze_body += "        if rsi is None or rsi.empty: return None\n"
         analyze_body += "        last_rsi = rsi.iloc[-1]\n"
-        analyze_body += "        ema_21 = ta.ema(close, length=21).iloc[-1]\n"
-        analyze_body += "        if last_rsi < 35 and close.iloc[-1] > ema_21:\n"
-        analyze_body += "            return Signal(symbol=symbol, side='buy', confidence=0.65, strategy=self.name)\n"
+        analyze_body += f"        ema_21 = ta.ema(close, length={DEFAULT_EMA_LENGTH}).iloc[-1]\n"
+        analyze_body += f"        if last_rsi < {DEFAULT_ENTRY_RSI_THRESHOLD} and close.iloc[-1] > ema_21:\n"
+        analyze_body += f"            return Signal(symbol=symbol, side='buy', confidence={DEFAULT_ANALYZE_CONFIDENCE}, strategy=self.name)\n"
 
         code = _STRATEGY_TEMPLATE.format(
             timestamp=datetime.now(timezone.utc).isoformat(),
@@ -181,7 +215,9 @@ For each strategy, provide:
             strategy_name=name,
             market_type=proposal.get("market_type", "equity"),
             risk_bucket=proposal.get("risk_bucket", "directional"),
-            tick_interval=proposal.get("tick_interval", 3600),
+            tick_interval=proposal.get("tick_interval", DEFAULT_TICK_INTERVAL),
+            confidence_threshold=DEFAULT_CONFIDENCE_THRESHOLD,
+            min_data_length=DEFAULT_MIN_DATA_LENGTH,
             backtest_body=backtest_body,
             analyze_body=analyze_body,
         )
