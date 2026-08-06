@@ -107,18 +107,42 @@ def test_the_real_offenders_from_the_measured_run_are_now_excluded():
         )
 
 
-def test_both_candidate_lists_apply_the_filter(tree):
-    """The fallback glob is a second path back to the same wasted attempts."""
+def test_every_candidate_list_applies_the_filter(tree):
+    """The fallback glob is a second path back to the same wasted attempts.
+
+    This used to count `_too_large` calls and require two, one per candidate
+    list. The selector now routes every list through a single `_usable()`
+    helper, so counting would demand duplication that no longer exists. The
+    property that actually matters is unchanged and is now checked directly:
+    NO glob result may reach the caller without passing through the filter.
+    That is strictly stronger — it fails for a third candidate list too, which
+    the old count would have waved through."""
     picker = _fn(tree, "pick_target_file")
-    calls = [
-        n for n in ast.walk(picker)
-        if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "_too_large"
-    ]
-    assert len(calls) >= 2, (
-        f"_too_large() is applied {len(calls)} time(s) in pick_target_file(), but "
-        f"there are TWO candidate lists — the hour's pattern and the repo-wide "
-        f"fallback. Filtering only one leaks oversized files back in."
+    unfiltered = []
+    for node in ast.walk(picker):
+        if not (isinstance(node, ast.Call)
+                and getattr(node.func, "attr", None) == "glob"):
+            continue
+        # Every glob() must sit directly inside a _usable(...) call.
+        wrapped = any(
+            isinstance(outer, ast.Call)
+            and getattr(outer.func, "id", None) == "_usable"
+            and any(a is node for a in outer.args)
+            for outer in ast.walk(picker)
+        )
+        if not wrapped:
+            unfiltered.append(ast.unparse(node))
+    assert not unfiltered, (
+        f"glob call(s) not wrapped in _usable(): {unfiltered}. Every candidate "
+        f"list — the type's patterns and the repo-wide fallback — must be "
+        f"filtered, or oversized and protected files leak back in."
     )
+    # And the filter itself must still apply both checks.
+    helper = _fn(tree, "_usable")
+    names = {getattr(n.func, "id", None) for n in ast.walk(helper)
+             if isinstance(n, ast.Call)}
+    assert {"_is_protected", "_too_large"} <= names, (
+        f"_usable() no longer applies both filters (calls: {names})")
 
 
 def test_the_limit_is_still_a_single_constant():
@@ -152,7 +176,7 @@ def test_selection_still_finds_something_in_this_repo():
             and any(getattr(t, "id", None) == name for t in n.targets)
         )
         exec(compile(ast.Module(body=[node], type_ignores=[]), "<c>", "exec"), ns)
-    for name in ("_is_protected", "_too_large", "pick_target_file"):
+    for name in ("_is_protected", "_too_large", "_usable", "pick_target_file"):
         exec(
             compile(ast.Module(body=[_fn(tree, name)], type_ignores=[]), "<f>", "exec"),
             ns,
