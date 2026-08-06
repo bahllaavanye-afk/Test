@@ -100,13 +100,15 @@ def test_the_audit_speaks_on_the_CLEAN_path_too(monkeypatch, capsys):
 
 
 def test_a_second_writer_is_named_loudly(monkeypatch, capsys):
+    """One untagged order, not part of any bulk close-all — the case the audit
+    exists for. It must still be loud, and it must still name the order."""
     async def fake_get(path, params=None):
         return [_o("qe-momentum-SPY-1"), _o("agb8-runner-7", "TSLA")]
     monkeypatch.setattr(dop, "_alpaca_get", fake_get)
     _, foreign, _ = asyncio.run(dop.audit_order_origins())
     out = capsys.readouterr().out
     assert foreign == 1
-    assert "second writer" in out
+    assert "ORDER-ORIGIN AUDIT" in out and "one at a time" in out
     assert "TSLA" in out and "agb8-runner-7" in out
 
 
@@ -144,3 +146,136 @@ def test_the_desk_actually_runs_the_audit_every_run():
         "the account stage never calls audit_order_origins()")
     # It must precede the sizing inputs it exists to warn about.
     assert stage.index("audit_order_origins()") < stage.index("recover_negative_cash")
+
+
+# ── The false alarm ──────────────────────────────────────────────────────────
+#
+# On 2026-08-06 this audit printed "50 of 50 recent orders were NOT placed by
+# this desk — a second writer is on this account" and it was escalated as an
+# intruder. It was this desk's own recovery flatten: `recover_negative_cash`
+# fired one run earlier and closed 17 positions via `DELETE /v2/positions`,
+# which Alpaca fulfils by creating the closing orders itself — untagged.
+#
+# The five sampled orders, verbatim from run 31072118909:
+#
+#   2026-08-06T04:07:09.55037457Z USO  sell qty=24.019098096 coid='72f6155b-…'
+#   2026-08-06T04:07:09.54981564Z URA  sell qty=91.937715946 coid='692927e8-…'
+#   2026-08-06T04:07:09.54924723Z TSLA buy  qty=3            coid='2f8a25a2-…'
+#   2026-08-06T04:07:09.54871309Z THD  sell qty=113.66       coid='63495dbe-…'
+#   2026-08-06T04:07:09.54811399Z QQQ  sell qty=3.93         coid='3d611e35-…'
+#
+# Five orders inside 2.1 milliseconds. No strategy loop decides that way.
+
+REAL_FLATTEN = [
+    {"client_order_id": "72f6155b-5610-4fa7-857c-d6e5d56bd22b", "symbol": "USO",
+     "side": "sell", "qty": "24.019098096", "status": "accepted",
+     "submitted_at": "2026-08-06T04:07:09.55037457Z"},
+    {"client_order_id": "692927e8-4969-45b8-b65b-74a562893146", "symbol": "URA",
+     "side": "sell", "qty": "91.937715946", "status": "accepted",
+     "submitted_at": "2026-08-06T04:07:09.54981564Z"},
+    {"client_order_id": "2f8a25a2-ac91-4918-bd80-f43370caaa91", "symbol": "TSLA",
+     "side": "buy", "qty": "3", "status": "accepted",
+     "submitted_at": "2026-08-06T04:07:09.54924723Z"},
+    {"client_order_id": "63495dbe-204c-441f-90b4-1f2e06a21208", "symbol": "THD",
+     "side": "sell", "qty": "113.66", "status": "accepted",
+     "submitted_at": "2026-08-06T04:07:09.54871309Z"},
+    {"client_order_id": "3d611e35-18b9-464a-96a1-e09cdcfcbdb1", "symbol": "QQQ",
+     "side": "sell", "qty": "3.93", "status": "accepted",
+     "submitted_at": "2026-08-06T04:07:09.54811399Z"},
+]
+
+
+def test_alpaca_nanosecond_timestamps_parse():
+    """Alpaca stamps nanoseconds. Unparsed, every order looks isolated and the
+    false alarm comes straight back. Python 3.11 truncates these natively, so
+    the shim in `_parse_ts` is insurance for older interpreters rather than
+    something this suite can kill a mutation on — hence the equivalence check
+    below, which holds on every version."""
+    assert dop._parse_ts("2026-08-06T04:07:09.55037457Z") is not None
+    assert (dop._parse_ts("2026-08-06T04:07:09.55037457Z")
+            == dop._parse_ts("2026-08-06T04:07:09.550374Z"))
+
+
+def test_the_real_flatten_is_recognised_as_one_bulk_action():
+    assert dop.bulk_burst_count(REAL_FLATTEN) == 5
+
+
+def test_the_real_flatten_does_not_report_a_second_writer(monkeypatch, capsys):
+    async def fake_get(path, params=None):
+        return REAL_FLATTEN
+    monkeypatch.setattr(dop, "_alpaca_get", fake_get)
+    ours, foreign, _ = asyncio.run(dop.audit_order_origins())
+    out = capsys.readouterr().out
+    assert (ours, foreign) == (0, 5)          # still counted as untagged …
+    assert "second writer" not in out         # … but no longer accused
+    assert "close-all" in out
+
+
+def test_orders_placed_one_at_a_time_still_raise_the_alarm():
+    """The fix must not silence the case the audit exists for. Same five
+    symbols, decided minutes apart instead of milliseconds."""
+    spread = [dict(o, submitted_at=f"2026-08-06T0{4 + i}:07:09Z")
+              for i, o in enumerate(REAL_FLATTEN)]
+    assert dop.bulk_burst_count(spread) == 0
+
+
+def test_a_real_writer_alongside_a_flatten_is_still_reported(monkeypatch, capsys):
+    intruder = dict(REAL_FLATTEN[0], symbol="AAPL", side="buy",
+                    client_order_id="c0ffee00-0000-0000-0000-000000000001",
+                    submitted_at="2026-08-06T09:31:00Z")
+    async def fake_get(path, params=None):
+        return REAL_FLATTEN + [intruder]
+    monkeypatch.setattr(dop, "_alpaca_get", fake_get)
+    asyncio.run(dop.audit_order_origins())
+    out = capsys.readouterr().out
+    assert "ORDER-ORIGIN AUDIT" in out
+    assert "one at a time" in out
+
+
+def test_two_orders_are_not_a_burst():
+    """A pair landing together is a coincidence, not a close-all. The floor
+    keeps the exemption from swallowing ordinary paired activity."""
+    pair = REAL_FLATTEN[:2]
+    assert dop.bulk_burst_count(pair) == 0
+
+
+def test_a_malformed_timestamp_does_not_crash_a_diagnostic():
+    assert dop._parse_ts(None) is None
+    assert dop._parse_ts("not-a-date") is None
+    assert dop.bulk_burst_count([{"submitted_at": "nonsense"}]) == 0
+
+
+# ── The recovery's promise ───────────────────────────────────────────────────
+
+def test_recovery_does_not_promise_recovery_into_a_closed_market(monkeypatch, capsys):
+    """Measured 2026-08-06: the 04:06 and 04:45 runs flattened the same 17
+    positions and reported cash -$48,471.29 both times, to the cent. Closes
+    submitted into a shut market cannot fill, so cash never frees."""
+    monkeypatch.setattr(dop, "_alpaca_delete_sync",
+                        lambda path: {"body": [{"symbol": "SPY"}] * 17})
+    monkeypatch.setattr(dop, "ALPACA_PAPER_BASE", "https://paper-api.alpaca.markets")
+    monkeypatch.setattr(dop, "AUTO_FLATTEN_ON_NEGATIVE_CASH", True)
+    account = {"cash": -48471.29, "non_marginable_buying_power": 0.0, "buying_power": 0.0}
+
+    asyncio.run(dop.recover_negative_cash(account, market_is_open=False))
+    closed_out = capsys.readouterr().out
+    assert "next run trades normally" not in closed_out
+    assert "market is CLOSED" in closed_out
+
+    asyncio.run(dop.recover_negative_cash(account, market_is_open=True))
+    assert "next run trades normally" in capsys.readouterr().out
+
+
+def test_a_bug_in_the_burst_analysis_cannot_take_the_desk_down(monkeypatch, capsys):
+    """The fetch was already fail-soft; the burst logic added after it was not,
+    and a missing `import re` in it would have crashed a live trading run."""
+    async def fake_get(path, params=None):
+        return REAL_FLATTEN
+
+    def boom(*a, **k):
+        raise RuntimeError("synthetic burst failure")
+    monkeypatch.setattr(dop, "_alpaca_get", fake_get)
+    monkeypatch.setattr(dop, "bulk_burst_count", boom)
+    ours, foreign, _ = asyncio.run(dop.audit_order_origins())
+    assert (ours, foreign) == (0, 5)
+    assert "burst analysis unavailable" in capsys.readouterr().out
