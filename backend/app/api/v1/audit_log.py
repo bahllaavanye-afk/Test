@@ -8,16 +8,17 @@ records.
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from datetime import datetime
 
-from app.database import get_db
+from fastapi import APIRouter, Depends, Query, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
+from app.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.user import User
 from pydantic import BaseModel, ConfigDict
-from datetime import datetime
 
 router = APIRouter(prefix="/audit-log", tags=["audit-log"])
 
@@ -57,6 +58,75 @@ class AuditLogOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+def _validate_user(current_user: Optional[User]) -> User:
+    """Ensure an authenticated user is present.
+
+    Raises
+    ------
+    HTTPException
+        If ``current_user`` is ``None``.
+    """
+    if current_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authenticated user not found.",
+        )
+    return current_user
+
+
+def _validate_limit(limit: Optional[int]) -> int:
+    """Validate the ``limit`` query parameter.
+
+    Parameters
+    ----------
+    limit: Optional[int]
+        The requested number of records.
+
+    Returns
+    -------
+    int
+        The validated limit.
+
+    Raises
+    ------
+    ValueError
+        If ``limit`` is ``None`` or outside the allowed range (1‑500).
+    """
+    if limit is None:
+        raise ValueError("limit must not be None")
+    if limit < 1 or limit > 500:
+        raise ValueError(f"limit must be between 1 and 500, got {limit}")
+    return limit
+
+
+async def _fetch_audit_logs(
+    db: AsyncSession, user_id: int, limit: int
+) -> List[AuditLog]:
+    """Retrieve the most recent audit log entries for a user.
+
+    Parameters
+    ----------
+    db: AsyncSession
+        The asynchronous SQLAlchemy session.
+    user_id: int
+        Identifier of the user whose logs are being fetched.
+    limit: int
+        Maximum number of records to return.
+
+    Returns
+    -------
+    List[AuditLog]
+        AuditLog objects ordered by ``created_at`` descending.
+    """
+    result = await db.execute(
+        select(AuditLog)
+        .where(AuditLog.user_id == user_id)
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
 @router.get("/", response_model=List[AuditLogOut])
 async def list_audit_log(
     limit: Optional[int] = Query(default=100, ge=1, le=500),
@@ -87,22 +157,6 @@ async def list_audit_log(
     ValueError
         If ``limit`` is ``None`` or outside the allowed range.
     """
-    if current_user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authenticated user not found.",
-        )
-
-    if limit is None:
-        raise ValueError("limit must not be None")
-    if limit < 1 or limit > 500:
-        raise ValueError(f"limit must be between 1 and 500, got {limit}")
-
-    result = await db.execute(
-        select(AuditLog)
-        .where(AuditLog.user_id == current_user.id)
-        .order_by(AuditLog.created_at.desc())
-        .limit(limit)
-    )
-    rows = result.scalars().all()
-    return rows
+    user = _validate_user(current_user)
+    validated_limit = _validate_limit(limit)
+    return await _fetch_audit_logs(db, user.id, validated_limit)
