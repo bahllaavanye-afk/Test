@@ -21,6 +21,28 @@ ERR_RETRIEVE_ARCHIVE: str = "Failed to retrieve archive: {exc}"
 router = APIRouter(prefix=ARCHIVE_PREFIX, tags=[ARCHIVE_TAG])
 
 
+def _normalize_date(date: str | None) -> str | None:
+    """Convert empty strings to None; leave other values unchanged."""
+    return None if date == "" else date
+
+
+def _validate_limit(limit: int) -> None:
+    """Raise an HTTPException if limit is not within allowed bounds."""
+    if limit < MIN_LIMIT:
+        raise HTTPException(status_code=400, detail=ERR_LIMIT_POSITIVE)
+
+
+def _execute_replay(category: str, date: str | None, limit: int) -> list:
+    """Run the replay function and translate unexpected errors to HTTPException."""
+    try:
+        return replay(category, date, limit)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=ERR_RETRIEVE_ARCHIVE.format(exc=exc),
+        ) from exc
+
+
 @router.get("/index")
 async def get_index(current_user: User = Depends(get_current_user)):
     """
@@ -53,25 +75,8 @@ async def get_archive(
     * `limit` is validated to be at least 1.
     * Returns an empty list if the replay yields no data.
     """
-    # Normalize empty date strings
-    if date == "":
-        date = None
-
-    # Defensive check for limit (should already be enforced by Query)
-    if limit < MIN_LIMIT:
-        raise HTTPException(
-            status_code=400,
-            detail=ERR_LIMIT_POSITIVE,
-        )
-
-    try:
-        result = replay(category, date, limit)
-    except Exception as exc:
-        # Convert unexpected errors to a client‑friendly response
-        raise HTTPException(
-            status_code=500,
-            detail=ERR_RETRIEVE_ARCHIVE.format(exc=exc),
-        ) from exc
-
+    normalized_date = _normalize_date(date)
+    _validate_limit(limit)
+    result = _execute_replay(category, normalized_date, limit)
     # Ensure the endpoint always returns a list
     return result if result else []

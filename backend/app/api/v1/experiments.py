@@ -2,16 +2,20 @@
 import asyncio
 import logging
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from fastapi import APIRouter, Body, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+
+import subprocess
+import sys
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, ConfigDict
+
 from app.database import get_db
 from app.api.deps import get_current_user
 from app.models.experiment import Experiment
 from app.models.user import User
-from pydantic import BaseModel, ConfigDict
-from datetime import datetime, timezone
 
 # Constants
 MAX_EXPERIMENTS = 50
@@ -58,9 +62,6 @@ class TrainRequest(BaseModel):
 
 async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
     """Background task: run the experiment script for the given config."""
-    import subprocess
-    import sys
-
     script = Path(__file__).parents[4] / "experiments" / "run_experiment.py"
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
     try:
@@ -75,8 +76,39 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
             stderr=subprocess.DEVNULL,
         )
         await proc.wait()
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover
         logger.error("Experiment %s failed: %s", experiment_id, exc)
+
+
+def _format_config_not_found_message(config_name: str, available: list[str]) -> str:
+    display_list = available[:CONFIGS_LIMIT_DISPLAY]
+    suffix = "..." if len(available) > CONFIGS_LIMIT_DISPLAY else ""
+    return CONFIG_NOT_FOUND_TEMPLATE.format(
+        config_name=config_name,
+        available=f"{display_list}{suffix}",
+    )
+
+
+def _validate_config_exists(config_name: str) -> Path:
+    """Ensure the YAML config file exists, otherwise raise HTTPException."""
+    config_path = CONFIGS_DIR / f"{config_name}.yaml"
+    if config_path.exists():
+        return config_path
+    available = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
+    message = _format_config_not_found_message(config_name, available)
+    raise HTTPException(status_code=404, detail=message)
+
+
+def _create_experiment_record(config_name: str, experiment_id: str, now: datetime) -> Experiment:
+    """Construct a new Experiment ORM instance."""
+    return Experiment(
+        id=experiment_id,
+        name=f"{config_name}-{now.strftime('%Y%m%d%H%M%S')}",
+        config={"config_name": config_name},
+        status=STATUS_QUEUED,
+        started_at=now,
+        created_at=now,
+    )
 
 
 @router.post("/train")
@@ -92,29 +124,14 @@ async def trigger_training(
     """
     config_name = body.config_name.removesuffix(".yaml")
 
-    # Validate config exists
-    config_path = CONFIGS_DIR / f"{config_name}.yaml"
-    if not config_path.exists():
-        available = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
-        display_list = available[:CONFIGS_LIMIT_DISPLAY]
-        suffix = "..." if len(available) > CONFIGS_LIMIT_DISPLAY else ""
-        message = CONFIG_NOT_FOUND_TEMPLATE.format(
-            config_name=config_name,
-            available=f"{display_list}{suffix}",
-        )
-        raise HTTPException(404, message)
+    # Validate config existence
+    _validate_config_exists(config_name)
 
     experiment_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
 
-    exp = Experiment(
-        id=experiment_id,
-        name=f"{config_name}-{now.strftime('%Y%m%d%H%M%S')}",
-        config={"config_name": config_name},
-        status=STATUS_QUEUED,
-        started_at=now,
-        created_at=now,
-    )
+    # Persist experiment record
+    exp = _create_experiment_record(config_name, experiment_id, now)
     db.add(exp)
     await db.commit()
 

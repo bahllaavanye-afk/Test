@@ -125,19 +125,24 @@ class SelfImprovingLoop:
     # ── LLM improvement pass ──────────────────────────────────────────────────
 
     async def _llm_improvement_pass(self, metrics: List[dict]) -> None:
+        """Run the LLM improvement workflow."""
         if not metrics:
             return
 
         top, bottom = self._select_top_bottom_strategies(metrics)
         prompt = self._build_llm_prompt(top, bottom)
 
-        response = await call_race(
+        response = await self._call_llm(prompt)
+        if response:
+            await self._store_llm_suggestion(response)
+
+    async def _call_llm(self, prompt: str) -> Any:
+        """Invoke the free LLM in race mode with the given prompt."""
+        return await call_race(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.4,
             max_tokens=512,
         )
-        if response:
-            await self._store_llm_suggestion(response)
 
     def _select_top_bottom_strategies(self, metrics: List[dict]) -> Tuple[List[dict], List[dict]]:
         """Return the top 5 and bottom 3 strategies based on Sharpe."""
