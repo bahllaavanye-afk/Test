@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Test dependency updates",
-    "Based on the collective knowledge, here are 2-3 concise bullet points of the most important, actionable knowledge:",
-    "Validate user input",
-    "Verify DB conn",
-    "Retrain predictors",
     "Implement circuit breakers",
     "Validate trade IDs",
     "Handle timeout errors",
@@ -199,8 +194,13 @@
     "Check API keys",
     "**1. Modular Refactoring with Monitoring**",
     "Ping external services",
-    "Check disk quotas"
+    "Check disk quotas",
+    "Log database queries",
+    "Verify clock sync",
+    "Apply strict type checking",
+    "Use Temporal Fusion Transformers",
+    "Retrain hybrid models regularly"
   ],
-  "last_updated": "2026-08-06T00:06:19.387071+00:00",
+  "last_updated": "2026-08-06T00:51:57.574990+00:00",
   "total": 200
 }
