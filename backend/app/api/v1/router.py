@@ -1,5 +1,13 @@
-"""API v1 router — mounts all sub-routers."""
+"""API v1 router — mounts all sub‑routers.
+
+This module aggregates the individual feature routers for version 1 of the
+public API and registers them with a top‑level :class:`fastapi.APIRouter`
+instance. The resulting ``api_router`` is imported by the main FastAPI
+application.
+"""
 import logging
+from typing import List, Optional, Tuple
+
 from fastapi import APIRouter
 
 from app.api.v1 import (
@@ -37,10 +45,20 @@ from app.api.v1.webhooks import router as webhooks_router
 
 logger = logging.getLogger(__name__)
 
-api_router = APIRouter()
+api_router: APIRouter = APIRouter()
 
-def _include(router_obj, name: str):
-    """Safely include a sub‑router, handling None or invalid inputs."""
+
+def _include(router_obj: Optional[APIRouter], name: str) -> None:
+    """Safely include a sub‑router into the top‑level ``api_router``.
+
+    Args:
+        router_obj: The router to include. If ``None`` the function logs a
+            warning and returns without raising an exception.
+        name: Human‑readable identifier for the router, used in log messages.
+
+    The function catches any unexpected exception during inclusion, logs the
+    error, and continues processing the remaining routers.
+    """
     if router_obj is None:
         logger.warning("Router %s is None and will be skipped.", name)
         return
@@ -49,8 +67,9 @@ def _include(router_obj, name: str):
     except Exception as exc:  # pragma: no cover
         logger.error("Failed to include router %s: %s", name, exc)
 
+
 # List of (router, name) tuples for systematic inclusion
-_routers = [
+_routers: List[Tuple[Optional[APIRouter], str]] = [
     (auth.router, "auth"),
     (accounts.router, "accounts"),
     (orders.router, "orders"),

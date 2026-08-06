@@ -17,7 +17,7 @@ import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, List, Mapping, Optional
 
 from app.tasks.free_llm_router import call_consensus, available_providers
 from app.tasks.agent_memory import AgentMemory
@@ -66,11 +66,28 @@ class {class_name}(AbstractStrategy):
 
 
 class AIStrategyGenerator:
-    def __init__(self, redis_client: Any = None):
+    """Generates draft trading strategies using LLM consensus.
+
+    The generator runs on a schedule, queries available LLM providers for
+    strategy proposals, writes valid proposals to a staging directory, and
+    records a summary in ``AgentMemory`` for later human review.
+    """
+
+    def __init__(self, redis_client: Any = None) -> None:
+        """Initialize the generator.
+
+        Args:
+            redis_client: Optional Redis client used by ``AgentMemory``.
+        """
         self._memory = AgentMemory(redis_client) if redis_client else None
         STAGING_DIR.mkdir(parents=True, exist_ok=True)
 
     async def run(self) -> None:
+        """Execute a generation cycle.
+
+        Retrieves LLM proposals, writes unique strategies to the staging area,
+        and stores a summary in memory. Errors are logged but do not raise.
+        """
         logger.info("AIStrategyGenerator: starting 6h generation cycle")
         providers = available_providers()
         if not providers:
@@ -85,16 +102,25 @@ class AIStrategyGenerator:
                     written.append(p)
 
             if self._memory and written:
-                await self._memory.write("strategy_proposals", {
-                    "count": len(written),
-                    "proposals": [w.get("name", "?") for w in written],
-                    "status": "staging",
-                })
+                await self._memory.write(
+                    "strategy_proposals",
+                    {
+                        "count": len(written),
+                        "proposals": [w.get("name", "?") for w in written],
+                        "status": "staging",
+                    },
+                )
             logger.info("AIStrategyGenerator: wrote %d staging strategies", len(written))
         except Exception as e:
             logger.exception("AIStrategyGenerator error: %s", e)
 
-    async def _generate_proposals(self) -> list[dict]:
+    async def _generate_proposals(self) -> List[dict]:
+        """Ask LLM providers for a pair of strategy configurations.
+
+        Returns:
+            A list of up to two unique proposal dictionaries extracted from the LLM
+            responses. If no valid proposals are found, an empty list is returned.
+        """
         system = """You are a senior quantitative analyst. Propose trading strategy parameters.
 Output ONLY a JSON array of exactly 2 strategies, no other text."""
 
@@ -123,7 +149,7 @@ For each strategy, provide:
         if not responses:
             return []
 
-        all_proposals: list[dict] = []
+        all_proposals: List[dict] = []
         seen = set()
         for resp in responses:
             try:
@@ -142,7 +168,19 @@ For each strategy, provide:
 
         return all_proposals[:2]
 
-    def _write_staging_file(self, proposal: dict) -> Path | None:
+    def _write_staging_file(self, proposal: Mapping[str, Any]) -> Optional[Path]:
+        """Write a single strategy proposal to the staging directory.
+
+        The function validates the proposal name, ensures the file does not already
+        exist, and populates a Python module template with the supplied parameters.
+
+        Args:
+            proposal: Dictionary containing strategy metadata and conditions.
+
+        Returns:
+            The path to the written file, or ``None`` if the proposal is invalid
+            or the file already exists.
+        """
         name = proposal.get("name", "")
         if not name or not re.match(r'^[a-z][a-z0-9_]*$', name):
             return None
