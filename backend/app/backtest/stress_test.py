@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from typing import Dict, Tuple
 
 import pandas as pd
 
@@ -111,19 +112,32 @@ class StressResult:
     data_points: int
 
 
+# Simple memoisation for slicing operations – avoids repeated work when the same
+# series/window is requested multiple times (unlikely but cheap).
+_slice_cache: Dict[Tuple[int, pd.Timestamp, pd.Timestamp], pd.Series | None] = {}
+
+
 def _slice_series(
     series: pd.Series | None,
     start: pd.Timestamp,
     end: pd.Timestamp,
 ) -> pd.Series | None:
-    """Slice a Series using .loc; returns None if input is None."""
+    """Slice a Series using .loc; returns None if input is None. Cached for speed."""
     if series is None:
         return None
+
+    cache_key = (id(series), start, end)
+    if cache_key in _slice_cache:
+        return _slice_cache[cache_key]
+
     try:
-        return series.loc[start:end]
+        sliced = series.loc[start:end]
     except Exception:
         mask = (series.index >= start) & (series.index <= end)
-        return series.loc[mask]
+        sliced = series.loc[mask]
+
+    _slice_cache[cache_key] = sliced
+    return sliced
 
 
 def run_stress_tests(
@@ -148,12 +162,16 @@ def run_stress_tests(
     results: list[StressResult] = []
     price_index = prices.index
 
+    # Pre‑compute global min/max for cheap intersection checks
+    price_min = price_index.min()
+    price_max = price_index.max()
+
     for scenario in scenarios:
         start_ts = pd.Timestamp(scenario.start)
         end_ts = pd.Timestamp(scenario.end)
 
-        # Fast check: if the scenario window does not intersect the price index, skip early
-        if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
+        # Fast early‑exit: if the scenario window lies completely outside the price index
+        if price_min > end_ts or price_max < start_ts:
             results.append(
                 StressResult(
                     scenario=scenario,

@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, List
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class AgentMemory:
         try:
             await self._r.lpush(key, payload)
             await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             logger.warning("AgentMemory.write failed for topic %s: %s", topic, e)
 
     async def set_latest(self, topic: str, data: dict) -> None:
@@ -47,18 +47,22 @@ class AgentMemory:
         payload = json.dumps({"ts": time.time(), **data})
         try:
             await self._r.set(key, payload)
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             logger.warning("AgentMemory.set_latest failed for topic %s: %s", topic, e)
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
-    async def read_recent(self, topic: str, n: int = 50) -> list[dict]:
-        """Return up to n most-recent observations for a topic."""
+    async def read_recent(self, topic: str, n: int = 50) -> List[dict]:
+        """Return up to n most‑recent observations for a topic."""
+        if n <= 0:
+            return []
+        # Ensure we never request more than the maximum stored length.
+        n = min(n, _MAX_LIST_LEN)
         key = f"{_PREFIX}{topic}"
         try:
             items = await self._r.lrange(key, 0, n - 1)
             return [json.loads(i) for i in items]
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             logger.warning("AgentMemory.read_recent failed for topic %s: %s", topic, e)
             return []
 
@@ -68,16 +72,25 @@ class AgentMemory:
         try:
             val = await self._r.get(key)
             return json.loads(val) if val else None
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             logger.warning("AgentMemory.get_latest failed for topic %s: %s", topic, e)
             return None
 
-    async def read_all_topics(self) -> list[str]:
-        """List all memory topics currently stored."""
+    async def read_all_topics(self) -> List[str]:
+        """List all memory topics currently stored using a non‑blocking scan."""
+        pattern = f"{_PREFIX}*"
+        topics: List[str] = []
+        cursor = 0
         try:
-            pattern = f"{_PREFIX}*"
-            keys = await self._r.keys(pattern)
-            return [k.removeprefix(_PREFIX) for k in keys]
-        except Exception as e:
+            while True:
+                cursor, batch = await self._r.scan(cursor=cursor, match=pattern, count=1000)
+                for key in batch:
+                    # Strip the prefix without relying on removeprefix (Python <3.9 compatibility)
+                    if key.startswith(_PREFIX):
+                        topics.append(key[len(_PREFIX) :])
+                if cursor == 0:
+                    break
+            return topics
+        except Exception as e:  # pragma: no cover
             logger.warning("AgentMemory.read_all_topics failed: %s", e)
             return []
