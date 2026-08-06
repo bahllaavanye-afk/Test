@@ -1,4 +1,4 @@
-"""API v1 router — mounts all sub-routers."""
+"""API v1 router — mounts all sub‑routers."""
 import logging
 from fastapi import APIRouter
 
@@ -25,7 +25,8 @@ from app.api.v1 import (
     pipeline,
     leaderboard,
     releases,
-    bots,
+    # bots module is imported only for its router via bots_router below
+    # bots,
 )
 from app.api.v1.scanners import router as scanners_router
 from app.api.v1.options import router as options_router
@@ -39,7 +40,8 @@ logger = logging.getLogger(__name__)
 
 api_router = APIRouter()
 
-def _include(router_obj, name: str):
+
+def _include(router_obj, name: str) -> None:
     """Safely include a sub‑router, handling None or invalid inputs."""
     if router_obj is None:
         logger.warning("Router %s is None and will be skipped.", name)
@@ -49,7 +51,7 @@ def _include(router_obj, name: str):
     except Exception as exc:  # pragma: no cover
         logger.error("Failed to include router %s: %s", name, exc)
 
-# List of (router, name) tuples for systematic inclusion
+
 _routers = [
     (auth.router, "auth"),
     (accounts.router, "accounts"),
@@ -83,5 +85,5 @@ _routers = [
     (webhooks_router, "webhooks"),
 ]
 
-for r, n in _routers:
-    _include(r, n)
+for router_obj, name in _routers:
+    _include(router_obj, name)
