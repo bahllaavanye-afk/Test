@@ -165,18 +165,94 @@ def _too_large(path: str) -> bool:
         return True          # unreadable: treat as unusable rather than crash
 
 
-def pick_target_file(hour: int, skip_files: set[str]) -> str | None:
-    pattern_idx = hour % len(CANDIDATE_PATTERNS)
-    pattern = CANDIDATE_PATTERNS[pattern_idx]
-    files = [f for f in glob.glob(pattern)
-             if not f.endswith("__init__.py") and f not in skip_files
-             and not _is_protected(f) and not _too_large(f)]
-    if not files:
-        all_files = glob.glob("backend/app/**/*.py", recursive=True)
-        files = [f for f in all_files
-                 if "__init__" not in f and "__pycache__" not in f
-                 and f not in skip_files and not _is_protected(f)
-                 and not _too_large(f)]
+# Which locations each improvement type actually makes sense in.
+#
+# WHY THIS EXISTS. The type and the target used to be chosen from two parallel
+# 12-element lists: the type by `hour % 12` (fixed for a run) and the pattern by
+# `((hour + attempts) % 24) % 12` (rotating per attempt). So attempt 0 paired
+# type i with pattern i permanently, and every retry drifted the pattern while
+# the prompt stayed put. Measured 2026-08-06, the attempt-0 pairing was:
+#
+#     test_cases     -> backend/app/ml/models/*.py   (tests written INTO source)
+#     strategy_logic -> backend/app/api/v1/*.py      (route handlers have no
+#                                                     entry/exit logic at all)
+#     monitoring     -> backend/tests/unit/*.py      (P&L logging into unit tests)
+#
+# Worse, **6 of the 12 patterns yielded zero usable files** once PROTECTED_PREFIXES
+# and the 8000-char size guard were applied, so half of all runs fell straight
+# through to a glob over the entire backend. The per-hour "targeting" was
+# decorative on those hours, and that fallback is how a `strategy_logic` prompt
+# reached `models/account.py` (#1510) and produced two unreferenced methods.
+#
+# Every pattern below is measured to yield at least one usable file, and
+# `test_every_improvement_type_has_a_live_target` fails CI if that stops being
+# true — so a dead pairing can no longer degrade into the whole-backend glob
+# unnoticed.
+TYPE_TARGETS: dict[str, tuple[str, ...]] = {
+    "docstrings":     ("backend/app/api/v1/*.py", "backend/app/models/*.py",
+                       "backend/app/tasks/*.py", "backend/app/backtest/*.py"),
+    "error_handling": ("backend/app/api/v1/*.py", "backend/app/tasks/*.py",
+                       "backend/app/brokers/*.py"),
+    # Tests belong in the test tree. This is the pairing that was most obviously
+    # wrong: the prompt asks for "2-3 new unit test cases" and used to point at
+    # ML model source.
+    "test_cases":     ("backend/tests/unit/*.py",),
+    "refactor":       ("backend/app/api/v1/*.py", "backend/app/tasks/*.py",
+                       "backend/app/backtest/*.py", "backend/app/comparison/*.py"),
+    "validation":     ("backend/app/api/v1/*.py", "backend/app/models/*.py",
+                       "backend/app/schemas/*.py"),
+    "optimization":   ("backend/app/backtest/*.py", "backend/app/comparison/*.py",
+                       "backend/app/tasks/*.py"),
+    "constants":      ("backend/app/api/v1/*.py", "backend/app/tasks/*.py",
+                       "backend/app/brokers/*.py", "backend/app/backtest/*.py"),
+    "schemas":        ("backend/app/schemas/*.py", "backend/app/models/*.py",
+                       "backend/app/api/v1/*.py"),
+    "edge_cases":     ("backend/app/api/v1/*.py", "backend/app/tasks/*.py",
+                       "backend/app/backtest/*.py", "backend/app/comparison/*.py"),
+    "cleanup":        ("backend/app/api/v1/*.py", "backend/app/models/*.py",
+                       "backend/app/tasks/*.py", "backend/app/backtest/*.py"),
+    # Runtime code only — logging "signal count, execution time, P&L" into the
+    # unit-test tree, which is where this used to land, is noise at best.
+    "monitoring":     ("backend/app/tasks/*.py", "backend/app/api/v1/*.py",
+                       "backend/app/brokers/*.py"),
+}
+
+
+def _usable(files, skip_files) -> list[str]:
+    return [f for f in files
+            if not f.endswith("__init__.py") and "__pycache__" not in f
+            and f not in skip_files and not _is_protected(f) and not _too_large(f)]
+
+
+def pick_target_file(hour: int, skip_files: set[str],
+                     improvement_type: str | None = None) -> str | None:
+    """Choose a file to improve.
+
+    `improvement_type` restricts the search to locations where that kind of
+    change is meaningful. It is optional only so the older hour-indexed
+    behaviour stays available to the tests that pin the protection and size
+    filters; `main()` always passes it.
+    """
+    patterns = TYPE_TARGETS.get(improvement_type) if improvement_type else None
+    if patterns:
+        # Rotate within the type's own locations so retries still move around,
+        # but never leave the set that suits the prompt.
+        ordered = [patterns[(hour + i) % len(patterns)] for i in range(len(patterns))]
+        for pattern in ordered:
+            files = _usable(glob.glob(pattern), skip_files)
+            if files:
+                return random.choice(files)
+    else:
+        pattern = CANDIDATE_PATTERNS[hour % len(CANDIDATE_PATTERNS)]
+        files = _usable(glob.glob(pattern), skip_files)
+        if files:
+            return random.choice(files)
+
+    # Last resort. Announced, because a silent fallback is what made the
+    # targeting look like it was working while it was not.
+    print(f"  ⚠ no usable target for type={improvement_type!r} hour={hour} — "
+          f"falling back to the whole backend", flush=True)
+    files = _usable(glob.glob("backend/app/**/*.py", recursive=True), skip_files)
     return random.choice(files) if files else None
 
 # ── Improvement types ─────────────────────────────────────────────────────────
@@ -192,7 +268,14 @@ IMPROVEMENT_TYPES = [
     ("schemas",        "Improve Pydantic schema definitions: add field descriptions, examples, and validators where missing."),
     ("edge_cases",     "Add handling for None inputs, empty collections, and off-by-one conditions in the existing logic."),
     ("cleanup",        "Remove dead code, fix TODO/FIXME comments by implementing them, remove unused imports."),
-    ("strategy_logic", "Improve the strategy's signal quality: tighten entry conditions, add confirmation filters, improve exit logic."),
+    # `strategy_logic` was removed 2026-08-06. Its prompt — "tighten entry
+    # conditions, add confirmation filters, improve exit logic" — only means
+    # anything inside `backend/app/strategies/`, and that prefix is PROTECTED
+    # precisely because "behavior in the money-path is not the improver's to
+    # touch". So the type could never do its job legally, and one run in twelve
+    # was spent aiming a strategy-logic prompt at whatever non-strategy file it
+    # could reach: #1510 put it on `models/account.py` and got two unreferenced
+    # methods. A type whose only valid target is off-limits is not a type.
     ("monitoring",     "Add structured logging with key metrics (signal count, execution time, P&L) at INFO level."),
 ]
 
@@ -374,7 +457,8 @@ def main():
 
     while improved_count < n_files and attempts < 10:
         attempts += 1
-        target = pick_target_file((hour + attempts) % 24, tried)
+        target = pick_target_file((hour + attempts) % 24, tried,
+                                  improvement_type=improvement_type)
         if not target:
             continue
         tried.add(target)

@@ -24,6 +24,44 @@ losses into the first prints. That is the documented "buy on margin, get liquida
 risk-reducing orders, which blocks everything until the next session rollover. Doing nothing is a choice to
 let that run.
 
+## 🤖 THE IMPROVER'S TARGETING WAS HALF DECORATIVE — fixed 2026-08-06 07:30 (#1549)
+
+Relevant to the standing "improver PRs bypass CI so main silently breaks" concern, because it explains where
+a good share of the low-value diffs came from.
+
+`continuous_improver` chose the improvement TYPE by `hour % 12` (fixed per run) and the target PATTERN by
+`((hour + attempts) % 24) % 12` (rotating per attempt). Both lists were length 12, so **attempt 0 paired type
+*i* with pattern *i* permanently**, recurring every 12 hours:
+
+    test_cases     -> backend/app/ml/models/*.py    unit tests written INTO model source
+    strategy_logic -> backend/app/api/v1/*.py       route handlers have no entry/exit logic
+    monitoring     -> backend/tests/unit/*.py       P&L logging added to unit tests
+
+**And 6 of the 12 patterns yielded ZERO usable files** once `PROTECTED_PREFIXES` and the 8000-char guard
+applied (`strategies/manual`, `strategies/ml_enhanced`, `ml/models`, `ml/features`, `execution`, `risk`). Those
+runs fell through to a glob over the whole backend, so on **half of all hours the targeting did nothing** —
+silently. That is the mechanism behind `strategy_logic` landing on `models/account.py` (#1510).
+
+Now: `TYPE_TARGETS` maps each type to locations where the change is meaningful, every pattern is verified to
+yield at least one usable file, `test_every_improvement_type_has_a_live_target` fails CI if that stops being
+true, and the fallback announces itself. **`strategy_logic` is removed, not re-pointed** — its prompt only
+means something inside `backend/app/strategies/`, which is protected precisely because money-path behavior is
+not the improver's to touch. A type whose only legal target is off-limits is not a type.
+
+**This does not close the CI-bypass concern.** The improver still opens PRs that skip the gate; this only
+stops it aiming good prompts at wrong files.
+
+## 🌐 CI FAILS ON PyPI OUTAGES, AND THAT IS NOT A REGRESSION — seen twice, 2026-08-05 and 2026-08-06
+
+`test` died in the dependency step, before any test ran:
+
+    error: Failed to fetch: `https://pypi.org/simple/httpcore/`
+      Caused by: stream closed because of a broken pipe
+
+Earlier the same day it was `https://pypi.org/simple/rsa/`. Read the FAILING STEP before diagnosing: a red
+`test` job here means nothing about the code. `rerun_failed_jobs` is **not available** to the MCP token
+(403 "Resource not accessible by integration"), so the retrigger is a fresh push.
+
 ## 🎯 OPERATOR DECISIONS — everything now blocked on a human, ranked
 Nothing below can be done from code. Each line says what it unblocks, so it can be
 triaged without reading the 2,600 lines under it. Detail for every item is further
