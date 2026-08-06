@@ -21,6 +21,11 @@ FETCH_LIMIT: int = 5
 DEFAULT_INITIAL_EQUITY: float = 100_000.0
 MAX_ERROR_MESSAGE_LENGTH: int = 500
 
+# Data column names
+COL_CLOSE: str = "close"
+COL_OPEN: str = "open"
+COL_VOLUME: str = "volume"
+
 # Status strings
 STATUS_QUEUED: str = "queued"
 STATUS_RUNNING: str = "running"
@@ -122,9 +127,9 @@ async def run_backtest_job(run_id: str | None) -> None:
 
         metrics = run_backtest(
             signals=signals_series,
-            prices=df["close"],
-            opens=df["open"],
-            volume=df["volume"],
+            prices=df[COL_CLOSE],
+            opens=df[COL_OPEN],
+            volume=df[COL_VOLUME],
             initial_equity=initial_equity,
         )
 
