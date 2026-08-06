@@ -108,6 +108,118 @@ class StrategyComparisonEngine:
         if value <= 0:
             raise ValueError(ERROR_INITIAL_EQUITY_POSITIVE_MSG)
 
+    def _validate_inputs(
+        self,
+        manual_signals: pd.Series,
+        ml_signals: pd.Series,
+        prices: pd.Series,
+        strategy_name: str,
+        symbol: str,
+        interval: str,
+        start_date: date,
+        end_date: date,
+        initial_equity: float,
+    ) -> None:
+        self._validate_series(manual_signals, "manual_signals")
+        self._validate_series(ml_signals, "ml_signals")
+        self._validate_series(prices, "prices")
+        self._validate_string(strategy_name, "strategy_name")
+        self._validate_string(symbol, "symbol")
+        self._validate_string(interval, "interval")
+        self._validate_date(start_date, "start_date")
+        self._validate_date(end_date, "end_date")
+        if start_date > end_date:
+            raise ValueError(ERROR_DATE_ORDER_MSG)
+        self._validate_initial_equity(initial_equity)
+
+    @staticmethod
+    def _align_series(
+        manual_signals: pd.Series,
+        ml_signals: pd.Series,
+        prices: pd.Series,
+    ) -> tuple[pd.Series, pd.Series, pd.Series]:
+        common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
+        if common_index.empty:
+            raise ValueError(ERROR_COMMON_INDEX_MSG)
+        return (
+            manual_signals.loc[common_index],
+            ml_signals.loc[common_index],
+            prices.loc[common_index],
+        )
+
+    @staticmethod
+    def _run_backtests(
+        manual_signals: pd.Series,
+        ml_signals: pd.Series,
+        prices: pd.Series,
+        initial_equity: float,
+    ) -> tuple[BacktestMetrics, BacktestMetrics]:
+        manual_metrics = run_backtest(manual_signals, prices, initial_equity)
+        ml_metrics = run_backtest(ml_signals, prices, initial_equity)
+        return manual_metrics, ml_metrics
+
+    async def _fetch_benchmarks(
+        self,
+        start_date: date,
+        end_date: date,
+    ) -> tuple[dict, dict]:
+        try:
+            benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
+        except Exception as exc:
+            logger.error(ERROR_FETCH_BENCHMARK_MSG, error=str(exc))
+            benchmark_curves = {}
+        benchmark_stats = get_benchmark_stats()
+        return benchmark_curves, benchmark_stats
+
+    @staticmethod
+    def _process_equity_curves(
+        manual_metrics: BacktestMetrics,
+        ml_metrics: BacktestMetrics,
+    ) -> tuple[pd.Series, pd.Series]:
+        manual_eq = pd.Series([e[EQUITY_KEY] for e in manual_metrics.equity_curve])
+        ml_eq = pd.Series([e[EQUITY_KEY] for e in ml_metrics.equity_curve])
+        return manual_eq.pct_change().dropna(), ml_eq.pct_change().dropna()
+
+    @staticmethod
+    def _compute_statistics(
+        manual_ret: pd.Series,
+        ml_ret: pd.Series,
+    ) -> tuple[float, float]:
+        min_len = min(len(manual_ret), len(ml_ret))
+        if min_len > MIN_SAMPLE_SIZE:
+            t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
+        else:
+            t_stat, p_val = DEFAULT_T_STAT, DEFAULT_P_VAL
+        return float(t_stat), float(p_val)
+
+    @staticmethod
+    def _determine_winner(
+        manual_sharpe: float,
+        ml_sharpe: float,
+    ) -> tuple[str, float]:
+        improvement = ml_sharpe - manual_sharpe
+        winner = WINNER_ML if ml_sharpe > manual_sharpe else WINNER_MANUAL
+        if abs(improvement) < IMPROVEMENT_THRESHOLD:
+            winner = WINNER_NEITHER
+        return winner, improvement
+
+    @staticmethod
+    def _log_results(
+        strategy_name: str,
+        manual_sharpe: float,
+        ml_sharpe: float,
+        p_value: float,
+    ) -> None:
+        logger.info(
+            LOG_COMPARISON_COMPLETE_MSG,
+            **{
+                LOG_STRATEGY_FIELD: strategy_name,
+                LOG_MANUAL_SHARPE_FIELD: manual_sharpe,
+                LOG_ML_SHARPE_FIELD: ml_sharpe,
+                LOG_P_VALUE_FIELD: round(p_value, P_VALUE_ROUND),
+            },
+        )
+
     async def run_comparison(
         self,
         manual_signals: pd.Series,
@@ -125,66 +237,45 @@ class StrategyComparisonEngine:
         Validates inputs, aligns series, executes backtests, fetches benchmark data,
         and computes statistical significance of the Sharpe improvement.
         """
-        # Input validation
-        self._validate_series(manual_signals, "manual_signals")
-        self._validate_series(ml_signals, "ml_signals")
-        self._validate_series(prices, "prices")
-        self._validate_string(strategy_name, "strategy_name")
-        self._validate_string(symbol, "symbol")
-        self._validate_string(interval, "interval")
-        self._validate_date(start_date, "start_date")
-        self._validate_date(end_date, "end_date")
-        if start_date > end_date:
-            raise ValueError(ERROR_DATE_ORDER_MSG)
-        self._validate_initial_equity(initial_equity)
-
-        # Align series on common index
-        common_index = manual_signals.index.intersection(ml_signals.index).intersection(prices.index)
-        if common_index.empty:
-            raise ValueError(ERROR_COMMON_INDEX_MSG)
-        manual_signals = manual_signals.loc[common_index]
-        ml_signals = ml_signals.loc[common_index]
-        prices = prices.loc[common_index]
-
-        manual_metrics = run_backtest(manual_signals, prices, initial_equity)
-        ml_metrics = run_backtest(ml_signals, prices, initial_equity)
-
-        # Fetch benchmark data safely
-        try:
-            benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
-        except Exception as exc:
-            logger.error(ERROR_FETCH_BENCHMARK_MSG, error=str(exc))
-            benchmark_curves = {}
-        benchmark_stats = get_benchmark_stats()
-
-        # Equity curve processing
-        manual_eq = pd.Series([e[EQUITY_KEY] for e in manual_metrics.equity_curve])
-        ml_eq = pd.Series([e[EQUITY_KEY] for e in ml_metrics.equity_curve])
-        manual_ret = manual_eq.pct_change().dropna()
-        ml_ret = ml_eq.pct_change().dropna()
-
-        # Statistical test
-        min_len = min(len(manual_ret), len(ml_ret))
-        if min_len > MIN_SAMPLE_SIZE:
-            t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
-        else:
-            t_stat, p_val = DEFAULT_T_STAT, DEFAULT_P_VAL
-
-        improvement = ml_metrics.sharpe - manual_metrics.sharpe
-        winner = WINNER_ML if ml_metrics.sharpe > manual_metrics.sharpe else WINNER_MANUAL
-        if abs(improvement) < IMPROVEMENT_THRESHOLD:
-            winner = WINNER_NEITHER
-
-        logger.info(
-            LOG_COMPARISON_COMPLETE_MSG,
-            **{
-                LOG_STRATEGY_FIELD: strategy_name,
-                LOG_MANUAL_SHARPE_FIELD: manual_metrics.sharpe,
-                LOG_ML_SHARPE_FIELD: ml_metrics.sharpe,
-                LOG_P_VALUE_FIELD: round(p_val, P_VALUE_ROUND),
-            },
+        # 1. Validate all inputs
+        self._validate_inputs(
+            manual_signals,
+            ml_signals,
+            prices,
+            strategy_name,
+            symbol,
+            interval,
+            start_date,
+            end_date,
+            initial_equity,
         )
 
+        # 2. Align series on a common index
+        manual_signals, ml_signals, prices = self._align_series(
+            manual_signals, ml_signals, prices
+        )
+
+        # 3. Execute backtests
+        manual_metrics, ml_metrics = self._run_backtests(
+            manual_signals, ml_signals, prices, initial_equity
+        )
+
+        # 4. Retrieve benchmark information
+        benchmark_curves, benchmark_stats = await self._fetch_benchmarks(start_date, end_date)
+
+        # 5. Process equity curves to obtain returns
+        manual_ret, ml_ret = self._process_equity_curves(manual_metrics, ml_metrics)
+
+        # 6. Perform statistical test
+        t_stat, p_val = self._compute_statistics(manual_ret, ml_ret)
+
+        # 7. Determine winner and improvement magnitude
+        winner, improvement = self._determine_winner(manual_metrics.sharpe, ml_metrics.sharpe)
+
+        # 8. Log summary information
+        self._log_results(strategy_name, manual_metrics.sharpe, ml_metrics.sharpe, p_val)
+
+        # 9. Assemble and return result object
         return ComparisonResult(
             strategy_name=strategy_name,
             symbol=symbol,
@@ -196,8 +287,8 @@ class StrategyComparisonEngine:
             benchmark_curves=benchmark_curves,
             benchmark_stats=benchmark_stats,
             ml_improvement_sharpe=round(improvement, IMPROVEMENT_ROUND),
-            t_statistic=round(float(t_stat), T_STAT_ROUND),
-            p_value=round(float(p_val), P_VAL_FINAL_ROUND),
+            t_statistic=round(t_stat, T_STAT_ROUND),
+            p_value=round(p_val, P_VAL_FINAL_ROUND),
             is_significant=p_val < SIGNIFICANCE_LEVEL,
             winner=winner,
         )
