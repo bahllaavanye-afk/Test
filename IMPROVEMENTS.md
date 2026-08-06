@@ -1,5 +1,38 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🧱 2026-08-06 01:00 — A MIGRATION THAT CANNOT APPLY TO POSTGRES, AND IT BLOCKS OPERATOR ITEM #2
+
+The Schema Drift Gate failed on my PR. It is not my change — my diff touches four lines of dead test code in
+`models/backtest.py` and nothing in `models/` columns or `alembic/`. It is a **pre-existing migration bug**,
+and it matters much more than the gate failure.
+
+```
+backend/alembic/versions/d4e5f6a7b8c9_create_bots_table.py:32
+    sa.Column("is_enabled", sa.Boolean(), nullable=False, server_default=sa.text("1"))
+
+psycopg2.errors.DatatypeMismatch:
+    column "is_enabled" is of type boolean but default expression is of type integer
+```
+
+- [x] **`sa.text("1")` is SQLite idiom.** SQLite stores booleans as integers and accepts it silently; Postgres
+  is strict and rejects the DDL outright. The migration therefore **cannot apply to Postgres at all**.
+- [ ] **[P0] This changes the plan for operator item #2.** "Unpause Supabase" has been the standing fix for the
+  ephemeral-sqlite problem — but the app has been running on the SQLite fallback the whole time, which is
+  exactly the engine that tolerates this default. **Unpausing Supabase is not sufficient**: the migration chain
+  will fail on this column when it runs against Postgres. Worth knowing before spending the change window on it.
+- [x] **Swept for siblings: exactly one occurrence.** No other `server_default=sa.text("0"|"1")` on a Boolean
+  anywhere in `backend/alembic/versions/`. So this is a single-line fix, not a migration audit.
+- [ ] **[P0] The fix, NOT shipped — `backend/alembic/versions/` is under "Do NOT Modify" in
+  `scripts/CLAUDE.md`.** The correct change is `server_default=sa.true()`, which SQLAlchemy renders per
+  dialect (`TRUE` on Postgres, accepted by SQLite ≥3.23), rather than hardcoding either engine's literal.
+  Editing an applied migration is also a judgement call that belongs to a human — though note Postgres has
+  never successfully applied this one, since it errors.
+- [x] **And the gate that caught it has essentially never run: 92 runs, and this is the only one that ever
+  reached a verdict.** The other 11 recent runs are all `action_required`, i.e. they never executed. So the
+  drift has been sitting there undetected not because the check was missing, but because it was never allowed
+  to run — **the third instance today of a guard that exists and does not execute**, after the two hardcoded
+  absolute paths in `test_regression.py`.
+
 ## 🎲 2026-08-06 00:40 — THE 5xx ENDPOINT SWEEP LETS A THIRD PARTY DECIDE WHETHER CI IS GREEN
 
 CI went red on `test_no_get_endpoint_returns_5xx` and its parameterised twin. Diagnosing it took three wrong
