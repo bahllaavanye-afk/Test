@@ -17,6 +17,21 @@
  * thing it claims to report.
  */
 
+// STATUS OF EACH REASON, 2026-08-06. Two are proven against live evidence; two
+// are not, and saying so matters in a component whose job is stating true causes.
+//
+//   ephemeral-db          USED + verified — /health/detailed reports
+//                         database.fallback = "sqlite", database_primary.ok = false.
+//   ml-runtime            USED + verified — torch sits in an optional pyproject
+//                         group and `import torch` fails in the deploy env.
+//   no-rows-yet           unused. Harmless, but unexercised.
+//   subsystem-unreachable UNUSED AND UNPROVEN. The one subsystem recorded as
+//                         unreachable (the agent dashboard) turned out to be
+//                         working: routes registered, skill_library.json holding
+//                         200 skills, task_registry genuinely empty. Applying this
+//                         reason on the strength of that entry would have rendered
+//                         a false cause. Before anyone uses it, re-check that the
+//                         subsystem is actually unreachable.
 export type EmptyReason =
   | 'ephemeral-db'
   | 'no-rows-yet'
