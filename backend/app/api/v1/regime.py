@@ -2,6 +2,7 @@
 import logging
 import time
 from collections import Counter
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user
@@ -51,18 +52,18 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
         "unknown": "unknown",
     }
 
-    label_counts: Counter = Counter()
-    confidences: list[float] = []
-    latest_updated: str | None = None
-
-    for sym_state in states.values():
-        raw = sym_state.get("regime", "unknown")
-        label = _label_map.get(raw, "unknown")
-        label_counts[label] += 1
-        confidences.append(sym_state.get("confidence", 0.0))
-        updated = sym_state.get("updated_at")
-        if updated and (latest_updated is None or updated > latest_updated):
-            latest_updated = updated
+    # Use comprehensions and Counter for efficient aggregation
+    label_counts: Counter = Counter(
+        _label_map.get(sym_state.get("regime", "unknown"), "unknown")
+        for sym_state in states.values()
+    )
+    confidences: List[float] = [
+        float(sym_state.get("confidence", 0.0)) for sym_state in states.values()
+    ]
+    latest_updated: Optional[str] = max(
+        (sym_state.get("updated_at") for sym_state in states.values() if sym_state.get("updated_at")),
+        default=None,
+    )
 
     overall_regime = label_counts.most_common(1)[0][0]
     avg_confidence = round(sum(confidences) / len(confidences), 3) if confidences else 0.0
