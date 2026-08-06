@@ -8,21 +8,33 @@
 
 _Last updated: 2026-08-06._
 
-## 🔴 LIVE ACCOUNT STATE — 2026-08-06 06:00 (read before trusting any P&L)
+## ✅ LIVE ACCOUNT STATE — 2026-08-06 13:35, RECOVERED (was 🔴 all night)
 
-    equity $21,801.52   cash -$48,471.29   buying_power $0.00   non_marginable_bp $0.00
-    17 positions queued to flatten at the open · desk placed 0 orders (reason=account_unavailable)
+    equity $21,915.67   cash +$21,915.67   buying_power $87,662.68
+    book FLAT (cash == equity, no margin debt) · 13 orders placed, $4,677.86 notional
 
-**The account cannot trade.** `recover_negative_cash` fires correctly (cash < 0, no buying power left) and
-issues a close-all — but the market is shut, so the closes sit `accepted` and free nothing. Runs
-`31070310789` (04:06) and `31072118909` (04:45) flattened **the same 17 positions** and reported cash
-identical **to the cent**, which is how the loop was identified. It re-fires every run until the open.
+**Resolved on its own at the open. Operator item #17 is CLOSED — no action was needed.**
 
-**What happens at the open is the operator decision (item #17):** 17 positions flatten at once, realising
-losses into the first prints. That is the documented "buy on margin, get liquidated, get frozen" path at
-`desk_order_placer.py:583` — the realised loss can trip the daily cap, which with an empty book allows only
-risk-reducing orders, which blocks everything until the next session rollover. Doing nothing is a choice to
-let that run.
+The overnight state was cash **-$48,471**, buying power **$0.00**, and 17 positions queued to flatten.
+`recover_negative_cash` re-fired every run for ~9 hours because closes submitted into a shut market cannot
+fill. What actually happened:
+
+- **13:08 (pre-open):** buying power recovered to $227.34 and the recovery loop **stopped by itself** — its
+  own guard refuses to flatten when `bp > 0`, because a margin debit *with* headroom is ordinary leverage, not
+  the orphaned-notional pathology it exists for.
+- **13:35 (post-open):** the book is flat, cash is positive, buying power is $87.6k, and the desk placed 13
+  orders — first trading in ~9 hours.
+- **Cost of the whole episode: -$37.72, or -0.17%** ($21,953.39 → $21,915.67). **The daily loss cap did NOT
+  trip.** No `🚑 RECOVERY` line, no `🛑 DAILY LOSS CAP` line.
+
+**The feared outcome did not occur, and that is worth recording accurately.** The documented hazard — flatten
+at the open, realise losses into the first prints, trip the daily cap, freeze the desk to risk-reducing orders
+until the next rollover — is real and *did* happen on 2026-07-27. It did not happen here: the realised loss was
+negligible. The risk was correctly identified; the severity was over-weighted in the telling.
+
+**Also verified live in this run:** the order-origin audit printed its INFORMATIONAL line —
+`ⓘ 50 of 50 recent orders are untagged, and all of them arrived in bulk bursts ... Not evidence of a
+third-party writer` — instead of the intruder alarm it raised this morning. The #1539 fix works in production.
 
 ## 🤖 THE IMPROVER'S TARGETING WAS HALF DECORATIVE — fixed 2026-08-06 07:30 (#1549)
 
