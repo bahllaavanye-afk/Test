@@ -21,6 +21,30 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/regime", tags=["regime"])
 
+# Constants
+ELAPSED_TIME_PRECISION = 2
+CONFIDENCE_PRECISION = 3
+DEFAULT_REGIME = "unknown"
+DEFAULT_CONFIDENCE = 0.0
+
+LABEL_MAP = {
+    "trending": "bull",
+    "mean_reverting": "sideways",
+    "high_vol": "bear",
+    "unknown": "unknown",
+}
+
+ENDPOINT_GET_CURRENT_REGIME = "endpoint=get_current_regime"
+ENDPOINT_GET_REGIME_STATES = "endpoint=get_regime_states"
+ENDPOINT_GET_REGIME_FOR_SYMBOL = "endpoint=get_regime_for_symbol"
+ENDPOINT_GET_CORRELATION_MATRIX = "endpoint=get_correlation_matrix"
+ENDPOINT_GET_CORRELATION_ALERTS = "endpoint=get_correlation_alerts"
+
+ERROR_NO_REGIME_DATA = "No regime data for {symbol}. Feed price data first."
+
+RECENT_ALERTS_LIMIT = 10
+RECENT_ALERTS_MAX = 50
+
 
 @router.get("/current")
 async def get_current_regime(current_user: User = Depends(get_current_user)):
@@ -35,30 +59,21 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     if not states:
         elapsed_ms = (time.time() - start_time) * 1000
         logger.info(
-            "endpoint=get_current_regime",
+            ENDPOINT_GET_CURRENT_REGIME,
             extra={
                 "signal_count": 0,
-                "execution_time_ms": round(elapsed_ms, 2),
+                "execution_time_ms": round(elapsed_ms, ELAPSED_TIME_PRECISION),
                 "pnl": get_current_pnl(),
             },
         )
-        return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
+        return {"regime": DEFAULT_REGIME, "confidence": DEFAULT_CONFIDENCE, "updated_at": None}
 
-    # Map detector regimes → frontend-friendly labels
-    _label_map = {
-        "trending": "bull",
-        "mean_reverting": "sideways",
-        "high_vol": "bear",
-        "unknown": "unknown",
-    }
-
-    # Use comprehensions and Counter for efficient aggregation
     label_counts: Counter = Counter(
-        _label_map.get(sym_state.get("regime", "unknown"), "unknown")
+        LABEL_MAP.get(sym_state.get("regime", DEFAULT_REGIME), DEFAULT_REGIME)
         for sym_state in states.values()
     )
     confidences: List[float] = [
-        float(sym_state.get("confidence", 0.0)) for sym_state in states.values()
+        float(sym_state.get("confidence", DEFAULT_CONFIDENCE)) for sym_state in states.values()
     ]
     latest_updated: Optional[str] = max(
         (sym_state.get("updated_at") for sym_state in states.values() if sym_state.get("updated_at")),
@@ -66,14 +81,14 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     )
 
     overall_regime = label_counts.most_common(1)[0][0]
-    avg_confidence = round(sum(confidences) / len(confidences), 3) if confidences else 0.0
+    avg_confidence = round(sum(confidences) / len(confidences), CONFIDENCE_PRECISION) if confidences else DEFAULT_CONFIDENCE
 
     elapsed_ms = (time.time() - start_time) * 1000
     logger.info(
-        "endpoint=get_current_regime",
+        ENDPOINT_GET_CURRENT_REGIME,
         extra={
             "signal_count": len(states),
-            "execution_time_ms": round(elapsed_ms, 2),
+            "execution_time_ms": round(elapsed_ms, ELAPSED_TIME_PRECISION),
             "pnl": get_current_pnl(),
         },
     )
@@ -93,10 +108,10 @@ async def get_regime_states(current_user: User = Depends(get_current_user)):
     data = regime_monitor.all_states()
     elapsed_ms = (time.time() - start_time) * 1000
     logger.info(
-        "endpoint=get_regime_states",
+        ENDPOINT_GET_REGIME_STATES,
         extra={
             "signal_count": len(data),
-            "execution_time_ms": round(elapsed_ms, 2),
+            "execution_time_ms": round(elapsed_ms, ELAPSED_TIME_PRECISION),
             "pnl": get_current_pnl(),
         },
     )
@@ -110,22 +125,22 @@ async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_cu
     if not state:
         elapsed_ms = (time.time() - start_time) * 1000
         logger.info(
-            "endpoint=get_regime_for_symbol",
+            ENDPOINT_GET_REGIME_FOR_SYMBOL,
             extra={
                 "signal_count": 0,
-                "execution_time_ms": round(elapsed_ms, 2),
+                "execution_time_ms": round(elapsed_ms, ELAPSED_TIME_PRECISION),
                 "pnl": get_current_pnl(),
                 "symbol": symbol,
             },
         )
-        return {"error": f"No regime data for {symbol}. Feed price data first."}
+        return {"error": ERROR_NO_REGIME_DATA.format(symbol=symbol)}
     result = state.to_dict()
     elapsed_ms = (time.time() - start_time) * 1000
     logger.info(
-        "endpoint=get_regime_for_symbol",
+        ENDPOINT_GET_REGIME_FOR_SYMBOL,
         extra={
             "signal_count": 1,
-            "execution_time_ms": round(elapsed_ms, 2),
+            "execution_time_ms": round(elapsed_ms, ELAPSED_TIME_PRECISION),
             "pnl": get_current_pnl(),
             "symbol": symbol,
         },
@@ -139,13 +154,13 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
     start_time = time.time()
     matrix = correlation_monitor.matrix_as_list()
     reduced = list(correlation_monitor._reduced)
-    alerts = correlation_monitor.recent_alerts(10)
+    alerts = correlation_monitor.recent_alerts(RECENT_ALERTS_LIMIT)
     elapsed_ms = (time.time() - start_time) * 1000
     logger.info(
-        "endpoint=get_correlation_matrix",
+        ENDPOINT_GET_CORRELATION_MATRIX,
         extra={
             "signal_count": len(matrix),
-            "execution_time_ms": round(elapsed_ms, 2),
+            "execution_time_ms": round(elapsed_ms, ELAPSED_TIME_PRECISION),
             "pnl": get_current_pnl(),
         },
     )
@@ -159,13 +174,13 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
 @router.get("/correlation/alerts")
 async def get_correlation_alerts(current_user: User = Depends(get_current_user)):
     start_time = time.time()
-    alerts = correlation_monitor.recent_alerts(50)
+    alerts = correlation_monitor.recent_alerts(RECENT_ALERTS_MAX)
     elapsed_ms = (time.time() - start_time) * 1000
     logger.info(
-        "endpoint=get_correlation_alerts",
+        ENDPOINT_GET_CORRELATION_ALERTS,
         extra={
             "signal_count": len(alerts),
-            "execution_time_ms": round(elapsed_ms, 2),
+            "execution_time_ms": round(elapsed_ms, ELAPSED_TIME_PRECISION),
             "pnl": get_current_pnl(),
         },
     )
