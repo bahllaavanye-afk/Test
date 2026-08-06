@@ -12,8 +12,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 # Constants
-PIPELINE_STATE_ENV = "PIPELINE_STATE_FILE"
-PIPELINE_STATE_FILENAME = "pipeline_runs.json"
+ENV_PIPELINE_STATE_FILE = "PIPELINE_STATE_FILE"
+FILE_PIPELINE_STATE = "pipeline_runs.json"
 FALLBACK_PARENT_DEPTH = 4
 
 DEFAULT_LOAD_LIMIT = 50
@@ -21,6 +21,19 @@ DEFAULT_QUERY_LIMIT = 20
 MAX_QUERY_LIMIT = 50
 DEFAULT_MULTIPLIER = 2
 DEFAULT_LATEST_LIMIT = 100
+
+# JSON keys
+KEY_PIPELINE = "pipeline"
+KEY_DESK = "desk"
+KEY_RUN_ID = "run_id"
+KEY_STARTED_AT = "started_at"
+KEY_STAGES = "stages"
+KEY_STATUS = "status"
+KEY_PENDING = "pending"
+KEY_PIPELINE_LABEL = "pipeline_label"
+
+# Error messages
+ERR_RUN_NOT_FOUND = "Run {run_id!r} not found"
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
@@ -36,16 +49,16 @@ def _resolve_state_file() -> Path:
     default that simply may not exist (readers already handle absence). Never
     raises at import.
     """
-    override = os.environ.get(PIPELINE_STATE_ENV)
+    override = os.environ.get(ENV_PIPELINE_STATE_FILE)
     if override:
         return Path(override)
     here = Path(__file__).resolve()
     for parent in here.parents:
-        candidate = parent / PIPELINE_STATE_FILENAME
+        candidate = parent / FILE_PIPELINE_STATE
         if candidate.exists():
             return candidate
     idx = min(FALLBACK_PARENT_DEPTH, len(here.parents) - 1)
-    return here.parents[idx] / PIPELINE_STATE_FILENAME
+    return here.parents[idx] / FILE_PIPELINE_STATE
 
 
 _STATE_FILE = _resolve_state_file()
@@ -93,20 +106,20 @@ def _load_runs(limit: int = DEFAULT_LOAD_LIMIT) -> list[dict]:
         data = json.loads(_STATE_FILE.read_text())
         if not isinstance(data, list):
             return []
-        return sorted(data, key=lambda r: r.get("started_at", ""), reverse=True)[:limit]
+        return sorted(data, key=lambda r: r.get(KEY_STARTED_AT, ""), reverse=True)[:limit]
     except Exception:
         return []
 
 
 def _enrich_run(run: dict) -> dict:
     """Add stage definitions so the frontend knows the expected stage order."""
-    pipeline = run.get("pipeline", "")
+    pipeline = run.get(KEY_PIPELINE, "")
     defn = PIPELINE_DEFS.get(pipeline, {})
     stage_order = [s["name"] for s in defn.get("stages", [])]
     run = dict(run)
 
     # Index actual stage results by name
-    actual: dict[str, dict] = {s["name"]: s for s in run.get("stages", [])}
+    actual: dict[str, dict] = {s["name"]: s for s in run.get(KEY_STAGES, [])}
 
     # Build merged list: definition order, with actual data filled in
     merged = []
@@ -115,15 +128,15 @@ def _enrich_run(run: dict) -> dict:
         if sname in actual:
             merged.append({**sdef, **actual[sname]})
         else:
-            merged.append({**sdef, "status": "pending"})
+            merged.append({**sdef, KEY_STATUS: KEY_PENDING})
 
     # Append any extra stages not in definition
-    for s in run.get("stages", []):
+    for s in run.get(KEY_STAGES, []):
         if s["name"] not in stage_order:
             merged.append(s)
 
-    run["stages"] = merged
-    run["pipeline_label"] = defn.get("label", pipeline)
+    run[KEY_STAGES] = merged
+    run[KEY_PIPELINE_LABEL] = defn.get("label", pipeline)
     return run
 
 
@@ -136,20 +149,20 @@ def pipeline_status(
     """Return recent pipeline runs, optionally filtered by pipeline name or desk."""
     runs = _load_runs(limit * DEFAULT_MULTIPLIER)
     if pipeline:
-        runs = [r for r in runs if r.get("pipeline") == pipeline]
+        runs = [r for r in runs if r.get(KEY_PIPELINE) == pipeline]
     if desk:
-        runs = [r for r in runs if r.get("desk") == desk]
+        runs = [r for r in runs if r.get(KEY_DESK) == desk]
     return [_enrich_run(r) for r in runs[:limit]]
 
 
 @router.get("/status/latest")
 def pipeline_status_latest():
     """Return the most recent run for each pipeline type."""
-    runs    = _load_runs(DEFAULT_LATEST_LIMIT)
-    seen:   set[str] = set()
+    runs = _load_runs(DEFAULT_LATEST_LIMIT)
+    seen: set[str] = set()
     latest: list[dict] = []
     for run in runs:
-        key = f"{run.get('pipeline')}:{run.get('desk', '')}"
+        key = f"{run.get(KEY_PIPELINE)}:{run.get(KEY_DESK, '')}"
         if key not in seen:
             seen.add(key)
             latest.append(_enrich_run(run))
@@ -160,9 +173,9 @@ def pipeline_status_latest():
 def pipeline_run_detail(run_id: str):
     """Return full detail for a specific pipeline run."""
     for run in _load_runs(DEFAULT_LATEST_LIMIT):
-        if run.get("run_id") == run_id:
+        if run.get(KEY_RUN_ID) == run_id:
             return _enrich_run(run)
-    raise HTTPException(status_code=404, detail=f"Run {run_id!r} not found")
+    raise HTTPException(status_code=404, detail=ERR_RUN_NOT_FOUND.format(run_id=run_id))
 
 
 @router.get("/definitions")
