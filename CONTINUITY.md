@@ -76,6 +76,10 @@ Three keys at 30 rpm each, unused, while the platform ran on `nvidia_nim` alone 
 18,550 ms). In that same probe **`nvidia_nim` timed out** — so without this fix the run would have had zero
 working providers and the cascade would have gone dark for the second time today.
 
+**Fix recovered TWO providers (corrected 10:45):** `gemini` also went `has_key: false` → `keys: 3`. Six keys
+across two providers were ignored; providers with keys went 1 → 3. Gemini currently returns **429** (free quota
+exhausted), so adding more Gemini keys buys little — a distinct provider is the useful move.
+
 **Still open, both operator calls:**
 1. `healthy = bool(working)` means "at least one provider answers". That is not health for a platform whose
    agents, improver and desk commentary all need the cascade. A floor of 2 would make one-away-from-dark

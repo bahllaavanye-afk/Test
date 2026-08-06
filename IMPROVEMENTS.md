@@ -153,7 +153,20 @@ are harmless superseded duplicates, but probing the live cascade found a capabil
   providers: the cascade would have gone dark for the second time today. The fix landed roughly two minutes
   before the provider it replaced failed. That is luck, not design, and it is the argument for the two
   operator items below rather than a reason to feel good about the save.
-- [x] **Still 1 of 8, and `healthy: true` both times.** The canary reported the same verdict before the fix
+- [x] **CORRECTION 2026-08-06 10:45 — the fix recovered TWO providers, not one.** I reported it as restoring
+  Groq's three keys. Reading the full probe rather than the tail shows **Gemini was recovered too**:
+
+        gemini: has_key: true,  keys: 3,  ok: false,  error: "HTTP Error 429: Too Many Requests"
+        groq:   has_key: true,  keys: 3,  ok: true,   ms: 171
+
+  Gemini read `has_key: false` before the fix and `keys: 3` after — the workflow passes `GEMINI_API_KEY_1/2/3`
+  exactly as it does Groq's. So **six keys across two providers** were being ignored, and providers *with keys*
+  went **1 → 3**. I under-reported my own fix by reading only the tail of the log; the correction is upward,
+  but it is the same error as any other — describing evidence I had not fully read.
+- [x] **Gemini's 429 is itself information.** The keys are valid and the free-tier quota is exhausted, which
+  means **adding more Gemini keys buys little** — the useful move is a different provider, not another key on
+  the same one. That sharpens the operator item below from "add a key" to "add a distinct provider".
+- [x] **Still 1 of 8 ANSWERING, and `healthy: true` both times.** The canary reported the same verdict before the fix
   (one slow provider), after it (one fast provider), and would have reported `false` only when the count hit
   zero. **A health check that cannot distinguish "one provider" from "one provider, and the spare just died"
   is not measuring resilience** — it is measuring whether the platform is already broken.
