@@ -1,21 +1,43 @@
 import structlog
 import logging
 from app.config import settings
+from typing import List, Callable
+
+
+def _get_logging_level() -> int:
+    """Determine the logging level based on the debug flag."""
+    return logging.DEBUG if settings.debug else logging.INFO
+
+
+def _get_processors() -> List[Callable]:
+    """Build the list of structlog processors."""
+    base_processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+    ]
+    renderer = (
+        structlog.dev.ConsoleRenderer()
+        if settings.debug
+        else structlog.processors.JSONRenderer()
+    )
+    return base_processors + [renderer]
+
+
+def _get_wrapper_class(level: int):
+    """Create a filtering bound logger class for the given level."""
+    return structlog.make_filtering_bound_logger(level)
 
 
 def configure_logging() -> None:
-    level = logging.DEBUG if settings.debug else logging.INFO
+    """Configure the standard logging and structlog settings."""
+    level = _get_logging_level()
     logging.basicConfig(level=level, format="%(message)s")
 
     structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.StackInfoRenderer(),
-            structlog.dev.ConsoleRenderer() if settings.debug else structlog.processors.JSONRenderer(),
-        ],
-        wrapper_class=structlog.make_filtering_bound_logger(level),
+        processors=_get_processors(),
+        wrapper_class=_get_wrapper_class(level),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
     )
