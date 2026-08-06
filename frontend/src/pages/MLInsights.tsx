@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import api from '../api/client'
+import EmptyState from '../components/ui/EmptyState'
 
 interface MLModel {
   id: string
@@ -101,8 +102,12 @@ export default function MLInsights() {
             Loading models…
           </div>
         ) : models.length === 0 ? (
-          <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg p-6 text-center">
-            <div>No models trained yet. Use the Experiments tab to train your first model.</div>
+          <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg">
+            <EmptyState
+              reason="ml-runtime"
+              note={'The Experiments tab reports the same cause — training there cannot produce a model ' +
+                    'until an ML runtime is available.'}
+            />
           </div>
         ) : (
           <div className="bg-[#111111] border border-[#1e1e1e] rounded-lg overflow-hidden">

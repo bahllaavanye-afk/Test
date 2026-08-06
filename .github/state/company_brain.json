@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1786026519.837281,
+    "last_updated": 1786027575.0166838,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -110,67 +110,52 @@
     },
     "opinion_score": 4,
     "macro_score": 2,
-    "vix": 15.72,
-    "market_scan_ts": 1786025022.4571097,
+    "vix": 15.85,
+    "market_scan_ts": 1786027574.9848306,
     "sector_leaders": [
-      "Financials",
-      "Materials",
-      "Energy"
+      "Energy",
+      "Tech",
+      "Financials"
     ],
     "sector_laggards": [
+      "Comm.",
       "Healthcare",
-      "Cons. Staples",
       "Utilities"
     ],
     "active_universe": [
-      "NVDA",
       "LLY",
-      "INTC",
-      "PANW",
-      "CRWD",
-      "MSFT",
-      "XLV",
-      "QQQ",
-      "GOOGL",
-      "AMZN",
-      "META",
-      "ORCL",
       "EOG",
-      "XLF",
-      "XLK",
-      "COP",
-      "AMD",
-      "AAPL",
+      "NEM",
+      "NVDA",
+      "MSFT",
+      "FCX",
+      "NUE",
+      "AMZN",
+      "GOOGL",
+      "CRWD",
+      "PANW",
+      "ORCL",
       "AVGO",
-      "XLI"
+      "MPC",
+      "ALB",
+      "C",
+      "XLV",
+      "XLK",
+      "AAPL",
+      "COP"
     ],
     "top_momentum": [
       "MSFT",
+      "FCX",
+      "NUE",
       "AMZN",
-      "NVDA",
-      "INTU",
-      "ADBE"
+      "NEM"
     ],
     "risk_flags": [],
     "risk_status": "normal",
     "last_brain_update": 1786010843.6188173
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 2,
-      "sector_leaders": [
-        "Energy",
-        "Financials",
-        "Healthcare"
-      ],
-      "gap_count": 8,
-      "breakout_count": 1,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=2). Leading: Energy, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
-      "ts": 1785445259.467404
-    },
     {
       "lesson": "Equities, commodities, and Polymarket desks placed 7 orders with high confidence (94-100%), while FX and crypto desks placed zero orders despite 9 signals \u2014 investigate bid/ask spread or liquidity constraints on crypto and FX.",
       "category": "execution",
@@ -1871,6 +1856,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Financials, Materials. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1786025022.490878
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Tech",
+        "Financials"
+      ],
+      "gap_count": 7,
+      "breakout_count": 1,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Tech. Gaps: 7, Breakouts: 1, Risk flags: 0.",
+      "ts": 1786027575.022712
     }
   ],
   "github_insights": [
