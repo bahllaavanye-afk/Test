@@ -594,15 +594,30 @@ def llm_routed(
 
 
 def _has_key(p: dict) -> bool:
-    """Check if a provider has an API key configured (supports primary + alt env var)."""
-    v = os.environ.get(p["key_env"], "")
-    if v and v != "disabled":
-        return True
-    alt = p.get("key_env_alt", "")
-    if alt:
-        v2 = os.environ.get(alt, "")
-        return bool(v2) and v2 != "disabled"
-    return False
+    """Whether a provider has ANY usable key — the same set `_provider_keys` rotates.
+
+    This used to check only `key_env` and `key_env_alt`, missing the numbered
+    variants `_1.._3` that `_provider_keys()` explicitly supports. That is not a
+    cosmetic gap: `_call_parallel_race` builds the LIVE cascade with
+    `[p for p in _PROVIDERS if _has_key(p)]`, so a provider whose keys are all
+    numbered was excluded from every call, not merely mis-reported.
+
+    Measured 2026-08-06 in brain-health run 31078219842, whose env showed:
+
+        GROQ_API_KEY:    (empty)
+        GROQ_API_KEY_1:  ***
+        GROQ_API_KEY_2:  ***
+        GROQ_API_KEY_3:  ***
+
+    and whose probe reported `groq: {has_key: false}`. Three configured Groq keys
+    — 30 rpm each, which `_provider_keys` documents as ~3x headroom — were being
+    ignored, leaving the cascade on nvidia_nim alone at 18.5s per call. The same
+    canary reported `healthy: true`, because healthy means "at least one".
+
+    Delegating to `_provider_keys` keeps the two answers to "does this provider
+    have a key?" from ever disagreeing again.
+    """
+    return bool(_provider_keys(p))
 
 
 def _call_parallel_race(
