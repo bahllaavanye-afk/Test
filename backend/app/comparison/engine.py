@@ -4,9 +4,12 @@ compare against benchmarks, compute statistical significance.
 """
 from __future__ import annotations
 
+import asyncio
+import numbers
 from dataclasses import dataclass, field
 from datetime import date
-import numbers
+from functools import lru_cache
+from typing import Tuple
 
 import pandas as pd
 from scipy import stats
@@ -58,6 +61,11 @@ MSG_SERIES_MUST_BE_NUMERIC: str = "series must contain numeric values."
 MSG_STRING_NON_EMPTY: str = "must be a non‑empty string."
 MSG_DATE_TYPE: str = "must be a datetime.date instance."
 
+# In‑memory caches
+_benchmark_cache: dict[Tuple[date, date], dict] = {}
+_benchmark_lock = asyncio.Lock()
+
+
 @dataclass
 class ComparisonResult:
     strategy_name: str
@@ -108,6 +116,27 @@ class StrategyComparisonEngine:
         if value <= 0:
             raise ValueError(ERROR_INITIAL_EQUITY_POSITIVE_MSG)
 
+    @staticmethod
+    @lru_cache(maxsize=128)
+    def _cached_backtest(signals_tuple: Tuple[float, ...], prices_tuple: Tuple[float, ...], initial_equity: float) -> BacktestMetrics:
+        """Cache‑friendly wrapper around run_backtest."""
+        signals = pd.Series(signals_tuple)
+        prices = pd.Series(prices_tuple)
+        return run_backtest(signals, prices, initial_equity)
+
+    @staticmethod
+    async def _get_benchmark_curves(start_date: date, end_date: date) -> dict:
+        """Retrieve benchmark curves with simple in‑memory caching."""
+        key = (start_date, end_date)
+        async with _benchmark_lock:
+            if key not in _benchmark_cache:
+                try:
+                    _benchmark_cache[key] = await fetch_benchmark_curves(start_date, end_date)
+                except Exception as exc:
+                    logger.error(ERROR_FETCH_BENCHMARK_MSG, error=str(exc))
+                    _benchmark_cache[key] = {}
+            return _benchmark_cache[key]
+
     async def run_comparison(
         self,
         manual_signals: pd.Series,
@@ -146,15 +175,12 @@ class StrategyComparisonEngine:
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
 
-        manual_metrics = run_backtest(manual_signals, prices, initial_equity)
-        ml_metrics = run_backtest(ml_signals, prices, initial_equity)
+        # Cached backtest execution
+        manual_metrics = self._cached_backtest(tuple(manual_signals.values), tuple(prices.values), initial_equity)
+        ml_metrics = self._cached_backtest(tuple(ml_signals.values), tuple(prices.values), initial_equity)
 
-        # Fetch benchmark data safely
-        try:
-            benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
-        except Exception as exc:
-            logger.error(ERROR_FETCH_BENCHMARK_MSG, error=str(exc))
-            benchmark_curves = {}
+        # Benchmark data
+        benchmark_curves = await self._get_benchmark_curves(start_date, end_date)
         benchmark_stats = get_benchmark_stats()
 
         # Equity curve processing
