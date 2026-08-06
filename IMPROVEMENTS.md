@@ -110,6 +110,42 @@ backend, so it was not mine — but it was real, it was on main, and it blocked 
   alongside `auth_headers` is precise with zero false positives — about ten lines. **That is now four stated
   blockers in two days that dissolved on contact**, three of them mine.
 
+## 📉 2026-08-06 08:45 — THE "48% DEAD CODE" FIGURE WAS WRONG BY ~17×, AND SO WAS MY FIRST CORRECTION
+
+`813 of 1,710 module-level functions never referenced (48%)` has been quoted since 2026-08-05 and was cited as
+evidence the improver manufactures dead code *at scale*. The open item said **"sample before believing it."**
+Doing that took two rounds, because the first correction was wrong too.
+
+- [x] **The original figure counted TEST functions as dead.** Today `.github/scripts` holds **2,102**
+  module-level functions, and **933 of them are `test_*`**. Pytest discovers those **by name**, so they have no
+  call site anywhere and a naive reference scan marks every one dead. That alone is the bulk of the 813.
+- [x] **My first re-derivation said 108, and sampling proved it inflated.** Scanning for the call pattern
+  `name(` misses functions used as **first-class values**. Two of three sampled "dead" functions were live
+  registry entries:
+
+        claude_conversations.py:491   (call_cerebras,  "Cerebras Llama-3.1")
+        agent_team.py:8348            ["desk-futures"], trading_desk_futures, ["futures", "trading"]
+
+  **I sampled my own number and it failed the sample** — the same discipline the item demanded of the 813,
+  applied to the correction, and it was needed.
+- [x] **The defensible measurement: 23 of 815 unique production function names (2.8%)** have no reference of
+  any kind. Method that survives scrutiny: parse every `.github/scripts/*.py`, collect module-level defs from
+  NON-test files, then count `ast.Name` / `ast.Attribute` / `ast.alias` uses across **all** scripts including
+  tests — identifier uses, not call patterns, so functions passed as values count. Then subtract anything named
+  in `.github/workflows/*.yml` or appearing as a string literal (0 of the 23 were).
+- [x] **Spot-checked 3 of the 23 and all three are genuinely dead**, including one where the only mention is a
+  comment describing behaviour nothing invokes: `_PAID_CALLS_BLOCKED  # populated by call_claude() each time
+  it's invoked` — `call_claude` has no call site.
+- [x] **What this does and does not change.** The improver DOES manufacture dead code — #1510's two
+  unreferenced methods on a SQLAlchemy model were verified directly, by reading the diff. But **813 never
+  demonstrated scale**; it mostly counted tests. The improver-pairing fix (#1549) stands on the direct evidence,
+  not on this number. **A headline figure that drove design decisions was never checked, for a day.**
+- [ ] **[P2] A real side-finding: five of the 23 are LLM plumbing** — `call_claude`, `call_openrouter`,
+  `get_llm`, `llm_chat`, `cached_call`. If those are dead, the free-LLM cascade may have fewer live providers
+  than assumed, which matters because provider exhaustion is a standing operational risk. Worth confirming
+  which providers are actually reachable; not fixed here because deleting or rewiring LLM routing unattended is
+  not a monitor-tick change.
+
 ## 🛡️ 2026-08-06 08:30 — A SCAN THAT FINDS NOTHING PASSES. SO THE SCAN NEEDED ITS OWN GUARD.
 
 Replaced the isolation check's hardcoded three-module list with a scan over every integration module, so a
@@ -1103,9 +1139,10 @@ see the same surface and start the same dig.
   feature — `test_main_actually_uses_the_category_ranking`, `test_the_diagnostic_is_actually_printed`,
   `test_main_actually_calls_it`. Used three times on 2026-08-05 after making the identical mistake three
   times. Precise, cheap, and it fails for a reason the reader can act on.
-- [ ] **[P2] The 813 figure is worth a look on its own terms** — with a coarse-scan caveat, it suggests real
-  dead code in the agent scripts. Sample before believing it: some are workflow entry points invoked by
-  `python -c`, some are called from `backend/`, some are referenced by string.
+- [x] **~~[P2] The 813 figure is worth a look on its own terms.~~ MEASURED 2026-08-06 08:30 — it was wrong by
+  ~17x.** The real number is **23 of 815 (2.8%)**, not 813 of 1,710 (48%). Full derivation in the entry at the
+  top of this file. The instruction "sample before believing it" was the right instruction and it took two
+  rounds: **my own first re-derivation was also wrong**, and sampling caught that too.
 
 ## 🇮🇳 2026-08-05 10:10 — INDIAN MUTUAL FUNDS LIVE (data), and why Zerodha cannot be the bot
 
