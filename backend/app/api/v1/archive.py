@@ -8,6 +8,9 @@ from app.archive.trade_archiver import replay, list_archives
 ARCHIVE_PREFIX: str = "/archive"
 ARCHIVE_TAG: str = "archive"
 
+INDEX_PATH: str = "/index"
+CATEGORY_PATH: str = "/{category}"
+
 DEFAULT_LIMIT: int = 500
 MIN_LIMIT: int = 1
 MAX_LIMIT: int = 5000
@@ -21,7 +24,7 @@ ERR_RETRIEVE_ARCHIVE: str = "Failed to retrieve archive: {exc}"
 router = APIRouter(prefix=ARCHIVE_PREFIX, tags=[ARCHIVE_TAG])
 
 
-@router.get("/index")
+@router.get(INDEX_PATH)
 async def get_index(current_user: User = Depends(get_current_user)):
     """
     Return a list of available archives.
@@ -32,7 +35,7 @@ async def get_index(current_user: User = Depends(get_current_user)):
     return archives if archives else []
 
 
-@router.get("/{category}")
+@router.get(CATEGORY_PATH)
 async def get_archive(
     category: str,
     date: str | None = Query(
