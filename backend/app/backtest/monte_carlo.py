@@ -112,6 +112,41 @@ def _calculate_positive_return(equity: np.ndarray) -> int:
     return int(np.sum(equity[:, -1] > 100_000))
 
 
+def _run_simulation(
+    returns_array: np.ndarray,
+    n_simulations: int,
+    n_days: int,
+    risk_free_daily: float,
+    rng: np.random.Generator,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    """Execute the Monte‑Carlo steps and return intermediate results."""
+    sampled = _sample_returns(rng, returns_array, n_simulations, n_days)
+    equity = _calculate_equity(sampled)
+    max_dds = _calculate_max_dd(equity)
+    sharpe = _calculate_sharpe(sampled, risk_free_daily)
+    positive = _calculate_positive_return(equity)
+    return sharpe, max_dds, positive, n_simulations
+
+
+def _aggregate_results(
+    sharpe: np.ndarray,
+    max_dds: np.ndarray,
+    positive: int,
+    n_simulations: int,
+) -> MonteCarloResult:
+    """Create a MonteCarloResult instance with rounded statistics."""
+    return MonteCarloResult(
+        median_sharpe=round(float(np.median(sharpe)), 4),
+        p5_sharpe=round(float(np.percentile(sharpe, 5)), 4),
+        p95_sharpe=round(float(np.percentile(sharpe, 95)), 4),
+        median_max_dd=round(float(np.median(max_dds)), 4),
+        p95_max_dd=round(float(np.percentile(max_dds, 95)), 4),
+        p5_max_dd=round(float(np.percentile(max_dds, 5)), 4),
+        prob_positive_return=round(positive / n_simulations, 4),
+        num_simulations=n_simulations,
+    )
+
+
 def monte_carlo_simulation(
     daily_returns: pd.Series,
     n_simulations: int = 1000,
@@ -150,11 +185,9 @@ def monte_carlo_simulation(
     rng = np.random.default_rng(42)
 
     try:
-        sampled = _sample_returns(rng, returns_array, n_simulations, n_days)
-        equity = _calculate_equity(sampled)
-        max_dds = _calculate_max_dd(equity)
-        sharpe = _calculate_sharpe(sampled, risk_free_daily)
-        positive = _calculate_positive_return(equity)
+        sharpe, max_dds, positive, sims = _run_simulation(
+            returns_array, n_simulations, n_days, risk_free_daily, rng
+        )
     except Exception as exc:  # pragma: no cover
         logger.exception(
             "Unexpected error during Monte Carlo simulation",
@@ -162,13 +195,4 @@ def monte_carlo_simulation(
         )
         raise MonteCarloError("Monte Carlo simulation failed") from exc
 
-    return MonteCarloResult(
-        median_sharpe=round(float(np.median(sharpe)), 4),
-        p5_sharpe=round(float(np.percentile(sharpe, 5)), 4),
-        p95_sharpe=round(float(np.percentile(sharpe, 95)), 4),
-        median_max_dd=round(float(np.median(max_dds)), 4),
-        p95_max_dd=round(float(np.percentile(max_dds, 95)), 4),
-        p5_max_dd=round(float(np.percentile(max_dds, 5)), 4),
-        prob_positive_return=round(positive / n_simulations, 4),
-        num_simulations=n_simulations,
-    )
+    return _aggregate_results(sharpe, max_dds, positive, sims)
