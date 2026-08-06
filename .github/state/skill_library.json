@@ -1,6 +1,5 @@
 {
   "skills": [
-    "**Arbitrage allocation**: Allocate approximately 70% of the available 2.2% NAV headroom (\u22481.54% NAV) to arbitrage strategies, with the remaining 30% (\u22480.66% NAV) allocated to direct strategies.",
     "Monitor drift signals",
     "Test API payloads",
     "Run back-test suites",
@@ -199,8 +198,9 @@
     "Optimize model training",
     "Track performance metrics",
     "Monitor system memory",
-    "Validate timestamps"
+    "Validate timestamps",
+    "Scan for malware"
   ],
-  "last_updated": "2026-08-06T09:54:03.663584+00:00",
+  "last_updated": "2026-08-06T12:24:21.259990+00:00",
   "total": 200
 }
