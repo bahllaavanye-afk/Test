@@ -165,3 +165,56 @@ async def test_count_bot_positions_filters_by_bot_and_day():
     open_now, today = await eng._count_bot_positions(SimpleNamespace(id="bot1"), _DB())
     assert open_now == 2       # two orders tagged bot1 (other bot excluded)
     assert today == 1          # only one of them created today
+
+
+# New edge case tests
+
+@pytest.mark.asyncio
+async def test_zero_max_open_positions_always_blocks(monkeypatch):
+    """When max_open_positions is set to zero, the bot should never fire."""
+    eng = BotEngine()
+    bot = _bot({"type": "open_long", "size_pct": 5.0, "max_open_positions": 0})
+    res = await _run(eng, bot, monkeypatch, open_now=0)
+    assert res.fired is False
+    assert "Position limit reached" in res.reason
+
+
+@pytest.mark.asyncio
+async def test_zero_max_daily_positions_always_blocks(monkeypatch):
+    """When max_daily_positions is set to zero, the bot should never fire."""
+    eng = BotEngine()
+    bot = _bot({"type": "open_long", "size_pct": 5.0, "max_daily_positions": 0})
+    res = await _run(eng, bot, monkeypatch, open_now=0, today=0)
+    assert res.fired is False
+    assert "Daily position limit reached" in res.reason
+
+
+@pytest.mark.asyncio
+async def test_any_condition_logic_allows_if_one_condition_passes(monkeypatch):
+    """With condition_logic set to ANY, the bot should fire if any condition is met."""
+    eng = BotEngine()
+    bot = SimpleNamespace(
+        id="bot1",
+        account_id="acc1",
+        symbol="SPY",
+        market_type="equity",
+        conditions=[{"type": "no_position"}, {"type": "position_exists"}],
+        condition_logic="ANY",
+        action={"type": "open_long", "size_pct": 5.0},
+        name="Guard Bot",
+    )
+
+    async def fake_order(self, b, a, price, side, db):
+        return "order-any"
+
+    monkeypatch.setattr(BotEngine, "_create_paper_order", fake_order)
+
+    # No positions open → no_position condition true, should fire.
+    res = await _run(eng, bot, monkeypatch, open_now=0)
+    assert res.fired is True
+    assert res.orders_created == ["order-any"]
+
+    # Positions open → position_exists condition true, should also fire.
+    res = await _run(eng, bot, monkeypatch, open_now=1)
+    assert res.fired is True
+    assert res.orders_created == ["order-any"]
