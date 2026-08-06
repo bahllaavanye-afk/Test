@@ -1,13 +1,20 @@
-"""Monte Carlo simulation: bootstrap equity curve for robustness confidence intervals."""
+"""Monte Carlo simulation utilities.
+
+This module provides a bootstrap Monte‑Carlo simulation for equity curves,
+producing confidence intervals for Sharpe ratios and maximum drawdowns.
+It is used by the back‑testing suite to assess strategy robustness under
+different market realizations.
+"""
+
 from __future__ import annotations
 
 import logging
 import numbers
 from dataclasses import dataclass, field
+from typing import List
 
 import numpy as np
 import pandas as pd
-
 
 logger = logging.getLogger(__name__)
 
@@ -18,24 +25,39 @@ class MonteCarloError(RuntimeError):
 
 @dataclass
 class MonteCarloResult:
+    """Aggregated statistics from a Monte‑Carlo simulation.
+
+    Attributes
+    ----------
+    median_sharpe: float
+        Median Sharpe ratio across all simulated paths.
+    p5_sharpe: float
+        5th percentile Sharpe ratio (unlucky tail).
+    p95_sharpe: float
+        95th percentile Sharpe ratio (lucky tail).
+    median_max_dd: float
+        Median maximum drawdown (negative value) across simulations.
+    p95_max_dd: float
+        95th percentile of maximum drawdown (the milder drawdown).
+    p5_max_dd: float
+        5th percentile of maximum drawdown (the severe drawdown).
+    prob_positive_return: float
+        Proportion of simulations that end with a positive return.
+    num_simulations: int
+        Number of Monte‑Carlo paths generated (not shown in repr).
+    """
+
     median_sharpe: float
     p5_sharpe: float
     p95_sharpe: float
     median_max_dd: float
-    # NOTE ON SIGN: max_dd is `dd.min()`, so drawdowns are NEGATIVE. The 95th
-    # percentile of a negative series is therefore the MILDEST drawdown, not the
-    # worst — `p95_max_dd` is the lucky tail, despite reading like a risk
-    # number. It is kept for compatibility and left as-is.
-    #
-    # `p5_max_dd` is the severe tail, and is the one to quote as risk. This
-    # matches `p5_sharpe`, which is already the unlucky end.
     p95_max_dd: float
     p5_max_dd: float
     prob_positive_return: float
     num_simulations: int = field(repr=False)
 
     def __post_init__(self) -> None:
-        """Validate the dataclass fields after initialization."""
+        """Validate that all numeric fields contain real numbers and are within expected ranges."""
         numeric_fields = {
             "median_sharpe": self.median_sharpe,
             "p5_sharpe": self.p5_sharpe,
@@ -59,20 +81,20 @@ class MonteCarloResult:
 def monte_carlo_simulation(
     daily_returns: pd.Series,
     n_simulations: int = 1000,
-    n_years: int = 3,
+    n_years: int | float = 3,
     risk_free_daily: float = 0.05 / 252,
 ) -> MonteCarloResult:
-    """Bootstrap daily returns to simulate N years of paths.
+    """Bootstrap daily returns to simulate N years of equity paths.
 
     Parameters
     ----------
     daily_returns : pd.Series
         Series of daily returns. Must be non‑empty, numeric, and contain finite values.
-    n_simulations : int
+    n_simulations : int, default 1000
         Number of Monte‑Carlo paths to generate. Must be a positive integer.
-    n_years : int
-        Number of years to simulate. Must be a positive integer.
-    risk_free_daily : float
+    n_years : int or float, default 3
+        Number of years to simulate. Must be a positive number.
+    risk_free_daily : float, default 0.05/252
         Daily risk‑free rate. Must be a real number.
 
     Returns
@@ -103,24 +125,24 @@ def monte_carlo_simulation(
     if not isinstance(risk_free_daily, numbers.Real):
         raise ValueError("risk_free_daily must be a real number.")
 
-    n_days = int(n_years * 252)
-    returns_array = daily_returns.dropna().values
-    sharpes: list[float] = []
-    max_dds: list[float] = []
-    positive = 0
+    n_days: int = int(n_years * 252)
+    returns_array: np.ndarray = daily_returns.dropna().values
+    sharpes: List[float] = []
+    max_dds: List[float] = []
+    positive: int = 0
 
     rng = np.random.default_rng(42)
 
     try:
         for _ in range(n_simulations):
-            sampled = rng.choice(returns_array, size=n_days, replace=True)
-            equity = np.cumprod(1 + sampled) * 100_000
-            peak = np.maximum.accumulate(equity)
-            dd = (equity - peak) / peak
-            max_dd = dd.min()
+            sampled: np.ndarray = rng.choice(returns_array, size=n_days, replace=True)
+            equity: np.ndarray = np.cumprod(1 + sampled) * 100_000
+            peak: np.ndarray = np.maximum.accumulate(equity)
+            dd: np.ndarray = (equity - peak) / peak
+            max_dd: float = dd.min()
 
-            excess = sampled - risk_free_daily
-            sharpe = (
+            excess: np.ndarray = sampled - risk_free_daily
+            sharpe: float = (
                 (excess.mean() / excess.std() * np.sqrt(252))
                 if excess.std() > 0
                 else 0.0
