@@ -1,9 +1,12 @@
 """Strategy management endpoints."""
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.database import get_db, AsyncSessionLocal
-from app.api.deps import get_current_user, get_current_active_superuser
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_active_superuser, get_current_user
+from app.database import AsyncSessionLocal, get_db
 from app.models.strategy import Strategy
 from app.models.user import User
 from app.strategies import STRATEGY_REGISTRY, list_desks, strategies_by_desk
@@ -72,22 +75,36 @@ async def list_strategy_desks(current_user: User = Depends(get_current_user)):
     }
 
 
-@router.get("/active")
-async def list_active(
-    request: Request,
-    current_user: User = Depends(get_current_user),
-):
-    """Return the strategies that are currently running in the strategy runner.
+def _get_active_from_state(app) -> Optional[List[Dict[str, Any]]]:
+    """Retrieve active strategies from the in‑process state if available."""
+    return getattr(app.state, "active_strategies", None)
 
-    Reads from app.state.active_strategies (populated at startup by main.py).
-    Falls back to querying the DB when app state is not yet populated.
-    """
-    # Try in-process state first (populated by lifespan at startup)
-    active = getattr(request.app.state, "active_strategies", None)
-    if active is not None:
-        return active
 
-    # Fallback: query DB directly with a lightweight column selection
+def _process_strategy_rows(
+    rows: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Validate and transform raw DB rows into the API response format."""
+    filtered: List[Dict[str, Any]] = []
+    for row in rows:
+        tick = row.get("tick_interval_seconds", 3600)
+        conf = row.get("confidence_threshold", 0.6)
+        # Additional sanity checks
+        if tick <= 0 or not (0.0 <= conf <= 1.0):
+            continue
+        filtered.append(
+            {
+                "name": row["name"],
+                "symbols": row["symbols"] if isinstance(row["symbols"], list) else [],
+                "tick_interval_seconds": int(tick),
+                "confidence_threshold": float(conf),
+                "is_running": True,
+            }
+        )
+    return filtered
+
+
+async def _fetch_active_strategies_from_db() -> List[Dict[str, Any]]:
+    """Query the database for enabled strategies with a minimum confidence threshold."""
     try:
         async with AsyncSessionLocal() as db:
             stmt = (
@@ -98,30 +115,30 @@ async def list_active(
                     Strategy.confidence_threshold,
                 )
                 .where(Strategy.is_enabled.is_(True))
-                .where(Strategy.confidence_threshold >= 0.7)  # enforce tighter entry confidence
+                .where(Strategy.confidence_threshold >= 0.7)
             )
             result = await db.execute(stmt)
             rows = result.mappings().all()
-            filtered = []
-            for row in rows:
-                tick = row.get("tick_interval_seconds", 3600)
-                conf = row.get("confidence_threshold", 0.6)
-                # Additional sanity checks
-                if tick <= 0 or not (0.0 <= conf <= 1.0):
-                    continue
-                filtered.append(
-                    {
-                        "name": row["name"],
-                        "symbols": row["symbols"] if isinstance(row["symbols"], list) else [],
-                        "tick_interval_seconds": int(tick),
-                        "confidence_threshold": float(conf),
-                        "is_running": True,
-                    }
-                )
-            return filtered
+            return _process_strategy_rows(rows)
     except Exception:
         # Return empty list rather than crashing — frontend must handle this gracefully
         return []
+
+
+@router.get("/active")
+async def list_active(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """Return the strategies that are currently running in the strategy runner.
+
+    Reads from app.state.active_strategies (populated at startup by main.py).
+    Falls back to querying the DB when app state is not yet populated.
+    """
+    active = _get_active_from_state(request.app)
+    if active is not None:
+        return active
+    return await _fetch_active_strategies_from_db()
 
 
 @router.get("/", response_model=list[StrategyOut])

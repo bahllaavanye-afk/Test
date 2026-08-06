@@ -49,6 +49,69 @@ class MonteCarloResult:
             raise ValueError("num_simulations must be a positive integer.")
 
 
+def _validate_inputs(
+    daily_returns: pd.Series,
+    n_simulations: int,
+    n_years: int | float,
+    risk_free_daily: float,
+) -> None:
+    """Validate inputs for the Monte Carlo simulation."""
+    if not isinstance(daily_returns, pd.Series):
+        raise ValueError("daily_returns must be a pandas Series.")
+    if daily_returns.empty:
+        raise ValueError("daily_returns series cannot be empty.")
+    if not np.issubdtype(daily_returns.dtype, np.number):
+        raise ValueError("daily_returns must contain numeric values.")
+    if not np.isfinite(daily_returns.dropna()).all():
+        raise ValueError("daily_returns contains non‑finite values (NaN or Inf).")
+    if not isinstance(n_simulations, int) or n_simulations <= 0:
+        raise ValueError("n_simulations must be a positive integer.")
+    if not isinstance(n_years, (int, float)) or n_years <= 0:
+        raise ValueError("n_years must be a positive number.")
+    if not isinstance(risk_free_daily, numbers.Real):
+        raise ValueError("risk_free_daily must be a real number.")
+
+
+def _sample_returns(
+    rng: np.random.Generator,
+    returns_array: np.ndarray,
+    n_simulations: int,
+    n_days: int,
+) -> np.ndarray:
+    """Draw bootstrap samples of daily returns."""
+    return rng.choice(returns_array, size=(n_simulations, n_days), replace=True)
+
+
+def _calculate_equity(sampled: np.ndarray) -> np.ndarray:
+    """Convert sampled returns into equity curves, assuming a $100,000 start."""
+    return np.cumprod(1 + sampled, axis=1) * 100_000
+
+
+def _calculate_max_dd(equity: np.ndarray) -> np.ndarray:
+    """Compute maximum drawdown for each simulated equity curve."""
+    peak = np.maximum.accumulate(equity, axis=1)
+    drawdown = (equity - peak) / peak
+    return drawdown.min(axis=1)
+
+
+def _calculate_sharpe(sampled: np.ndarray, risk_free_daily: float) -> np.ndarray:
+    """Calculate annualized Sharpe ratio for each simulation."""
+    excess = sampled - risk_free_daily
+    mean_excess = excess.mean(axis=1)
+    std_excess = excess.std(axis=1, ddof=0)
+    # Avoid division by zero; assign zero Sharpe when std is zero.
+    return np.where(
+        std_excess > 0,
+        mean_excess / std_excess * np.sqrt(252),
+        0.0,
+    )
+
+
+def _calculate_positive_return(equity: np.ndarray) -> int:
+    """Count simulations that end with a positive return relative to the start."""
+    return int(np.sum(equity[:, -1] > 100_000))
+
+
 def monte_carlo_simulation(
     daily_returns: pd.Series,
     n_simulations: int = 1000,
@@ -80,51 +143,18 @@ def monte_carlo_simulation(
     MonteCarloError
         If an unexpected error occurs during the simulation.
     """
-    # Input validation
-    if not isinstance(daily_returns, pd.Series):
-        raise ValueError("daily_returns must be a pandas Series.")
-    if daily_returns.empty:
-        raise ValueError("daily_returns series cannot be empty.")
-    if not np.issubdtype(daily_returns.dtype, np.number):
-        raise ValueError("daily_returns must contain numeric values.")
-    if not np.isfinite(daily_returns.dropna()).all():
-        raise ValueError("daily_returns contains non‑finite values (NaN or Inf).")
-    if not isinstance(n_simulations, int) or n_simulations <= 0:
-        raise ValueError("n_simulations must be a positive integer.")
-    if not isinstance(n_years, (int, float)) or n_years <= 0:
-        raise ValueError("n_years must be a positive number.")
-    if not isinstance(risk_free_daily, numbers.Real):
-        raise ValueError("risk_free_daily must be a real number.")
+    _validate_inputs(daily_returns, n_simulations, n_years, risk_free_daily)
 
     n_days = int(n_years * 252)
     returns_array = daily_returns.dropna().values.astype(float)
-
     rng = np.random.default_rng(42)
 
     try:
-        # Vectorized sampling: shape (n_simulations, n_days)
-        sampled = rng.choice(returns_array, size=(n_simulations, n_days), replace=True)
-
-        # Equity curve per simulation
-        equity = np.cumprod(1 + sampled, axis=1) * 100_000
-
-        # Maximum drawdown per simulation
-        peak = np.maximum.accumulate(equity, axis=1)
-        dd = (equity - peak) / peak
-        max_dds = dd.min(axis=1)
-
-        # Sharpe ratio per simulation
-        excess = sampled - risk_free_daily
-        mean_excess = excess.mean(axis=1)
-        std_excess = excess.std(axis=1, ddof=0)
-        sharpe = np.where(
-            std_excess > 0,
-            mean_excess / std_excess * np.sqrt(252),
-            0.0,
-        )
-
-        # Probability of positive return at horizon
-        positive = np.sum(equity[:, -1] > 100_000)
+        sampled = _sample_returns(rng, returns_array, n_simulations, n_days)
+        equity = _calculate_equity(sampled)
+        max_dds = _calculate_max_dd(equity)
+        sharpe = _calculate_sharpe(sampled, risk_free_daily)
+        positive = _calculate_positive_return(equity)
     except Exception as exc:  # pragma: no cover
         logger.exception(
             "Unexpected error during Monte Carlo simulation",
