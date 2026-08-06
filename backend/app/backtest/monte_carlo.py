@@ -1,22 +1,30 @@
-"""Monte Carlo simulation: bootstrap equity curve for robustness confidence intervals."""
+"""Monte Carlo simulation utilities for bootstrapping equity curves and computing confidence intervals.
+
+This module provides a lightweight Monte‑Carlo engine that resamples historical daily
+returns to generate synthetic equity paths. The resulting statistics (median Sharpe,
+percentile Sharpe, maximum drawdown, etc.) are packaged in a :class:`MonteCarloResult`
+dataclass for downstream analysis.
+"""
+
 from __future__ import annotations
 
 import logging
 import numbers
 from dataclasses import dataclass, field
+from typing import Final
 
 import numpy as np
 import pandas as pd
 
 # Constants
-START_EQUITY: int = 100_000
-TRADING_DAYS_PER_YEAR: int = 252
-DEFAULT_RNG_SEED: int = 42
-RISK_FREE_RATE_ANNUAL: float = 0.05
-SHARPE_ANNUALIZATION: float = np.sqrt(TRADING_DAYS_PER_YEAR)
-PERCENTILE_LOW: int = 5
-PERCENTILE_HIGH: int = 95
-ROUND_PRECISION: int = 4
+START_EQUITY: Final[int] = 100_000
+TRADING_DAYS_PER_YEAR: Final[int] = 252
+DEFAULT_RNG_SEED: Final[int] = 42
+RISK_FREE_RATE_ANNUAL: Final[float] = 0.05
+SHARPE_ANNUALIZATION: Final[float] = np.sqrt(TRADING_DAYS_PER_YEAR)
+PERCENTILE_LOW: Final[int] = 5
+PERCENTILE_HIGH: Final[int] = 95
+ROUND_PRECISION: Final[int] = 4
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +35,28 @@ class MonteCarloError(RuntimeError):
 
 @dataclass
 class MonteCarloResult:
+    """Aggregated results from a Monte‑Carlo simulation.
+
+    Attributes
+    ----------
+    median_sharpe: float
+        Median annualized Sharpe ratio across all simulated paths.
+    p5_sharpe: float
+        5th percentile Sharpe ratio.
+    p95_sharpe: float
+        95th percentile Sharpe ratio.
+    median_max_dd: float
+        Median maximum drawdown (as a fraction of start equity).
+    p95_max_dd: float
+        95th percentile maximum drawdown.
+    p5_max_dd: float
+        5th percentile maximum drawdown.
+    prob_positive_return: float
+        Probability (0‑1) that a simulated path ends above the start equity.
+    num_simulations: int
+        Number of Monte‑Carlo paths generated (excluded from ``repr`` for brevity).
+    """
+
     median_sharpe: float
     p5_sharpe: float
     p95_sharpe: float
@@ -37,7 +67,7 @@ class MonteCarloResult:
     num_simulations: int = field(repr=False)
 
     def __post_init__(self) -> None:
-        """Validate the dataclass fields after initialization."""
+        """Validate dataclass fields after initialization."""
         numeric_fields = {
             "median_sharpe": self.median_sharpe,
             "p5_sharpe": self.p5_sharpe,
@@ -64,7 +94,24 @@ def _validate_inputs(
     n_years: int | float,
     risk_free_daily: float,
 ) -> None:
-    """Validate inputs for the Monte Carlo simulation."""
+    """Validate inputs for the Monte Carlo simulation.
+
+    Parameters
+    ----------
+    daily_returns : pd.Series
+        Historical daily returns to be resampled.
+    n_simulations : int
+        Number of Monte‑Carlo paths to generate.
+    n_years : int | float
+        Length of each simulation in years.
+    risk_free_daily : float
+        Daily risk‑free rate used for Sharpe calculation.
+
+    Raises
+    ------
+    ValueError
+        If any argument fails validation.
+    """
     if not isinstance(daily_returns, pd.Series):
         raise ValueError("daily_returns must be a pandas Series.")
     if daily_returns.empty:
@@ -87,24 +134,76 @@ def _sample_returns(
     n_simulations: int,
     n_days: int,
 ) -> np.ndarray:
-    """Draw bootstrap samples of daily returns."""
+    """Draw bootstrap samples of daily returns.
+
+    Parameters
+    ----------
+    rng : np.random.Generator
+        Random number generator for reproducibility.
+    returns_array : np.ndarray
+        1‑D array of historical daily returns.
+    n_simulations : int
+        Number of simulated paths.
+    n_days : int
+        Number of trading days per simulation.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape ``(n_simulations, n_days)`` containing sampled returns.
+    """
     return rng.choice(returns_array, size=(n_simulations, n_days), replace=True)
 
 
 def _calculate_equity(sampled: np.ndarray) -> np.ndarray:
-    """Convert sampled returns into equity curves, assuming a start equity."""
+    """Convert sampled returns into equity curves.
+
+    Parameters
+    ----------
+    sampled : np.ndarray
+        Array of sampled daily returns, shape ``(n_simulations, n_days)``.
+
+    Returns
+    -------
+    np.ndarray
+        Cumulative equity curves, each starting from ``START_EQUITY``.
+    """
     return np.cumprod(1 + sampled, axis=1) * START_EQUITY
 
 
 def _calculate_max_dd(equity: np.ndarray) -> np.ndarray:
-    """Compute maximum drawdown for each simulated equity curve."""
+    """Compute maximum drawdown for each simulated equity curve.
+
+    Parameters
+    ----------
+    equity : np.ndarray
+        Simulated equity curves.
+
+    Returns
+    -------
+    np.ndarray
+        1‑D array of maximum drawdown values (negative fractions) per simulation.
+    """
     peak = np.maximum.accumulate(equity, axis=1)
     drawdown = (equity - peak) / peak
     return drawdown.min(axis=1)
 
 
 def _calculate_sharpe(sampled: np.ndarray, risk_free_daily: float) -> np.ndarray:
-    """Calculate annualized Sharpe ratio for each simulation."""
+    """Calculate annualized Sharpe ratio for each simulation.
+
+    Parameters
+    ----------
+    sampled : np.ndarray
+        Sampled daily returns.
+    risk_free_daily : float
+        Daily risk‑free rate.
+
+    Returns
+    -------
+    np.ndarray
+        Annualized Sharpe ratios for each simulation.
+    """
     excess = sampled - risk_free_daily
     mean_excess = excess.mean(axis=1)
     std_excess = excess.std(axis=1, ddof=0)
@@ -117,7 +216,18 @@ def _calculate_sharpe(sampled: np.ndarray, risk_free_daily: float) -> np.ndarray
 
 
 def _calculate_positive_return(equity: np.ndarray) -> int:
-    """Count simulations that end with a positive return relative to the start."""
+    """Count simulations that end with a positive return relative to the start.
+
+    Parameters
+    ----------
+    equity : np.ndarray
+        Simulated equity curves.
+
+    Returns
+    -------
+    int
+        Number of simulations whose final equity exceeds ``START_EQUITY``.
+    """
     return int(np.sum(equity[:, -1] > START_EQUITY))
 
 
@@ -133,12 +243,13 @@ def monte_carlo_simulation(
     ----------
     daily_returns : pd.Series
         Series of daily returns. Must be non‑empty, numeric, and contain finite values.
-    n_simulations : int
-        Number of Monte‑Carlo paths to generate. Must be a positive integer.
-    n_years : int
-        Number of years to simulate. Must be a positive integer.
-    risk_free_daily : float
-        Daily risk‑free rate. Must be a real number.
+    n_simulations : int, optional
+        Number of Monte‑Carlo paths to generate. Must be a positive integer. Default is 1000.
+    n_years : int, optional
+        Number of years to simulate. Must be a positive number. Default is 3.
+    risk_free_daily : float, optional
+        Daily risk‑free rate. Must be a real number. Default is the annual risk‑free rate
+        divided by ``TRADING_DAYS_PER_YEAR``.
 
     Returns
     -------

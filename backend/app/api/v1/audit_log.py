@@ -4,26 +4,34 @@ Provides a read‑only API for retrieving the most recent audit log entries
 associated with the authenticated user. The endpoint validates the request
 parameters, enforces authentication, and returns a list of serialized audit
 records.
+
+The module defines the FastAPI router, the response schema, and the handler
+function.
 """
 
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
 from app.api.deps import get_current_user
+from app.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.user import User
 from pydantic import BaseModel, ConfigDict
-from datetime import datetime
+
 
 router = APIRouter(prefix="/audit-log", tags=["audit-log"])
 
 
 class AuditLogOut(BaseModel):
     """Schema for exposing audit log entries via the API.
+
+    This model mirrors the fields of :class:`app.models.audit_log.AuditLog` that
+    are relevant for external consumption. It is used as the response model for
+    the ``/audit-log`` endpoint.
 
     Attributes
     ----------
@@ -63,7 +71,10 @@ async def list_audit_log(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> List[AuditLogOut]:
-    """Return the last *limit* audit events for the authenticated user.
+    """Return the most recent audit events for the authenticated user.
+
+    The endpoint fetches up to ``limit`` audit log records belonging to the
+    current user, ordered by creation time in descending order.
 
     Parameters
     ----------
@@ -104,5 +115,5 @@ async def list_audit_log(
         .order_by(AuditLog.created_at.desc())
         .limit(limit)
     )
-    rows = result.scalars().all()
+    rows: List[AuditLog] = result.scalars().all()
     return rows
