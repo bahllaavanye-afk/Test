@@ -10,6 +10,7 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Dict, Tuple
 
 from app.utils.logging import logger
 
@@ -18,31 +19,76 @@ QUALITY_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 BACKEND_ROOT = Path(__file__).parents[2]
 
+# ----------------------------------------------------------------------
+# Internal cache for LOC counting to avoid re‑reading unchanged files.
+# The cache maps a file path to a tuple of (modification timestamp, stats dict).
+# ----------------------------------------------------------------------
+_loc_cache: Dict[Path, Tuple[float, Dict[str, int]]] = {}
+
+
+def _compute_file_stats(py_file: Path) -> Dict[str, int]:
+    """Compute LOC statistics for a single python file."""
+    stats = {
+        "total_lines": 0,
+        "code_lines": 0,
+        "blank_lines": 0,
+        "comment_lines": 0,
+    }
+    try:
+        for line in py_file.read_text(errors="ignore").splitlines():
+            stats["total_lines"] += 1
+            stripped = line.strip()
+            if not stripped:
+                stats["blank_lines"] += 1
+            elif stripped.startswith("#"):
+                stats["comment_lines"] += 1
+            else:
+                stats["code_lines"] += 1
+    except Exception as e:
+        logger.debug("code_quality: skip unreadable file", error=str(e))
+    return stats
+
 
 def _count_loc(root: Path) -> dict:
+    """
+    Count lines of code under ``root`` with caching.
+    Only files whose modification time has changed are re‑processed.
+    """
+    global _loc_cache
+
     total_files = 0
     total_lines = 0
     code_lines = 0
     blank_lines = 0
     comment_lines = 0
 
-    for py_file in root.rglob("*.py"):
-        if any(skip in str(py_file) for skip in ("__pycache__", ".pytest_cache", "test.db")):
-            continue
+    # Gather current python files, respecting skip patterns
+    current_files = [
+        py_file
+        for py_file in root.rglob("*.py")
+        if not any(skip in str(py_file) for skip in ("__pycache__", ".pytest_cache", "test.db"))
+    ]
+
+    # Remove cache entries for files that disappeared
+    vanished = set(_loc_cache) - set(current_files)
+    for dead in vanished:
+        del _loc_cache[dead]
+
+    for py_file in current_files:
         total_files += 1
-        try:
-            for line in py_file.read_text(errors="ignore").splitlines():
-                total_lines += 1
-                stripped = line.strip()
-                if not stripped:
-                    blank_lines += 1
-                elif stripped.startswith("#"):
-                    comment_lines += 1
-                else:
-                    code_lines += 1
-        except Exception as e:
-            logger.debug("code_quality: skip unreadable file", error=str(e))
-            continue
+        mtime = py_file.stat().st_mtime
+        cached = _loc_cache.get(py_file)
+
+        if cached and cached[0] == mtime:
+            stats = cached[1]
+        else:
+            stats = _compute_file_stats(py_file)
+            _loc_cache[py_file] = (mtime, stats)
+
+        total_lines += stats["total_lines"]
+        code_lines += stats["code_lines"]
+        blank_lines += stats["blank_lines"]
+        comment_lines += stats["comment_lines"]
 
     return {
         "files": total_files,
