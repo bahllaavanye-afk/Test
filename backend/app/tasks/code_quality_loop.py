@@ -153,16 +153,13 @@ class CodeQualityLoop:
                 snapshot = await self._snapshot()
                 self._persist(snapshot)
 
-                # Compute key metrics for structured logging
                 signal_count = snapshot.get("manual_strategies", 0) + snapshot.get("ml_strategies", 0)
                 execution_time = round(time.perf_counter() - start_time, 3)
-                pnl = snapshot.get("pnl")  # P&L not tracked here; will be None if absent
 
                 logger.info(
                     "code_quality: iteration metrics",
                     signal_count=signal_count,
                     execution_time=execution_time,
-                    pnl=pnl,
                 )
                 logger.debug("Code quality snapshot", **snapshot)
             except asyncio.CancelledError:

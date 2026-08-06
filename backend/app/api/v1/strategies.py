@@ -82,12 +82,10 @@ async def list_active(
     Reads from app.state.active_strategies (populated at startup by main.py).
     Falls back to querying the DB when app state is not yet populated.
     """
-    # Try in-process state first (populated by lifespan at startup)
     active = getattr(request.app.state, "active_strategies", None)
     if active is not None:
         return active
 
-    # Fallback: query DB directly with a lightweight column selection
     try:
         async with AsyncSessionLocal() as db:
             stmt = (
@@ -98,7 +96,7 @@ async def list_active(
                     Strategy.confidence_threshold,
                 )
                 .where(Strategy.is_enabled.is_(True))
-                .where(Strategy.confidence_threshold >= 0.7)  # enforce tighter entry confidence
+                .where(Strategy.confidence_threshold >= 0.7)
             )
             result = await db.execute(stmt)
             rows = result.mappings().all()
@@ -106,7 +104,6 @@ async def list_active(
             for row in rows:
                 tick = row.get("tick_interval_seconds", 3600)
                 conf = row.get("confidence_threshold", 0.6)
-                # Additional sanity checks
                 if tick <= 0 or not (0.0 <= conf <= 1.0):
                     continue
                 filtered.append(
@@ -120,7 +117,6 @@ async def list_active(
                 )
             return filtered
     except Exception:
-        # Return empty list rather than crashing — frontend must handle this gracefully
         return []
 
 

@@ -1,5 +1,7 @@
 """API v1 router — mounts all sub-routers."""
 import logging
+from typing import Iterable, Tuple
+
 from fastapi import APIRouter
 
 from app.api.v1 import (
@@ -39,7 +41,8 @@ logger = logging.getLogger(__name__)
 
 api_router = APIRouter()
 
-def _include(router_obj, name: str):
+
+def _include(router_obj, name: str) -> None:
     """Safely include a sub‑router, handling None or invalid inputs."""
     if router_obj is None:
         logger.warning("Router %s is None and will be skipped.", name)
@@ -49,8 +52,9 @@ def _include(router_obj, name: str):
     except Exception as exc:  # pragma: no cover
         logger.error("Failed to include router %s: %s", name, exc)
 
+
 # List of (router, name) tuples for systematic inclusion
-_routers = [
+_routers: Iterable[Tuple[object, str]] = [
     (auth.router, "auth"),
     (accounts.router, "accounts"),
     (orders.router, "orders"),
