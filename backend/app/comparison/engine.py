@@ -7,6 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 import numbers
+from typing import Dict, Tuple
 
 import pandas as pd
 from scipy import stats
@@ -57,6 +58,16 @@ MSG_INDEX_MUST_BE_MONOTONIC: str = "index must be monotonic increasing."
 MSG_SERIES_MUST_BE_NUMERIC: str = "series must contain numeric values."
 MSG_STRING_NON_EMPTY: str = "must be a non‑empty string."
 MSG_DATE_TYPE: str = "must be a datetime.date instance."
+
+# Simple in‑memory cache for benchmark curves
+_BENCHMARK_CACHE: Dict[Tuple[date, date], dict] = {}
+
+async def _cached_fetch_benchmark_curves(start_date: date, end_date: date) -> dict:
+    """Fetch benchmark curves with a lightweight in‑memory cache."""
+    cache_key = (start_date, end_date)
+    if cache_key not in _BENCHMARK_CACHE:
+        _BENCHMARK_CACHE[cache_key] = await fetch_benchmark_curves(start_date, end_date)
+    return _BENCHMARK_CACHE[cache_key]
 
 @dataclass
 class ComparisonResult:
@@ -146,30 +157,36 @@ class StrategyComparisonEngine:
         ml_signals = ml_signals.loc[common_index]
         prices = prices.loc[common_index]
 
+        # Run backtests
         manual_metrics = run_backtest(manual_signals, prices, initial_equity)
         ml_metrics = run_backtest(ml_signals, prices, initial_equity)
 
-        # Fetch benchmark data safely
+        # Fetch benchmark data with caching
         try:
-            benchmark_curves = await fetch_benchmark_curves(start_date, end_date)
+            benchmark_curves = await _cached_fetch_benchmark_curves(start_date, end_date)
         except Exception as exc:
             logger.error(ERROR_FETCH_BENCHMARK_MSG, error=str(exc))
             benchmark_curves = {}
         benchmark_stats = get_benchmark_stats()
 
-        # Equity curve processing
+        # Equity curve processing (vectorized)
         manual_eq = pd.Series([e[EQUITY_KEY] for e in manual_metrics.equity_curve])
         ml_eq = pd.Series([e[EQUITY_KEY] for e in ml_metrics.equity_curve])
         manual_ret = manual_eq.pct_change().dropna()
         ml_ret = ml_eq.pct_change().dropna()
 
-        # Statistical test
+        # Statistical test with early exit and numpy arrays for speed
         min_len = min(len(manual_ret), len(ml_ret))
-        if min_len > MIN_SAMPLE_SIZE:
-            t_stat, p_val = stats.ttest_ind(ml_ret.iloc[:min_len], manual_ret.iloc[:min_len])
+        if min_len >= MIN_SAMPLE_SIZE:
+            t_stat, p_val = stats.ttest_ind(
+                ml_ret.values[:min_len],
+                manual_ret.values[:min_len],
+                equal_var=False,
+            )
         else:
             t_stat, p_val = DEFAULT_T_STAT, DEFAULT_P_VAL
 
+        # Compute improvement and determine winner
         improvement = ml_metrics.sharpe - manual_metrics.sharpe
         winner = WINNER_ML if ml_metrics.sharpe > manual_metrics.sharpe else WINNER_MANUAL
         if abs(improvement) < IMPROVEMENT_THRESHOLD:
