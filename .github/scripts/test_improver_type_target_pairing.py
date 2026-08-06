@@ -116,3 +116,41 @@ def test_main_passes_the_improvement_type_to_the_picker():
     call = src.split("target = pick_target_file(", 1)[1][:160]
     assert "improvement_type=improvement_type" in call, (
         "main() calls pick_target_file without the type; the pairing is inert")
+
+
+# ── The broker gap, found 2026-08-06 ─────────────────────────────────────────
+
+def test_broker_files_are_protected():
+    """#1547 rewrote `brokers/alpaca_headers.py` — the Alpaca CREDENTIAL path —
+    in an autonomous "optimization" run.
+
+    The change itself was benign and its claim was even true (measured 108ns vs
+    128ns per call). That is not the point: `brokers/*.py` is declared
+    Do-Not-Modify in THREE CLAUDE.md files (tasks/, risk/, and
+    strategies/options/ for alpaca.py), and `grep -rl alpaca_headers
+    backend/tests/` returns NOTHING — so a green CI said nothing whatever about
+    a change to where the API keys are assembled. The money-path argument that
+    already protects execution/ and risk/ applies here with more force.
+    """
+    assert "backend/app/brokers/" in ci.PROTECTED_PREFIXES
+    assert ci._is_protected("backend/app/brokers/alpaca_headers.py")
+    assert ci._is_protected("backend/app/brokers/alpaca.py")
+
+
+def test_protection_covers_every_money_path_directory():
+    """The four money-path directories, named so a future edit that drops one
+    fails here rather than in production."""
+    for prefix in ("backend/app/brokers/", "backend/app/execution/",
+                   "backend/app/risk/", "backend/app/strategies/"):
+        assert ci._is_protected(prefix + "anything.py"), f"{prefix} is reachable"
+
+
+def test_no_type_targets_a_protected_directory_after_the_broker_change():
+    """Adding a prefix to PROTECTED_PREFIXES without pruning TYPE_TARGETS would
+    leave types pointing at patterns that can now only yield nothing — which is
+    precisely the silent-fallback failure this module exists to prevent."""
+    os.chdir(REPO)
+    for name, patterns in ci.TYPE_TARGETS.items():
+        for pat in patterns:
+            assert not ci._is_protected(pat.split("*")[0]), (
+                f"{name} still targets protected {pat}")

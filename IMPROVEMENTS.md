@@ -1,5 +1,38 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔑 2026-08-06 08:00 — THE IMPROVER REWROTE THE ALPACA CREDENTIAL PATH, AND CI HAD NOTHING TO SAY
+
+Checked #1547 (`improve(optimization): autonomous run — 5 file(s)`) because it merged into main this cycle and
+improver PRs bypass the gate. One of the five files was `backend/app/brokers/alpaca_headers.py` — where the
+API keys are assembled.
+
+- [x] **The change itself is fine, and I checked rather than assumed.** It wrapped the header builder in
+  `@lru_cache(maxsize=1)` and returns a `.copy()`. I expected to find the `.copy()` made it *slower* and said
+  so to myself first; measured over 2M calls it is **108ns vs 128ns — 16% faster**, so the optimization claim
+  was true. Nothing mutates `settings` at runtime, so the cache cannot go stale in-process either.
+- [x] **That it was benign is luck, not design, and the gap is the finding.** `backend/app/brokers/*.py` is
+  declared Do-Not-Modify in **three** CLAUDE.md files (`tasks/`, `risk/`, and `strategies/options/` for
+  `alpaca.py`) — but it was **not** in the improver's `PROTECTED_PREFIXES`, only in `CANDIDATE_PATTERNS`. The
+  project's own rule and the improver's enforcement had drifted apart.
+- [x] **`grep -rl alpaca_headers backend/tests/` returns NOTHING.** An autonomous whole-file LLM rewrite landed
+  on the credential path with **zero test coverage**, and the green CI that merged it was not evidence about
+  the change at all. That is the same shape as everything else today: a check whose output does not depend on
+  the thing it appears to certify.
+- [x] **`backend/app/brokers/` is now protected**, and pruned from the three `TYPE_TARGETS` entries that
+  referenced it (`error_handling`, `constants`, `monitoring`) — because adding a prefix without pruning the
+  targets would leave types pointing at patterns that can now only yield nothing, which is exactly the silent
+  fallback fixed an hour ago. All 11 types verified to still resolve. 2 mutations, 2 caught.
+- [x] **Trailing newline was stripped from the file** by the improver's rewrite. Cosmetic, not fixed here:
+  `brokers/*.py` is Do-Not-Modify for me too, and the right move is to leave the money-path file alone rather
+  than touch it for whitespace.
+- [ ] **[P2] `CANDIDATE_PATTERNS` still lists `backend/app/brokers/*.py`.** Harmless — `_usable()` filters
+  protected files, so it yields nothing — but it is now a dead entry in a list that reads like configuration.
+  Left because several existing tests index that list positionally and rewriting them is a bigger change than
+  the tidiness earns.
+- [ ] **[P1, OPERATOR] The real gap is unchanged: improver PRs still bypass CI.** Protecting one more
+  directory narrows the blast radius; it does not fix the mechanism. A whole-file LLM rewrite still merges to
+  main without the gate, and today it happened to be harmless.
+
 ## 🎯 2026-08-06 07:30 — HALF THE IMPROVER'S "TARGETING" WAS DECORATIVE, AND ONE OF ITS TYPES COULD NEVER RUN
 
 Shipped the `[P2]` pairing item. Measuring it first changed what the fix had to be — the tracker's description

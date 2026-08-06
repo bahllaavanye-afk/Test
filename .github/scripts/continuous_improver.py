@@ -135,6 +135,16 @@ PROTECTED_PREFIXES = (
     "backend/app/risk/",
     "backend/app/ml/models/",
     "backend/app/bots/",
+    # Added 2026-08-06 after #1547 rewrote `brokers/alpaca_headers.py` — the
+    # Alpaca CREDENTIAL path — in an autonomous "optimization" run. The change
+    # was benign (an lru_cache; measured 108ns vs 128ns per call, so the claim
+    # was even true), but it should never have been reachable: `brokers/*.py` is
+    # declared Do-Not-Modify in THREE CLAUDE.md files (tasks/, risk/, and
+    # strategies/options/ for `alpaca.py`), and grep finds **zero tests**
+    # referencing `alpaca_headers`, so a green CI said nothing about it. The
+    # money-path argument that protects `execution/` and `risk/` applies here
+    # with more force: this is where the API keys live.
+    "backend/app/brokers/",
 )
 
 
@@ -192,7 +202,7 @@ TYPE_TARGETS: dict[str, tuple[str, ...]] = {
     "docstrings":     ("backend/app/api/v1/*.py", "backend/app/models/*.py",
                        "backend/app/tasks/*.py", "backend/app/backtest/*.py"),
     "error_handling": ("backend/app/api/v1/*.py", "backend/app/tasks/*.py",
-                       "backend/app/brokers/*.py"),
+                       "backend/app/backtest/*.py"),
     # Tests belong in the test tree. This is the pairing that was most obviously
     # wrong: the prompt asks for "2-3 new unit test cases" and used to point at
     # ML model source.
@@ -204,7 +214,7 @@ TYPE_TARGETS: dict[str, tuple[str, ...]] = {
     "optimization":   ("backend/app/backtest/*.py", "backend/app/comparison/*.py",
                        "backend/app/tasks/*.py"),
     "constants":      ("backend/app/api/v1/*.py", "backend/app/tasks/*.py",
-                       "backend/app/brokers/*.py", "backend/app/backtest/*.py"),
+                       "backend/app/backtest/*.py"),
     "schemas":        ("backend/app/schemas/*.py", "backend/app/models/*.py",
                        "backend/app/api/v1/*.py"),
     "edge_cases":     ("backend/app/api/v1/*.py", "backend/app/tasks/*.py",
@@ -214,7 +224,7 @@ TYPE_TARGETS: dict[str, tuple[str, ...]] = {
     # Runtime code only — logging "signal count, execution time, P&L" into the
     # unit-test tree, which is where this used to land, is noise at best.
     "monitoring":     ("backend/app/tasks/*.py", "backend/app/api/v1/*.py",
-                       "backend/app/brokers/*.py"),
+                       "backend/app/comparison/*.py"),
 }
 
 
