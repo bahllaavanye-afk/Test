@@ -126,6 +126,46 @@ def _slice_series(
         return series.loc[mask]
 
 
+def _scenario_intersects_price_index(
+    price_index: pd.Index,
+    start_ts: pd.Timestamp,
+    end_ts: pd.Timestamp,
+) -> bool:
+    """Return True if the scenario window overlaps any timestamps in the price index."""
+    return ((price_index >= start_ts) & (price_index <= end_ts)).any()
+
+
+def _prepare_slices(
+    signals: pd.Series,
+    prices: pd.Series,
+    opens: pd.Series | None,
+    volume: pd.Series | None,
+    start_ts: pd.Timestamp,
+    end_ts: pd.Timestamp,
+) -> tuple[pd.Series | None, pd.Series | None, pd.Series | None, pd.Series | None]:
+    """Slice all input series to the scenario window."""
+    s_signals = _slice_series(signals, start_ts, end_ts)
+    s_prices = _slice_series(prices, start_ts, end_ts)
+    s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
+    s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
+    return s_signals, s_prices, s_opens, s_volume
+
+
+def _build_result(
+    scenario: StressScenario,
+    metrics: BacktestMetrics | None,
+    period_covered: bool,
+    data_points: int,
+) -> StressResult:
+    """Create a StressResult instance."""
+    return StressResult(
+        scenario=scenario,
+        metrics=metrics,
+        period_covered=period_covered,
+        data_points=data_points,
+    )
+
+
 def run_stress_tests(
     signals: pd.Series,
     prices: pd.Series,
@@ -152,34 +192,22 @@ def run_stress_tests(
         start_ts = pd.Timestamp(scenario.start)
         end_ts = pd.Timestamp(scenario.end)
 
-        # Fast check: if the scenario window does not intersect the price index, skip early
-        if not ((price_index >= start_ts) & (price_index <= end_ts)).any():
-            results.append(
-                StressResult(
-                    scenario=scenario,
-                    metrics=None,
-                    period_covered=False,
-                    data_points=ZERO_DATA_POINTS,
-                )
-            )
+        # Fast check: skip if the window does not intersect the price series at all
+        if not _scenario_intersects_price_index(price_index, start_ts, end_ts):
+            results.append(_build_result(scenario, None, False, ZERO_DATA_POINTS))
             continue
 
-        s_signals = _slice_series(signals, start_ts, end_ts)
-        s_prices = _slice_series(prices, start_ts, end_ts)
-        s_opens = _slice_series(opens, start_ts, end_ts) if opens is not None else None
-        s_volume = _slice_series(volume, start_ts, end_ts) if volume is not None else None
+        s_signals, s_prices, s_opens, s_volume = _prepare_slices(
+            signals, prices, opens, volume, start_ts, end_ts
+        )
 
+        # Insufficient price data for this scenario
         if s_prices is None or len(s_prices) < MIN_DATA_POINTS:
-            results.append(
-                StressResult(
-                    scenario=scenario,
-                    metrics=None,
-                    period_covered=False,
-                    data_points=len(s_prices) if s_prices is not None else ZERO_DATA_POINTS,
-                )
-            )
+            data_pts = len(s_prices) if s_prices is not None else ZERO_DATA_POINTS
+            results.append(_build_result(scenario, None, False, data_pts))
             continue
 
+        # Run backtest on the sliced data
         metrics = run_backtest(
             signals=s_signals,
             prices=s_prices,
@@ -190,14 +218,7 @@ def run_stress_tests(
             slippage_pct=slippage_pct,
         )
 
-        results.append(
-            StressResult(
-                scenario=scenario,
-                metrics=metrics,
-                period_covered=True,
-                data_points=len(s_prices),
-            )
-        )
+        results.append(_build_result(scenario, metrics, True, len(s_prices)))
 
     return results
 
