@@ -1,5 +1,13 @@
-"""Trade history endpoints."""
+"""Trade history endpoints for the QuantEdge API.
+
+Provides a single endpoint to retrieve recent trades for the authenticated user,
+with optional filtering by symbol and account. The response model is optimized
+to include only the required fields and pre‑computes an average fill price
+directly in the SQL query.
+"""
+
 from datetime import datetime
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -25,22 +33,22 @@ class TradeOut(BaseModel):
         description="Trade direction; either 'buy' or 'sell'.",
         json_schema_extra={"example": "buy"},
     )
-    realized_pnl: float | None = Field(
+    realized_pnl: Optional[float] = Field(
         None,
         description="Realized profit and loss in the account's base currency.",
         json_schema_extra={"example": 152.35},
     )
-    entry_price: float | None = Field(
+    entry_price: Optional[float] = Field(
         None,
         description="Price at which the position was entered.",
         json_schema_extra={"example": 145.30},
     )
-    exit_price: float | None = Field(
+    exit_price: Optional[float] = Field(
         None,
         description="Price at which the position was exited.",
         json_schema_extra={"example": 150.00},
     )
-    avg_fill_price: float | None = Field(
+    avg_fill_price: Optional[float] = Field(
         None,
         description=(
             "Average fill price used for chart markers. "
@@ -54,17 +62,17 @@ class TradeOut(BaseModel):
         description="Number of shares/contracts traded.",
         json_schema_extra={"example": 100},
     )
-    opened_at: datetime | None = Field(
+    opened_at: Optional[datetime] = Field(
         None,
         description="Timestamp when the trade was opened.",
         json_schema_extra={"example": "2023-01-01T09:30:00Z"},
     )
-    closed_at: datetime | None = Field(
+    closed_at: Optional[datetime] = Field(
         None,
         description="Timestamp when the trade was closed.",
         json_schema_extra={"example": "2023-01-01T15:45:00Z"},
     )
-    strategy_name: str | None = Field(
+    strategy_name: Optional[str] = Field(
         None,
         description="Name of the strategy that generated the trade.",
         json_schema_extra={"example": "mean_rev_20_2"},
@@ -75,7 +83,7 @@ class TradeOut(BaseModel):
     @field_validator("side")
     @classmethod
     def validate_side(cls, v: str) -> str:
-        """Ensure side is either 'buy' or 'sell'."""
+        """Ensure `side` is either 'buy' or 'sell'."""
         if v not in {"buy", "sell"}:
             raise ValueError("side must be either 'buy' or 'sell'")
         return v
@@ -83,21 +91,33 @@ class TradeOut(BaseModel):
     @field_validator("quantity")
     @classmethod
     def validate_quantity(cls, v: float) -> float:
-        """Quantity must be a positive number."""
+        """Validate that `quantity` is a positive number."""
         if v <= 0:
             raise ValueError("quantity must be greater than 0")
         return v
 
 
-@router.get("/", response_model=list[TradeOut])
+@router.get("/", response_model=List[TradeOut])
 async def list_trades(
     limit: int = Query(50, ge=1, le=500),
-    symbol: str | None = Query(None, description="Filter by symbol"),
-    account_id: str | None = Query(None, description="Filter by account ID"),
+    symbol: Optional[str] = Query(None, description="Filter by symbol"),
+    account_id: Optional[str] = Query(None, description="Filter by account ID"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
-    """Return a list of recent trades for the current user with optional filters."""
+) -> List[TradeOut]:
+    """Return recent trades for the authenticated user.
+
+    Args:
+        limit: Maximum number of trades to return (default 50, max 500).
+        symbol: Optional ticker symbol to filter trades.
+        account_id: Optional account identifier to filter trades.
+        db: Asynchronous SQLAlchemy session provided by the dependency injector.
+        current_user: The user extracted from the authentication token.
+
+    Returns:
+        A list of :class:`TradeOut` instances representing the matching trades.
+        An empty list is returned when no trades satisfy the query.
+    """
     # Build a lightweight query that selects only needed columns and computes avg_fill_price in SQL.
     fill_price_expr = case(
         (Trade.side == "buy", Trade.entry_price),
