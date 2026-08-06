@@ -18,7 +18,7 @@ each independently "found" after already being documented.
 | # | Action | Effort | Unblocks |
 |---|--------|--------|----------|
 | 1 | **Suspend/delete the `quantedge-api-agb8` Render service** | ~30s | A second backend (paper mode, Alpaca-connected, 11 background tasks, dead DB) is trading the SAME account as `9jz0`. Contaminates equity/buying-power/position reads the desk uses for Kelly sizing, the loss cap and `is_risk_reducing`, plus the new slippage attribution — it can also place duplicate orders. ~~Prime suspect for the `< $25 available cash` block.~~ **That justification is withdrawn 2026-08-04 13:50** — the cash block cleared on its own at the open (11 orders placed), which a draining second backend would not do. Still worth shutting down for the duplicate-order and attribution reasons; the cash argument does not support it. | **RE-VERIFIED LIVE 2026-08-05 19:00** — `background_tasks: running 11`, `alpaca: connected`, `strategies: 113`, own DB dead. Third session running that this has been rediscovered by hand; as of 19:15 `audit_order_origins()` reports any second writer in EVERY desk run, so the next rediscovery is a log line rather than an investigation.
-| 2 | **Unpause Supabase `vexzwnfbmznvxoxxktax`** | ~1min | Nothing persists. Trades land in ephemeral sqlite and are wiped on every redeploy → empty leaderboard, inert attribution pruning, no per-strategy TCA history. Also the last open link of the post-deploy revival P0. |
+| 2 | **Unpause Supabase `vexzwnfbmznvxoxxktax`** — ⚠️ **NOT SUFFICIENT ON ITS OWN, found 2026-08-06 01:00.** `alembic/versions/d4e5f6a7b8c9_create_bots_table.py:32` declares `is_enabled` as `sa.Boolean()` with `server_default=sa.text("1")`. That is SQLite idiom; Postgres rejects it outright (`DatatypeMismatch: column "is_enabled" is of type boolean but default expression is of type integer`), so **the migration chain cannot apply to Postgres**. The app has only ever run on the SQLite fallback, which is precisely the engine that tolerates it. Fix is one line — `server_default=sa.true()`, which SQLAlchemy renders per dialect — but `alembic/versions/` is Do-Not-Modify, so it needs you. Do this BEFORE or WITH the unpause, or the change window is wasted. | ~1min + 1 line | Nothing persists. Trades land in ephemeral sqlite and are wiped on every redeploy → empty leaderboard, inert attribution pruning, no per-strategy TCA history. Also the last open link of the post-deploy revival P0. |
 | 3 | **Vercel: fix `ignoreCommand` + clear the stale-failure PRs** | ~5min | ~100 PRs frozen. Two separable actions: prepend `case "$VERCEL_GIT_COMMIT_REF" in improver/*) exit 0;; esac` to stop NEW PRs being stamped, and push/redeploy/close the existing ones — a commit status is immutable per sha, so they never self-clear. (`frontend/vercel.json` is under "Do NOT Modify", so this is yours by policy too.) |
 | 4 | **Crypto confidence recalibration** (needs a walk-forward backtest) | hours | The only always-open desk. `confidence = |raw| · (target_vol/rv) / 2` caps at 0.40 @50% vol vs a 0.60 gate, so overnight trading is rare. The naive fix scores 0.83–0.94 on a ZERO-DRIFT random walk — it trades noise — so this is a strategy decision, not a patch. `xfail(strict=True)` tests flip to failure when it is done. |
 | 5 | **ML: pick a path** | decision | Either add an XGBoost/LightGBM trainer (torch-free — runtime, model class and loader all already exist on Render; only the trainer is missing) **or** host inference where torch fits. Until then every LSTM item is unreachable work: torch is deliberately excluded from Render (`pyproject.toml:54-56`). |
@@ -89,6 +89,23 @@ miss the open**. Moving the cron earlier is impossible: NSE closes at 10:00 UTC.
 time and accepts the previous session inside its 30h window, so a late producer costs *yesterday's* Indian read
 rather than no read, and logs which it used. Desks running after the late arrival get today's. Worst case is
 absorbed; best case is just not guaranteed.
+
+## 🚨 2026-08-06 00:05 — A GUARD THAT HAS NEVER RUN IN CI (and the violation it should have caught)
+
+`test_no_datetime_utcnow_in_source` fails locally and passes in CI. I recorded that as a path discrepancy
+earlier today. It is a **dead guard**: it hardcodes `Path("/home/user/Test/backend/app")`, which does not exist
+on a runner, so `rglob` yields nothing and `assert violations == []` is vacuously true. Both
+`TestDeprecatedAPIRegression` tests do this.
+
+`backend/app/models/backtest.py` used `datetime.utcnow()` three times the whole time.
+
+**The rule, because this is the second instance today in mirror image:** a test that locates source by path
+must derive it from `__file__`. A *relative* path broke the improver tests outside the repo root this morning;
+an *absolute* path silently disabled these inside CI tonight.
+
+Fixed: paths derived from `__file__` with `assert backend_dir.is_dir()` so a future move fails loudly, and the
+three `utcnow()` calls replaced. Injecting a violation into `models/ml_model.py` now turns the test red, so the
+guard is real. The sibling `get_event_loop` scan comes back clean on 0 files.
 
 ## ✅ 2026-08-05 19:00 — THE STRATEGY TRIMMER IS LIVE (pending verification since 07-29, now closed)
 

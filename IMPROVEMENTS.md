@@ -1,5 +1,130 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🧱 2026-08-06 01:00 — A MIGRATION THAT CANNOT APPLY TO POSTGRES, AND IT BLOCKS OPERATOR ITEM #2
+
+The Schema Drift Gate failed on my PR. It is not my change — my diff touches four lines of dead test code in
+`models/backtest.py` and nothing in `models/` columns or `alembic/`. It is a **pre-existing migration bug**,
+and it matters much more than the gate failure.
+
+```
+backend/alembic/versions/d4e5f6a7b8c9_create_bots_table.py:32
+    sa.Column("is_enabled", sa.Boolean(), nullable=False, server_default=sa.text("1"))
+
+psycopg2.errors.DatatypeMismatch:
+    column "is_enabled" is of type boolean but default expression is of type integer
+```
+
+- [x] **`sa.text("1")` is SQLite idiom.** SQLite stores booleans as integers and accepts it silently; Postgres
+  is strict and rejects the DDL outright. The migration therefore **cannot apply to Postgres at all**.
+- [ ] **[P0] This changes the plan for operator item #2.** "Unpause Supabase" has been the standing fix for the
+  ephemeral-sqlite problem — but the app has been running on the SQLite fallback the whole time, which is
+  exactly the engine that tolerates this default. **Unpausing Supabase is not sufficient**: the migration chain
+  will fail on this column when it runs against Postgres. Worth knowing before spending the change window on it.
+- [x] **Swept for siblings: exactly one occurrence.** No other `server_default=sa.text("0"|"1")` on a Boolean
+  anywhere in `backend/alembic/versions/`. So this is a single-line fix, not a migration audit.
+- [ ] **[P0] The fix, NOT shipped — `backend/alembic/versions/` is under "Do NOT Modify" in
+  `scripts/CLAUDE.md`.** The correct change is `server_default=sa.true()`, which SQLAlchemy renders per
+  dialect (`TRUE` on Postgres, accepted by SQLite ≥3.23), rather than hardcoding either engine's literal.
+  Editing an applied migration is also a judgement call that belongs to a human — though note Postgres has
+  never successfully applied this one, since it errors.
+- [x] **And the gate that caught it has essentially never run: 92 runs, and this is the only one that ever
+  reached a verdict.** The other 11 recent runs are all `action_required`, i.e. they never executed. So the
+  drift has been sitting there undetected not because the check was missing, but because it was never allowed
+  to run — **the third instance today of a guard that exists and does not execute**, after the two hardcoded
+  absolute paths in `test_regression.py`.
+
+## 🎲 2026-08-06 00:40 — THE 5xx ENDPOINT SWEEP LETS A THIRD PARTY DECIDE WHETHER CI IS GREEN
+
+CI went red on `test_no_get_endpoint_returns_5xx` and its parameterised twin. Diagnosing it took three wrong
+suspects, all measured and discarded, which is the useful part.
+
+- [x] **Not my change.** It touched a regression test's path resolution and dead test code in a model.
+- [x] **Not the improver, though it looked exactly like it.** This was the first CI run whose base included
+  #1510 (main's last green CI at 23:34 predates it — checked with `merge-base --is-ancestor`), and #1510 added
+  a **new GET route** (`/signal_quality`) that the sweep now walks. Measured by disabling that route and
+  re-timing: **14.2s + 10.8s without it, 14.9s + 11.1s with it — a ~1.1s difference**, not the 45s needed.
+- [x] **The mechanism: CI supplies real-looking Alpaca credentials** (`ALPACA_API_KEY="test"`), so every
+  broker-backed route in the sweep makes a genuine outbound call to `paper-api.alpaca.markets` and waits for
+  it to fail auth. With no keys locally the first test takes **1.4s**; with CI's env it takes **14.9s** — a
+  10x swing driven entirely by egress. Runtime is network-bound, and the global `--timeout=60` left a margin
+  CI exhausted.
+- [x] **And the outcome is non-deterministic, not just the duration — which is the worse half.** One local run
+  with CI's exact env failed both tests in **5.9s**; three consecutive runs of the identical command passed in
+  28–32s. A 5xx from the upstream host propagates through the route, and the sweep cannot distinguish that
+  from a 5xx we caused. **A third party currently decides whether this repo's CI is green.**
+- [x] **Shipped: `@pytest.mark.timeout(240)` on both**, with the measurements in a comment so the next reader
+  does not re-derive them. Deliberately not removing the egress — exercising these routes *with* credentials
+  is the point, since it proves a broker auth failure surfaces as a handled error rather than a 5xx, the exact
+  class the scanner-500 bug fell into.
+- [ ] **[P1] The real fix: bound the egress.** Point the broker base URL at a local stub returning a
+  deterministic auth failure. That keeps the "handled, not 5xx" coverage, removes the third party from the
+  verdict, and drops ~25s from every CI run. **Not shipped in a monitor tick** — it changes what a
+  safety-critical sweep actually exercises, which deserves a considered change rather than an incidental one.
+- [x] **Also worth recording: two of my background suite runs reported 510 and 1537 errors and both were my own
+  artifacts** — I was editing app modules (`ml_model.py`, `improvements.py`) mid-run to mutation-test. A
+  concurrent edit to a widely-imported module produces mass collection errors that look like catastrophic
+  breakage. **Do not run the full suite in the background while editing.**
+
+## 🚨 2026-08-06 00:05 — TWO REGRESSION GUARDS HAVE NEVER RUN IN CI, AND ONE HAD A LIVE VIOLATION
+
+`test_no_datetime_utcnow_in_source` failed the local backend suite tonight while CI stayed green. I had noted
+that as "a local/CI path discrepancy" earlier today and moved on. It is not a discrepancy — it is a dead guard.
+
+```python
+backend_dir = Path("/home/user/Test/backend/app")        # hardcoded ABSOLUTE path
+for py_file in backend_dir.rglob("*.py"):                # no such dir on a runner
+    ...
+assert violations == []                                  # vacuously true
+```
+
+- [x] **On a CI runner that path does not exist, so `rglob` yields nothing and the assertion passes on an empty
+  list.** Both `TestDeprecatedAPIRegression` guards do this — `get_event_loop` and `utcnow` — so **neither has
+  ever checked anything in the only place they are enforced.**
+- [x] **And one of them had a real violation the whole time.** `backend/app/models/backtest.py` used
+  `datetime.utcnow()` three times. The guard existed, the violation existed, and they never met.
+- [x] **The mirror image of this morning's improver-test bug, which is why it is worth stating as a rule.**
+  There, *relative* paths broke the test outside the repo root. Here, an *absolute* path silently disabled it
+  inside CI. **A test that locates source by path must derive that path from `__file__`** — anything else
+  passes or fails for reasons unrelated to what it checks.
+- [x] **Fixed both:** paths derived via `Path(__file__).resolve().parents[3]`, with
+  `assert backend_dir.is_dir()` so a future move fails loudly instead of silently re-emptying the scan; and the
+  three `datetime.utcnow()` calls replaced with `datetime.now(timezone.utc)`.
+- [x] **Verified the guard can now fail:** injecting `datetime.utcnow()` into `models/ml_model.py` produces
+  `utcnow() still used in: ['backend/app/models/ml_model.py']` and a red test. The `get_event_loop` scan comes
+  back clean on 0 files, so making it live costs nothing.
+- [x] **Worth noting where the violation lived:** `models/backtest.py` contains a `sessionmaker`-based test
+  class inside an app module. pytest never collects it (the filename is not `test_*.py`), so it is dead test
+  code in the model layer — the same manufacturing pattern as the 23:45 entry above.
+
+## 🤖 2026-08-05 23:45 — A LIVE SAMPLE OF THE IMPROVER'S DEAD CODE, WHICH THE 813 FIGURE ASKED FOR
+
+The 11:30 entry measured 813 unreferenced functions, rejected a gate built on it, and left one open item:
+**"sample before believing it."** PR #1510 merged tonight and is that sample, caught fresh.
+
+- [x] **No regression.** `static_server` imports, the three touched API/model modules import individually, and
+  `test_bot_safeguards.py` — a test file the improver *rewrote* — passes 7/7. Improver PRs bypass CI, so this
+  is checked by hand every tick; tonight it was clean.
+- [x] **But two of the five files got trading logic they have no business holding.** The run's prompt was
+  `strategy_logic` ("tighten entry conditions, add confirmation filters, improve exit logic") and it was
+  applied to `api/v1/notifications.py`, `api/v1/improvements.py`, `models/ml_model.py`, `models/account.py`
+  and a unit test. `models/account.py` — a **SQLAlchemy declarative model** — gained:
+
+      def is_signal_allowed(self, signal, market_data) -> bool
+      def should_exit_position(self, position, market_data) -> bool
+
+  **Zero call sites** (`grep` across `backend/`). Two brand-new unreferenced functions in one commit, on the
+  model layer, in +445/-54 lines.
+- [x] **So the 813 figure is directionally right, and the mechanism is now named.** It is not stale legacy code
+  — it is being *manufactured*, a few functions per improver run, because the improvement type is chosen by
+  `hour % len(IMPROVEMENT_TYPES)` and the target file by `pick_target_file(hour, ...)`, **independently**.
+  Nothing checks that a `strategy_logic` prompt landed on a file containing strategy logic.
+- [ ] **[P2] The cheap fix is pairing, not a dead-code gate.** Constrain `strategy_logic` (and `schemas`, and
+  `optimization`) to files whose paths plausibly match — `strategies/`, `execution/`, `risk/` — instead of
+  whatever `hour % N` selects. That is a small change to `continuous_improver.py`'s pairing and it attacks the
+  source rather than measuring the symptom, which is exactly why the 48%-flagging gate was rejected.
+  **Deliberately not shipped in this tick**: it changes what the autonomous improver does to the codebase
+  unattended, and that deserves to be a decision rather than a side effect of a monitor run.
+
 ## 🧪 2026-08-05 22:45 — `walk_forward` HAD NEVER BEEN EXECUTED BY A TEST, ONLY STRING-MATCHED
 
 Follow-up to the sub-window work, and the mutation pass is what exposed it.

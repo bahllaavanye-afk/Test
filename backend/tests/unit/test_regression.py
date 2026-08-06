@@ -313,7 +313,13 @@ class TestDeprecatedAPIRegression:
         """No source file (except qa_monitor patterns) should use get_event_loop()."""
         import re
         from pathlib import Path
-        backend_dir = Path("/home/user/Test/backend/app")
+        # Derived, NOT hardcoded. This read `Path("/home/user/Test/backend/app")`,
+        # which does not exist on a CI runner — so rglob yielded nothing, violations
+        # stayed empty, and BOTH of these guards passed vacuously in the only place
+        # they are enforced. The utcnow violation below sat in the tree the whole time.
+        repo = Path(__file__).resolve().parents[3]
+        backend_dir = repo / "backend" / "app"
+        assert backend_dir.is_dir(), f"cannot find backend/app from {__file__}"
         pattern = re.compile(r'asyncio\.get_event_loop\(\)')
         violations = []
         for py_file in backend_dir.rglob("*.py"):
@@ -323,7 +329,7 @@ class TestDeprecatedAPIRegression:
                 continue  # regex patterns are expected here
             content = py_file.read_text(errors="replace")
             if pattern.search(content):
-                violations.append(str(py_file.relative_to(Path("/home/user/Test"))))
+                violations.append(str(py_file.relative_to(repo)))
         assert violations == [], \
             f"get_event_loop() still used in: {violations} — replace with get_running_loop()"
 
@@ -331,7 +337,13 @@ class TestDeprecatedAPIRegression:
         """No source file should use datetime.utcnow() (deprecated in Python 3.12)."""
         import re
         from pathlib import Path
-        backend_dir = Path("/home/user/Test/backend/app")
+        # Derived, NOT hardcoded. This read `Path("/home/user/Test/backend/app")`,
+        # which does not exist on a CI runner — so rglob yielded nothing, violations
+        # stayed empty, and BOTH of these guards passed vacuously in the only place
+        # they are enforced. The utcnow violation below sat in the tree the whole time.
+        repo = Path(__file__).resolve().parents[3]
+        backend_dir = repo / "backend" / "app"
+        assert backend_dir.is_dir(), f"cannot find backend/app from {__file__}"
         pattern = re.compile(r'datetime\.utcnow\(\)')
         violations = []
         for py_file in backend_dir.rglob("*.py"):
@@ -341,7 +353,7 @@ class TestDeprecatedAPIRegression:
                 continue  # detection regex expected here
             content = py_file.read_text(errors="replace")
             if pattern.search(content):
-                violations.append(str(py_file.relative_to(Path("/home/user/Test"))))
+                violations.append(str(py_file.relative_to(repo)))
         assert violations == [], \
             f"datetime.utcnow() still used in: {violations} — replace with datetime.now(timezone.utc)"
 
