@@ -24,6 +24,8 @@ ENDPOINT_ROOT = "/"
 MIN_MANUAL_SHARPE = 1e-9
 IMPROVEMENT_PRECISION = 4
 DEFAULT_LIMIT = 20
+WINNER_MANUAL = "manual"
+WINNER_ML = "ml"
 
 router = APIRouter(prefix=PREFIX, tags=[TAG])
 
