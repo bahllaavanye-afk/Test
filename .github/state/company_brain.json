@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1785996069.4671721,
+    "last_updated": 1786000752.40031,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -152,7 +152,7 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1785978310.483174
+    "last_brain_update": 1786000752.3990045
   },
   "episodic": [
     {
@@ -1874,11 +1874,6 @@
   ],
   "github_insights": [
     {
-      "summary": "The auto-fix bot failed to apply patches to files in two instances and skipped a third due to excessive complexity, all while implementing an LLM-brain.",
-      "item_count": 20,
-      "ts": 1784791092.2867239
-    },
-    {
       "summary": "The auto-fix bot attempted to apply a patch but failed twice, indicating an issue with the patch application.",
       "item_count": 20,
       "ts": 1784800551.4002233
@@ -2372,6 +2367,11 @@
       "summary": "The automated weekly security scan flagged a high-severity issue in Bandit, and a Vercel deployment failed for the quant_edge project.",
       "item_count": 20,
       "ts": 1785978310.4715137
+    },
+    {
+      "summary": "The automated weekly security scan detected a high-severity Bandit vulnerability in the quant_edge project, which also caused a deployment failure on Vercel.",
+      "item_count": 20,
+      "ts": 1786000752.3869233
     }
   ],
   "experiment_results": [
@@ -2458,48 +2458,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "desk-commodities",
-      "summary": "*Commodities Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $210 conf=100%  id=`62d4561c\u2026`\n\ud83d\udd34 `time_series_momentum/UNG` SELL $220 conf=92%  id=`22c681d8\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785880048.3415618
-    },
-    {
-      "channel": "desk-polymarket",
-      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785880048.3471496
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (22:10 UTC)  equity=$21,937.76  cash=$-33,401.86  buying_power=$99.96  crypto_bp=$0.00  regime=bull/calm\nfunnel: 49 generated \u2192 18 survived gate+topK (3 exploration) \u2192 0 placed\n\u26a0\ufe0f 18 dropped before placement \u2014 13 market closed \u00b7 3 no order path \u00b7 2 insufficient cash\n\u26a0\ufe0f *Equities",
-      "source": "desk_run_summary",
-      "ts": 1785884334.9053707
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 1 order(s) placed of 9 signal(s) \u2265 0.6: USD_JPY BUY@157.74600, USD_CAD BUY@1.40614, EUR_USD SELL@1.15324 | 2 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1785884334.910961
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Tuesday August 04, 2026*\n\n- Autonomous agents are idle:\u202f0 tasks completed,\u202f0% success\u202f\u2014 we need to unlock their pipelines and get them running.  \n- Human engineers are delivering:\u202fcleanup\u202f(10\u202ftasks),\u202fdocstrings\u202f(10\u202ftasks),\u202foptimization\u202f(10\u202ftasks)\u202f\u2014 30\u202ftasks completed today.  \n",
-      "source": "desk_run_summary",
-      "ts": 1785884334.9168406
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Tuesday August 04, 2026*\n\n- Autonomous agents are idle:\u202f0 tasks completed,\u202f0% success\u202f\u2014 we need to unlock their pipelines and get them running.  \n- Human engineers are delivering:\u202fcleanup\u202f(10\u202ftasks),\u202fdocstrings\u202f(10\u202ftasks),\u202foptimization\u202f(10\u202ftasks)\u202f\u2014 30\u202ftasks completed today.  \n",
-      "source": "desk_run_summary",
-      "ts": 1785884334.9223049
-    },
-    {
-      "channel": "desk-options",
-      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `gamma_exposure/IWM` BUY $866 conf=94%  id=`46984497\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785884334.9277675
-    },
     {
       "channel": "desk-commodities",
       "summary": "*Commodities Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $210 conf=100%  id=`62d4561c\u2026`\n\ud83d\udd34 `time_series_momentum/UNG` SELL $220 conf=92%  id=`22c681d8\u2026`",
@@ -3057,6 +3015,48 @@
       "summary": "*Polymarket Desk* \u2014 3 signal(s) fired, **0 orders placed**\nreason: 3 no order path",
       "source": "desk_run_summary",
       "ts": 1785978303.0350635
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (06:41 UTC)  equity=$21,824.97  cash=$-48,471.29  buying_power=$0.00  crypto_bp=$0.00  regime=bull/calm\nfunnel: 51 generated \u2192 18 survived gate+topK (3 exploration) \u2192 0 placed\n\u26a0\ufe0f 18 dropped before placement \u2014 14 market closed \u00b7 3 no order path \u00b7 1 no account\n\u26a0\ufe0f *Equities*: 4 sig",
+      "source": "desk_run_summary",
+      "ts": 1786000743.737081
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 9 signal(s) \u2265 0.6: USD_JPY BUY@157.77000, USD_CAD BUY@1.40118, USD_CHF BUY@0.80714 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1786000743.7447982
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 1 signal(s) fired, **0 orders placed**\nreason: 1 no account",
+      "source": "desk_run_summary",
+      "ts": 1786000743.750211
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*International Desk* \u2014 4 signal(s) fired, **0 orders placed**\nreason: 4 market closed",
+      "source": "desk_run_summary",
+      "ts": 1786000743.755533
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `gamma_exposure/IWM` BUY $517 conf=90%  id=`2e60cb99\u2026`",
+      "source": "desk_run_summary",
+      "ts": 1786000743.7609456
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 3 signal(s) fired, **0 orders placed**\nreason: 3 market closed",
+      "source": "desk_run_summary",
+      "ts": 1786000743.7662454
+    },
+    {
+      "channel": "desk-polymarket",
+      "summary": "*Polymarket Desk* \u2014 3 signal(s) fired, **0 orders placed**\nreason: 3 no order path",
+      "source": "desk_run_summary",
+      "ts": 1786000743.7715359
     }
   ]
 }
