@@ -17,7 +17,8 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, Awaitable, Dict, List, Optional, Protocol
+
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +26,22 @@ _PREFIX = "agent:memory:"
 _MAX_LIST_LEN = 500  # cap per topic to avoid unbounded growth
 
 
+class _RedisProtocol(Protocol):
+    async def lpush(self, key: str, value: str) -> Awaitable[int]: ...
+    async def ltrim(self, key: str, start: int, end: int) -> Awaitable[bool]: ...
+    async def set(self, key: str, value: str) -> Awaitable[bool]: ...
+    async def lrange(self, key: str, start: int, end: int) -> Awaitable[List[bytes]]: ...
+    async def get(self, key: str) -> Awaitable[Optional[bytes]]: ...
+    async def keys(self, pattern: str) -> Awaitable[List[bytes]]: ...
+
+
 class AgentMemory:
-    def __init__(self, redis_client: Any):
+    def __init__(self, redis_client: _RedisProtocol):
         self._r = redis_client
 
     # ── Write ─────────────────────────────────────────────────────────────────
 
-    async def write(self, topic: str, data: dict) -> None:
+    async def write(self, topic: str, data: Dict[str, Any]) -> None:
         """Append an observation to a topic list with a timestamp."""
         payload = json.dumps({"ts": time.time(), **data})
         key = f"{_PREFIX}{topic}"
@@ -41,7 +51,7 @@ class AgentMemory:
         except Exception as e:
             logger.warning("AgentMemory.write failed for topic %s: %s", topic, e)
 
-    async def set_latest(self, topic: str, data: dict) -> None:
+    async def set_latest(self, topic: str, data: Dict[str, Any]) -> None:
         """Overwrite the latest value for a topic (single-value slot)."""
         key = f"{_PREFIX}latest:{topic}"
         payload = json.dumps({"ts": time.time(), **data})
@@ -52,7 +62,7 @@ class AgentMemory:
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
-    async def read_recent(self, topic: str, n: int = 50) -> list[dict]:
+    async def read_recent(self, topic: str, n: int = 50) -> List[Dict[str, Any]]:
         """Return up to n most-recent observations for a topic."""
         key = f"{_PREFIX}{topic}"
         try:
@@ -62,7 +72,7 @@ class AgentMemory:
             logger.warning("AgentMemory.read_recent failed for topic %s: %s", topic, e)
             return []
 
-    async def get_latest(self, topic: str) -> dict | None:
+    async def get_latest(self, topic: str) -> Optional[Dict[str, Any]]:
         """Return the latest single-value for a topic."""
         key = f"{_PREFIX}latest:{topic}"
         try:
@@ -72,7 +82,7 @@ class AgentMemory:
             logger.warning("AgentMemory.get_latest failed for topic %s: %s", topic, e)
             return None
 
-    async def read_all_topics(self) -> list[str]:
+    async def read_all_topics(self) -> List[str]:
         """List all memory topics currently stored."""
         try:
             pattern = f"{_PREFIX}*"
