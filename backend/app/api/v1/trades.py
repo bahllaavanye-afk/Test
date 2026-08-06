@@ -96,8 +96,15 @@ async def list_trades(
     account_id: str | None = Query(None, description="Filter by account ID"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
-    """Return a list of recent trades for the current user with optional filters."""
+) -> list[TradeOut]:
+    """Return a list of recent trades for the current user.
+
+    The endpoint supports optional filtering by ``symbol`` and ``account_id``.
+    Results are ordered by the most recent opening time and limited to the
+    ``limit`` parameter (default 50, max 500).  Only the fields required by
+    :class:`TradeOut` are selected, and the ``avg_fill_price`` is calculated
+    directly in SQL for efficiency.
+    """
     # Build a lightweight query that selects only needed columns and computes avg_fill_price in SQL.
     fill_price_expr = case(
         (Trade.side == "buy", Trade.entry_price),
