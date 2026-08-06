@@ -1,11 +1,5 @@
 {
   "skills": [
-    "* Improvements are being made to increase UI contrast, including adjustments to `primary` colors in `src/ui/theme/DarkTheme.tsx`.",
-    "Analyze signal accuracy",
-    "Based on recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge regarding code quality:",
-    "Implement timeouts",
-    "**time_series_momentum performance**: The time_series_momentum strategy has achieved a 74% win rate with a total return of +9.91% over 23 trades, averaging +0.43% per period (30d).",
-    "Use retry on timeouts",
     "Refactor `backend/app/utils/api_helpers.py` to remove `Any` type leaks and add precise return-type annotations.",
     "Ping external services",
     "Refactor dark theme",
@@ -199,8 +193,14 @@
     "**Time Series Momentum Strategy**: With a 74% win rate and +9.91% total return over a 30-day period, averaging +0.43% per day, this strategy demonstrates potential for steady, incremental gains.",
     "Lock dependencies",
     "Refactor ambiguous code",
-    "Check DB connections"
+    "Check DB connections",
+    "Check server load",
+    "Monitor queue size",
+    "Handle SSL errors",
+    "Tighten type annotations",
+    "Improve signal sequencing",
+    "Refactor UI components"
   ],
-  "last_updated": "2026-08-06T05:20:30.479587+00:00",
+  "last_updated": "2026-08-06T07:13:52.209446+00:00",
   "total": 200
 }
