@@ -8,7 +8,7 @@ average across calm and turbulent regimes.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
 
@@ -239,3 +239,103 @@ __all__ = [
     "run_stress_tests",
     "stress_summary",
 ]
+
+# --------------------------------------------------------------------------- #
+# Unit tests for edge‑case handling
+# --------------------------------------------------------------------------- #
+
+import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+
+
+class TestStressTestingEdgeCases(unittest.TestCase):
+    """Targeted tests for boundary conditions in stress testing."""
+
+    def setUp(self) -> None:
+        # Create a simple time index spanning 10 days
+        self.dates = pd.date_range(start="2021-01-01", periods=10, freq="D")
+        # Signals and prices are identical for simplicity
+        self.signals = pd.Series([1] * 10, index=self.dates)
+        self.prices = pd.Series([100 + i for i in range(10)], index=self.dates)
+
+        # Dummy metrics object with required attributes
+        self.dummy_metrics = SimpleNamespace(
+            total_return=0.05,
+            max_drawdown=-0.02,
+            sharpe=1.2,
+            win_rate=0.6,
+            num_trades=5,
+        )
+
+    @patch("app.backtest.stress_test.run_backtest")
+    def test_scenario_with_insufficient_data_points(self, mock_run_backtest):
+        """Scenario where sliced price series has fewer than MIN_DATA_POINTS."""
+        mock_run_backtest.return_value = self.dummy_metrics
+
+        # Define a scenario that only overlaps the first 3 days
+        short_scenario = StressScenario(
+            name="short",
+            label="Short",
+            start=date(2021, 1, 1),
+            end=date(2021, 1, 3),
+            description="Only three data points",
+        )
+
+        results = run_stress_tests(
+            signals=self.signals,
+            prices=self.prices,
+            scenarios=[short_scenario],
+        )
+        self.assertEqual(len(results), 1)
+        res = results[0]
+        self.assertFalse(res.period_covered)
+        self.assertIsNone(res.metrics)
+        self.assertEqual(res.data_points, 3)
+        # Ensure run_backtest was never called due to insufficient data
+        mock_run_backtest.assert_not_called()
+
+    @patch("app.backtest.stress_test.run_backtest")
+    def test_scenario_with_exact_min_data_points(self, mock_run_backtest):
+        """Scenario where sliced price series has exactly MIN_DATA_POINTS."""
+        mock_run_backtest.return_value = self.dummy_metrics
+
+        # Define a scenario that overlaps exactly 5 days
+        exact_scenario = StressScenario(
+            name="exact",
+            label="Exact",
+            start=date(2021, 1, 1),
+            end=date(2021, 1, 5),
+            description="Exactly MIN_DATA_POINTS",
+        )
+
+        results = run_stress_tests(
+            signals=self.signals,
+            prices=self.prices,
+            scenarios=[exact_scenario],
+        )
+        self.assertEqual(len(results), 1)
+        res = results[0]
+        self.assertTrue(res.period_covered)
+        self.assertIsNotNone(res.metrics)
+        self.assertEqual(res.data_points, MIN_DATA_POINTS)
+        mock_run_backtest.assert_called_once()
+
+    def test_slice_series_none_input(self):
+        """_slice_series should return None when the input series is None."""
+        start = pd.Timestamp("2021-01-01")
+        end = pd.Timestamp("2021-01-05")
+        self.assertIsNone(_slice_series(None, start, end))
+
+    def test_slice_series_out_of_range(self):
+        """When the slice range is outside the series index, an empty Series should be returned."""
+        start = pd.Timestamp("2020-12-01")
+        end = pd.Timestamp("2020-12-05")
+        result = _slice_series(self.prices, start, end)
+        # Result should be a Series with length 0 (no matching dates)
+        self.assertTrue(isinstance(result, pd.Series))
+        self.assertEqual(len(result), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

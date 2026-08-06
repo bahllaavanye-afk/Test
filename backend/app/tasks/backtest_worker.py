@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+import logging
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -191,3 +192,110 @@ async def backtest_worker_loop() -> None:
             logger.warning(MSG_WORKER_POLL_ERROR.format(exc=exc))
 
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for edge‑case handling in run_backtest_job
+# ---------------------------------------------------------------------------
+import pytest
+
+@pytest.mark.asyncio
+async def test_run_backtest_job_none_id(monkeypatch, caplog):
+    """Ensure the function returns early and logs a warning when run_id is None."""
+    caplog.set_level(logging.WARNING, logger.name)
+    await run_backtest_job(None)
+    assert any(MSG_RUN_BACKTEST_JOB_NONE_ID in record.message for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_missing_params_triggers_failure(monkeypatch):
+    """A BacktestRun missing required fields should be marked FAILED with proper error."""
+    # Minimal mock BacktestRun with missing start_date
+    class MockRun:
+        def __init__(self):
+            self.id = "test-id"
+            self.status = STATUS_QUEUED
+            self.symbol = "AAPL"
+            self.start_date = None  # missing
+            self.end_date = datetime(2023, 1, 1, tzinfo=timezone.utc)
+            self.interval = "1d"
+            self.strategy_name = "dummy"
+            self.params = {}
+            self.error_message = None
+            self.completed_at = None
+
+    class MockSession:
+        def __init__(self, run):
+            self.run = run
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def get(self, model, run_id):
+            return self.run if run_id == self.run.id else None
+
+        async def commit(self):
+            pass
+
+    mock_run = MockRun()
+    monkeypatch.setattr("app.database.AsyncSessionLocal", lambda: MockSession(mock_run))
+    await run_backtest_job(mock_run.id)
+
+    assert mock_run.status == STATUS_FAILED
+    assert mock_run.error_message == MSG_MISSING_PARAMS
+
+
+@pytest.mark.asyncio
+async def test_empty_ohlcv_data_results_in_failure(monkeypatch):
+    """When fetch_ohlcv returns an empty DataFrame, the run should fail with a specific message."""
+    # Mock run with all required fields present
+    class MockRun:
+        def __init__(self):
+            self.id = "empty-data-id"
+            self.status = STATUS_QUEUED
+            self.symbol = "MSFT"
+            self.start_date = datetime(2022, 1, 1, tzinfo=timezone.utc)
+            self.end_date = datetime(2022, 12, 31, tzinfo=timezone.utc)
+            self.interval = "1d"
+            self.strategy_name = "dummy"
+            self.params = {}
+            self.error_message = None
+            self.completed_at = None
+
+    class MockSession:
+        def __init__(self, run):
+            self.run = run
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def get(self, model, run_id):
+            return self.run if run_id == self.run.id else None
+
+        async def commit(self):
+            pass
+
+        async def add(self, obj):
+            pass
+
+    mock_run = MockRun()
+    monkeypatch.setattr("app.database.AsyncSessionLocal", lambda: MockSession(mock_run))
+
+    async def mock_fetch_ohlcv(symbol, start, end, interval):
+        return pd.DataFrame()  # empty DataFrame
+
+    monkeypatch.setattr("app.backtest.data_loader.fetch_ohlcv", mock_fetch_ohlcv)
+
+    await run_backtest_job(mock_run.id)
+
+    assert mock_run.status == STATUS_FAILED
+    expected_msg = MSG_NO_OHLCV_DATA.format(symbol=mock_run.symbol,
+                                            start_date=mock_run.start_date,
+                                            end_date=mock_run.end_date)
+    assert expected_msg in mock_run.error_message
