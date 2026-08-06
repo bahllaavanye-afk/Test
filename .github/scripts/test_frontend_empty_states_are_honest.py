@@ -53,6 +53,11 @@ def test_no_page_tells_the_operator_to_retry_something_that_cannot_persist():
     banned = [
         'Click "Train Model" above to queue your first training run',
         "run a strategy comparison in Backtest Lab",
+        # MLInsights pointed at the Experiments tab, which now correctly reports
+        # that the ML runtime is unavailable — so the two pages contradicted
+        # each other. Verified 2026-08-06: torch sits in an optional pyproject
+        # group and `import torch` fails in the deploy environment.
+        "Use the Experiments tab to train your first model",
     ]
     offenders = []
     for page in _page_sources():
@@ -71,7 +76,8 @@ def test_the_two_audited_pages_use_the_component():
     that regresses to hand-rolled copy would slip past the phrase check above
     by rewording it."""
     for name, reason in (("Experiments.tsx", "ml-runtime"),
-                         ("Comparison.tsx", "ephemeral-db")):
+                         ("Comparison.tsx", "ephemeral-db"),
+                         ("MLInsights.tsx", "ml-runtime")):
         src = (PAGES / name).read_text()
         assert "EmptyState" in src, f"{name} no longer uses EmptyState"
         assert reason in src, f"{name} no longer states the {reason!r} cause"

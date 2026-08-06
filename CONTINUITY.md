@@ -8,6 +8,35 @@
 
 _Last updated: 2026-08-06._
 
+## ⚠️ 2026-08-06 — GITHUB ACTIONS MAJOR OUTAGE COST MOST OF A TRADING SESSION
+
+**Read this before treating 2026-08-06 fill/attribution data as signal.** It is thin for infrastructure
+reasons, not strategy reasons.
+
+`githubstatus.com` reported `Actions: major_outage` from ~16:06 UTC onward (Git, Webhooks and API all
+operational throughout). Jobs failed at GitHub's own **`Set up job`** step — runner provisioning, before any
+repo code executes — so the "failure" conclusions on `Desk Trading` at 16:05/16:06 are infrastructure, not
+defects. Do not go looking for a bug there.
+
+- **Desk last ran successfully 15:26.** The US session closed 20:00 UTC, so roughly **4.5 hours of the
+  session had no desk runs.** Signals were not generated and orders were not placed in that window.
+- **Queue did not drain**: 45 → 48 → 64 → 71 → 68 over ~5 hours, oldest stuck at 16:06 throughout.
+- **The Render backend was unaffected and healthy the whole time** — `alpaca: connected`, **13/13 background
+  tasks**, including `PositionMonitor`. Open positions stayed managed against their exit conditions. What
+  stopped was new signal generation and order placement, not risk management.
+- **Last known account state (15:26):** `equity $21,840.40 · cash -$17,029.32 · buying_power $19,240.05`.
+  Negative cash with healthy buying power is ordinary margin use — NOT the zero-buying-power pathology of the
+  previous night — and `recover_negative_cash` correctly does not fire on it.
+- **Expect a burst on recovery.** ~68 runs are queued, including 5 desk-trading and 2 always-open crypto runs
+  queued during market hours. Equity desks gate on `is_open` and will place nothing; **the crypto desk will
+  place orders**, sized from quotes fetched whenever it actually runs. Also 3 queued `Auto-merge` runs, which
+  may land open PRs without anyone pressing merge.
+- **PR #1602 is blocked on this, not on review.** Green locally: `tsc` clean, `vite build` passes,
+  `.github/scripts` 1440 passed, empty-state guard 5/5.
+
+**No action was taken and none is available.** There is no code fix for a runner outage, and pushing more
+work into a backlog that is not draining slows recovery.
+
 ## ✅ LIVE ACCOUNT STATE — 2026-08-06 13:35, RECOVERED (was 🔴 all night)
 
     equity $21,915.67   cash +$21,915.67   buying_power $87,662.68

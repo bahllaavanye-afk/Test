@@ -1,5 +1,34 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔍 2026-08-06 15:45 — CHECKING A LABEL BEFORE APPLYING IT STOPPED ME SHIPPING A FALSE ONE
+
+Continued the empty-state work onto the remaining pages. The tracker listed the agent subsystem as
+"unreachable, 9 modules → AgentDashboard is entirely blank", so `subsystem-unreachable` was the obvious label.
+**It would have been a lie**, in the one component whose entire purpose is saying why a panel is empty.
+
+- [x] **The agent routes are fine.** All four exist (`agents.py:132/146/157/373`) and are registered
+  (`router.py:87`). They read **committed state files**, not the database — so the ephemeral SQLite fallback,
+  the standing explanation for most empty pages, has nothing to do with them.
+- [x] **And one of them has data.** `skill_library.json` holds **200 skills**. The dashboard is not blank.
+  `task_registry.json` reads `{"active": {}, "completed": []}`, last updated 14:51 today — **genuinely empty**,
+  so AgentDashboard's "No active tasks" is already correct. **Left untouched.** The honest thing a panel can
+  say is "there is nothing", when there is nothing.
+- [x] **Only MLInsights actually needed fixing, and it was misleading in a new way**: *"No models trained yet.
+  Use the Experiments tab to train your first model."* It points at the page I fixed an hour ago, which now
+  correctly reports the ML runtime is unavailable — so **the two pages contradicted each other**. Verified
+  rather than assumed: torch sits in an optional `pyproject` group and `import torch` fails in the deploy
+  environment.
+- [x] **The guard covers it now** — the phrase is banned, `MLInsights.tsx` is required to state `ml-runtime`.
+  1 mutation, caught. Build clean, scripts suite 1440.
+- [x] **The lesson is the tracker's, not the code's.** A stale entry nearly became a false claim rendered in
+  the UI. **Fifth tracker item this session found wrong on inspection** — after Europe's close time, "picked
+  independently", the `strategy_logic` prescription, and my own "tests index positionally". The rate is high
+  enough to treat every filed claim as a hypothesis, which is now written at the top of this file.
+- [ ] **[P3] The genuinely terse pages are fine as they are** — `Archive` ("No records found for X on Y"),
+  `Activity`, `Releases`, `RiskManager`, `AgentDashboard`. None of them misdirect; they are just brief. Applying
+  `EmptyState` there is cosmetic, and cosmetic changes I cannot visually verify are worth less than leaving
+  correct copy alone.
+
 ## 🖥️ 2026-08-06 14:40 — THE EMPTY PANELS WEREN'T SILENT. THEY WERE BLAMING THE OPERATOR.
 
 Shipped the `[P2] empty-state honesty` item. The item said pages "render an empty table with no explanation".
@@ -1419,8 +1448,13 @@ none of it has to be re-derived.
     returns **0 rows**. The desk measures slippage per fill (shipped 2026-08-04) but posts it to Discord and the
     Actions log only — it never reaches the backend. Even with a live DB this stays empty until desk fills land
     as `Trade` rows.
-  - **Agent subsystem (already logged as unreachable, 9 modules):** `/agents/code-reviews`, `/agents/memory`,
-    `/agents/skills`, `/agents/tasks` → AgentDashboard is entirely blank.
+  - ~~**Agent subsystem (already logged as unreachable, 9 modules):** `/agents/code-reviews`, `/agents/memory`,
+    `/agents/skills`, `/agents/tasks` → AgentDashboard is entirely blank.~~ **WRONG — checked 2026-08-06 15:45.**
+    All four routes exist (`agents.py:132/146/157/373`) and are registered (`router.py:87`). They read
+    **committed state files**, not the DB, so the ephemeral fallback is irrelevant to them. `skill_library.json`
+    holds **200 skills**, so `/agents/skills` returns real data and the dashboard is not blank.
+    `task_registry.json` reads `{"active": {}, "completed": []}` — genuinely empty, updated 14:51 today — so
+    "No active tasks" is **accurate**. Nothing here is broken.
   - **ML (operator decision — torch excluded from Render):** `/ml/models` → MLInsights blank.
 - [x] **~~[P2] Empty-state honesty.~~ SHIPPED 2026-08-06 14:40 — and the diagnosis in this item was wrong.**
   It said pages "render an empty table with no explanation". Most already had an empty state; the real fault
