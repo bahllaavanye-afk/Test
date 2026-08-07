@@ -1063,6 +1063,23 @@ def _parse_ts(value) -> "float | None":
         return None
 
 
+def _in_a_burst(order: dict, orders: list,
+                window_s: float = BULK_BURST_WINDOW_S,
+                min_size: int = BULK_BURST_MIN) -> bool:
+    """Whether `order` belongs to a bulk burst within `orders`.
+
+    `bulk_burst_count` returns only a total; attributing the REMAINDER needs to
+    know which individual orders were in a burst and which stood alone.
+    """
+    t = _parse_ts(order.get("submitted_at"))
+    if t is None:
+        return False
+    near = [x for x in orders
+            if (u := _parse_ts(x.get("submitted_at"))) is not None
+            and abs(u - t) <= window_s]
+    return len(near) >= min_size
+
+
 def bulk_burst_count(orders: list, window_s: float = BULK_BURST_WINDOW_S,
                      min_size: int = BULK_BURST_MIN) -> int:
     """How many of `orders` were submitted as part of a bulk server-side action.
@@ -1086,6 +1103,33 @@ def bulk_burst_count(orders: list, window_s: float = BULK_BURST_WINDOW_S,
             counted += size
         i = j + 1
     return counted
+
+
+def looks_like_a_position_monitor_exit(order: dict) -> bool:
+    """Whether an untagged EQUITY order carries the backend exit loop's signature.
+
+    `PositionMonitor._close_position` (backend/app/tasks/position_monitor.py:340)
+    submits `order_type="market"`, `time_in_force="GTC"`. The desk placer submits
+    equities as `time_in_force="day"` (`"gtc" if is_crypto else "day"`), and
+    limit-first at that. So on an equity, market+GTC is the exit loop's shape and
+    day is not.
+
+    WHAT THIS CAN AND CANNOT SAY. It separates "a position was being closed" from
+    "something opened a position" — which is the difference between our exit loop
+    doing its job and a writer we cannot account for. It does NOT identify WHICH
+    backend: `9jz0` and the stale `agb8` run the same code and produce the same
+    signature. Only a `client_order_id` can answer that, and adding one means
+    editing `backend/app/brokers/*.py`, which is Do-Not-Modify — the standing
+    [P0]. This narrows the question; it does not close it.
+
+    Crypto is excluded because the desk itself uses GTC there, so the signature
+    is not distinguishing.
+    """
+    if "/" in str(order.get("symbol", "")):        # crypto: desk also uses GTC
+        return False
+    tif = str(order.get("time_in_force", "")).lower()
+    typ = str(order.get("type", "")).lower()
+    return tif == "gtc" and typ == "market"
 
 
 def summarise_origins(orders: list) -> "tuple[int, int, list]":
@@ -1180,13 +1224,24 @@ async def audit_order_origins(limit: int = 50) -> "tuple[int, int, list]":
             # escalated as one. The honest set is short, and two of the three
             # are ours — so whoever reads this next starts from the likely
             # explanation rather than the alarming one.
+            singles = [o for o in untagged if not _in_a_burst(o, untagged)]
+            exits = sum(1 for o in singles if looks_like_a_position_monitor_exit(o))
+            other = len(singles) - exits
             print(f"  ⚠️ ORDER-ORIGIN AUDIT: {isolated} of {ours + foreign} recent orders are "
-                  f"untagged AND were not part of a bulk close-all — something other than this "
-                  f"desk is placing orders one at a time ({bulk} more are close-all bursts). "
-                  f"Candidates, in order: the backend's PositionMonitor exit loop (`9jz0`, "
-                  f"untagged by design), the stale `agb8` backend, or a hand-placed order. "
-                  f"These CANNOT be told apart until backend orders carry a client_order_id — "
-                  f"do not read this as an intruder without further evidence.", flush=True)
+                  f"untagged AND were not part of a bulk close-all ({bulk} more are close-all "
+                  f"bursts). Of the {len(singles)} placed one at a time: "
+                  f"**{exits} carry the backend exit loop's signature** (equity, market+GTC — "
+                  f"`PositionMonitor` closes positions that way; the desk uses day orders), and "
+                  f"**{other} do not**.", flush=True)
+            if other:
+                print(f"     ⚠️ those {other} opened rather than closed, and are the ones worth "
+                      f"explaining: the stale `agb8` backend, or a hand-placed order.", flush=True)
+            else:
+                print(f"     ⓘ all of them look like position exits — consistent with our own "
+                      f"backend doing its job while the desk is idle.", flush=True)
+            print(f"     Note: this narrows WHAT happened, not WHICH backend. `9jz0` and `agb8` "
+                  f"run the same code and produce the same signature; only a client_order_id "
+                  f"separates them, and that is the standing [P0].", flush=True)
         for o in sample:
             print(f"       {o.get('submitted_at')} {o.get('symbol')} {o.get('side')} "
                   f"qty={o.get('qty')} [{o.get('status')}] "

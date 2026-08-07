@@ -1,5 +1,34 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🔬 2026-08-07 01:15 — "THESE CANNOT BE TOLD APART" WAS ITSELF AN OVER-CLAIM
+
+The order-origin alarm fired for real at 00:29 (run `31134848144`) — first time on the rewritten path — and
+reported **10 untagged orders placed one at a time**, ending with *"These CANNOT be told apart until backend
+orders carry a client_order_id."* True of WHICH backend. Not true of WHAT happened, and the evidence to
+separate that was already in the payload.
+
+- [x] **The exit loop has a signature the desk does not share.**
+  `PositionMonitor._close_position` (`position_monitor.py:340`) submits `order_type="market"`,
+  `time_in_force="GTC"`. The desk submits equities as `"gtc" if is_crypto else "day"`, limit-first. So on an
+  **equity**, `market+GTC` is the exit loop's shape and `day` is not.
+- [x] **That separates the question worth acting on**: "our backend closed a position" versus "something
+  OPENED one". The first is the system working while the desk is idle; the second is the thing that would
+  actually need explaining. The audit now reports both counts and only escalates the openers.
+- [x] **Crypto is excluded on purpose.** The desk itself uses GTC there, so the signature does not
+  distinguish — claiming it did would be a false attribution, which is the failure this whole thread exists to
+  correct. `test_crypto_is_excluded_because_the_desk_also_uses_gtc` pins it.
+- [x] **The limit is stated in the output every time**: `9jz0` and `agb8` run identical code and produce
+  identical signatures, so this narrows WHAT happened, never WHICH backend. Only a `client_order_id` closes
+  that, and `backend/app/brokers/*.py` is Do-Not-Modify — **the standing [P0] is unchanged and this does not
+  substitute for it.**
+- [x] **I had to weaken one of my own tests, and that is the interesting part.**
+  `test_the_alarm_names_its_candidates_instead_of_crying_intruder` asserted the message contained
+  *"CANNOT be told apart"*. Keeping that assertion would have pinned an over-claim in place — a test enforcing
+  a statement stronger than the evidence. Replaced with the narrower true limit (`not WHICH backend`).
+  **Yesterday's fix corrected an alarm that said too much; today's corrects the disclaimer that said too much.
+  Both directions are the same error.**
+- [x] **5 mutations, 5 caught**, each anchor asserted unique before applying. Scripts suite **1449 passed**.
+
 ## 🔍 2026-08-06 15:45 — CHECKING A LABEL BEFORE APPLYING IT STOPPED ME SHIPPING A FALSE ONE
 
 Continued the empty-state work onto the remaining pages. The tracker listed the agent subsystem as
