@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Handle timeout errors",
-    "Handle SSL timeouts",
-    "Based on the agent learnings, the following are the most important and actionable takeaways:",
-    "Implement regime attention",
-    "Monitor model drift",
     "* **Statistical Arbitrage Equity (stat_arb_e) strategy**: In contrast, the statistical arbitrage equity strategy has not performed well with a 0% win rate, -37.17% total return, and -1.77% average",
     "Check API rate limits",
     "* **Investor pipeline optimization:** The investor pipeline agent is parsing log files in `backend/logs/investor_pipeline.log` to identify potential bottlenecks and gain insights.",
@@ -199,8 +194,13 @@
     "Check API status",
     "Test market hours",
     "Use circuit breakers",
-    "Handle NaN values"
+    "Handle NaN values",
+    "Verify trade IDs",
+    "Use timeout buffers",
+    "Cache market data",
+    "Update model architectures",
+    "Implement type safety"
   ],
-  "last_updated": "2026-08-07T09:30:19.473967+00:00",
+  "last_updated": "2026-08-07T10:49:01.282846+00:00",
   "total": 200
 }
