@@ -1,10 +1,5 @@
 {
   "skills": [
-    "* **Statistical Arbitrage Equity (stat_arb_e) strategy**: In contrast, the statistical arbitrage equity strategy has not performed well with a 0% win rate, -37.17% total return, and -1.77% average",
-    "Check API rate limits",
-    "* **Investor pipeline optimization:** The investor pipeline agent is parsing log files in `backend/logs/investor_pipeline.log` to identify potential bottlenecks and gain insights.",
-    "Check CPU load",
-    "Fix type issues",
     "Based on recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge regarding code quality:",
     "Verify file perms",
     "Tighten type annotations",
@@ -199,8 +194,13 @@
     "Use timeout buffers",
     "Cache market data",
     "Update model architectures",
-    "Implement type safety"
+    "Implement type safety",
+    "Monitor system load",
+    "Retry failed trades",
+    "Replace generic signatures",
+    "Eliminate raw dictionaries",
+    "Sweep for lingering annotations"
   ],
-  "last_updated": "2026-08-07T10:49:01.282846+00:00",
+  "last_updated": "2026-08-07T11:42:33.748485+00:00",
   "total": 200
 }
