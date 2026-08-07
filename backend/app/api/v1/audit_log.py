@@ -65,6 +65,57 @@ class AuditLogOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+def _validate_limit(limit: Optional[int]) -> int:
+    """Validate the ``limit`` query parameter.
+
+    Ensures the limit is not ``None`` and lies within the allowed range.
+    Raises ``ValueError`` if validation fails.
+
+    Parameters
+    ----------
+    limit: Optional[int]
+        The raw limit value from the request.
+
+    Returns
+    -------
+    int
+        The validated limit.
+    """
+    if limit is None:
+        raise ValueError("limit must not be None")
+    if limit < 1 or limit > 500:
+        raise ValueError(f"limit must be between 1 and 500, got {limit}")
+    return limit
+
+
+async def _fetch_audit_logs(
+    db: AsyncSession, user_id: str, limit: int
+) -> List[AuditLog]:
+    """Fetch the most recent audit logs for a given user.
+
+    Parameters
+    ----------
+    db: AsyncSession
+        Asynchronous SQLAlchemy session.
+    user_id: str
+        Identifier of the user whose audit logs are being retrieved.
+    limit: int
+        Maximum number of records to return.
+
+    Returns
+    -------
+    List[AuditLog]
+        List of audit log entries ordered by creation time descending.
+    """
+    result = await db.execute(
+        select(AuditLog)
+        .where(AuditLog.user_id == user_id)
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
 @router.get("/", response_model=List[AuditLogOut])
 async def list_audit_log(
     limit: Optional[int] = Query(default=100, ge=1, le=500),
@@ -104,16 +155,6 @@ async def list_audit_log(
             detail="Authenticated user not found.",
         )
 
-    if limit is None:
-        raise ValueError("limit must not be None")
-    if limit < 1 or limit > 500:
-        raise ValueError(f"limit must be between 1 and 500, got {limit}")
-
-    result = await db.execute(
-        select(AuditLog)
-        .where(AuditLog.user_id == current_user.id)
-        .order_by(AuditLog.created_at.desc())
-        .limit(limit)
-    )
-    rows: List[AuditLog] = result.scalars().all()
-    return rows
+    validated_limit = _validate_limit(limit)
+    audit_logs = await _fetch_audit_logs(db, current_user.id, validated_limit)
+    return audit_logs
