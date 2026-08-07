@@ -98,21 +98,11 @@ async def list_trades(
     current_user: User = Depends(get_current_user),
 ):
     """Return a list of recent trades for the current user with optional filters."""
-    # Guard against unexpected None or out‑of‑range values for limit.
-    if limit is None:
-        limit = 50
-    elif limit < 1:
-        limit = 1
-    elif limit > 500:
-        limit = 500
-
-    # Treat empty strings as missing filters.
     if symbol == "":
         symbol = None
     if account_id == "":
         account_id = None
 
-    # Build a lightweight query that selects only needed columns and computes avg_fill_price in SQL.
     fill_price_expr = case(
         (Trade.side == "buy", Trade.entry_price),
         else_=Trade.exit_price,
@@ -143,11 +133,8 @@ async def list_trades(
         query = query.where(Trade.symbol == symbol)
 
     result = await db.execute(query)
-    rows = result.all() or []
-    if not rows:
-        return []
+    rows = result.all()
 
-    # Convert rows to response models using a list comprehension for speed.
     return [
         TradeOut(
             id=row.id,

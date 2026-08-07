@@ -1,9 +1,9 @@
 """Inbound webhook receivers — TradingView alerts.
 
 IMPROVEMENTS P2 (2026-06-29 review): TradingView has no public trade API, but
-its alerts can POST here (charts → webhook-IN). This endpoint RECEIVES and
-records alerts for visibility — it does NOT auto-trade them (paper-first;
-alerts are unauthenticated third-party input and only ever advisory).
+its alerts can POST here (charts → webhook‑IN). This endpoint RECEIVES and
+records alerts for visibility — it does NOT auto‑trade them (paper‑first;
+alerts are unauthenticated third‑party input and only ever advisory).
 
 Security model: TradingView webhooks can't send custom headers, so the shared
 secret rides in the JSON body ("secret"). With TRADINGVIEW_WEBHOOK_SECRET
@@ -11,6 +11,7 @@ unset the endpoint is disabled (503) — never an open unauthenticated sink.
 """
 from __future__ import annotations
 
+import json as _json
 import os
 import time
 from datetime import datetime, timezone
@@ -22,7 +23,7 @@ from app.utils.logging import logger
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
-# Ring buffer of the most recent alerts (process-local; visibility, not storage
+# Ring buffer of the most recent alerts (process‑local; visibility, not storage
 # of record). A dead Redis must not break the receiver.
 _RECENT_ALERTS: list[dict] = []
 _MAX_RECENT = 200
@@ -32,7 +33,7 @@ _TOTAL_ALERTS: int = 0
 
 
 def _normalize(payload: dict[str, Any]) -> dict[str, Any]:
-    """Best-effort normalization of TradingView's free-form alert JSON."""
+    """Best‑effort normalization of TradingView's free‑form alert JSON."""
     return {
         "symbol": str(payload.get("ticker") or payload.get("symbol") or "").upper() or None,
         "side": (str(payload.get("action") or payload.get("side") or "").lower() or None),
@@ -79,7 +80,8 @@ async def receive_tradingview_alert(request: Request) -> dict:
 
     alert = _normalize(payload)
     _RECENT_ALERTS.append(alert)
-    del _RECENT_ALERTS[:-_MAX_RECENT]
+    if len(_RECENT_ALERTS) > _MAX_RECENT:
+        _RECENT_ALERTS[:] = _RECENT_ALERTS[-_MAX_RECENT:]
 
     # Update monitoring counters
     global _TOTAL_ALERTS
@@ -97,14 +99,12 @@ async def receive_tradingview_alert(request: Request) -> dict:
         pnl=alert.get("pnl"),
     )
 
-    # Best-effort fan-out to Redis subscribers (strategies/dashboards may listen).
+    # Best‑effort fan‑out to Redis subscribers (strategies/dashboards may listen).
     try:
         from app.redis_client import get_redis
 
         r = get_redis()
         if r is not None:
-            import json as _json
-
             await r.publish("tradingview:alerts", _json.dumps(alert))
     except Exception as exc:  # noqa: BLE001 — receiver must not depend on Redis
         logger.debug("tradingview alert: redis publish skipped", error=str(exc))
@@ -114,6 +114,6 @@ async def receive_tradingview_alert(request: Request) -> dict:
 
 @router.get("/tradingview/recent")
 async def recent_tradingview_alerts(limit: int = 50) -> dict:
-    """Most recent received alerts (process-local ring buffer)."""
+    """Most recent received alerts (process‑local ring buffer)."""
     limit = max(1, min(limit, _MAX_RECENT))
     return {"alerts": _RECENT_ALERTS[-limit:][::-1], "count": len(_RECENT_ALERTS)}

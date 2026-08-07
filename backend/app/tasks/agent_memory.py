@@ -2,7 +2,7 @@
 Redis-backed shared agent memory.
 
 Agents read and write structured observations to a shared Redis namespace.
-All data is JSON-serialised. Keys are namespaced under 'agent:memory:'.
+All data is JSON‑serialised. Keys are namespaced under 'agent:memory:'.
 
 Usage:
     mem = AgentMemory(redis_client)

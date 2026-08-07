@@ -145,9 +145,7 @@ async def list_audit_log(
     Raises
     ------
     HTTPException
-        If the user is not authenticated.
-    ValueError
-        If ``limit`` is ``None`` or outside the allowed range.
+        If the user is not authenticated or if ``limit`` validation fails.
     """
     if current_user is None:
         raise HTTPException(
@@ -155,6 +153,13 @@ async def list_audit_log(
             detail="Authenticated user not found.",
         )
 
-    validated_limit = _validate_limit(limit)
+    try:
+        validated_limit = _validate_limit(limit)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
     audit_logs = await _fetch_audit_logs(db, current_user.id, validated_limit)
     return audit_logs
