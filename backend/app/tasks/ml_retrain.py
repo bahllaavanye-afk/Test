@@ -30,6 +30,8 @@ DEFAULT_RETRAIN_CONFIGS: list[tuple[str, str, str]] = [
 MAX_RETRAIN_PER_NIGHT: int = 10
 DATE_FORMAT: str = "%Y%m%d"
 REGEX_EXTRACT_PATTERN: str = r"^\s{2}(model|symbol|interval):\s*['\"]?([^\s'\"#]+)"
+# Limit concurrent retrain tasks to avoid CPU/memory overload on free‑tier instances.
+_MAX_CONCURRENT_RETRAIN: int = 3
 
 # --------------------------------------------------------------------------- #
 # Global in‑process cache for downloaded price data.
@@ -45,11 +47,11 @@ _DATA_CACHE: Dict[Tuple[str, str], Tuple[datetime, pd.DataFrame]] = {}
 try:
     import yfinance as yf
 except Exception as exc:  # pragma: no cover
-    # Optional dependency: absent in CI and slim deploys. A hard raise here
-    # crashes the scheduler at import — degrade instead: retrain simply skips
-    # data downloads (matches how torch-backed models degrade elsewhere).
     yf = None
-    logger.error("yfinance unavailable — nightly retrain will skip downloads", error=str(exc))
+    logger.error(
+        "yfinance unavailable — nightly retrain will skip downloads",
+        error=str(exc),
+    )
 
 try:
     import yaml as _yaml
@@ -57,8 +59,16 @@ try:
 except Exception:  # pragma: no cover
     _load_yaml = None
 
+# Lazy import of the training routine – imported once per process.
+_train_func = None
 
-async def _download_hist(symbol: str, interval: str, start: datetime, end: datetime) -> pd.DataFrame | None:
+
+async def _download_hist(
+    symbol: str,
+    interval: str,
+    start: datetime,
+    end: datetime,
+) -> pd.DataFrame | None:
     """
     Retrieve historical price data, using an in‑process cache to avoid duplicate
     downloads within the same nightly run.
@@ -91,52 +101,78 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
             ),
         )
     except Exception as exc:  # pragma: no cover
-        logger.error("Failed to download data", symbol=symbol, interval=interval, error=str(exc))
+        logger.error(
+            "Failed to download data",
+            symbol=symbol,
+            interval=interval,
+            error=str(exc),
+        )
         return None
 
     if hist is None or len(hist) < MIN_HIST_LENGTH:
         return None
 
-    # Normalize column names once.
-    hist.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in hist.columns]
+    # Normalise column names once.
+    hist.columns = [
+        c.lower() if isinstance(c, str) else c[0].lower()
+        for c in hist.columns
+    ]
 
     # Store in cache for potential reuse.
     _DATA_CACHE[cache_key] = (datetime.now(timezone.utc), hist.copy())
     return hist
 
 
-async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_INTERVAL) -> dict:
+async def retrain_model(
+    model_name: str,
+    symbol: str,
+    interval: str = DEFAULT_INTERVAL,
+) -> dict:
     """Download 2 years of data and retrain a model. Returns result dict."""
-    try:
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=DEFAULT_TRAIN_DAYS)
+    # Concurrency guard – ensures a bounded number of simultaneous trainings.
+    semaphore = retrain_model._semaphore  # type: ignore[attr-defined]
+    async with semaphore:
+        try:
+            now_utc = datetime.now(timezone.utc)
+            start = now_utc - timedelta(days=DEFAULT_TRAIN_DAYS)
+            end = now_utc
 
-        hist = await _download_hist(symbol, interval, start, end)
-        if hist is None:
-            return {"status": "skipped", "reason": "insufficient data"}
+            hist = await _download_hist(symbol, interval, start, end)
+            if hist is None:
+                return {"status": "skipped", "reason": "insufficient data"}
 
-        from app.ml.training.train_lstm import train
+            global _train_func
+            if _train_func is None:
+                from app.ml.training.train_lstm import train as _train_func  # pylint: disable=import-outside-toplevel
 
-        experiment_name = f"{model_name}_{symbol.lower()}_{datetime.now(timezone.utc).strftime(DATE_FORMAT)}"
-        result = await train(hist, experiment_name=experiment_name, max_epochs=MAX_EPOCHS)
+            experiment_name = f"{model_name}_{symbol.lower()}_{now_utc.strftime(DATE_FORMAT)}"
+            result = await _train_func(
+                hist,
+                experiment_name=experiment_name,
+                max_epochs=MAX_EPOCHS,
+            )
 
-        result["symbol"] = symbol
-        result["model"] = model_name
-        result["retrained_at"] = datetime.now(timezone.utc).isoformat()
-        logger.info(
-            "Model retrained",
-            **{k: v for k, v in result.items() if k != "best_model_path"},
-        )
-        return result
+            result["symbol"] = symbol
+            result["model"] = model_name
+            result["retrained_at"] = now_utc.isoformat()
+            logger.info(
+                "Model retrained",
+                **{k: v for k, v in result.items() if k != "best_model_path"},
+            )
+            return result
 
-    except Exception as e:
-        logger.error(
-            "Retrain failed",
-            model=model_name,
-            symbol=symbol,
-            error=str(e),
-        )
-        return {"status": "error", "error": str(e)}
+        except Exception as e:
+            logger.error(
+                "Retrain failed",
+                model=model_name,
+                symbol=symbol,
+                error=str(e),
+            )
+            return {"status": "error", "error": str(e)}
+
+
+# Attach a shared semaphore to the function object for cheap global state.
+retrain_model._semaphore = asyncio.Semaphore(_MAX_CONCURRENT_RETRAIN)  # type: ignore[attr-defined]
 
 
 def _load_retrain_configs() -> list[tuple[str, str, str]]:
@@ -149,6 +185,8 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
     seen: set[tuple[str, str, str]] = set()
     results: list[tuple[str, str, str]] = []
 
+    compiled_regex = re.compile(REGEX_EXTRACT_PATTERN, re.MULTILINE)
+
     for cfg_path in sorted(configs_dir.glob("*.yaml")):
         try:
             with open(cfg_path) as f:
@@ -160,11 +198,7 @@ def _load_retrain_configs() -> list[tuple[str, str, str]]:
                     cfg = {
                         "experiment": {
                             k: v
-                            for k, v in re.findall(
-                                REGEX_EXTRACT_PATTERN,
-                                text,
-                                re.MULTILINE,
-                            )
+                            for k, v in compiled_regex.findall(text)
                         }
                     }
             exp = cfg.get("experiment", {})
@@ -199,7 +233,11 @@ async def nightly_retrain() -> None:
         *(retrain_model(m, s, i) for m, s, i in retrain_configs),
         return_exceptions=True,
     )
-    successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
+    successes = sum(
+        1
+        for r in results
+        if isinstance(r, dict) and r.get("status") not in {"error", "skipped"}
+    )
     logger.info(
         "Nightly retrain complete",
         total=len(retrain_configs),
