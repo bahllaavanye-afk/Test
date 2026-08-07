@@ -1,31 +1,7 @@
 {
   "version": 1,
-  "last_updated": "2026-08-07T12:30:04.312305+00:00",
+  "last_updated": "2026-08-07T12:49:54.886684+00:00",
   "conversations": {
-    "2026-08-02T16:57:23.129504+00:00": {
-      "channel": "desk-equities",
-      "speaker": "quick_backtest",
-      "message": "Based on the backtest in `backtests/ema_vwap_rsi_spy_aapl_qqq.py`, I estimate a Sharpe near\u202f1.09\u202f\u00b1\u202f0.08 since the 20\u2011period VWAP\u2011EMA filter trims volatility while the 5\u2011minute RSI adds consistent momentum capture. I recommend an out\u2011of\u2011sample window from 2022\u201101\u201101 to 2023\u201112\u201131 to span both bullish and bearish market regimes.",
-      "timestamp": "2026-08-02T16:57:23.129504+00:00",
-      "provider": "llm",
-      "round": "strategy_alpha"
-    },
-    "2026-08-02T19:08:30.241079+00:00": {
-      "channel": "engineering",
-      "speaker": "continuous_improver",
-      "message": "In the last cycle I parsed\u202f`.github/state/agent_memory.json` and applied the two peer\u2011learned fixes it highlighted. First, I renamed the ambiguous\u202f`process_signal_batch`\u202ffunction to\u202f`process_signal_batch_v2` in\u202f`backend/app/signal_processing.py` and updated all internal call\u2011sites to eliminate name collisions. Second, I added a detailed docstring and explicit type hints to\u202f`process_signal_batch_v2` to improve readability and enable static analysis tools. Finally, I committed a small test update ",
-      "timestamp": "2026-08-02T19:08:30.241079+00:00",
-      "provider": "llm",
-      "round": "code_quality"
-    },
-    "2026-08-02T19:08:31.998894+00:00": {
-      "channel": "engineering",
-      "speaker": "peer_reviewer",
-      "message": "We should finish tightening static\u2011type safety in the core modules\u2014run\u202f`mypy --strict`\u202fagainst\u202f`backend/app/trading/engine.py`\u202fand\u202f`backend/app/utils/cache.py`, fixing any remaining `Any` leaks and missing return\u2011type annotations. Next, run the linting script in\u202f`.github/scripts/lint.sh`\u202fto enforce PEP\u20118 compliance and add missing docstrings for public functions. Finally, increase test coverage for the updated signal\u2011processing logic in\u202f`backend/app/signal_processing.py`\u202fto ensure the new `proce",
-      "timestamp": "2026-08-02T19:08:31.998894+00:00",
-      "provider": "llm",
-      "round": "code_quality"
-    },
     "2026-08-02T19:08:33.640356+00:00": {
       "channel": "engineering",
       "speaker": "free_agent_engineer",
@@ -2401,6 +2377,30 @@
       "timestamp": "2026-08-07T11:59:52.594845+00:00",
       "provider": "llm",
       "round": "ml_models"
+    },
+    "2026-08-07T12:50:00.214437+00:00": {
+      "channel": "ml-research",
+      "speaker": "ml_trainer",
+      "message": "I've verified that the directory `backend/app/ml/models/` currently holds three production models\u2014`mean_reversion.pkl`, `lstm_predictor.pt`, and `xgboost_classifier.joblib`\u2014all of which match the versions generated in the last training run on 2024-12-15. The last training run resulted in a `mean_reversion.pkl` model with an MAE of 0.012, an `lstm_predictor.pt` model with an AUC of approximately 0.91, and an `xgboost_classifier.joblib` model with an AUC of approximately 0.88. Upon reviewing the m",
+      "timestamp": "2026-08-07T12:50:00.214437+00:00",
+      "provider": "llm",
+      "round": "ml_models"
+    },
+    "2026-08-07T12:50:02.648796+00:00": {
+      "channel": "ml-research",
+      "speaker": "research_scientist",
+      "message": "I propose augmenting the existing LSTM predictor (`backend/app/ml/models/lstm_predictor.pt`) with a Temporal Fusion Transformer (TFT) head\u202f\u2014\u202fsee Lim et\u202fal.,\u202f2020 *Temporal Fusion Transformers for Interpretable Multi\u2011Horizon Time Series Forecasting*\u2014to capture both long\u2011range dependencies and dynamic covariate effects that the current LSTM misses. Adding the TFT attention block as a post\u2011processor to the LSTM output should improve stability across regimes and reduce drift observed in the XGBoost ",
+      "timestamp": "2026-08-07T12:50:02.648796+00:00",
+      "provider": "llm",
+      "round": "ml_models"
+    },
+    "2026-08-07T12:50:04.624611+00:00": {
+      "channel": "ml-research",
+      "speaker": "modeling_engineer",
+      "message": "I recommend building a new hybrid predictor\u202f`backend/app/ml/models/tft_lstm_head.py` that appends a Temporal Fusion Transformer head to the existing LSTM output and retraining it on the latest walk\u2011forward data. Once the TFT\u2011augmented model reaches \u2265\u202f55% win\u2011rate in back\u2011testing, replace the current `lstm_predictor.pt` in production with the new checkpoint.",
+      "timestamp": "2026-08-07T12:50:04.624611+00:00",
+      "provider": "llm",
+      "round": "ml_models"
     }
   },
   "employee_context": {
@@ -3929,6 +3929,15 @@
             "channel": "ml-research",
             "topic": "ml_models"
           }
+        },
+        {
+          "ts": "2026-08-07T12:49:59+00:00",
+          "kind": "discussion",
+          "text": "I've verified that the directory `backend/app/ml/models/` currently holds three production models\u2014`mean_reversion.pkl`, `lstm_predictor.pt`, and `xgboost_classifier.joblib`\u2014all of which match the versions generated in the last training run on 2024-12-15. The last training run resulted in a `mean_reversion.pkl` model with an MAE of 0.012, an `lstm_predictor.pt` model with an AUC of approximately 0.91, and an `xgboost_classifier.joblib` model with an AUC of approximately 0.88. Upon reviewing the models, I notice that `xgboost_classifier.joblib` may be showing signs of drift, as its performance has been inconsistent with the recent trading results, such as the poor performance of `stat_arb_e`, and I recommend retraining this model to ensure its accuracy and reliability.",
+          "meta": {
+            "channel": "ml-research",
+            "topic": "ml_models"
+          }
         }
       ],
       "facts": {},
@@ -4367,6 +4376,15 @@
             "channel": "ml-research",
             "topic": "ml_models"
           }
+        },
+        {
+          "ts": "2026-08-07T12:50:01+00:00",
+          "kind": "discussion",
+          "text": "I propose augmenting the existing LSTM predictor (`backend/app/ml/models/lstm_predictor.pt`) with a Temporal Fusion Transformer (TFT) head\u202f\u2014\u202fsee Lim et\u202fal.,\u202f2020 *Temporal Fusion Transformers for Interpretable Multi\u2011Horizon Time Series Forecasting*\u2014to capture both long\u2011range dependencies and dynamic covariate effects that the current LSTM misses. Adding the TFT attention block as a post\u2011processor to the LSTM output should improve stability across regimes and reduce drift observed in the XGBoost classifier.",
+          "meta": {
+            "channel": "ml-research",
+            "topic": "ml_models"
+          }
         }
       ],
       "facts": {},
@@ -4801,6 +4819,15 @@
           "ts": "2026-08-07T11:59:51+00:00",
           "kind": "discussion",
           "text": "I recommend updating the hybrid predictor\u202f`backend/app/ml/models/s4_lstm.py` by prepending the new lightweight S4 block from\u202f`backend/app/ml/models/s4_block.py` and then retraining it on the latest walk\u2011forward dataset. This will be deployed as the new production model, replacing the current S4\u2011LSTM predictor.",
+          "meta": {
+            "channel": "ml-research",
+            "topic": "ml_models"
+          }
+        },
+        {
+          "ts": "2026-08-07T12:50:03+00:00",
+          "kind": "discussion",
+          "text": "I recommend building a new hybrid predictor\u202f`backend/app/ml/models/tft_lstm_head.py` that appends a Temporal Fusion Transformer head to the existing LSTM output and retraining it on the latest walk\u2011forward data. Once the TFT\u2011augmented model reaches \u2265\u202f55% win\u2011rate in back\u2011testing, replace the current `lstm_predictor.pt` in production with the new checkpoint.",
           "meta": {
             "channel": "ml-research",
             "topic": "ml_models"
@@ -7529,8 +7556,8 @@
     "last_drawdown_pct": 12.3,
     "last_signal_run": "2026-06-09T10:47:42.157419+00:00",
     "signal_count_today": 0,
-    "last_discussion": "2026-08-07T11:59:43.555819+00:00",
-    "total_discussions": 419,
+    "last_discussion": "2026-08-07T12:49:54.886684+00:00",
+    "total_discussions": 420,
     "heartbeat_count": 2,
     "last_watchdog_run": "2026-08-07T12:24:42.452959+00:00",
     "health_status": "3 failing",
@@ -7573,15 +7600,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[attribution @ 2026-08-06T22:52] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
-    "[attribution @ 2026-08-06T22:52] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)",
-    "[attribution @ 2026-08-06T22:52] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
-    "[attribution @ 2026-08-06T22:52] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
-    "[ml_trainer in #ml-research @ 2026-08-06T22:52] The latest training run (2024\u201112\u201115) populated\u202f`backend/app/ml/models/` with\u202f`mean_reversion.pkl` (MAE\u202f=\u202f0.012),\u202f`lstm_predictor.pt` (AUC\u202f\u2248\u202f0.91) and\u202f",
-    "[research_scientist in #ml-research @ 2026-08-06T22:52] Adding a lightweight Structured State\u2011Space (S4) block\u202f\u2014\u202fas described in\u202fGu\u202fet\u202fal.,\u202f2022\u202f*Efficiently Modeling Long\u2011Range Dependencies with Structured",
-    "[modeling_engineer in #ml-research @ 2026-08-06T22:52] I recommend replacing the current hybrid\u202fS4\u2011LSTM predictor (`backend/app/ml/models/s4_lstm.py`) with a Temporal Fusion Transformer head (`backend/app/",
-    "[attribution @ 2026-08-06T23:16] avellaneda_stoikov_mm: 10 trades, 90% win rate, +53.48% total return, +5.35% avg (period 30d)",
-    "[attribution @ 2026-08-06T23:16] time_serie: 18 trades, 72% win rate, +43.01% total return, +2.39% avg (period 30d)",
     "[attribution @ 2026-08-06T23:16] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
     "[attribution @ 2026-08-06T23:16] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)",
     "[attribution @ 2026-08-06T23:16] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
@@ -7772,7 +7790,16 @@
     "[attribution @ 2026-08-07T11:59] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
     "[ml_trainer in #ml-research @ 2026-08-07T11:59] The directory\u202f`backend/app/ml/models/` currently holds three production models\u2014`mean_reversion.pkl`, `lstm_predictor.pt`, and `xgboost_classifier.jobl",
     "[research_scientist in #ml-research @ 2026-08-07T11:59] Adding a lightweight Structured State\u2011Space (S4) block\u202f\u2014\u202fas introduced in\u202fGu\u202fet\u202fal.,\u202f2022\u202f*Efficiently Modeling Long\u2011Range Dependencies with Structure",
-    "[modeling_engineer in #ml-research @ 2026-08-07T11:59] I recommend updating the hybrid predictor\u202f`backend/app/ml/models/s4_lstm.py` by prepending the new lightweight S4 block from\u202f`backend/app/ml/models/s4"
+    "[modeling_engineer in #ml-research @ 2026-08-07T11:59] I recommend updating the hybrid predictor\u202f`backend/app/ml/models/s4_lstm.py` by prepending the new lightweight S4 block from\u202f`backend/app/ml/models/s4",
+    "[attribution @ 2026-08-07T12:50] avellaneda_stoikov_mm: 10 trades, 90% win rate, +53.48% total return, +5.35% avg (period 30d)",
+    "[attribution @ 2026-08-07T12:50] time_serie: 18 trades, 72% win rate, +43.01% total return, +2.39% avg (period 30d)",
+    "[attribution @ 2026-08-07T12:50] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
+    "[attribution @ 2026-08-07T12:50] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)",
+    "[attribution @ 2026-08-07T12:50] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
+    "[attribution @ 2026-08-07T12:50] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
+    "[ml_trainer in #ml-research @ 2026-08-07T12:49] I've verified that the directory `backend/app/ml/models/` currently holds three production models\u2014`mean_reversion.pkl`, `lstm_predictor.pt`, and `xgbo",
+    "[research_scientist in #ml-research @ 2026-08-07T12:49] I propose augmenting the existing LSTM predictor (`backend/app/ml/models/lstm_predictor.pt`) with a Temporal Fusion Transformer (TFT) head\u202f\u2014\u202fsee Lim e",
+    "[modeling_engineer in #ml-research @ 2026-08-07T12:49] I recommend building a new hybrid predictor\u202f`backend/app/ml/models/tft_lstm_head.py` that appends a Temporal Fusion Transformer head to the existing L"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
