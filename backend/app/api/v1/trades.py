@@ -76,9 +76,10 @@ class TradeOut(BaseModel):
     @classmethod
     def validate_side(cls, v: str) -> str:
         """Ensure side is either 'buy' or 'sell'."""
-        if v not in {"buy", "sell"}:
+        v_lower = v.lower()
+        if v_lower not in {"buy", "sell"}:
             raise ValueError("side must be either 'buy' or 'sell'")
-        return v
+        return v_lower
 
     @field_validator("quantity")
     @classmethod
@@ -94,6 +95,9 @@ async def list_trades(
     limit: int = Query(50, ge=1, le=500),
     symbol: str | None = Query(None, description="Filter by symbol"),
     account_id: str | None = Query(None, description="Filter by account ID"),
+    min_realized_pnl: float | None = Query(None, description="Minimum realized P&L filter"),
+    max_realized_pnl: float | None = Query(None, description="Maximum realized P&L filter"),
+    require_closed: bool = Query(False, description="Only return trades that have been closed (exit_price present)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -123,10 +127,17 @@ async def list_trades(
         .order_by(Trade.opened_at.desc())
         .limit(limit)
     )
+
     if account_id:
         query = query.where(Trade.account_id == account_id)
     if symbol:
         query = query.where(Trade.symbol == symbol)
+    if min_realized_pnl is not None:
+        query = query.where(Trade.realized_pnl >= min_realized_pnl)
+    if max_realized_pnl is not None:
+        query = query.where(Trade.realized_pnl <= max_realized_pnl)
+    if require_closed:
+        query = query.where(Trade.exit_price.is_not(None))
 
     result = await db.execute(query)
     rows = result.all()
