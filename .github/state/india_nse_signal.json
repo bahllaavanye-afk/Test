@@ -1,97 +1,111 @@
 {
-  "generated_at": "2026-08-06T12:22:55Z",
+  "generated_at": "2026-08-07T11:12:41Z",
   "sessions": [
-    "2026-08-06"
+    "2026-08-07"
   ],
   "max_age_hours": 30.0,
   "tilt_max": 0.06,
   "tilts": {
     "INFY": {
-      "tilt": -0.0153,
+      "tilt": 0.0173,
       "source": "INFY.NS",
       "kind": "adr",
-      "move_pct": -0.767,
+      "move_pct": 0.867,
       "weight": 1.0,
-      "session": "2026-08-06"
+      "session": "2026-08-07"
+    },
+    "HDB": {
+      "tilt": -0.009,
+      "source": "HDFCBANK.NS",
+      "kind": "adr",
+      "move_pct": -0.449,
+      "weight": 1.0,
+      "session": "2026-08-07"
     },
     "IBN": {
-      "tilt": 0.0102,
+      "tilt": -0.0501,
       "source": "ICICIBANK.NS",
       "kind": "adr",
-      "move_pct": 0.51,
+      "move_pct": -2.504,
       "weight": 1.0,
-      "session": "2026-08-06"
+      "session": "2026-08-07"
     },
     "WIT": {
-      "tilt": -0.0154,
+      "tilt": 0.0152,
       "source": "WIPRO.NS",
       "kind": "adr",
-      "move_pct": -0.77,
+      "move_pct": 0.758,
       "weight": 1.0,
-      "session": "2026-08-06"
+      "session": "2026-08-07"
     },
-    "RDY": {
-      "tilt": -0.0085,
-      "source": "DRREDDY.NS",
-      "kind": "adr",
-      "move_pct": -0.425,
-      "weight": 1.0,
-      "session": "2026-08-06"
-    },
-    "EWJ": {
-      "tilt": -0.0168,
-      "source": "^N225",
+    "INDA": {
+      "tilt": -0.0053,
+      "source": "^NSEI",
       "kind": "index",
-      "move_pct": -0.931,
+      "move_pct": -0.265,
+      "weight": 1.0,
+      "session": "2026-08-07"
+    },
+    "INDY": {
+      "tilt": -0.0053,
+      "source": "^NSEI",
+      "kind": "index",
+      "move_pct": -0.265,
+      "weight": 1.0,
+      "session": "2026-08-07"
+    },
+    "EPI": {
+      "tilt": -0.0048,
+      "source": "^NSEI",
+      "kind": "index",
+      "move_pct": -0.265,
       "weight": 0.9,
-      "session": "2026-08-06"
+      "session": "2026-08-07"
+    },
+    "SMIN": {
+      "tilt": -0.0032,
+      "source": "^NSEI",
+      "kind": "index",
+      "move_pct": -0.265,
+      "weight": 0.6,
+      "session": "2026-08-07"
     },
     "EWY": {
-      "tilt": -0.06,
+      "tilt": -0.0108,
       "source": "^KS11",
       "kind": "index",
-      "move_pct": -4.575,
+      "move_pct": -0.597,
       "weight": 0.9,
-      "session": "2026-08-06"
+      "session": "2026-08-07"
     },
     "EWT": {
-      "tilt": -0.0087,
+      "tilt": -0.0069,
       "source": "^TWII",
       "kind": "index",
-      "move_pct": -0.482,
+      "move_pct": -0.385,
       "weight": 0.9,
-      "session": "2026-08-06"
+      "session": "2026-08-07"
     },
     "FXI": {
-      "tilt": -0.0208,
+      "tilt": 0.0076,
       "source": "^HSI",
       "kind": "index",
-      "move_pct": -1.488,
+      "move_pct": 0.54,
       "weight": 0.7,
-      "session": "2026-08-06"
-    },
-    "EWA": {
-      "tilt": 0.0085,
-      "source": "^AXJO",
-      "kind": "index",
-      "move_pct": 0.475,
-      "weight": 0.9,
-      "session": "2026-08-06"
+      "session": "2026-08-07"
     },
     "EWS": {
-      "tilt": 0.0163,
+      "tilt": 0.019,
       "source": "^STI",
       "kind": "index",
-      "move_pct": 0.907,
+      "move_pct": 1.054,
       "weight": 0.9,
-      "session": "2026-08-06"
+      "session": "2026-08-07"
     }
   },
   "skipped": {
-    "HDFCBANK.NS->HDB": "move -0.10% below the 0.15% noise floor",
-    "^NSEI->INDA": "move +0.05% below the 0.15% noise floor",
-    "^NSEI->INDY": "move +0.05% below the 0.15% noise floor",
-    "^NSEI->EPI": "move +0.05% below the 0.15% noise floor",
-    "^NSEI->SMIN": "move +0.05% below the 0.15% noise floor"
+    "DRREDDY.NS->RDY": "move +0.09% below the 0.15% noise floor",
+    "^N225->EWJ": "move -0.12% below the 0.15% noise floor",
+    "^AXJO->EWA": "move -0.09% below the 0.15% noise floor"
   }
 }
