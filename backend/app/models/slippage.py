@@ -12,19 +12,18 @@ class SlippageRecord(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     order_id: Mapped[str] = mapped_column(String, ForeignKey("orders.id"), nullable=False, index=True)
-    signal_price: Mapped[float | None] = mapped_column(Numeric(18, 8))   # price when signal fired
-    expected_price: Mapped[float | None] = mapped_column(Numeric(18, 8)) # price when order submitted (arrival price)
-    fill_price: Mapped[float | None] = mapped_column(Numeric(18, 8))     # actual fill price
-    slippage_bps: Mapped[float | None] = mapped_column(Numeric(8, 4))    # (fill-expected)/expected*10000
+    signal_price: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    expected_price: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    fill_price: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    slippage_bps: Mapped[float | None] = mapped_column(Numeric(8, 4))
     execution_algo: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
-    # Item 5: Implementation Shortfall fields
-    arrival_price: Mapped[float | None] = mapped_column(Numeric(18, 8))   # mid-price when order submitted
-    is_cost_bps: Mapped[float | None] = mapped_column(Numeric(8, 4))      # IS = (fill - arrival) / arrival * 10000
-    vwap_shortfall_bps: Mapped[float | None] = mapped_column(Numeric(8, 4))  # (fill - period_vwap) / period_vwap * 10000
-    period_vwap: Mapped[float | None] = mapped_column(Numeric(18, 8))     # VWAP over execution period
-    execution_duration_seconds: Mapped[float | None] = mapped_column(Float)  # time from submit to fill
+    arrival_price: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    is_cost_bps: MMapped[float | None] = mapped_column(Numeric(8, 4))
+    vwap_shortfall_bps: Mapped[float | None] = mapped_column(Numeric(8, 4))
+    period_vwap: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    execution_duration_seconds: Mapped[float | None] = mapped_column(Float)
 
     order: Mapped["Order"] = relationship("Order", back_populates="slippage")
 
