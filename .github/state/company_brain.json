@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1786117896.1884522,
+    "last_updated": 1786121963.7298272,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -111,7 +111,7 @@
     "opinion_score": 5,
     "macro_score": 2,
     "vix": 14.96,
-    "market_scan_ts": 1786117896.160107,
+    "market_scan_ts": 1786121963.701105,
     "sector_leaders": [
       "Energy",
       "Materials",
@@ -125,46 +125,39 @@
     "active_universe": [
       "NEM",
       "NOW",
-      "TSLA",
       "ALB",
+      "TSLA",
       "NVDA",
-      "ADBE",
       "EOG",
       "FCX",
+      "ADBE",
       "XLK",
-      "QQQ",
       "PANW",
+      "QQQ",
       "ORCL",
       "CRWD",
-      "META",
-      "AVGO",
       "MSFT",
-      "IWM",
+      "AVGO",
       "MA",
-      "XLV",
-      "NUE"
+      "IWM",
+      "META",
+      "SPY",
+      "XLV"
     ],
     "top_momentum": [
       "MSFT",
       "NEM",
       "NOW",
-      "INTU",
-      "NUE"
+      "NUE",
+      "ADBE"
     ],
     "risk_flags": [
-      "Gold/SPY ratio surging (+3.2% 20d) \u2014 safe-haven rotation"
+      "Gold/SPY ratio surging (+3.0% 20d) \u2014 safe-haven rotation"
     ],
     "risk_status": "normal",
     "last_brain_update": 1786092828.8669753
   },
   "episodic": [
-    {
-      "lesson": "Autonomous agents stalled at 0% success across all desks \u2014 41 failure traces indicate a systemic script reliability issue requiring urgent debugging",
-      "category": "code",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1785521779.728579
-    },
     {
       "lesson": "Vercel deployment blocked by daily free-tier limit \u2014 this will prevent any code fixes from reaching production for 24 hours",
       "category": "code",
@@ -1922,6 +1915,23 @@
       ],
       "lesson": "Regime=bull (score=2). Leading: Energy, Materials. Gaps: 8, Breakouts: 0, Risk flags: 1.",
       "ts": 1786117896.19389
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Materials",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [
+        "Gold/SPY ratio surging (+3.0% 20d) \u2014 safe-haven rotation"
+      ],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Materials. Gaps: 8, Breakouts: 0, Risk flags: 1.",
+      "ts": 1786121963.735369
     }
   ],
   "github_insights": [
