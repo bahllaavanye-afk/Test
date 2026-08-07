@@ -49,17 +49,17 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1786054206.58824,
+    "last_updated": 1786061374.4258168,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
       "mean_rev_20_1.5",
-      "mean_rev_20_1_5"
+      "mean_rev_20_1.5"
     ],
-    "last_autopilot_run": 1786037042.8994763,
-    "autopilot_best_sharpe": 0.1308,
-    "autopilot_best_oos_sharpe": 1.264,
-    "autopilot_best_blended": 0.4078,
+    "last_autopilot_run": 1786061374.4027047,
+    "autopilot_best_sharpe": 0.131,
+    "autopilot_best_oos_sharpe": 1.261,
+    "autopilot_best_blended": 0.4082,
     "autopilot_overfit_count": 1,
     "market_regime": "bull",
     "market_opinion": {
@@ -111,7 +111,7 @@
     "opinion_score": 4,
     "macro_score": 2,
     "vix": 15.15,
-    "market_scan_ts": 1786054206.5603395,
+    "market_scan_ts": 1786060415.8544016,
     "sector_leaders": [
       "Financials",
       "Energy",
@@ -156,20 +156,6 @@
     "last_brain_update": 1786010843.6188173
   },
   "episodic": [
-    {
-      "lesson": "Crypto desk reported 1 signal fired and 0 placed with 'no reason recorded' \u2014 missing logging is a data quality gap that must be fixed to debug order placement failures.",
-      "category": "ml",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1785445406.1314852
-    },
-    {
-      "lesson": "Signal generation funnel shows 16 generated \u2192 1 survived gate+topK \u2192 0 placed for equities; high confidence orders (100%) were placed from other strategies \u2014 review gate/topK parameters for missed opportunities.",
-      "category": "strategy",
-      "priority": 3,
-      "source": "company_brain_synthesis",
-      "ts": 1785445406.1360335
-    },
     {
       "lesson": "Equity desk generated 16 signals but only 1 passed gate+topK and 0 placed; funnel efficiency is critically low and needs immediate review of filtering criteria or signal quality.",
       "category": "strategy",
@@ -1892,6 +1878,36 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Financials, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1786054206.593544
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Financials",
+        "Energy",
+        "Materials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Financials, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1786058230.5554106
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Financials",
+        "Energy",
+        "Materials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Financials, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1786060415.880576
     }
   ],
   "github_insights": [

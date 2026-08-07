@@ -1,11 +1,20 @@
 """
-Self-improvement autoloop. Runs forever, looking for ways to improve the platform:
-  1. Take the top-3 strategies from AlgoAgent leaderboard
-  2. Sweep their parameters (Optuna-style) — run a set number of random configs each
-  3. If a config beats the current best Sharpe by > IMPROVEMENT_FACTOR, promote it
-  4. Log everything to experiments/results/self_improver.json
-  5. Sleep, then repeat
+Self‑improvement autoloop for QuantEdge.
+
+The loop continuously searches for better parameter configurations for a set of
+target strategies. For each target (strategy, symbol) it:
+
+1. Samples a small number of random parameter sets.
+2. Evaluates each set via a quick back‑test.
+3. Promotes the best configuration if it improves the Sharpe ratio by a
+   configurable factor and exceeds a minimum Sharpe threshold.
+4. Persists promotion events to ``experiments/results/self_improver.json``.
+5. Sleeps for a configurable interval before repeating.
+
+The implementation is deliberately lightweight: it avoids any external paid
+APIs, keeps all I/O local, and logs extensively for observability.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -14,26 +23,27 @@ import random
 import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 from app.utils.logging import logger
 
 # ----------------------------------------------------------------------
 # Constants
 # ----------------------------------------------------------------------
-DEFAULT_INTERVAL_SECONDS = 900
-CONFIGS_PER_ITERATION = 5
-IMPROVEMENT_FACTOR = 1.10
-MIN_SHARPE_THRESHOLD = 0.5
-MAX_HISTORY_LENGTH = 300
-BACKTEST_DAYS = 730
-MIN_HISTORY_LENGTH = 60
-MIN_SIGNALS_LENGTH = 30
+DEFAULT_INTERVAL_SECONDS: int = 900
+CONFIGS_PER_ITERATION: int = 5
+IMPROVEMENT_FACTOR: float = 1.10
+MIN_SHARPE_THRESHOLD: float = 0.5
+MAX_HISTORY_LENGTH: int = 300
+BACKTEST_DAYS: int = 730
+MIN_HISTORY_LENGTH: int = 60
+MIN_SIGNALS_LENGTH: int = 30
 
 RESULTS_FILE = Path(__file__).parents[3] / "experiments" / "results" / "self_improver.json"
 RESULTS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 # Parameter search spaces per strategy
-PARAM_SPACES = {
+PARAM_SPACES: Dict[str, Dict[str, List[Any]]] = {
     "momentum": {
         "lookback_months": [3, 6, 9, 12],
         "min_score": [0.1, 0.2, 0.3, 0.5],
@@ -58,7 +68,7 @@ PARAM_SPACES = {
 }
 
 # Target strategies and symbols
-TARGETS = [
+TARGETS: List[tuple[str, str]] = [
     ("momentum", "SPY"),
     ("momentum", "QQQ"),
     ("mean_reversion", "AAPL"),
@@ -69,21 +79,41 @@ TARGETS = [
 
 
 class SelfImprover:
-    def __init__(self, algo_agent=None, interval_seconds: int = DEFAULT_INTERVAL_SECONDS):
+    """Continuously search for better strategy parameters.
+
+    Args:
+        algo_agent: Optional external agent used to retrieve leaderboard data.
+            The current implementation does not depend on it directly.
+        interval_seconds: Sleep interval between iterations (default
+            ``DEFAULT_INTERVAL_SECONDS``).
+    """
+
+    def __init__(self, algo_agent: Any = None, interval_seconds: int = DEFAULT_INTERVAL_SECONDS) -> None:
         self.algo_agent = algo_agent
         self.interval_seconds = interval_seconds
-        self._best_params: dict[str, dict] = {}    # strategy → best params dict
-        self._best_sharpe: dict[str, float] = {}   # strategy → best Sharpe
-        self._running = False
-        self._iteration = 0
+        self._best_params: Dict[str, Dict[str, Any]] = {}  # strategy:symbol → best params
+        self._best_sharpe: Dict[str, float] = {}          # strategy:symbol → best Sharpe
+        self._running: bool = False
+        self._iteration: int = 0
 
-    def _sample_params(self, strategy: str) -> dict:
-        """Random sample from PARAM_SPACES."""
+    def _sample_params(self, strategy: str) -> Dict[str, Any]:
+        """Return a random parameter configuration for *strategy*.
+
+        The configuration is sampled uniformly from the predefined ``PARAM_SPACES``
+        for the given strategy. If the strategy is unknown an empty dictionary is
+        returned.
+        """
         space = PARAM_SPACES.get(strategy, {})
         return {k: random.choice(v) for k, v in space.items()}
 
-    async def _evaluate(self, strategy: str, symbol: str, params: dict) -> float:
-        """Run a quick backtest with the given params. Returns Sharpe."""
+    async def _evaluate(self, strategy: str, symbol: str, params: Dict[str, Any]) -> float:
+        """Execute a quick back‑test for *strategy* on *symbol* with *params*.
+
+        The function downloads recent daily price data via ``yfinance``, constructs
+        the strategy instance, generates signals, and runs the back‑test engine.
+        It returns the Sharpe ratio of the resulting equity curve, or ``0.0`` on
+        any failure or if the data is insufficient.
+        """
         try:
             import pandas as pd
             import yfinance as yf
@@ -129,17 +159,22 @@ class SelfImprover:
             logger.debug("Self-improver eval failed", strategy=strategy, error=str(e))
             return 0.0
 
-    async def _improve_strategy(self, strategy: str, symbol: str) -> dict | None:
-        """Sweep params for one strategy. Returns promoted result or None."""
+    async def _improve_strategy(self, strategy: str, symbol: str) -> Optional[Dict[str, Any]]:
+        """Search for a better configuration for *strategy* on *symbol*.
+
+        The method samples ``CONFIGS_PER_ITERATION`` random configurations,
+        evaluates each, and promotes the best one if it improves the stored Sharpe
+        ratio by at least ``IMPROVEMENT_FACTOR`` and exceeds ``MIN_SHARPE_THRESHOLD``.
+        The promotion details are persisted to disk and also returned.
+        """
         space = PARAM_SPACES.get(strategy)
         if not space:
             return None
 
         current_best = self._best_sharpe.get(f"{strategy}:{symbol}", 0.0)
         best_iter_sharpe = current_best
-        best_iter_params = None
+        best_iter_params: Optional[Dict[str, Any]] = None
 
-        # Random configs per iteration
         for _ in range(CONFIGS_PER_ITERATION):
             params = self._sample_params(strategy)
             sharpe = await self._evaluate(strategy, symbol, params)
@@ -147,7 +182,6 @@ class SelfImprover:
                 best_iter_sharpe = sharpe
                 best_iter_params = params
 
-        # Promote if improvement exceeds threshold and Sharpe is above minimum
         if (
             best_iter_params
             and best_iter_sharpe > current_best * IMPROVEMENT_FACTOR
@@ -173,7 +207,8 @@ class SelfImprover:
             return promotion
         return None
 
-    def _persist(self, entry: dict) -> None:
+    def _persist(self, entry: Dict[str, Any]) -> None:
+        """Append *entry* to the JSON results file, keeping the history bounded."""
         try:
             history = json.loads(RESULTS_FILE.read_text()) if RESULTS_FILE.exists() else []
             history.append(entry)
@@ -182,10 +217,12 @@ class SelfImprover:
         except Exception as exc:
             logger.debug("self_improver persist failed", error=str(exc))
 
-    def get_best_params(self, strategy: str, symbol: str) -> dict | None:
+    def get_best_params(self, strategy: str, symbol: str) -> Optional[Dict[str, Any]]:
+        """Retrieve the best known parameters for *strategy* on *symbol*."""
         return self._best_params.get(f"{strategy}:{symbol}")
 
-    def get_history(self) -> list[dict]:
+    def get_history(self) -> List[Dict[str, Any]]:
+        """Return the full promotion history stored on disk."""
         if not RESULTS_FILE.exists():
             return []
         try:
@@ -194,6 +231,7 @@ class SelfImprover:
             return []
 
     async def run(self) -> None:
+        """Main loop that iterates over ``TARGETS`` until stopped."""
         self._running = True
         logger.info("SelfImprover started", interval=self.interval_seconds)
 
@@ -215,4 +253,5 @@ class SelfImprover:
             await asyncio.sleep(self.interval_seconds)
 
     async def stop(self) -> None:
+        """Signal the main loop to exit after the current iteration."""
         self._running = False

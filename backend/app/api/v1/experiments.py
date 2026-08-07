@@ -2,11 +2,12 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
-from pathlib import Path
-
 import subprocess
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List
+
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +34,8 @@ router = APIRouter(prefix="/experiments", tags=["experiments"])
 
 
 class ExperimentOut(BaseModel):
+    """Schema for exposing experiment summary information via the API."""
+
     id: str
     name: str
     status: str
@@ -49,7 +52,8 @@ class ExperimentOut(BaseModel):
 async def list_experiments(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
+) -> List[ExperimentOut]:
+    """Return the most recent experiments limited by ``MAX_EXPERIMENTS``."""
     result = await db.execute(
         select(Experiment).order_by(Experiment.started_at.desc()).limit(MAX_EXPERIMENTS)
     )
@@ -57,6 +61,8 @@ async def list_experiments(
 
 
 class TrainRequest(BaseModel):
+    """Request payload for triggering a training run."""
+
     config_name: str  # e.g. "lstm_btc_1h"
 
 
@@ -80,7 +86,8 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
         logger.error("Experiment %s failed: %s", experiment_id, exc)
 
 
-def _format_config_not_found_message(config_name: str, available: list[str]) -> str:
+def _format_config_not_found_message(config_name: str, available: List[str]) -> str:
+    """Create a user‑friendly error message when a config file cannot be found."""
     display_list = available[:CONFIGS_LIMIT_DISPLAY]
     suffix = "..." if len(available) > CONFIGS_LIMIT_DISPLAY else ""
     return CONFIG_NOT_FOUND_TEMPLATE.format(
@@ -90,7 +97,7 @@ def _format_config_not_found_message(config_name: str, available: list[str]) -> 
 
 
 def _validate_config_exists(config_name: str) -> Path:
-    """Ensure the YAML config file exists, otherwise raise HTTPException."""
+    """Ensure the YAML config file exists, otherwise raise ``HTTPException``."""
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
     if config_path.exists():
         return config_path
@@ -100,7 +107,7 @@ def _validate_config_exists(config_name: str) -> Path:
 
 
 def _create_experiment_record(config_name: str, experiment_id: str, now: datetime) -> Experiment:
-    """Construct a new Experiment ORM instance."""
+    """Construct a new ``Experiment`` ORM instance with initial status."""
     return Experiment(
         id=experiment_id,
         name=f"{config_name}-{now.strftime('%Y%m%d%H%M%S')}",
@@ -116,10 +123,10 @@ async def trigger_training(
     body: TrainRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
+) -> Dict[str, str]:
     """Queue a training run from an experiment config YAML.
 
-    Returns immediately with experiment_id and status='queued'.
+    Returns immediately with ``experiment_id`` and ``status='queued'``.
     The training runs as a background asyncio task.
     """
     config_name = body.config_name.removesuffix(".yaml")
@@ -148,7 +155,7 @@ async def trigger_training(
 @router.get("/train/configs")
 async def list_train_configs(
     current_user: User = Depends(get_current_user),
-):
+) -> Dict[str, List[str]]:
     """List available training config names."""
     if not CONFIGS_DIR.exists():
         return {CONFIGS_KEY: []}
@@ -161,7 +168,8 @@ async def get_experiment(
     experiment_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
+) -> Dict[str, Any]:
+    """Retrieve detailed information for a specific experiment."""
     result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
     exp = result.scalar_one_or_none()
     if not exp:
