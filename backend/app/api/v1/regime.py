@@ -34,6 +34,26 @@ def _map_label(regime: str) -> str:
     return _LABEL_MAP.get(regime, "unknown")
 
 
+def _count_labels(states: Dict[str, Any]) -> Counter:
+    """Count mapped regime labels across all symbol states."""
+    return Counter(
+        _map_label(sym_state.get("regime", "unknown")) for sym_state in states.values()
+    )
+
+
+def _extract_confidences(states: Dict[str, Any]) -> List[float]:
+    """Extract confidence values from all symbol states."""
+    return [float(sym_state.get("confidence", 0.0)) for sym_state in states.values()]
+
+
+def _find_latest_updated(states: Dict[str, Any]) -> Optional[str]:
+    """Return the most recent updated_at timestamp among symbol states."""
+    return max(
+        (sym_state.get("updated_at") for sym_state in states.values() if sym_state.get("updated_at")),
+        default=None,
+    )
+
+
 def _compute_aggregates(
     states: Dict[str, Any],
 ) -> Tuple[str, float, Optional[str]]:
@@ -45,16 +65,10 @@ def _compute_aggregates(
         avg_confidence: Average confidence rounded to three decimals.
         latest_updated: ISO timestamp of the most recent update, if any.
     """
-    label_counts: Counter = Counter(
-        _map_label(sym_state.get("regime", "unknown")) for sym_state in states.values()
-    )
-    confidences: List[float] = [
-        float(sym_state.get("confidence", 0.0)) for sym_state in states.values()
-    ]
-    latest_updated: Optional[str] = max(
-        (sym_state.get("updated_at") for sym_state in states.values() if sym_state.get("updated_at")),
-        default=None,
-    )
+    label_counts = _count_labels(states)
+    confidences = _extract_confidences(states)
+    latest_updated = _find_latest_updated(states)
+
     overall_regime = label_counts.most_common(1)[0][0] if label_counts else "unknown"
     avg_confidence = round(sum(confidences) / len(confidences), 3) if confidences else 0.0
     return overall_regime, avg_confidence, latest_updated
