@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Verify clock sync",
-    "Limit trade size",
     "* **Token monitoring:** The token_monitor agent is tracking activity, with tasks including parsing real-time token data and monitoring token balances in the `data/token_balances.csv` file.",
     "Review health-check endpoints",
     "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
@@ -199,8 +197,10 @@
     "Validate user inputs",
     "Check API rate limits",
     "Verify trade syntax",
-    "Detect network faults"
+    "Detect network faults",
+    "Test API connections",
+    "Log trade retries"
   ],
-  "last_updated": "2026-08-07T22:04:55.728406+00:00",
+  "last_updated": "2026-08-07T23:04:06.825544+00:00",
   "total": 200
 }
