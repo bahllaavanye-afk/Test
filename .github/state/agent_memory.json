@@ -1,31 +1,7 @@
 {
   "version": 1,
-  "last_updated": "2026-08-07T01:51:31.565687+00:00",
+  "last_updated": "2026-08-07T03:33:05.904561+00:00",
   "conversations": {
-    "2026-08-01T02:42:50.693256+00:00": {
-      "channel": "risk",
-      "speaker": "system_watchdog",
-      "message": "All health\u2011check endpoints in\u202f`backend/api/health_check.py` returned HTTP\u202f200 in the last cycle, with the `/v1/status` call reporting a latency of\u202f12\u202fms. The platform state file at\u202f`/app/state.json` validated successfully against the schema defined in\u202f`/app/state_schema.json`, confirming no corruption or missing keys. No API errors, state\u2011file mismatches, or other failures were logged in\u202f`agent_memory.json` for the most recent cycle.",
-      "timestamp": "2026-08-01T02:42:50.693256+00:00",
-      "provider": "llm",
-      "round": "risk_management"
-    },
-    "2026-08-01T02:42:52.909655+00:00": {
-      "channel": "risk",
-      "speaker": "desk_trader",
-      "message": "Given the 5\u202f%\u202fNAV gross\u2011exposure cap in `./state/risk_limits.yaml` and today\u2019s net\u2011used exposure of ~2.8\u202f%\u202fNAV from `./state/current_risk.json` (\u22482.2\u202f%\u202fNAV headroom), I\u2019d allocate roughly\u202f1.5\u202f%\u202fNAV (\u224870\u202f% of headroom) to short\u2011term arbitrage trades and about\u202f0.6\u202f%\u202fNAV (\u224830\u202f% of headroom) to directional positions. This keeps total gross exposure under the cap while honoring the 70/30 policy.",
-      "timestamp": "2026-08-01T02:42:52.909655+00:00",
-      "provider": "llm",
-      "round": "risk_management"
-    },
-    "2026-08-01T06:28:07.585436+00:00": {
-      "channel": "risk",
-      "speaker": "system_watchdog",
-      "message": "All API health\u2011check endpoints defined in\u202f`backend/api/health_check.py` returned HTTP\u202f200 in the last cycle, with the `/v1/status` call logging a latency of\u202f12\u202fms. The platform state file at\u202f`/app/state.json` passed integrity validation with no corruption detected. No failures were recorded in the recent cycle.",
-      "timestamp": "2026-08-01T06:28:07.585436+00:00",
-      "provider": "llm",
-      "round": "risk_management"
-    },
     "2026-08-01T06:28:09.842627+00:00": {
       "channel": "risk",
       "speaker": "desk_trader",
@@ -2401,6 +2377,30 @@
       "timestamp": "2026-08-07T01:51:42.242132+00:00",
       "provider": "llm",
       "round": "code_quality"
+    },
+    "2026-08-07T02:53:30.194869+00:00": {
+      "channel": "ml-research",
+      "speaker": "ml_trainer",
+      "message": "The three production models in\u202f`backend/app/ml/models/` are up\u2011to\u2011date from the last training run on\u202f2024\u201112\u201115:\u202f`mean_reversion.pkl` (MAE\u202f=\u202f0.012),\u202f`lstm_predictor.pt` (AUC\u202f\u2248\u202f0.91) and\u202f`xgboost_classifier.joblib` (AUC\u202f\u2248\u202f0.88). All validation metrics match the expected baselines, and no statistically significant performance degradation has been detected in the recent back\u2011test window. I\u2019ll keep monitoring for drift, but at present the models appear stable.",
+      "timestamp": "2026-08-07T02:53:30.194869+00:00",
+      "provider": "llm",
+      "round": "ml_models"
+    },
+    "2026-08-07T02:53:31.751522+00:00": {
+      "channel": "ml-research",
+      "speaker": "research_scientist",
+      "message": "Adding a lightweight Structured State\u2011Space (S4) block\u202f\u2014\u202fGu\u202fet\u202fal.,\u202f2022 *Efficiently Modeling Long\u2011Range Dependencies with Structured State\u2011Space Models*\u202f\u2014in front of the current XGBoost pipeline (e.g., `backend/app/ml/models/xgboost_classifier.py`) would give the model a richer representation of long\u2011range temporal patterns before the tree\u2011based learner. The S4 layer can be trained jointly with the existing classifier, and prior experiments show up to a\u202f2\u20133\u202f% AUC lift on similar time\u2011series ta",
+      "timestamp": "2026-08-07T02:53:31.751522+00:00",
+      "provider": "llm",
+      "round": "ml_models"
+    },
+    "2026-08-07T02:53:33.336062+00:00": {
+      "channel": "ml-research",
+      "speaker": "modeling_engineer",
+      "message": "I recommend retraining the hybrid predictor\u202f`backend/app/ml/models/s4_lstm.py` by prepending the new S4 block from\u202f`backend/app/ml/models/s4_block.py` and jointly fine\u2011tuning it with the existing classifier to capture the 2\u20133\u202f% AUC lift. Once the joint model converges on the latest walk\u2011forward dataset, we should deploy the updated version as the production S4\u2011LSTM predictor.",
+      "timestamp": "2026-08-07T02:53:33.336062+00:00",
+      "provider": "llm",
+      "round": "ml_models"
     }
   },
   "employee_context": {
@@ -3893,6 +3893,15 @@
             "channel": "ml-research",
             "topic": "ml_models"
           }
+        },
+        {
+          "ts": "2026-08-07T02:53:29+00:00",
+          "kind": "discussion",
+          "text": "The three production models in\u202f`backend/app/ml/models/` are up\u2011to\u2011date from the last training run on\u202f2024\u201112\u201115:\u202f`mean_reversion.pkl` (MAE\u202f=\u202f0.012),\u202f`lstm_predictor.pt` (AUC\u202f\u2248\u202f0.91) and\u202f`xgboost_classifier.joblib` (AUC\u202f\u2248\u202f0.88). All validation metrics match the expected baselines, and no statistically significant performance degradation has been detected in the recent back\u2011test window. I\u2019ll keep monitoring for drift, but at present the models appear stable.",
+          "meta": {
+            "channel": "ml-research",
+            "topic": "ml_models"
+          }
         }
       ],
       "facts": {},
@@ -4295,6 +4304,15 @@
             "channel": "ml-research",
             "topic": "ml_models"
           }
+        },
+        {
+          "ts": "2026-08-07T02:53:31+00:00",
+          "kind": "discussion",
+          "text": "Adding a lightweight Structured State\u2011Space (S4) block\u202f\u2014\u202fGu\u202fet\u202fal.,\u202f2022 *Efficiently Modeling Long\u2011Range Dependencies with Structured State\u2011Space Models*\u202f\u2014in front of the current XGBoost pipeline (e.g., `backend/app/ml/models/xgboost_classifier.py`) would give the model a richer representation of long\u2011range temporal patterns before the tree\u2011based learner. The S4 layer can be trained jointly with the existing classifier, and prior experiments show up to a\u202f2\u20133\u202f% AUC lift on similar time\u2011series tasks. This can be implemented as a thin PyTorch module that outputs a fixed\u2011size embedding fed into the XGBoost feature matrix.",
+          "meta": {
+            "channel": "ml-research",
+            "topic": "ml_models"
+          }
         }
       ],
       "facts": {},
@@ -4693,6 +4711,15 @@
           "ts": "2026-08-06T22:52:13+00:00",
           "kind": "discussion",
           "text": "I recommend replacing the current hybrid\u202fS4\u2011LSTM predictor (`backend/app/ml/models/s4_lstm.py`) with a Temporal Fusion Transformer head (`backend/app/ml/models/tft_head.py`) and retraining it on the latest walk\u2011forward dataset. This should boost AUC above\u202f0.90 by leveraging TFT\u2019s gating and attention mechanisms for heterogeneous time\u2011series features.",
+          "meta": {
+            "channel": "ml-research",
+            "topic": "ml_models"
+          }
+        },
+        {
+          "ts": "2026-08-07T02:53:32+00:00",
+          "kind": "discussion",
+          "text": "I recommend retraining the hybrid predictor\u202f`backend/app/ml/models/s4_lstm.py` by prepending the new S4 block from\u202f`backend/app/ml/models/s4_block.py` and jointly fine\u2011tuning it with the existing classifier to capture the 2\u20133\u202f% AUC lift. Once the joint model converges on the latest walk\u2011forward dataset, we should deploy the updated version as the production S4\u2011LSTM predictor.",
           "meta": {
             "channel": "ml-research",
             "topic": "ml_models"
@@ -7232,10 +7259,10 @@
     "last_drawdown_pct": 12.3,
     "last_signal_run": "2026-06-09T10:47:42.157419+00:00",
     "signal_count_today": 0,
-    "last_discussion": "2026-08-07T01:51:31.565687+00:00",
-    "total_discussions": 403,
+    "last_discussion": "2026-08-07T02:53:26.940525+00:00",
+    "total_discussions": 404,
     "heartbeat_count": 2,
-    "last_watchdog_run": "2026-08-07T00:34:29.280424+00:00",
+    "last_watchdog_run": "2026-08-07T03:33:05.904561+00:00",
     "health_status": "3 failing",
     "watchdog_checks": {
       "Gemini LLM": {
@@ -7260,7 +7287,7 @@
       },
       "Recent commits": {
         "ok": true,
-        "detail": "last commit 11m ago"
+        "detail": "last commit 1m ago"
       },
       "Workflows": {
         "ok": true,
@@ -7276,15 +7303,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[attribution @ 2026-08-06T06:37] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
-    "[attribution @ 2026-08-06T06:37] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
-    "[signal_runner in #desk-equities @ 2026-08-06T06:37] In the last cycle the signals array recorded a bullish signal for **SPY** (confidence\u202f0.85), a bearish signal for **QQQ** (confidence\u202f0.78), and a bul",
-    "[strategy_generator in #desk-equities @ 2026-08-06T06:37] **Strategy Variant:** *SPY\u202fLong\u202f/\u202fAAPL\u202fLong\u202f/\u202fQQQ\u202fShort \u2013 EMA\u2011VWAP\u2011Stochastic\u2011ADX (5\u202fmin)* \u2013 go long SPY and AAPL when the 5\u2011minute price is above the",
-    "[quick_backtest in #desk-equities @ 2026-08-06T06:37] Running a quick backtest on `backtests/short_qqq_5min_ema_vwap_stoch_adx.py` suggests a Sharpe \u2248\u202f1.0\u202f\u00b1\u202f0.08, driven by the tight VWAP\u202f+\u202fEMA trend filt",
-    "[attribution @ 2026-08-06T07:28] avellaneda_stoikov_mm: 10 trades, 90% win rate, +53.48% total return, +5.35% avg (period 30d)",
-    "[attribution @ 2026-08-06T07:28] time_serie: 18 trades, 72% win rate, +43.01% total return, +2.39% avg (period 30d)",
-    "[attribution @ 2026-08-06T07:28] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
-    "[attribution @ 2026-08-06T07:28] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)",
     "[attribution @ 2026-08-06T07:28] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
     "[attribution @ 2026-08-06T07:28] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
     "[signal_runner in #desk-equities @ 2026-08-06T07:27] According to `agent_memory.json",
@@ -7475,7 +7493,16 @@
     "[attribution @ 2026-08-07T01:51] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
     "[continuous_improver in #engineering @ 2026-08-07T01:51] In the last cycle I applied the two peer\u2011learned fixes recorded in\u202f`.github/state/agent_memory.json`. First, I disambiguated the overloaded routine in",
     "[peer_reviewer in #engineering @ 2026-08-07T01:51] I'll prioritize reviewing the `execute_order` method in `backend/app/trading/execution_engine.py` to replace the `Any` type with a concrete request/re",
-    "[free_agent_engineer in #engineering @ 2026-08-07T01:51] I\u2019ll start with **`backend/app/trading/signal_processor.py`** because its public functions still lack strict type annotations and a concrete implement"
+    "[free_agent_engineer in #engineering @ 2026-08-07T01:51] I\u2019ll start with **`backend/app/trading/signal_processor.py`** because its public functions still lack strict type annotations and a concrete implement",
+    "[attribution @ 2026-08-07T02:53] avellaneda_stoikov_mm: 10 trades, 90% win rate, +53.48% total return, +5.35% avg (period 30d)",
+    "[attribution @ 2026-08-07T02:53] time_serie: 18 trades, 72% win rate, +43.01% total return, +2.39% avg (period 30d)",
+    "[attribution @ 2026-08-07T02:53] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
+    "[attribution @ 2026-08-07T02:53] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)",
+    "[attribution @ 2026-08-07T02:53] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
+    "[attribution @ 2026-08-07T02:53] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
+    "[ml_trainer in #ml-research @ 2026-08-07T02:53] The three production models in\u202f`backend/app/ml/models/` are up\u2011to\u2011date from the last training run on\u202f2024\u201112\u201115:\u202f`mean_reversion.pkl` (MAE\u202f=\u202f0.012),\u202f`",
+    "[research_scientist in #ml-research @ 2026-08-07T02:53] Adding a lightweight Structured State\u2011Space (S4) block\u202f\u2014\u202fGu\u202fet\u202fal.,\u202f2022 *Efficiently Modeling Long\u2011Range Dependencies with Structured State\u2011Space Mod",
+    "[modeling_engineer in #ml-research @ 2026-08-07T02:53] I recommend retraining the hybrid predictor\u202f`backend/app/ml/models/s4_lstm.py` by prepending the new S4 block from\u202f`backend/app/ml/models/s4_block.py`"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -7770,214 +7797,6 @@
   },
   "last_health_check": "2026-08-07T00:40:31.597014+00:00",
   "backtest_results": [
-    {
-      "strategy": "momentum",
-      "symbol": "QQQ",
-      "desk": "equity",
-      "total_return_pct": 8.72,
-      "ann_return_pct": 6.32,
-      "volatility_pct": 23.18,
-      "sharpe": 0.273,
-      "sortino": 0.324,
-      "max_drawdown_pct": -19.26,
-      "n_days": 344,
-      "timestamp": "2026-08-05T11:31:29.296664+00:00"
-    },
-    {
-      "strategy": "breakout",
-      "symbol": "QQQ",
-      "desk": "equity",
-      "total_return_pct": 2.06,
-      "ann_return_pct": 1.65,
-      "volatility_pct": 6.19,
-      "sharpe": 0.267,
-      "sortino": 0.162,
-      "max_drawdown_pct": -5.44,
-      "n_days": 313,
-      "timestamp": "2026-08-05T11:31:29.296664+00:00"
-    },
-    {
-      "strategy": "momentum",
-      "symbol": "SPY",
-      "desk": "equity",
-      "total_return_pct": 5.04,
-      "ann_return_pct": 3.67,
-      "volatility_pct": 17.93,
-      "sharpe": 0.205,
-      "sortino": 0.237,
-      "max_drawdown_pct": -15.02,
-      "n_days": 344,
-      "timestamp": "2026-08-05T11:31:29.296664+00:00"
-    },
-    {
-      "strategy": "mean_reversion",
-      "symbol": "SPY",
-      "desk": "equity",
-      "total_return_pct": 2.81,
-      "ann_return_pct": 2.05,
-      "volatility_pct": 12.32,
-      "sharpe": 0.166,
-      "sortino": 0.15,
-      "max_drawdown_pct": -7.49,
-      "n_days": 345,
-      "timestamp": "2026-08-05T11:31:29.296664+00:00"
-    },
-    {
-      "strategy": "rsi",
-      "symbol": "QQQ",
-      "desk": "equity",
-      "total_return_pct": 1.7,
-      "ann_return_pct": 1.22,
-      "volatility_pct": 13.98,
-      "sharpe": 0.087,
-      "sortino": 0.104,
-      "max_drawdown_pct": -14.46,
-      "n_days": 350,
-      "timestamp": "2026-08-05T11:31:29.296664+00:00"
-    },
-    {
-      "strategy": "momentum",
-      "symbol": "AAPL",
-      "desk": "equity",
-      "total_return_pct": -2.59,
-      "ann_return_pct": -1.9,
-      "volatility_pct": 31.21,
-      "sharpe": -0.061,
-      "sortino": -0.078,
-      "max_drawdown_pct": -22.43,
-      "n_days": 344,
-      "timestamp": "2026-08-05T11:31:29.296664+00:00"
-    },
-    {
-      "strategy": "mean_reversion",
-      "symbol": "QQQ",
-      "desk": "equity",
-      "total_return_pct": -2.58,
-      "ann_return_pct": -1.89,
-      "volatility_pct": 15.46,
-      "sharpe": -0.122,
-      "sortino": -0.128,
-      "max_drawdown_pct": -10.48,
-      "n_days": 345,
-      "timestamp": "2026-08-05T11:31:29.296664+00:00"
-    },
-    {
-      "strategy": "breakout",
-      "symbol": "SPY",
-      "desk": "equity",
-      "total_return_pct": -2.05,
-      "ann_return_pct": -1.65,
-      "volatility_pct": 6.13,
-      "sharpe": -0.269,
-      "sortino": -0.186,
-      "max_drawdown_pct": -5.17,
-      "n_days": 313,
-      "timestamp": "2026-08-05T11:31:29.296664+00:00"
-    },
-    {
-      "strategy": "mean_reversion",
-      "symbol": "AAPL",
-      "desk": "equity",
-      "total_return_pct": -7.77,
-      "ann_return_pct": -5.74,
-      "volatility_pct": 20.07,
-      "sharpe": -0.286,
-      "sortino": -0.252,
-      "max_drawdown_pct": -19.09,
-      "n_days": 345,
-      "timestamp": "2026-08-05T11:31:29.296664+00:00"
-    },
-    {
-      "strategy": "rsi",
-      "symbol": "AAPL",
-      "desk": "equity",
-      "total_return_pct": 36.28,
-      "ann_return_pct": 24.97,
-      "volatility_pct": 19.32,
-      "sharpe": 1.293,
-      "sortino": 1.659,
-      "max_drawdown_pct": -7.74,
-      "n_days": 350,
-      "timestamp": "2026-08-05T13:23:54.910783+00:00"
-    },
-    {
-      "strategy": "breakout",
-      "symbol": "AAPL",
-      "desk": "equity",
-      "total_return_pct": 9.8,
-      "ann_return_pct": 7.82,
-      "volatility_pct": 6.89,
-      "sharpe": 1.134,
-      "sortino": 0.739,
-      "max_drawdown_pct": -3.23,
-      "n_days": 313,
-      "timestamp": "2026-08-05T13:23:54.910783+00:00"
-    },
-    {
-      "strategy": "rsi",
-      "symbol": "SPY",
-      "desk": "equity",
-      "total_return_pct": 4.83,
-      "ann_return_pct": 3.45,
-      "volatility_pct": 11.04,
-      "sharpe": 0.313,
-      "sortino": 0.397,
-      "max_drawdown_pct": -6.5,
-      "n_days": 350,
-      "timestamp": "2026-08-05T13:23:54.910783+00:00"
-    },
-    {
-      "strategy": "momentum",
-      "symbol": "QQQ",
-      "desk": "equity",
-      "total_return_pct": 8.72,
-      "ann_return_pct": 6.32,
-      "volatility_pct": 23.18,
-      "sharpe": 0.273,
-      "sortino": 0.324,
-      "max_drawdown_pct": -19.26,
-      "n_days": 344,
-      "timestamp": "2026-08-05T13:23:54.910783+00:00"
-    },
-    {
-      "strategy": "breakout",
-      "symbol": "QQQ",
-      "desk": "equity",
-      "total_return_pct": 2.06,
-      "ann_return_pct": 1.65,
-      "volatility_pct": 6.19,
-      "sharpe": 0.267,
-      "sortino": 0.162,
-      "max_drawdown_pct": -5.44,
-      "n_days": 313,
-      "timestamp": "2026-08-05T13:23:54.910783+00:00"
-    },
-    {
-      "strategy": "momentum",
-      "symbol": "SPY",
-      "desk": "equity",
-      "total_return_pct": 5.04,
-      "ann_return_pct": 3.67,
-      "volatility_pct": 17.93,
-      "sharpe": 0.205,
-      "sortino": 0.237,
-      "max_drawdown_pct": -15.02,
-      "n_days": 344,
-      "timestamp": "2026-08-05T13:23:54.910783+00:00"
-    },
-    {
-      "strategy": "mean_reversion",
-      "symbol": "SPY",
-      "desk": "equity",
-      "total_return_pct": 2.81,
-      "ann_return_pct": 2.05,
-      "volatility_pct": 12.32,
-      "sharpe": 0.166,
-      "sortino": 0.15,
-      "max_drawdown_pct": -7.49,
-      "n_days": 345,
-      "timestamp": "2026-08-05T13:23:54.910783+00:00"
-    },
     {
       "strategy": "rsi",
       "symbol": "QQQ",
@@ -14269,6 +14088,214 @@
       "max_drawdown_pct": -5.17,
       "n_days": 313,
       "timestamp": "2026-08-07T00:17:44.274007+00:00"
+    },
+    {
+      "strategy": "rsi",
+      "symbol": "AAPL",
+      "desk": "equity",
+      "total_return_pct": 38.51,
+      "ann_return_pct": 26.43,
+      "volatility_pct": 19.03,
+      "sharpe": 1.389,
+      "sortino": 1.872,
+      "max_drawdown_pct": -7.74,
+      "n_days": 350,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "breakout",
+      "symbol": "AAPL",
+      "desk": "equity",
+      "total_return_pct": 9.8,
+      "ann_return_pct": 7.82,
+      "volatility_pct": 6.89,
+      "sharpe": 1.134,
+      "sortino": 0.739,
+      "max_drawdown_pct": -3.23,
+      "n_days": 313,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "momentum",
+      "symbol": "QQQ",
+      "desk": "equity",
+      "total_return_pct": 10.11,
+      "ann_return_pct": 7.31,
+      "volatility_pct": 23.12,
+      "sharpe": 0.316,
+      "sortino": 0.376,
+      "max_drawdown_pct": -19.26,
+      "n_days": 344,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "symbol": "ETH",
+      "desk": "crypto",
+      "total_return_pct": 14.59,
+      "ann_return_pct": 10.49,
+      "volatility_pct": 34.33,
+      "sharpe": 0.306,
+      "sortino": 0.196,
+      "max_drawdown_pct": -35.36,
+      "n_days": 344,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "rsi",
+      "symbol": "SPY",
+      "desk": "equity",
+      "total_return_pct": 4.09,
+      "ann_return_pct": 2.93,
+      "volatility_pct": 10.85,
+      "sharpe": 0.27,
+      "sortino": 0.339,
+      "max_drawdown_pct": -6.5,
+      "n_days": 350,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "momentum",
+      "symbol": "SPY",
+      "desk": "equity",
+      "total_return_pct": 6.61,
+      "ann_return_pct": 4.8,
+      "volatility_pct": 17.86,
+      "sharpe": 0.269,
+      "sortino": 0.312,
+      "max_drawdown_pct": -15.02,
+      "n_days": 344,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "breakout",
+      "symbol": "QQQ",
+      "desk": "equity",
+      "total_return_pct": 2.06,
+      "ann_return_pct": 1.65,
+      "volatility_pct": 6.19,
+      "sharpe": 0.267,
+      "sortino": 0.162,
+      "max_drawdown_pct": -5.44,
+      "n_days": 313,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "symbol": "SPY",
+      "desk": "equity",
+      "total_return_pct": 3.18,
+      "ann_return_pct": 2.31,
+      "volatility_pct": 12.32,
+      "sharpe": 0.188,
+      "sortino": 0.17,
+      "max_drawdown_pct": -7.49,
+      "n_days": 345,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "rsi",
+      "symbol": "QQQ",
+      "desk": "equity",
+      "total_return_pct": 1.12,
+      "ann_return_pct": 0.8,
+      "volatility_pct": 13.75,
+      "sharpe": 0.058,
+      "sortino": 0.069,
+      "max_drawdown_pct": -14.46,
+      "n_days": 350,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "momentum",
+      "symbol": "AAPL",
+      "desk": "equity",
+      "total_return_pct": -0.5,
+      "ann_return_pct": -0.37,
+      "volatility_pct": 31.16,
+      "sharpe": -0.012,
+      "sortino": -0.015,
+      "max_drawdown_pct": -23.08,
+      "n_days": 344,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "symbol": "QQQ",
+      "desk": "equity",
+      "total_return_pct": -2.58,
+      "ann_return_pct": -1.89,
+      "volatility_pct": 15.46,
+      "sharpe": -0.122,
+      "sortino": -0.128,
+      "max_drawdown_pct": -10.48,
+      "n_days": 345,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "momentum",
+      "symbol": "BTC",
+      "desk": "crypto",
+      "total_return_pct": -7.66,
+      "ann_return_pct": -5.69,
+      "volatility_pct": 36.26,
+      "sharpe": -0.157,
+      "sortino": -0.23,
+      "max_drawdown_pct": -36.67,
+      "n_days": 343,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "momentum",
+      "symbol": "ETH",
+      "desk": "crypto",
+      "total_return_pct": -12.54,
+      "ann_return_pct": -9.37,
+      "volatility_pct": 52.04,
+      "sharpe": -0.18,
+      "sortino": -0.277,
+      "max_drawdown_pct": -37.45,
+      "n_days": 343,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "symbol": "BTC",
+      "desk": "crypto",
+      "total_return_pct": -7.9,
+      "ann_return_pct": -5.85,
+      "volatility_pct": 24.8,
+      "sharpe": -0.236,
+      "sortino": -0.156,
+      "max_drawdown_pct": -32.06,
+      "n_days": 344,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "symbol": "AAPL",
+      "desk": "equity",
+      "total_return_pct": -7.77,
+      "ann_return_pct": -5.74,
+      "volatility_pct": 20.07,
+      "sharpe": -0.286,
+      "sortino": -0.252,
+      "max_drawdown_pct": -19.09,
+      "n_days": 345,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "breakout",
+      "symbol": "SPY",
+      "desk": "equity",
+      "total_return_pct": -2.24,
+      "ann_return_pct": -1.81,
+      "volatility_pct": 6.14,
+      "sharpe": -0.295,
+      "sortino": -0.205,
+      "max_drawdown_pct": -5.17,
+      "n_days": 313,
+      "timestamp": "2026-08-07T03:31:45.956179+00:00"
     }
   ]
 }

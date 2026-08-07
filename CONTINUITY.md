@@ -8,7 +8,7 @@
 
 _Last updated: 2026-08-06._
 
-## ⚠️ 2026-08-06 — GITHUB ACTIONS MAJOR OUTAGE COST MOST OF A TRADING SESSION
+## ✅ 2026-08-06 — GITHUB ACTIONS MAJOR OUTAGE (RESOLVED ~01:00 UTC 08-07) COST MOST OF A TRADING SESSION
 
 **Read this before treating 2026-08-06 fill/attribution data as signal.** It is thin for infrastructure
 reasons, not strategy reasons.
@@ -20,7 +20,12 @@ defects. Do not go looking for a bug there.
 
 - **Desk last ran successfully 15:26.** The US session closed 20:00 UTC, so roughly **4.5 hours of the
   session had no desk runs.** Signals were not generated and orders were not placed in that window.
-- **Queue did not drain**: 45 → 48 → 64 → 71 → 68 over ~5 hours, oldest stuck at 16:06 throughout.
+- **Queue did not drain during the outage**: 45 → 48 → 64 → 71 → 68 over ~5 hours, oldest stuck at 16:06
+  throughout. **It drained on its own once GitHub recovered** — 68 → 36 → 1 → 0, no intervention, and
+  `Actions: operational` by ~01:00 UTC on 08-07. Every queued run executed or was correctly skipped.
+- **The recovery burst was NOT the problem I predicted.** I expected the queued always-open crypto runs to
+  place stale orders on drain. They did not: one returned `skipped`, and the equity desk placed 0 with
+  `is_open=False`. The market-hours gating held. Recorded because the warning was mine and it was wrong.
 - **The Render backend was unaffected and healthy the whole time** — `alpaca: connected`, **13/13 background
   tasks**, including `PositionMonitor`. Open positions stayed managed against their exit conditions. What
   stopped was new signal generation and order placement, not risk management.

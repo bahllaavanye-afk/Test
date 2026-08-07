@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1786063896.4062371,
+    "last_updated": 1786073173.085248,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -153,44 +153,9 @@
     ],
     "risk_flags": [],
     "risk_status": "normal",
-    "last_brain_update": 1786010843.6188173
+    "last_brain_update": 1786073173.083963
   },
   "episodic": [
-    {
-      "lesson": "Autonomous agents are stuck with 0% success across multiple desks; automation scripts require immediate debugging to restore bot productivity.",
-      "category": "code",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1785449889.0160067
-    },
-    {
-      "lesson": "Vercel deployment failed due to free-tier daily limit exceeded; this blocks code updates and is likely affecting agent and signal pipeline deployments.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1785449889.0217698
-    },
-    {
-      "lesson": "Auto-fix patches are failing repeatedly; combined with deployment limits, the CI/CD pipeline is broken and requires manual intervention.",
-      "category": "code",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1785449889.0274928
-    },
-    {
-      "lesson": "Equity desk generated 17 signals but only 3 survived gate+topK and 0 placed \u2014 funnel collapse suggests overly aggressive filtering or stale market conditions for current strategy parameters.",
-      "category": "strategy",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1785454304.476585
-    },
-    {
-      "lesson": "Crypto desk fired 3 signals but placed 0 orders with no reason recorded \u2014 missing execution logging creates blind spot for debugging signal-to-order failures.",
-      "category": "execution",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1785454304.4827998
-    },
     {
       "lesson": "Autonomous agents across desks have 0% success rate on tasks \u2014 immediate debugging of automation scripts needed to prevent operational stall.",
       "category": "code",
@@ -1924,14 +1889,44 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Financials, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1786063896.4116247
+    },
+    {
+      "lesson": "Zero orders placed across all desks despite 56 signals generated; 18 dropped pre-placement due to market closures, no order paths, and insufficient cash \u2014 indicates systemic execution failure in current market window.",
+      "category": "execution",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1786073171.414106
+    },
+    {
+      "lesson": "Automerge revoked for protected model and audit log files; autonomous PRs modifying risk-critical paths require explicit human review \u2014 a governance gap has been triggered.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1786073171.4209704
+    },
+    {
+      "lesson": "Bandit high-severity finding (CWE-327) in agent_team.py:229 \u2014 insecure hash usage detected in weekly scan; potential cryptographic weakness in automation scripts.",
+      "category": "code",
+      "priority": 1,
+      "source": "company_brain_synthesis",
+      "ts": 1786073171.4263942
+    },
+    {
+      "lesson": "Crypto desk had 1 order skipped due to insufficient cash despite buying power of $10,836.74 \u2014 check cash allocation logic or margin constraints.",
+      "category": "risk",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1786073171.431795
+    },
+    {
+      "lesson": "FX desk placed only 1 of 9 high-confidence signals (\u22650.6 threshold); 2 skipped due to existing positions \u2014 consider dynamic sizing or conflict resolution rules to capture more opportunities.",
+      "category": "strategy",
+      "priority": 2,
+      "source": "company_brain_synthesis",
+      "ts": 1786073171.437167
     }
   ],
   "github_insights": [
-    {
-      "summary": "The automated fix was skipped due to complexity, and a subsequent attempt to apply a patch failed.",
-      "item_count": 20,
-      "ts": 1784807332.7848277
-    },
     {
       "summary": "The team lead revoked automerge for an autonomous PR that modifies protected files, and an auto-fix attempt failed to apply a patch.",
       "item_count": 20,
@@ -2426,6 +2421,11 @@
       "summary": "The deployment for the `quant_edge` project on Vercel failed, as indicated by a failed workflow run on GitHub Actions (Run 2026-08-06, ID 3109100373).",
       "item_count": 20,
       "ts": 1786010843.6094494
+    },
+    {
+      "summary": "The team lead revoked automerge on this PR because it modifies protected backend files, while an automated weekly security scan flagged a high-severity issue using Bandit.",
+      "item_count": 20,
+      "ts": 1786073173.0719268
     }
   ],
   "experiment_results": [
@@ -2512,48 +2512,6 @@
     }
   ],
   "desk_outcomes": [
-    {
-      "channel": "desk-commodities",
-      "summary": "*Commodities Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $210 conf=100%  id=`62d4561c\u2026`\n\ud83d\udd34 `time_series_momentum/UNG` SELL $220 conf=92%  id=`22c681d8\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785888500.2316124
-    },
-    {
-      "channel": "desk-polymarket",
-      "summary": "*Polymarket Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `poly_time_value_fade/SPY` BUY $831 conf=100%  id=`1d67a2a4\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785888500.2371256
-    },
-    {
-      "channel": "pnl-daily",
-      "summary": "*QuantEdge Desk Run* (02:22 UTC)  equity=$21,933.62  cash=$-33,401.86  buying_power=$46.35  crypto_bp=$0.00  regime=bull/calm\nfunnel: 50 generated \u2192 17 survived gate+topK (3 exploration) \u2192 0 placed\n\u26a0\ufe0f 17 dropped before placement \u2014 13 market closed \u00b7 3 no order path \u00b7 1 insufficient cash\n\u26a0\ufe0f *Equities",
-      "source": "desk_run_summary",
-      "ts": 1785900652.2330644
-    },
-    {
-      "channel": "desk-fx-rates",
-      "summary": "FX desk \u2014 1 order(s) placed of 9 signal(s) \u2265 0.6: USD_JPY BUY@157.74600, USD_CAD BUY@1.40614, EUR_USD SELL@1.15324 | 2 skipped (already positioned)",
-      "source": "desk_run_summary",
-      "ts": 1785900652.238612
-    },
-    {
-      "channel": "desk-crypto",
-      "summary": "*\ud83d\udccb All-Hands Standup \u2014 Tuesday August 04, 2026*\n\n- Autonomous agents are idle:\u202f0 tasks completed,\u202f0% success\u202f\u2014 we need to unlock their pipelines and get them running.  \n- Human engineers are delivering:\u202fcleanup\u202f(10\u202ftasks),\u202fdocstrings\u202f(10\u202ftasks),\u202foptimization\u202f(10\u202ftasks)\u202f\u2014 30\u202ftasks completed today.  \n",
-      "source": "desk_run_summary",
-      "ts": 1785900652.2444642
-    },
-    {
-      "channel": "desk-equities",
-      "summary": "Running a quick backtest in `backtests/spy_aapl_qqq_5min_ema_vwap_rsi_macd.py` suggests a Sharpe \u2248\u202f1.09\u202f\u00b1\u202f0.07, thanks to the VWAP\u202f+\u202fEMA filter curbing volatility while the RSI\u202f>\u202f55 and MACD bullish crossover boost upside capture. I\u2019d validate it out\u2011of\u2011sample on the 2022\u201101\u201101\u202f\u2192\u202f2023\u201112\u201131 window t",
-      "source": "desk_run_summary",
-      "ts": 1785900652.250082
-    },
-    {
-      "channel": "desk-options",
-      "summary": "*Options Desk* \u2014 1 order(s) placed\n\ud83d\udfe2 `gamma_exposure/IWM` BUY $866 conf=94%  id=`46984497\u2026`",
-      "source": "desk_run_summary",
-      "ts": 1785900652.2556434
-    },
     {
       "channel": "desk-commodities",
       "summary": "*Commodities Desk* \u2014 2 order(s) placed\n\ud83d\udfe2 `time_series_momentum/SLV` BUY $210 conf=100%  id=`62d4561c\u2026`\n\ud83d\udd34 `time_series_momentum/UNG` SELL $220 conf=92%  id=`22c681d8\u2026`",
@@ -3111,6 +3069,48 @@
       "summary": "*Polymarket Desk* \u2014 3 signal(s) fired, **0 orders placed**\nreason: 3 no order path",
       "source": "desk_run_summary",
       "ts": 1786010837.1560423
+    },
+    {
+      "channel": "pnl-daily",
+      "summary": "*QuantEdge Desk Run* (01:56 UTC)  equity=$21,714.54  cash=$-21,609.17  buying_power=$10,836.74  crypto_bp=$0.00  regime=bull/calm\nfunnel: 56 generated \u2192 18 survived gate+topK (4 exploration) \u2192 0 placed\n\u26a0\ufe0f 18 dropped before placement \u2014 14 market closed \u00b7 3 no order path \u00b7 1 insufficient cash\n\u26a0\ufe0f *Equi",
+      "source": "desk_run_summary",
+      "ts": 1786073171.4425545
+    },
+    {
+      "channel": "desk-fx-rates",
+      "summary": "FX desk \u2014 1 order(s) placed of 9 signal(s) \u2265 0.6: USD_JPY BUY@158.46200, USD_CAD BUY@1.40134, EUR_USD SELL@1.15242 | 2 skipped (already positioned)",
+      "source": "desk_run_summary",
+      "ts": 1786073171.4479263
+    },
+    {
+      "channel": "desk-crypto",
+      "summary": "*Crypto Desk* \u2014 1 signal(s) fired, **0 orders placed**\nreason: 1 insufficient cash",
+      "source": "desk_run_summary",
+      "ts": 1786073171.453704
+    },
+    {
+      "channel": "desk-equities",
+      "summary": "*International Desk* \u2014 4 signal(s) fired, **0 orders placed**\nreason: 4 market closed",
+      "source": "desk_run_summary",
+      "ts": 1786073171.4590402
+    },
+    {
+      "channel": "desk-options",
+      "summary": "*Options Desk* \u2014 1 signal(s) fired, **0 orders placed**\nreason: 1 market closed",
+      "source": "desk_run_summary",
+      "ts": 1786073171.4643638
+    },
+    {
+      "channel": "desk-commodities",
+      "summary": "*Commodities Desk* \u2014 2 signal(s) fired, **0 orders placed**\nreason: 2 market closed",
+      "source": "desk_run_summary",
+      "ts": 1786073171.469718
+    },
+    {
+      "channel": "desk-polymarket",
+      "summary": "*Polymarket Desk* \u2014 3 signal(s) fired, **0 orders placed**\nreason: 3 no order path",
+      "source": "desk_run_summary",
+      "ts": 1786073171.4750612
     }
   ]
 }
