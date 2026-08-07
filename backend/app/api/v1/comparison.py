@@ -24,6 +24,8 @@ ENDPOINT_ROOT = "/"
 MIN_MANUAL_SHARPE = 1e-9
 IMPROVEMENT_PRECISION = 4
 DEFAULT_LIMIT = 20
+MIN_LIMIT = 1
+ZERO_SHARPE = 0.0
 WINNER_MANUAL = "manual"
 WINNER_ML = "ml"
 
@@ -85,7 +87,7 @@ class ComparisonOut(BaseModel):
         improvement = None
         if m.manual_sharpe is not None and m.ml_sharpe is not None:
             # Use a minimal base to avoid division by zero
-            base = float(m.manual_sharpe) if float(m.manual_sharpe) != 0 else MIN_MANUAL_SHARPE
+            base = float(m.manual_sharpe) if float(m.manual_sharpe) != ZERO_SHARPE else MIN_MANUAL_SHARPE
             improvement = (float(m.ml_sharpe) - float(m.manual_sharpe)) / abs(base)
 
         return cls(
@@ -140,7 +142,7 @@ async def list_comparisons(
     result = await db.execute(
         select(ComparisonModel)
         .order_by(ComparisonModel.created_at.desc())
-        .limit(max(DEFAULT_LIMIT, 1))
+        .limit(max(DEFAULT_LIMIT, MIN_LIMIT))
     )
     rows = result.scalars().all() if result is not None else []
 
