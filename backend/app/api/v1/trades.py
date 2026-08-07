@@ -20,11 +20,7 @@ class TradeOut(BaseModel):
 
     id: str = Field(..., description="Unique identifier for the trade.", json_schema_extra={"example": "trd_12345"})
     symbol: str = Field(..., description="Ticker symbol of the traded instrument.", json_schema_extra={"example": "AAPL"})
-    side: str = Field(
-        ...,
-        description="Trade direction; either 'buy' or 'sell'.",
-        json_schema_extra={"example": "buy"},
-    )
+    side: str = Field(..., description="Trade direction; either 'buy' or 'sell'.", json_schema_extra={"example": "buy"})
     realized_pnl: float | None = Field(
         None,
         description="Realized profit and loss in the account's base currency.",
@@ -49,11 +45,7 @@ class TradeOut(BaseModel):
         ),
         json_schema_extra={"example": 145.30},
     )
-    quantity: float = Field(
-        ...,
-        description="Number of shares/contracts traded.",
-        json_schema_extra={"example": 100},
-    )
+    quantity: float = Field(..., description="Number of shares/contracts traded.", json_schema_extra={"example": 100})
     opened_at: datetime | None = Field(
         None,
         description="Timestamp when the trade was opened.",
@@ -98,21 +90,11 @@ async def list_trades(
     current_user: User = Depends(get_current_user),
 ):
     """Return a list of recent trades for the current user with optional filters."""
-    # Guard against unexpected None or out‑of‑range values for limit.
-    if limit is None:
-        limit = 50
-    elif limit < 1:
-        limit = 1
-    elif limit > 500:
-        limit = 500
+    # Normalize empty string filters to None.
+    symbol = symbol or None
+    account_id = account_id or None
 
-    # Treat empty strings as missing filters.
-    if symbol == "":
-        symbol = None
-    if account_id == "":
-        account_id = None
-
-    # Build a lightweight query that selects only needed columns and computes avg_fill_price in SQL.
+    # Compute average fill price: entry price for buys, exit price for sells.
     fill_price_expr = case(
         (Trade.side == "buy", Trade.entry_price),
         else_=Trade.exit_price,
@@ -143,11 +125,10 @@ async def list_trades(
         query = query.where(Trade.symbol == symbol)
 
     result = await db.execute(query)
-    rows = result.all() or []
+    rows = result.all()
     if not rows:
         return []
 
-    # Convert rows to response models using a list comprehension for speed.
     return [
         TradeOut(
             id=row.id,
