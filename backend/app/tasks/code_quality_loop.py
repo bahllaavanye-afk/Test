@@ -1,8 +1,10 @@
 """
 Code Quality Autoloop: lints the codebase and writes a quality report.
+
 Runs every hour. Tracks LOC, test coverage, lint warnings.
 Does NOT modify source — just reports.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +12,7 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 from app.utils.logging import logger
 
@@ -39,7 +41,20 @@ _loc_cache: Dict[Path, Tuple[float, Dict[str, int]]] = {}
 
 
 def _compute_file_stats(py_file: Path) -> Dict[str, int]:
-    """Compute LOC statistics for a single python file."""
+    """
+    Compute line‑of‑code statistics for a single Python file.
+
+    Parameters
+    ----------
+    py_file: Path
+        Path to the Python source file.
+
+    Returns
+    -------
+    Dict[str, int]
+        Mapping with keys ``total_lines``, ``code_lines``, ``blank_lines``,
+        and ``comment_lines``.
+    """
     stats = {
         "total_lines": 0,
         "code_lines": 0,
@@ -61,10 +76,23 @@ def _compute_file_stats(py_file: Path) -> Dict[str, int]:
     return stats
 
 
-def _count_loc(root: Path) -> dict:
+def _count_loc(root: Path) -> Dict[str, Any]:
     """
     Count lines of code under ``root`` with caching.
-    Only files whose modification time has changed are re‑processed.
+
+    Files whose modification time has not changed are read from the internal
+    cache to avoid unnecessary I/O.
+
+    Parameters
+    ----------
+    root: Path
+        Directory from which to start the recursive search for ``*.py`` files.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Aggregated statistics including file count, total lines, code lines,
+        comment lines, blank lines, and a comment‑to‑code ratio.
     """
     global _loc_cache
 
@@ -75,7 +103,7 @@ def _count_loc(root: Path) -> dict:
     comment_lines = 0
 
     # Gather current python files, respecting skip patterns
-    current_files = [
+    current_files: List[Path] = [
         py_file
         for py_file in root.rglob("*.py")
         if not any(skip in str(py_file) for skip in SKIP_PATTERNS)
@@ -112,7 +140,21 @@ def _count_loc(root: Path) -> dict:
     }
 
 
-def _count_strategies(root: Path) -> dict:
+def _count_strategies(root: Path) -> Dict[str, int]:
+    """
+    Count user‑defined strategy files.
+
+    Parameters
+    ----------
+    root: Path
+        Project root containing the strategy directories.
+
+    Returns
+    -------
+    Dict[str, int]
+        Number of manual and ML‑enhanced strategy files (excluding ``__init__``‑style
+        files).
+    """
     manual = list((root / MANUAL_STRATEGY_REL).glob("*.py"))
     ml = list((root / ML_STRATEGY_REL).glob("*.py"))
     return {
@@ -121,7 +163,20 @@ def _count_strategies(root: Path) -> dict:
     }
 
 
-def _count_tests(root: Path) -> dict:
+def _count_tests(root: Path) -> Dict[str, int]:
+    """
+    Count unit and integration test files.
+
+    Parameters
+    ----------
+    root: Path
+        Project root containing the test directories.
+
+    Returns
+    -------
+    Dict[str, int]
+        Number of unit test files and integration test files.
+    """
     unit = list((root / UNIT_TEST_REL).glob("test_*.py"))
     integration = list((root / INTEGRATION_TEST_REL).glob("test_*.py"))
     return {
@@ -131,11 +186,35 @@ def _count_tests(root: Path) -> dict:
 
 
 class CodeQualityLoop:
-    def __init__(self, interval_seconds: int = DEFAULT_INTERVAL_SECONDS):
+    """
+    Periodic task that snapshots code‑base metrics and persists them.
+
+    The loop runs every ``interval_seconds`` (default 1 hour) and writes a JSON
+    history file that can be inspected by downstream monitoring tools.
+    """
+
+    def __init__(self, interval_seconds: int = DEFAULT_INTERVAL_SECONDS) -> None:
+        """
+        Initialise the loop.
+
+        Parameters
+        ----------
+        interval_seconds: int, optional
+            Number of seconds to wait between successive snapshots.
+        """
         self.interval_seconds = interval_seconds
         self._running = False
 
-    async def _snapshot(self) -> dict:
+    async def _snapshot(self) -> Dict[str, Any]:
+        """
+        Gather a snapshot of code metrics.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary containing timestamp, LOC statistics, strategy counts,
+            and test counts.
+        """
         loop = asyncio.get_running_loop()
         loc = await loop.run_in_executor(None, _count_loc, BACKEND_ROOT)
         strat = await loop.run_in_executor(None, _count_strategies, BACKEND_ROOT)
@@ -147,7 +226,15 @@ class CodeQualityLoop:
             **tests,
         }
 
-    def _persist(self, snapshot: dict) -> None:
+    def _persist(self, snapshot: Dict[str, Any]) -> None:
+        """
+        Append a snapshot to the persistent JSON history file.
+
+        Parameters
+        ----------
+        snapshot: Dict[str, Any]
+            The snapshot data to be stored.
+        """
         try:
             history = json.loads(QUALITY_FILE.read_text()) if QUALITY_FILE.exists() else []
             history.append(snapshot)
@@ -157,6 +244,11 @@ class CodeQualityLoop:
             logger.warning("code_quality: failed to persist snapshot", error=str(e))
 
     async def run(self) -> None:
+        """
+        Start the periodic execution loop.
+
+        The method runs until ``stop`` is called or the coroutine is cancelled.
+        """
         self._running = True
         logger.info("CodeQualityLoop started", interval=self.interval_seconds)
         while self._running:
@@ -184,9 +276,20 @@ class CodeQualityLoop:
             await asyncio.sleep(self.interval_seconds)
 
     async def stop(self) -> None:
+        """
+        Signal the loop to stop after the current iteration completes.
+        """
         self._running = False
 
-    def latest(self) -> dict | None:
+    def latest(self) -> Dict[str, Any] | None:
+        """
+        Retrieve the most recent snapshot from the history file.
+
+        Returns
+        -------
+        Dict[str, Any] | None
+            The latest snapshot if the file exists and is readable; otherwise ``None``.
+        """
         if not QUALITY_FILE.exists():
             return None
         try:
