@@ -50,7 +50,6 @@ async def get_index(current_user: User = Depends(get_current_user)):
     Handles the case where the underlying function returns None.
     """
     archives = list_archives()
-    # Ensure a list is always returned
     return archives if archives else []
 
 
@@ -78,5 +77,4 @@ async def get_archive(
     normalized_date = _normalize_date(date)
     _validate_limit(limit)
     result = _execute_replay(category, normalized_date, limit)
-    # Ensure the endpoint always returns a list
     return result if result else []
