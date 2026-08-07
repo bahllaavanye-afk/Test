@@ -18,7 +18,7 @@ import json
 import logging
 import time
 import asyncio
-from typing import Any, List
+from typing import Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,23 @@ class AgentMemory:
             logger.warning("AgentMemory.%s failed for topic %s: %s", operation, topic, exc)
         else:
             logger.warning("AgentMemory.%s failed: %s", operation, exc)
+
+    def _log_info(
+        self,
+        operation: str,
+        topic: str,
+        count: int,
+        duration: float,
+        pnl: Optional[Any] = None,
+    ) -> None:
+        """Log successful operation metrics at INFO level."""
+        msg = (
+            f"AgentMemory.{operation} topic={topic} count={count} "
+            f"duration={duration:.6f}s"
+        )
+        if pnl is not None:
+            msg += f" pnl={pnl}"
+        logger.info(msg)
 
     async def _add_topic_to_set(self, topic: str) -> None:
         """Ensure the topic is recorded in the Redis set of topics."""
@@ -95,10 +112,14 @@ class AgentMemory:
             return
         payload = self._payload(data)
         key = self._key(topic)
+        start = time.time()
         try:
             await self._r.lpush(key, payload)
             await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
             await self._add_topic_to_set(topic)
+            duration = time.time() - start
+            pnl = data.get("pnl")
+            self._log_info("write", topic, count=1, duration=duration, pnl=pnl)
         except Exception as e:
             await self._log_error("write", topic, e)
 
@@ -109,9 +130,13 @@ class AgentMemory:
             return
         payload = self._payload(data)
         key = self._key(topic, latest=True)
+        start = time.time()
         try:
             await self._r.set(key, payload)
             await self._add_topic_to_set(topic)
+            duration = time.time() - start
+            pnl = data.get("pnl")
+            self._log_info("set_latest", topic, count=1, duration=duration, pnl=pnl)
         except Exception as e:
             await self._log_error("set_latest", topic, e)
 
@@ -125,9 +150,17 @@ class AgentMemory:
         if n <= 0:
             return []
         key = self._key(topic)
+        start = time.time()
         try:
             items = await self._r.lrange(key, 0, n - 1)
-            return [json.loads(i) for i in items]
+            result = [json.loads(i) for i in items]
+            duration = time.time() - start
+            pnl_vals = [item.get("pnl") for item in result if "pnl" in item]
+            pnl = sum(pnl_vals) if pnl_vals else None
+            self._log_info(
+                "read_recent", topic, count=len(result), duration=duration, pnl=pnl
+            )
+            return result
         except Exception as e:
             await self._log_error("read_recent", topic, e)
             return []
@@ -138,9 +171,17 @@ class AgentMemory:
             await self._log_error("get_latest", topic, ValueError("Topic cannot be empty"))
             return None
         key = self._key(topic, latest=True)
+        start = time.time()
         try:
             val = await self._r.get(key)
-            return json.loads(val) if val else None
+            result = json.loads(val) if val else None
+            duration = time.time() - start
+            pnl = result.get("pnl") if isinstance(result, dict) else None
+            count = 1 if result else 0
+            self._log_info(
+                "get_latest", topic, count=count, duration=duration, pnl=pnl
+            )
+            return result
         except Exception as e:
             await self._log_error("get_latest", topic, e)
             return None
