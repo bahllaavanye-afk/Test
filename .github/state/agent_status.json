@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-08-07T05:39:16.594341+00:00",
+  "checked_at": "2026-08-07T13:01:44.098331+00:00",
   "total_agents": 18,
   "batch_checked": 6,
   "total_runs": 61,
@@ -8,44 +8,44 @@
   "skill_count": 200,
   "agent_statuses": [
     {
-      "agent": "investor_pipeline",
-      "emoji": "\ud83d\udcbc",
-      "reply": "The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the investor_pipeline agent, we need to give a one-sentence status update, first person, concise, referencing real file paths. Must be 2 sentences max (i.e., one sentence). Should be specific. Could say: \"I am currently scanning the `pipeline/investor_stage.yaml` to auto-advance leads based on the latest engagement metrics.\" Include file",
+      "agent": "strategy_generator",
+      "emoji": "\ud83e\udde0",
+      "reply": "We need to respond as the strategy_generator agent, giving a one-sentence status update, first person, concise (2 sentences max). Must reference real file paths? The instruction says \"Reference real file paths.\" So we should mention a file path like \"src/strategies/equities/sp500_long.py\". Provide one sentence status update, maybe two sentences max. Let's do one sentence: \"I'm currently refining the SPY\u202fLong\u202f/\u202fAAPL\u202fLong variant in",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "run_experiments",
-      "emoji": "\ud83d\udd2c",
-      "reply": "I'm currently executing",
+      "agent": "free_agent_engineer",
+      "emoji": "\ud83e\udd16",
+      "reply": "The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" As the free_agent_engineer agent, we need to respond in first person, concise, 2 sentences max, referencing real file paths. Provide a one-sentence status update. Should be something like: \"I'm currently reviewing and refactoring the signal runner module at src/signals/runner.py to eliminate raw dictionaries and add type hints.\" That would be a one-sentence",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "algo_agent",
-      "emoji": "\ud83c\udfb0",
-      "reply": "I'm currently running UCB1 arm selection on the latest strategy variants logged in `/home/quantedge/desk-equities/strategy_logs/`, prioritizing the SPY-Long/AAPL-Long spread with the EMA-VWAP-MACD-ADX signal combination for the next backtest cycle.",
+      "agent": "desk_trader",
+      "emoji": "\ud83d\udcca",
+      "reply": "We need to respond as desk_trader agent on QuantEdge. Must be first person, concise (2 sentences max). Provide one-sentence status update. Also maybe reference real file paths? The instruction: \"Reference real file paths.\" The user asks for one-sentence status update: what are you actively working on RIGHT NOW? Should be one sentence. But also need to reference real file paths. Could embed a file path in the sentence, like \"Currently executing paper trades using config",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "self_improver",
-      "emoji": "\ud83d\udd04",
-      "reply": "We need to respond as self_improver agent, 2 sentences max, first person, concise. Should mention what we are actively working on right now. Possibly \"I am analyzing the latest backtest logs and refactoring the signal generation module at src/strategies/signal_runner.py\". Must be one sentence? The user asks: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" So we need one sentence. Must be first person,",
+      "agent": "system_watchdog",
+      "emoji": "\ud83d\udee1\ufe0f",
+      "reply": "I'm currently scanning `/",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "research_scientist",
-      "emoji": "\ud83d\udd2d",
-      "reply": "I'm currently parsing recent macro\u2011",
+      "agent": "ml_trainer",
+      "emoji": "\ud83c\udfcb\ufe0f",
+      "reply": "The user wants a one-sentence status update: what am I actively working on RIGHT NOW? Must be one sentence, concise, referencing real file paths. As ml_trainer agent, status: currently scanning backend/app/ml/models for missing type hints, updating LSTM training script. Must be one sentence. Also mention being autonomous. Provide in first person. Should be concise, 2 sentences max, they asked one sentence. So one sentence. Provide status.",
       "runs": 0,
       "successes": 0
     },
     {
-      "agent": "modeling_engineer",
-      "emoji": "\u2699\ufe0f",
-      "reply": "We need to respond as modeling_engineer agent, 2 sentences max, first person, concise. Provide status update: actively working on monitoring model drift and preparing retraining pipeline, checking logs, maybe resetting GPU contexts. Must reference real file paths. Provide one sentence? The user asked: \"Give a one-sentence status update: what are you actively working on RIGHT NOW?\" So one sentence. Should be first person. Include file path like /models/temporal_fusion_transform",
+      "agent": "standup_agent",
+      "emoji": "\ud83d\udccb",
+      "reply": "[LLM unavailable \u2014 all providers failed]",
       "runs": 0,
       "successes": 0
     }

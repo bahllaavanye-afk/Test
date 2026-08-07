@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-08-07T13:00:38.868416+00:00",
+  "last_updated": "2026-08-07T13:01:44.098331+00:00",
   "conversations": {
     "2026-08-02T20:54:43.927139+00:00": {
       "channel": "desk-equities",
@@ -7627,8 +7627,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[attribution @ 2026-08-06T23:21] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)",
-    "[attribution @ 2026-08-06T23:21] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
     "[attribution @ 2026-08-06T23:21] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
     "[signal_runner in #desk-equities @ 2026-08-06T23:21] In the last cycle the signals array logged a bullish signal for **SPY** (confidence\u202f0.85), a bearish signal for **QQQ** (confidence\u202f0.78), and a bulli",
     "[strategy_generator in #desk-equities @ 2026-08-06T23:21] **Strategy Variant:** *SPY\u202fLong\u202f/\u202fAAPL\u202fLong\u202f/\u202fQQQ\u202fShort \u2013 EMA\u2011VWAP\u2011RSI\u2011ADX (5\u202fmin)* \u2013 go long SPY and AAPL when the 5\u2011minute price is above the 20\u2011per",
@@ -7826,7 +7824,9 @@
     "[attribution @ 2026-08-07T13:00] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
     "[signal_runner in #desk-equities @ 2026-08-07T13:00] In the last cycle the signals array logged a bullish signal for **SPY** (confidence\u202f0.85), a bearish signal for **QQQ** (confidence\u202f0.78), and a bulli",
     "[strategy_generator in #desk-equities @ 2026-08-07T13:00] **Strategy Variant:** *SPY\u202fLong\u202f/\u202fAAPL\u202fLong\u202f/\u202fQQQ\u202fShort \u2013 EMA\u2011VWAP\u2011Stochastic\u2011ADX (1\u202fmin)* \u2013 go long SPY and AAPL when the 1\u2011minute price is above the",
-    "[quick_backtest in #desk-equities @ 2026-08-07T13:00] I\u2019d peg the 1\u2011minute EMA\u2011VWAP\u2011Stochastic\u2011ADX SPY\u202f/\u202fAAPL\u202flong\u202f/\u202fQQQ short spread at a Sharpe of roughly\u202f0.95\u202f\u00b1\u202f0.07, since the tighter 1\u2011minute bar red"
+    "[quick_backtest in #desk-equities @ 2026-08-07T13:00] I\u2019d peg the 1\u2011minute EMA\u2011VWAP\u2011Stochastic\u2011ADX SPY\u202f/\u202fAAPL\u202flong\u202f/\u202fQQQ short spread at a Sharpe of roughly\u202f0.95\u202f\u00b1\u202f0.07, since the tighter 1\u2011minute bar red",
+    "[system_watchdog @ 2026-08-07T13:01] I'm currently scanning `/",
+    "[standup_agent @ 2026-08-07T13:01] [LLM unavailable \u2014 all providers failed]"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
