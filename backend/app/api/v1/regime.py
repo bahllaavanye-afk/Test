@@ -30,8 +30,34 @@ _LABEL_MAP = {
 
 
 def _map_label(regime: str) -> str:
-    """Map detector regime to frontend-friendly label."""
+    """Map detector regime to a frontend‑friendly label."""
     return _LABEL_MAP.get(regime, "unknown")
+
+
+def _extract_mapped_labels(states: Dict[str, Any]) -> List[str]:
+    """Return a list of mapped regime labels for each symbol state."""
+    return [
+        _map_label(sym_state.get("regime", "unknown"))
+        for sym_state in states.values()
+    ]
+
+
+def _extract_confidences(states: Dict[str, Any]) -> List[float]:
+    """Return a list of confidence values for each symbol state."""
+    return [
+        float(sym_state.get("confidence", 0.0))
+        for sym_state in states.values()
+    ]
+
+
+def _find_latest_update(states: Dict[str, Any]) -> Optional[str]:
+    """Return the most recent ISO timestamp among symbol states, if any."""
+    timestamps = (
+        sym_state.get("updated_at")
+        for sym_state in states.values()
+        if sym_state.get("updated_at")
+    )
+    return max(timestamps, default=None)
 
 
 def _compute_aggregates(
@@ -45,18 +71,14 @@ def _compute_aggregates(
         avg_confidence: Average confidence rounded to three decimals.
         latest_updated: ISO timestamp of the most recent update, if any.
     """
-    label_counts: Counter = Counter(
-        _map_label(sym_state.get("regime", "unknown")) for sym_state in states.values()
-    )
-    confidences: List[float] = [
-        float(sym_state.get("confidence", 0.0)) for sym_state in states.values()
-    ]
-    latest_updated: Optional[str] = max(
-        (sym_state.get("updated_at") for sym_state in states.values() if sym_state.get("updated_at")),
-        default=None,
-    )
+    labels = _extract_mapped_labels(states)
+    confidences = _extract_confidences(states)
+    latest_updated = _find_latest_update(states)
+
+    label_counts: Counter = Counter(labels)
     overall_regime = label_counts.most_common(1)[0][0] if label_counts else "unknown"
     avg_confidence = round(sum(confidences) / len(confidences), 3) if confidences else 0.0
+
     return overall_regime, avg_confidence, latest_updated
 
 
@@ -108,6 +130,7 @@ async def get_regime_states(current_user: User = Depends(get_current_user)):
 
 @router.get("/states/{symbol}")
 async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_current_user)):
+    """Regime classification for a specific symbol."""
     start_time = time.time()
     state = regime_monitor.get(symbol.upper())
     if not state:
@@ -120,7 +143,7 @@ async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_cu
 
 @router.get("/correlation")
 async def get_correlation_matrix(current_user: User = Depends(get_current_user)):
-    """Live cross-strategy correlation matrix."""
+    """Live cross‑strategy correlation matrix."""
     start_time = time.time()
     matrix = correlation_monitor.matrix_as_list()
     reduced = list(correlation_monitor._reduced)
@@ -135,6 +158,7 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
 
 @router.get("/correlation/alerts")
 async def get_correlation_alerts(current_user: User = Depends(get_current_user)):
+    """Recent correlation alerts."""
     start_time = time.time()
     alerts = correlation_monitor.recent_alerts(50)
     _log_endpoint("get_correlation_alerts", len(alerts), start_time)
