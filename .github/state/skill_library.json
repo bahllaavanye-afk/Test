@@ -1,6 +1,5 @@
 {
   "skills": [
-    "Based on recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge regarding code quality:",
     "Verify file perms",
     "Tighten type annotations",
     "* **Prioritize stat_arb_etf**: Review stat_arb_etf strategy which has shown a 93% win rate and +31.89% total return in the last 30 days (attribution @ 2026-08-06).",
@@ -199,8 +198,9 @@
     "Retry failed trades",
     "Replace generic signatures",
     "Eliminate raw dictionaries",
-    "Sweep for lingering annotations"
+    "Sweep for lingering annotations",
+    "Set memory limits"
   ],
-  "last_updated": "2026-08-07T11:42:33.748485+00:00",
+  "last_updated": "2026-08-07T12:54:37.626003+00:00",
   "total": 200
 }
