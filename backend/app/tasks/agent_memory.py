@@ -18,7 +18,7 @@ import json
 import logging
 import time
 import asyncio
-from typing import Any, List
+from typing import Any, List, Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +44,9 @@ class AgentMemory:
         prefix = f"{_PREFIX}latest:" if latest else _PREFIX
         return f"{prefix}{topic}"
 
-    def _payload(self, data: dict) -> str:
+    def _payload(self, data: Mapping | None) -> str:
         """Serialise data with a timestamp."""
-        if data is None:
+        if not isinstance(data, Mapping):
             data = {}
         return json.dumps({"ts": time.time(), **data})
 
@@ -88,7 +88,7 @@ class AgentMemory:
 
     # ── Write ─────────────────────────────────────────────────────────────────
 
-    async def write(self, topic: str, data: dict) -> None:
+    async def write(self, topic: str, data: Mapping | None) -> None:
         """Append an observation to a topic list with a timestamp."""
         if not topic:
             await self._log_error("write", topic, ValueError("Topic cannot be empty"))
@@ -102,7 +102,7 @@ class AgentMemory:
         except Exception as e:
             await self._log_error("write", topic, e)
 
-    async def set_latest(self, topic: str, data: dict) -> None:
+    async def set_latest(self, topic: str, data: Mapping | None) -> None:
         """Overwrite the latest value for a topic (single-value slot)."""
         if not topic:
             await self._log_error("set_latest", topic, ValueError("Topic cannot be empty"))
@@ -122,12 +122,24 @@ class AgentMemory:
         if not topic:
             await self._log_error("read_recent", topic, ValueError("Topic cannot be empty"))
             return []
-        if n <= 0:
+        if not isinstance(n, int) or n <= 0:
             return []
+        # Guard against unreasonable requests; cap to max list length.
+        if n > _MAX_LIST_LEN:
+            n = _MAX_LIST_LEN
         key = self._key(topic)
         try:
             items = await self._r.lrange(key, 0, n - 1)
-            return [json.loads(i) for i in items]
+            result: List[dict] = []
+            for i in items:
+                try:
+                    # Redis may return bytes; ensure string for json.loads
+                    if isinstance(i, (bytes, bytearray)):
+                        i = i.decode()
+                    result.append(json.loads(i))
+                except (json.JSONDecodeError, TypeError) as decode_err:
+                    await self._log_error("read_recent", topic, decode_err)
+            return result
         except Exception as e:
             await self._log_error("read_recent", topic, e)
             return []
@@ -140,7 +152,14 @@ class AgentMemory:
         key = self._key(topic, latest=True)
         try:
             val = await self._r.get(key)
-            return json.loads(val) if val else None
+            if not val:
+                return None
+            if isinstance(val, (bytes, bytearray)):
+                val = val.decode()
+            return json.loads(val)
+        except (json.JSONDecodeError, TypeError) as decode_err:
+            await self._log_error("get_latest", topic, decode_err)
+            return None
         except Exception as e:
             await self._log_error("get_latest", topic, e)
             return None
