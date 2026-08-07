@@ -1,31 +1,7 @@
 {
   "version": 1,
-  "last_updated": "2026-08-07T03:33:05.904561+00:00",
+  "last_updated": "2026-08-07T04:22:14.052348+00:00",
   "conversations": {
-    "2026-08-01T06:28:09.842627+00:00": {
-      "channel": "risk",
-      "speaker": "desk_trader",
-      "message": "Based on the 5\u202f%\u202fNAV gross\u2011exposure cap in `./state/risk_limits.yaml` and today\u2019s net\u2011used exposure of ~2.8\u202f%\u202fNAV from `./state/current_risk.json` (\u22482.2\u202f%\u202fNAV headroom), I\u2019ll allocate roughly 70\u202f% of the headroom (~1.5\u202f%\u202fNAV) to arbitrage positions and the remaining 30\u202f% (~0.7\u202f%\u202fNAV) to directional bets. This keeps us within the policy while leaving a small buffer for any unexpected market moves.",
-      "timestamp": "2026-08-01T06:28:09.842627+00:00",
-      "provider": "llm",
-      "round": "risk_management"
-    },
-    "2026-08-01T09:57:58.575699+00:00": {
-      "channel": "desk-equities",
-      "speaker": "signal_runner",
-      "message": "The user asks: \"Report what trading signals fired in the last cycle across equity symbols (SPY, QQQ, AAPL, MSFT, NVDA). Use data from agent_memory.json signals array. What was the strongest signal and confidence? 3 sentences.\"\n\nWe need to respond as signal_runner agent, 3 sentences, concise, referencing real file paths? The earlier instruction for signal_runner said: \"We need to respond as signal_runner agent, 2 sentences max, one sentence status update. Must be first person, concise, reference ",
-      "timestamp": "2026-08-01T09:57:58.575699+00:00",
-      "provider": "llm",
-      "round": "strategy_alpha"
-    },
-    "2026-08-01T09:58:00.485996+00:00": {
-      "channel": "desk-equities",
-      "speaker": "strategy_generator",
-      "message": "I\u2019ve added a new variant called **\u201cSPY\u2011AAPL Long / QQQ Short \u2013 EMA\u2011VWAP\u2011RSI (5\u202fmin)\u201d** to `strategies/equities/spy_aapl_qqq_5min.yaml`,",
-      "timestamp": "2026-08-01T09:58:00.485996+00:00",
-      "provider": "llm",
-      "round": "strategy_alpha"
-    },
     "2026-08-01T09:58:02.358992+00:00": {
       "channel": "desk-equities",
       "speaker": "quick_backtest",
@@ -2401,6 +2377,30 @@
       "timestamp": "2026-08-07T02:53:33.336062+00:00",
       "provider": "llm",
       "round": "ml_models"
+    },
+    "2026-08-07T04:22:18.410186+00:00": {
+      "channel": "engineering",
+      "speaker": "continuous_improver",
+      "message": "In the last cycle I parsed\u202f`.github/state/agent_memory.json` and applied the two peer\u2011learned fixes it highlighted. First, I disambiguated the overloaded routine in\u202f`backend/app/trading/signal_processing.py` by renaming the generic\u202f`process_signal_batch`\u202fto\u202f`process_signal_batch_v2`\u202fand updating all internal calls to use the new name. Second, I replaced the loosely\u2011",
+      "timestamp": "2026-08-07T04:22:18.410186+00:00",
+      "provider": "llm",
+      "round": "code_quality"
+    },
+    "2026-08-07T04:22:20.131484+00:00": {
+      "channel": "engineering",
+      "speaker": "peer_reviewer",
+      "message": "We should finish the strict\u2011type sweep by replacing the remaining `Any` in\u202f`backend/app/trading/execution_engine.py`\u2014concretize the `execute_order` request/response models and add explicit error handling for failed broker calls. Next, run `mypy --strict backend/app/trading/*.py` and fix any new type violations, especially in the order pipeline (`backend/app/trading/order_pipeline.py`). Adding a retry wrapper around the broker API calls in\u202f`backend/app/trading/execution_engine.py` will also tight",
+      "timestamp": "2026-08-07T04:22:20.131484+00:00",
+      "provider": "llm",
+      "round": "code_quality"
+    },
+    "2026-08-07T04:22:21.897641+00:00": {
+      "channel": "engineering",
+      "speaker": "free_agent_engineer",
+      "message": "I'll start with\u202f`backend/app/trading/order_pipeline.py` because running\u202f`mypy --strict` currently exposes multiple `Any` types and missing return annotations that prevent a clean type\u2011check across the order pipeline. Cleaning up those signatures will also give us a solid foundation before we wrap the broker calls in\u202f`backend/app/trading/execution_engine.py` with a retry mechanism.",
+      "timestamp": "2026-08-07T04:22:21.897641+00:00",
+      "provider": "llm",
+      "round": "code_quality"
     }
   },
   "employee_context": {
@@ -6458,6 +6458,15 @@
             "channel": "engineering",
             "topic": "code_quality"
           }
+        },
+        {
+          "ts": "2026-08-07T04:22:17+00:00",
+          "kind": "discussion",
+          "text": "In the last cycle I parsed\u202f`.github/state/agent_memory.json` and applied the two peer\u2011learned fixes it highlighted. First, I disambiguated the overloaded routine in\u202f`backend/app/trading/signal_processing.py` by renaming the generic\u202f`process_signal_batch`\u202fto\u202f`process_signal_batch_v2`\u202fand updating all internal calls to use the new name. Second, I replaced the loosely\u2011",
+          "meta": {
+            "channel": "engineering",
+            "topic": "code_quality"
+          }
         }
       ],
       "facts": {},
@@ -6847,6 +6856,15 @@
           "ts": "2026-08-07T01:51:39+00:00",
           "kind": "discussion",
           "text": "I'll prioritize reviewing the `execute_order` method in `backend/app/trading/execution_engine.py` to replace the `Any` type with a concrete request/response model, ensuring stricter type checking. Next, I'll run `mypy --strict` on `backend/app/trading/execution_engine.py` and `backend/app/trading/signal_processor.py` to identify any remaining type issues. I'll also review the `.github/scripts/lint.sh` script to ensure it's enforcing our coding standards and catching any potential issues before they reach production.",
+          "meta": {
+            "channel": "engineering",
+            "topic": "code_quality"
+          }
+        },
+        {
+          "ts": "2026-08-07T04:22:19+00:00",
+          "kind": "discussion",
+          "text": "We should finish the strict\u2011type sweep by replacing the remaining `Any` in\u202f`backend/app/trading/execution_engine.py`\u2014concretize the `execute_order` request/response models and add explicit error handling for failed broker calls. Next, run `mypy --strict backend/app/trading/*.py` and fix any new type violations, especially in the order pipeline (`backend/app/trading/order_pipeline.py`). Adding a retry wrapper around the broker API calls in\u202f`backend/app/trading/execution_engine.py` will also tighten reliability.",
           "meta": {
             "channel": "engineering",
             "topic": "code_quality"
@@ -7244,6 +7262,15 @@
             "channel": "engineering",
             "topic": "code_quality"
           }
+        },
+        {
+          "ts": "2026-08-07T04:22:21+00:00",
+          "kind": "discussion",
+          "text": "I'll start with\u202f`backend/app/trading/order_pipeline.py` because running\u202f`mypy --strict` currently exposes multiple `Any` types and missing return annotations that prevent a clean type\u2011check across the order pipeline. Cleaning up those signatures will also give us a solid foundation before we wrap the broker calls in\u202f`backend/app/trading/execution_engine.py` with a retry mechanism.",
+          "meta": {
+            "channel": "engineering",
+            "topic": "code_quality"
+          }
         }
       ],
       "facts": {},
@@ -7259,8 +7286,8 @@
     "last_drawdown_pct": 12.3,
     "last_signal_run": "2026-06-09T10:47:42.157419+00:00",
     "signal_count_today": 0,
-    "last_discussion": "2026-08-07T02:53:26.940525+00:00",
-    "total_discussions": 404,
+    "last_discussion": "2026-08-07T04:22:14.052348+00:00",
+    "total_discussions": 405,
     "heartbeat_count": 2,
     "last_watchdog_run": "2026-08-07T03:33:05.904561+00:00",
     "health_status": "3 failing",
@@ -7297,21 +7324,12 @@
     "last_collective_learning": "2026-08-06T22:53:47.068683+00:00",
     "total_agent_runs": 0,
     "total_successes": 61,
-    "health_check_count": 410
+    "health_check_count": 411
   },
   "thread_state": {},
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[attribution @ 2026-08-06T07:28] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
-    "[attribution @ 2026-08-06T07:28] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
-    "[signal_runner in #desk-equities @ 2026-08-06T07:27] According to `agent_memory.json",
-    "[strategy_generator in #desk-equities @ 2026-08-06T07:27] **Strategy Variant:** *SPY\u202fLong\u202f/\u202fAAPL\u202fLong\u202f/\u202fQQQ\u202fShort \u2013 EMA\u2011VWAP\u2011RSI\u2011MACD (5\u202fmin)* \u2013 go long SPY and AAPL when the 5\u2011minute price is above the 20\u2011pe",
-    "[attribution @ 2026-08-06T08:18] avellaneda_stoikov_mm: 10 trades, 90% win rate, +53.48% total return, +5.35% avg (period 30d)",
-    "[attribution @ 2026-08-06T08:18] time_serie: 18 trades, 72% win rate, +43.01% total return, +2.39% avg (period 30d)",
-    "[attribution @ 2026-08-06T08:18] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
-    "[attribution @ 2026-08-06T08:18] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)",
-    "[attribution @ 2026-08-06T08:18] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
     "[attribution @ 2026-08-06T08:18] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
     "[continuous_improver in #engineering @ 2026-08-06T08:18] In the last cycle I applied the two peer\u2011learned fixes recorded in\u202f`.github/state/agent_memory.json`. First, I renamed the ambiguous\u202f`process_signal_b",
     "[peer_reviewer in #engineering @ 2026-08-06T08:18] We should finish the strict\u2011type sweep on the core trading modules\u202f\u2014\u202frun `mypy --strict backend/app/trading/execution_engine.py` and `backend/app/trad",
@@ -7502,7 +7520,16 @@
     "[attribution @ 2026-08-07T02:53] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
     "[ml_trainer in #ml-research @ 2026-08-07T02:53] The three production models in\u202f`backend/app/ml/models/` are up\u2011to\u2011date from the last training run on\u202f2024\u201112\u201115:\u202f`mean_reversion.pkl` (MAE\u202f=\u202f0.012),\u202f`",
     "[research_scientist in #ml-research @ 2026-08-07T02:53] Adding a lightweight Structured State\u2011Space (S4) block\u202f\u2014\u202fGu\u202fet\u202fal.,\u202f2022 *Efficiently Modeling Long\u2011Range Dependencies with Structured State\u2011Space Mod",
-    "[modeling_engineer in #ml-research @ 2026-08-07T02:53] I recommend retraining the hybrid predictor\u202f`backend/app/ml/models/s4_lstm.py` by prepending the new S4 block from\u202f`backend/app/ml/models/s4_block.py`"
+    "[modeling_engineer in #ml-research @ 2026-08-07T02:53] I recommend retraining the hybrid predictor\u202f`backend/app/ml/models/s4_lstm.py` by prepending the new S4 block from\u202f`backend/app/ml/models/s4_block.py`",
+    "[attribution @ 2026-08-07T04:22] avellaneda_stoikov_mm: 10 trades, 90% win rate, +53.48% total return, +5.35% avg (period 30d)",
+    "[attribution @ 2026-08-07T04:22] time_serie: 18 trades, 72% win rate, +43.01% total return, +2.39% avg (period 30d)",
+    "[attribution @ 2026-08-07T04:22] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
+    "[attribution @ 2026-08-07T04:22] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)",
+    "[attribution @ 2026-08-07T04:22] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
+    "[attribution @ 2026-08-07T04:22] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
+    "[continuous_improver in #engineering @ 2026-08-07T04:22] In the last cycle I parsed\u202f`.github/state/agent_memory.json` and applied the two peer\u2011learned fixes it highlighted. First, I disambiguated the overloa",
+    "[peer_reviewer in #engineering @ 2026-08-07T04:22] We should finish the strict\u2011type sweep by replacing the remaining `Any` in\u202f`backend/app/trading/execution_engine.py`\u2014concretize the `execute_order` re",
+    "[free_agent_engineer in #engineering @ 2026-08-07T04:22] I'll start with\u202f`backend/app/trading/order_pipeline.py` because running\u202f`mypy --strict` currently exposes multiple `Any` types and missing return anno"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
@@ -7795,216 +7822,8 @@
       "test_pass": 10
     }
   },
-  "last_health_check": "2026-08-07T00:40:31.597014+00:00",
+  "last_health_check": "2026-08-07T03:39:21.536855+00:00",
   "backtest_results": [
-    {
-      "strategy": "rsi",
-      "symbol": "QQQ",
-      "desk": "equity",
-      "total_return_pct": 1.7,
-      "ann_return_pct": 1.22,
-      "volatility_pct": 13.98,
-      "sharpe": 0.087,
-      "sortino": 0.104,
-      "max_drawdown_pct": -14.46,
-      "n_days": 350,
-      "timestamp": "2026-08-05T13:23:54.910783+00:00"
-    },
-    {
-      "strategy": "momentum",
-      "symbol": "AAPL",
-      "desk": "equity",
-      "total_return_pct": -2.59,
-      "ann_return_pct": -1.9,
-      "volatility_pct": 31.21,
-      "sharpe": -0.061,
-      "sortino": -0.078,
-      "max_drawdown_pct": -22.43,
-      "n_days": 344,
-      "timestamp": "2026-08-05T13:23:54.910783+00:00"
-    },
-    {
-      "strategy": "mean_reversion",
-      "symbol": "QQQ",
-      "desk": "equity",
-      "total_return_pct": -2.58,
-      "ann_return_pct": -1.89,
-      "volatility_pct": 15.46,
-      "sharpe": -0.122,
-      "sortino": -0.128,
-      "max_drawdown_pct": -10.48,
-      "n_days": 345,
-      "timestamp": "2026-08-05T13:23:54.910783+00:00"
-    },
-    {
-      "strategy": "breakout",
-      "symbol": "SPY",
-      "desk": "equity",
-      "total_return_pct": -2.05,
-      "ann_return_pct": -1.65,
-      "volatility_pct": 6.13,
-      "sharpe": -0.269,
-      "sortino": -0.186,
-      "max_drawdown_pct": -5.17,
-      "n_days": 313,
-      "timestamp": "2026-08-05T13:23:54.910783+00:00"
-    },
-    {
-      "strategy": "mean_reversion",
-      "symbol": "AAPL",
-      "desk": "equity",
-      "total_return_pct": -7.77,
-      "ann_return_pct": -5.74,
-      "volatility_pct": 20.07,
-      "sharpe": -0.286,
-      "sortino": -0.252,
-      "max_drawdown_pct": -19.09,
-      "n_days": 345,
-      "timestamp": "2026-08-05T13:23:54.910783+00:00"
-    },
-    {
-      "strategy": "rsi",
-      "symbol": "AAPL",
-      "desk": "equity",
-      "total_return_pct": 41.02,
-      "ann_return_pct": 28.08,
-      "volatility_pct": 19.09,
-      "sharpe": 1.471,
-      "sortino": 1.989,
-      "max_drawdown_pct": -7.74,
-      "n_days": 350,
-      "timestamp": "2026-08-05T14:44:17.422501+00:00"
-    },
-    {
-      "strategy": "breakout",
-      "symbol": "AAPL",
-      "desk": "equity",
-      "total_return_pct": 9.8,
-      "ann_return_pct": 7.82,
-      "volatility_pct": 6.89,
-      "sharpe": 1.134,
-      "sortino": 0.739,
-      "max_drawdown_pct": -3.23,
-      "n_days": 313,
-      "timestamp": "2026-08-05T14:44:17.422501+00:00"
-    },
-    {
-      "strategy": "rsi",
-      "symbol": "SPY",
-      "desk": "equity",
-      "total_return_pct": 6.24,
-      "ann_return_pct": 4.46,
-      "volatility_pct": 10.98,
-      "sharpe": 0.406,
-      "sortino": 0.516,
-      "max_drawdown_pct": -6.5,
-      "n_days": 350,
-      "timestamp": "2026-08-05T14:44:17.422501+00:00"
-    },
-    {
-      "strategy": "mean_reversion",
-      "symbol": "ETH",
-      "desk": "crypto",
-      "total_return_pct": 14.59,
-      "ann_return_pct": 10.46,
-      "volatility_pct": 34.28,
-      "sharpe": 0.305,
-      "sortino": 0.196,
-      "max_drawdown_pct": -35.36,
-      "n_days": 345,
-      "timestamp": "2026-08-05T14:44:17.422501+00:00"
-    },
-    {
-      "strategy": "momentum",
-      "symbol": "QQQ",
-      "desk": "equity",
-      "total_return_pct": 8.98,
-      "ann_return_pct": 6.5,
-      "volatility_pct": 23.18,
-      "sharpe": 0.281,
-      "sortino": 0.333,
-      "max_drawdown_pct": -19.26,
-      "n_days": 344,
-      "timestamp": "2026-08-05T14:44:17.422501+00:00"
-    },
-    {
-      "strategy": "breakout",
-      "symbol": "QQQ",
-      "desk": "equity",
-      "total_return_pct": 2.06,
-      "ann_return_pct": 1.65,
-      "volatility_pct": 6.19,
-      "sharpe": 0.267,
-      "sortino": 0.162,
-      "max_drawdown_pct": -5.44,
-      "n_days": 313,
-      "timestamp": "2026-08-05T14:44:17.422501+00:00"
-    },
-    {
-      "strategy": "momentum",
-      "symbol": "SPY",
-      "desk": "equity",
-      "total_return_pct": 5.43,
-      "ann_return_pct": 3.95,
-      "volatility_pct": 17.93,
-      "sharpe": 0.22,
-      "sortino": 0.255,
-      "max_drawdown_pct": -15.02,
-      "n_days": 344,
-      "timestamp": "2026-08-05T14:44:17.422501+00:00"
-    },
-    {
-      "strategy": "rsi",
-      "symbol": "QQQ",
-      "desk": "equity",
-      "total_return_pct": 3.56,
-      "ann_return_pct": 2.55,
-      "volatility_pct": 13.9,
-      "sharpe": 0.184,
-      "sortino": 0.219,
-      "max_drawdown_pct": -14.46,
-      "n_days": 350,
-      "timestamp": "2026-08-05T14:44:17.422501+00:00"
-    },
-    {
-      "strategy": "mean_reversion",
-      "symbol": "SPY",
-      "desk": "equity",
-      "total_return_pct": 2.46,
-      "ann_return_pct": 1.79,
-      "volatility_pct": 12.33,
-      "sharpe": 0.146,
-      "sortino": 0.133,
-      "max_drawdown_pct": -7.49,
-      "n_days": 345,
-      "timestamp": "2026-08-05T14:44:17.422501+00:00"
-    },
-    {
-      "strategy": "momentum",
-      "symbol": "AAPL",
-      "desk": "equity",
-      "total_return_pct": -0.39,
-      "ann_return_pct": -0.28,
-      "volatility_pct": 31.17,
-      "sharpe": -0.009,
-      "sortino": -0.012,
-      "max_drawdown_pct": -22.43,
-      "n_days": 344,
-      "timestamp": "2026-08-05T14:44:17.422501+00:00"
-    },
-    {
-      "strategy": "mean_reversion",
-      "symbol": "QQQ",
-      "desk": "equity",
-      "total_return_pct": -2.58,
-      "ann_return_pct": -1.89,
-      "volatility_pct": 15.46,
-      "sharpe": -0.122,
-      "sortino": -0.128,
-      "max_drawdown_pct": -10.48,
-      "n_days": 345,
-      "timestamp": "2026-08-05T14:44:17.422501+00:00"
-    },
     {
       "strategy": "momentum",
       "symbol": "BTC",
@@ -14296,6 +14115,214 @@
       "max_drawdown_pct": -5.17,
       "n_days": 313,
       "timestamp": "2026-08-07T03:31:45.956179+00:00"
+    },
+    {
+      "strategy": "rsi",
+      "symbol": "AAPL",
+      "desk": "equity",
+      "total_return_pct": 38.51,
+      "ann_return_pct": 26.43,
+      "volatility_pct": 19.03,
+      "sharpe": 1.389,
+      "sortino": 1.872,
+      "max_drawdown_pct": -7.74,
+      "n_days": 350,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
+    },
+    {
+      "strategy": "breakout",
+      "symbol": "AAPL",
+      "desk": "equity",
+      "total_return_pct": 9.8,
+      "ann_return_pct": 7.82,
+      "volatility_pct": 6.89,
+      "sharpe": 1.134,
+      "sortino": 0.739,
+      "max_drawdown_pct": -3.23,
+      "n_days": 313,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
+    },
+    {
+      "strategy": "momentum",
+      "symbol": "QQQ",
+      "desk": "equity",
+      "total_return_pct": 10.11,
+      "ann_return_pct": 7.31,
+      "volatility_pct": 23.12,
+      "sharpe": 0.316,
+      "sortino": 0.376,
+      "max_drawdown_pct": -19.26,
+      "n_days": 344,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "symbol": "ETH",
+      "desk": "crypto",
+      "total_return_pct": 14.59,
+      "ann_return_pct": 10.49,
+      "volatility_pct": 34.33,
+      "sharpe": 0.306,
+      "sortino": 0.196,
+      "max_drawdown_pct": -35.36,
+      "n_days": 344,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
+    },
+    {
+      "strategy": "rsi",
+      "symbol": "SPY",
+      "desk": "equity",
+      "total_return_pct": 4.09,
+      "ann_return_pct": 2.93,
+      "volatility_pct": 10.85,
+      "sharpe": 0.27,
+      "sortino": 0.339,
+      "max_drawdown_pct": -6.5,
+      "n_days": 350,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
+    },
+    {
+      "strategy": "momentum",
+      "symbol": "SPY",
+      "desk": "equity",
+      "total_return_pct": 6.61,
+      "ann_return_pct": 4.8,
+      "volatility_pct": 17.86,
+      "sharpe": 0.269,
+      "sortino": 0.312,
+      "max_drawdown_pct": -15.02,
+      "n_days": 344,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
+    },
+    {
+      "strategy": "breakout",
+      "symbol": "QQQ",
+      "desk": "equity",
+      "total_return_pct": 2.06,
+      "ann_return_pct": 1.65,
+      "volatility_pct": 6.19,
+      "sharpe": 0.267,
+      "sortino": 0.162,
+      "max_drawdown_pct": -5.44,
+      "n_days": 313,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "symbol": "SPY",
+      "desk": "equity",
+      "total_return_pct": 3.18,
+      "ann_return_pct": 2.31,
+      "volatility_pct": 12.32,
+      "sharpe": 0.188,
+      "sortino": 0.17,
+      "max_drawdown_pct": -7.49,
+      "n_days": 345,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
+    },
+    {
+      "strategy": "rsi",
+      "symbol": "QQQ",
+      "desk": "equity",
+      "total_return_pct": 1.12,
+      "ann_return_pct": 0.8,
+      "volatility_pct": 13.75,
+      "sharpe": 0.058,
+      "sortino": 0.069,
+      "max_drawdown_pct": -14.46,
+      "n_days": 350,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
+    },
+    {
+      "strategy": "momentum",
+      "symbol": "AAPL",
+      "desk": "equity",
+      "total_return_pct": -0.5,
+      "ann_return_pct": -0.37,
+      "volatility_pct": 31.16,
+      "sharpe": -0.012,
+      "sortino": -0.015,
+      "max_drawdown_pct": -23.08,
+      "n_days": 344,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "symbol": "QQQ",
+      "desk": "equity",
+      "total_return_pct": -2.58,
+      "ann_return_pct": -1.89,
+      "volatility_pct": 15.46,
+      "sharpe": -0.122,
+      "sortino": -0.128,
+      "max_drawdown_pct": -10.48,
+      "n_days": 345,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
+    },
+    {
+      "strategy": "momentum",
+      "symbol": "BTC",
+      "desk": "crypto",
+      "total_return_pct": -7.71,
+      "ann_return_pct": -5.73,
+      "volatility_pct": 36.26,
+      "sharpe": -0.158,
+      "sortino": -0.231,
+      "max_drawdown_pct": -36.67,
+      "n_days": 343,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
+    },
+    {
+      "strategy": "momentum",
+      "symbol": "ETH",
+      "desk": "crypto",
+      "total_return_pct": -12.62,
+      "ann_return_pct": -9.43,
+      "volatility_pct": 52.04,
+      "sharpe": -0.181,
+      "sortino": -0.279,
+      "max_drawdown_pct": -37.45,
+      "n_days": 343,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "symbol": "BTC",
+      "desk": "crypto",
+      "total_return_pct": -7.9,
+      "ann_return_pct": -5.85,
+      "volatility_pct": 24.8,
+      "sharpe": -0.236,
+      "sortino": -0.156,
+      "max_drawdown_pct": -32.06,
+      "n_days": 344,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "symbol": "AAPL",
+      "desk": "equity",
+      "total_return_pct": -7.77,
+      "ann_return_pct": -5.74,
+      "volatility_pct": 20.07,
+      "sharpe": -0.286,
+      "sortino": -0.252,
+      "max_drawdown_pct": -19.09,
+      "n_days": 345,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
+    },
+    {
+      "strategy": "breakout",
+      "symbol": "SPY",
+      "desk": "equity",
+      "total_return_pct": -2.24,
+      "ann_return_pct": -1.81,
+      "volatility_pct": 6.14,
+      "sharpe": -0.295,
+      "sortino": -0.205,
+      "max_drawdown_pct": -5.17,
+      "n_days": 313,
+      "timestamp": "2026-08-07T03:43:24.554372+00:00"
     }
   ]
 }
