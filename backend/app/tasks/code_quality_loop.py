@@ -32,10 +32,14 @@ QUALITY_FILE.parent.mkdir(parents=True, exist_ok=True)
 BACKEND_ROOT = Path(__file__).parents[2]
 
 # ----------------------------------------------------------------------
-# Internal cache for LOC counting to avoid re‑reading unchanged files.
-# The cache maps a file path to a tuple of (modification timestamp, stats dict).
+# Internal caches
 # ----------------------------------------------------------------------
+# Cache for LOC counting: maps a file path to (modification timestamp, stats dict).
 _loc_cache: Dict[Path, Tuple[float, Dict[str, int]]] = {}
+
+# Cache for strategy and test counting: maps a directory path to (modification timestamp, result dict).
+_strategy_cache: Dict[Path, Tuple[float, Dict[str, int]]] = {}
+_test_cache: Dict[Path, Tuple[float, Dict[str, int]]] = {}
 
 
 def _compute_file_stats(py_file: Path) -> Dict[str, int]:
@@ -75,8 +79,6 @@ def _count_loc(root: Path) -> dict:
     global _loc_cache
 
     total_files = total_lines = code_lines = blank_lines = comment_lines = 0
-
-    # Track files we encounter to later purge stale cache entries
     seen_files = set()
 
     for py_file in root.rglob("*.py"):
@@ -98,7 +100,7 @@ def _count_loc(root: Path) -> dict:
         blank_lines += stats["blank_lines"]
         comment_lines += stats["comment_lines"]
 
-    # Remove cache entries for files that no longer exist
+    # Purge stale entries
     for dead in set(_loc_cache) - seen_files:
         del _loc_cache[dead]
 
@@ -112,22 +114,71 @@ def _count_loc(root: Path) -> dict:
     }
 
 
+def _cached_dir_count(
+    base_dir: Path,
+    pattern: str,
+    cache: Dict[Path, Tuple[float, Dict[str, int]]],
+    count_name: str,
+) -> Dict[str, int]:
+    """
+    Generic cached directory counting helper.
+    Returns a dict with a single key ``count_name`` mapping to the number of files
+    matching ``pattern`` under ``base_dir``. Caches results based on the directory's
+    modification timestamp.
+    """
+    if not base_dir.is_dir():
+        return {count_name: 0}
+
+    mtime = base_dir.stat().st_mtime
+    cached = cache.get(base_dir)
+
+    if cached and cached[0] == mtime:
+        return cached[1]
+
+    files = list(base_dir.glob(pattern))
+    result = {count_name: len([f for f in files if not f.name.startswith("__")])}
+    cache[base_dir] = (mtime, result)
+    return result
+
+
 def _count_strategies(root: Path) -> dict:
-    manual = list((root / MANUAL_STRATEGY_REL).glob("*.py"))
-    ml = list((root / ML_STRATEGY_REL).glob("*.py"))
-    return {
-        "manual_strategies": len([f for f in manual if not f.name.startswith("__")]),
-        "ml_strategies": len([f for f in ml if not f.name.startswith("__")]),
-    }
+    """Count manual and ML strategy files with directory‑level caching."""
+    manual_dir = root / MANUAL_STRATEGY_REL
+    ml_dir = root / ML_STRATEGY_REL
+
+    manual = _cached_dir_count(
+        manual_dir,
+        "*.py",
+        _strategy_cache,
+        "manual_strategies",
+    )
+    ml = _cached_dir_count(
+        ml_dir,
+        "*.py",
+        _strategy_cache,
+        "ml_strategies",
+    )
+    return {**manual, **ml}
 
 
 def _count_tests(root: Path) -> dict:
-    unit = list((root / UNIT_TEST_REL).glob("test_*.py"))
-    integration = list((root / INTEGRATION_TEST_REL).glob("test_*.py"))
-    return {
-        "unit_test_files": len(unit),
-        "integration_test_files": len(integration),
-    }
+    """Count unit and integration test files with directory‑level caching."""
+    unit_dir = root / UNIT_TEST_REL
+    integration_dir = root / INTEGRATION_TEST_REL
+
+    unit = _cached_dir_count(
+        unit_dir,
+        "test_*.py",
+        _test_cache,
+        "unit_test_files",
+    )
+    integration = _cached_dir_count(
+        integration_dir,
+        "test_*.py",
+        _test_cache,
+        "integration_test_files",
+    )
+    return {**unit, **integration}
 
 
 class CodeQualityLoop:
