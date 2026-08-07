@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1786063263.486486,
+    "last_updated": 1786063896.4062371,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -111,7 +111,7 @@
     "opinion_score": 4,
     "macro_score": 2,
     "vix": 15.15,
-    "market_scan_ts": 1786063263.4644108,
+    "market_scan_ts": 1786063896.3781304,
     "sector_leaders": [
       "Financials",
       "Energy",
@@ -156,13 +156,6 @@
     "last_brain_update": 1786010843.6188173
   },
   "episodic": [
-    {
-      "lesson": "Crypto desk had 1 signal fired but 0 placed with no reason recorded; order placement failure is likely a code/execution bug, not a strategy issue.",
-      "category": "execution",
-      "priority": 1,
-      "source": "company_brain_synthesis",
-      "ts": 1785449889.0101888
-    },
     {
       "lesson": "Autonomous agents are stuck with 0% success across multiple desks; automation scripts require immediate debugging to restore bot productivity.",
       "category": "code",
@@ -1916,6 +1909,21 @@
       "risk_flags": [],
       "lesson": "Regime=bull (score=2). Leading: Financials, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
       "ts": 1786063263.4907122
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Financials",
+        "Energy",
+        "Materials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [],
+      "lesson": "Regime=bull (score=2). Leading: Financials, Energy. Gaps: 8, Breakouts: 0, Risk flags: 0.",
+      "ts": 1786063896.4116247
     }
   ],
   "github_insights": [
