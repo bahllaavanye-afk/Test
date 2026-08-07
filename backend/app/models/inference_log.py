@@ -1,6 +1,7 @@
 """InferenceLog ORM — records every prediction made by a serving model."""
 import uuid
 from datetime import datetime
+from typing import List, Mapping
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -12,8 +13,8 @@ class InferenceLog(Base):
     """
     Immutable record of a single model inference.
 
-    actual_return and is_correct are filled in after-the-fact via
-    POST /releases/{id}/record-outcome so accuracy can be computed live.
+    ``actual_return`` and ``is_correct`` are filled in after‑the‑fact via
+    ``POST /releases/{id}/record-outcome`` so accuracy can be computed live.
     """
     __tablename__ = "inference_logs"
     __table_args__ = (
@@ -43,6 +44,32 @@ class InferenceLog(Base):
     latency_ms: Mapped[float] = mapped_column(Numeric(8, 3), nullable=False)
     # Which branch of the A/B test served this request
     ab_group: Mapped[str] = mapped_column(String(16), nullable=False)  # champion|challenger|shadow
-    # Filled in ex-post when actual market return is known
+    # Filled in ex‑post when actual market return is known
     actual_return: Mapped[float | None] = mapped_column(Numeric(10, 6))
     is_correct: Mapped[bool | None] = mapped_column(Boolean)
+
+    @classmethod
+    def bulk_insert(cls, session, records: List[Mapping]) -> None:
+        """
+        Efficiently insert many ``InferenceLog`` records in a single round‑trip.
+
+        Parameters
+        ----------
+        session: sqlalchemy.orm.Session
+            Active SQLAlchemy session.
+        records: List[Mapping]
+            Iterable of dictionaries where keys match column names.
+        """
+        if not records:
+            return
+        session.bulk_insert_mappings(cls, records)
+
+    @classmethod
+    def get_by_id(cls, session, log_id: str):
+        """
+        Retrieve a single ``InferenceLog`` by its primary key.
+
+        This small helper centralises the query pattern and can be
+        extended with caching or additional filters without touching call‑sites.
+        """
+        return session.query(cls).filter_by(id=log_id).first()
