@@ -9,11 +9,13 @@ The module defines the FastAPI router, the response schema, and the handler
 function.
 """
 
+import logging
 from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -22,6 +24,7 @@ from app.models.audit_log import AuditLog
 from app.models.user import User
 from pydantic import BaseModel, ConfigDict
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/audit-log", tags=["audit-log"])
 
@@ -107,13 +110,19 @@ async def _fetch_audit_logs(
     List[AuditLog]
         List of audit log entries ordered by creation time descending.
     """
-    result = await db.execute(
-        select(AuditLog)
-        .where(AuditLog.user_id == user_id)
-        .order_by(AuditLog.created_at.desc())
-        .limit(limit)
-    )
-    return result.scalars().all()
+    try:
+        result = await db.execute(
+            select(AuditLog)
+            .where(AuditLog.user_id == user_id)
+            .order_by(AuditLog.created_at.desc())
+            .limit(limit)
+        )
+        return result.scalars().all()
+    except SQLAlchemyError as exc:
+        logger.exception(
+            "Database error while fetching audit logs for user_id=%s, limit=%s", user_id, limit
+        )
+        raise
 
 
 @router.get("/", response_model=List[AuditLogOut])
@@ -145,16 +154,32 @@ async def list_audit_log(
     Raises
     ------
     HTTPException
-        If the user is not authenticated.
-    ValueError
-        If ``limit`` is ``None`` or outside the allowed range.
+        If the user is not authenticated or if request validation fails.
     """
     if current_user is None:
+        logger.warning("Unauthenticated request to audit log endpoint")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authenticated user not found.",
         )
 
-    validated_limit = _validate_limit(limit)
-    audit_logs = await _fetch_audit_logs(db, current_user.id, validated_limit)
-    return audit_logs
+    try:
+        validated_limit = _validate_limit(limit)
+    except ValueError as ve:
+        logger.exception("Invalid limit parameter: %s", limit)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+
+    try:
+        audit_logs = await _fetch_audit_logs(db, current_user.id, validated_limit)
+        return audit_logs
+    except SQLAlchemyError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve audit logs due to a server error.",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error while retrieving audit logs")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred.",
+        )
