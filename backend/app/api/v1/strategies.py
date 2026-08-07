@@ -14,6 +14,23 @@ from pydantic import BaseModel, ConfigDict, validator
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
 
+# -------------------------------------------------------------------------
+# Constants
+# -------------------------------------------------------------------------
+DEFAULT_TICK_INTERVAL_SECONDS = 3600
+DEFAULT_CONFIDENCE_THRESHOLD = 0.6
+MIN_CONFIDENCE_THRESHOLD = 0.7
+CONFIDENCE_LOWER_BOUND = 0.0
+CONFIDENCE_UPPER_BOUND = 1.0
+
+ERROR_STRATEGY_NOT_FOUND = "Strategy not found"
+ERROR_CONFIDENCE_BELOW_MIN = (
+    "Cannot enable strategy: confidence_threshold {value:.2f} is below the required minimum of {min:.2f}."
+)
+
+# -------------------------------------------------------------------------
+# Pydantic models
+# -------------------------------------------------------------------------
 
 class StrategyOut(BaseModel):
     id: str
@@ -38,6 +55,10 @@ class StrategyToggle(BaseModel):
             raise ValueError("is_enabled must be a boolean")
         return v
 
+
+# -------------------------------------------------------------------------
+# Endpoints
+# -------------------------------------------------------------------------
 
 @router.get("/params-schema")
 async def get_params_schema(current_user: User = Depends(get_current_user)):
@@ -86,10 +107,10 @@ def _process_strategy_rows(
     """Validate and transform raw DB rows into the API response format."""
     filtered: List[Dict[str, Any]] = []
     for row in rows:
-        tick = row.get("tick_interval_seconds", 3600)
-        conf = row.get("confidence_threshold", 0.6)
+        tick = row.get("tick_interval_seconds", DEFAULT_TICK_INTERVAL_SECONDS)
+        conf = row.get("confidence_threshold", DEFAULT_CONFIDENCE_THRESHOLD)
         # Additional sanity checks
-        if tick <= 0 or not (0.0 <= conf <= 1.0):
+        if tick <= 0 or not (CONFIDENCE_LOWER_BOUND <= conf <= CONFIDENCE_UPPER_BOUND):
             continue
         filtered.append(
             {
@@ -115,7 +136,7 @@ async def _fetch_active_strategies_from_db() -> List[Dict[str, Any]]:
                     Strategy.confidence_threshold,
                 )
                 .where(Strategy.is_enabled.is_(True))
-                .where(Strategy.confidence_threshold >= 0.7)
+                .where(Strategy.confidence_threshold >= MIN_CONFIDENCE_THRESHOLD)
             )
             result = await db.execute(stmt)
             rows = result.mappings().all()
@@ -161,13 +182,13 @@ async def toggle_strategy(
     result = await db.execute(select(Strategy).where(Strategy.id == strategy_id))
     strategy = result.scalar_one_or_none()
     if not strategy:
-        raise HTTPException(status_code=404, detail="Strategy not found")
-    if body.is_enabled and strategy.confidence_threshold < 0.7:
+        raise HTTPException(status_code=404, detail=ERROR_STRATEGY_NOT_FOUND)
+    if body.is_enabled and strategy.confidence_threshold < MIN_CONFIDENCE_THRESHOLD:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Cannot enable strategy: confidence_threshold "
-                f"{strategy.confidence_threshold:.2f} is below the required minimum of 0.70."
+            detail=ERROR_CONFIDENCE_BELOW_MIN.format(
+                value=strategy.confidence_threshold,
+                min=MIN_CONFIDENCE_THRESHOLD,
             ),
         )
     strategy.is_enabled = body.is_enabled

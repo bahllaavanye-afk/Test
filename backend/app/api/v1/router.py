@@ -43,33 +43,14 @@ from app.api.v1.bots import router as bots_router
 from app.api.v1.discord_interactions import router as discord_router
 from app.api.v1.webhooks import router as webhooks_router
 
-logger = logging.getLogger(__name__)
+# --------------------------------------------------------------------------- #
+# Constants
+# --------------------------------------------------------------------------- #
 
-api_router: APIRouter = APIRouter()
+LOGGER_WARNING_TEMPLATE = "Router %s is None and will be skipped."
+LOGGER_ERROR_TEMPLATE = "Failed to include router %s: %s"
 
-
-def _include(router_obj: Optional[APIRouter], name: str) -> None:
-    """Safely include a sub‑router into the top‑level ``api_router``.
-
-    Args:
-        router_obj: The router to include. If ``None`` the function logs a
-            warning and returns without raising an exception.
-        name: Human‑readable identifier for the router, used in log messages.
-
-    The function catches any unexpected exception during inclusion, logs the
-    error, and continues processing the remaining routers.
-    """
-    if router_obj is None:
-        logger.warning("Router %s is None and will be skipped.", name)
-        return
-    try:
-        api_router.include_router(router_obj)
-    except Exception as exc:  # pragma: no cover
-        logger.error("Failed to include router %s: %s", name, exc)
-
-
-# List of (router, name) tuples for systematic inclusion
-_routers: List[Tuple[Optional[APIRouter], str]] = [
+ROUTER_DEFINITIONS: List[Tuple[Optional[APIRouter], str]] = [
     (auth.router, "auth"),
     (accounts.router, "accounts"),
     (orders.router, "orders"),
@@ -102,5 +83,35 @@ _routers: List[Tuple[Optional[APIRouter], str]] = [
     (webhooks_router, "webhooks"),
 ]
 
-for r, n in _routers:
-    _include(r, n)
+# --------------------------------------------------------------------------- #
+# Logger
+# --------------------------------------------------------------------------- #
+
+logger = logging.getLogger(__name__)
+
+api_router: APIRouter = APIRouter()
+
+
+def _include(router_obj: Optional[APIRouter], name: str) -> None:
+    """Safely include a sub‑router into the top‑level ``api_router``.
+
+    Args:
+        router_obj: The router to include. If ``None`` the function logs a
+            warning and returns without raising an exception.
+        name: Human‑readable identifier for the router, used in log messages.
+
+    The function catches any unexpected exception during inclusion, logs the
+    error, and continues processing the remaining routers.
+    """
+    if router_obj is None:
+        logger.warning(LOGGER_WARNING_TEMPLATE, name)
+        return
+    try:
+        api_router.include_router(router_obj)
+    except Exception as exc:  # pragma: no cover
+        logger.error(LOGGER_ERROR_TEMPLATE, name, exc)
+
+
+# Systematically include routers using the defined constants
+for router_obj, router_name in ROUTER_DEFINITIONS:
+    _include(router_obj, router_name)
