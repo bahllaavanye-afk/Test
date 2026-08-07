@@ -10,7 +10,7 @@ function.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy import select
@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 router = APIRouter(prefix="/audit-log", tags=["audit-log"])
+"""FastAPI router that groups audit‑log related endpoints."""
 
 
 class AuditLogOut(BaseModel):
@@ -55,11 +56,11 @@ class AuditLogOut(BaseModel):
 
     id: str
     action: str
-    resource_type: str | None
-    resource_id: str | None
-    ip_address: str | None
-    user_agent: str | None
-    extra_data: dict
+    resource_type: Optional[str]
+    resource_id: Optional[str]
+    ip_address: Optional[str]
+    user_agent: Optional[str]
+    extra_data: Dict[str, Any]
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
