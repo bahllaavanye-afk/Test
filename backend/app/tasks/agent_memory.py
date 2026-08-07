@@ -18,7 +18,7 @@ import json
 import logging
 import time
 import asyncio
-from typing import Any
+from typing import Any, List
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ _CACHE_TTL = 60  # seconds
 class AgentMemory:
     def __init__(self, redis_client: Any):
         self._r = redis_client
-        self._topics_cache: list[str] | None = None
+        self._topics_cache: List[str] | None = None
         self._cache_timestamp: float = 0.0
         self._lock = asyncio.Lock()
 
@@ -67,6 +67,25 @@ class AgentMemory:
         except Exception as e:
             await self._log_error("add_topic_to_set", topic, e)
 
+    def _decode_topics(self, raw_topics: Any) -> List[str]:
+        """Convert raw Redis topic members to a list of strings."""
+        return [
+            t.decode() if isinstance(t, (bytes, bytearray)) else str(t)
+            for t in raw_topics
+        ]
+
+    def _update_topics_cache(self, topics: List[str]) -> None:
+        """Refresh the in‑memory cache of topics."""
+        self._topics_cache = topics
+        self._cache_timestamp = time.time()
+
+    async def _fetch_topics_from_redis(self) -> List[str]:
+        """Retrieve the set of topics from Redis, handling empty results."""
+        raw_topics = await self._r.smembers(_TOPICS_SET_KEY)
+        if not raw_topics:
+            return []
+        return self._decode_topics(raw_topics)
+
     # ── Write ─────────────────────────────────────────────────────────────────
 
     async def write(self, topic: str, data: dict) -> None:
@@ -98,7 +117,7 @@ class AgentMemory:
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
-    async def read_recent(self, topic: str, n: int = 50) -> list[dict]:
+    async def read_recent(self, topic: str, n: int = 50) -> List[dict]:
         """Return up to n most‑recent observations for a topic."""
         if not topic:
             await self._log_error("read_recent", topic, ValueError("Topic cannot be empty"))
@@ -126,26 +145,16 @@ class AgentMemory:
             await self._log_error("get_latest", topic, e)
             return None
 
-    async def read_all_topics(self) -> list[str]:
-        """List all memory topics currently stored."""
+    async def read_all_topics(self) -> List[str]:
+        """List all memory topics currently stored, using a short‑lived cache."""
         async with self._lock:
             now = time.time()
             if self._topics_cache is not None and (now - self._cache_timestamp) < _CACHE_TTL:
                 return self._topics_cache
 
             try:
-                raw_topics = await self._r.smembers(_TOPICS_SET_KEY)
-                if not raw_topics:
-                    self._topics_cache = []
-                    self._cache_timestamp = now
-                    return []
-                # smembers may return bytes; ensure strings
-                topics = [
-                    t.decode() if isinstance(t, (bytes, bytearray)) else str(t)
-                    for t in raw_topics
-                ]
-                self._topics_cache = topics
-                self._cache_timestamp = now
+                topics = await self._fetch_topics_from_redis()
+                self._update_topics_cache(topics)
                 return topics
             except Exception as e:
                 await self._log_error("read_all_topics", None, e)
