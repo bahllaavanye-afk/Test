@@ -2,7 +2,7 @@
 Redis-backed shared agent memory.
 
 Agents read and write structured observations to a shared Redis namespace.
-All data is JSON-serialised. Keys are namespaced under 'agent:memory:'.
+All data is JSON‑serialised. Keys are namespaced under 'agent:memory:'.
 
 Usage:
     mem = AgentMemory(redis_client)
@@ -18,7 +18,7 @@ import json
 import logging
 import time
 import asyncio
-from typing import Any, List
+from typing import Any, List, Callable, Awaitable
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +86,13 @@ class AgentMemory:
             return []
         return self._decode_topics(raw_topics)
 
+    def _pipeline_context(self) -> Callable[[], Any] | None:
+        """Return a callable that creates a pipeline context manager if supported."""
+        pipeline_factory = getattr(self._r, "pipeline", None)
+        if callable(pipeline_factory):
+            return pipeline_factory
+        return None
+
     # ── Write ─────────────────────────────────────────────────────────────────
 
     async def write(self, topic: str, data: dict) -> None:
@@ -95,6 +102,20 @@ class AgentMemory:
             return
         payload = self._payload(data)
         key = self._key(topic)
+
+        pipeline_factory = self._pipeline_context()
+        if pipeline_factory:
+            try:
+                async with pipeline_factory() as pipe:
+                    pipe.lpush(key, payload)
+                    pipe.ltrim(key, 0, _MAX_LIST_LEN - 1)
+                    pipe.sadd(_TOPICS_SET_KEY, topic)
+                    await pipe.execute()
+                return
+            except Exception as e:
+                await self._log_error("write (pipeline)", topic, e)
+
+        # Fallback to sequential commands if pipeline is unavailable or failed
         try:
             await self._r.lpush(key, payload)
             await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
@@ -109,6 +130,18 @@ class AgentMemory:
             return
         payload = self._payload(data)
         key = self._key(topic, latest=True)
+
+        pipeline_factory = self._pipeline_context()
+        if pipeline_factory:
+            try:
+                async with pipeline_factory() as pipe:
+                    pipe.set(key, payload)
+                    pipe.sadd(_TOPICS_SET_KEY, topic)
+                    await pipe.execute()
+                return
+            except Exception as e:
+                await self._log_error("set_latest (pipeline)", topic, e)
+
         try:
             await self._r.set(key, payload)
             await self._add_topic_to_set(topic)
