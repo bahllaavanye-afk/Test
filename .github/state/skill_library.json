@@ -1,13 +1,5 @@
 {
   "skills": [
-    "Refactor UI components",
-    "Retry on 503 errors",
-    "* The algo_agent is currently initializing the UCB1 bandit.",
-    "Scan data types",
-    "Check server load",
-    "* The `run_experiments` agent and `token_monitor` agent do not have detailed status updates available in the recent learnings.",
-    "Scan log files",
-    "Here are the key takeaways on brokers:",
     "Verify API keys",
     "Monitor health-check endpoints",
     "Check CPU usage",
@@ -199,8 +191,16 @@
     "Refactor `backend/app/utils/api_helpers.py` to remove `Any` type leaks and add precise return-type annotations.",
     "Prepend LSTM layers",
     "Verify API rate limits",
-    "* The **time_series_momentum** strategy is also doing well with a 74% win rate, +9.91% total return, and +0.43% avg return over the last 30 days."
+    "* The **time_series_momentum** strategy is also doing well with a 74% win rate, +9.91% total return, and +0.43% avg return over the last 30 days.",
+    "Log API errors",
+    "Check data types",
+    "Use retry loops",
+    "Validate user input",
+    "Set max retries",
+    "Monitor trade win rates",
+    "Analyze strategy returns",
+    "Optimize position sizing"
   ],
-  "last_updated": "2026-08-07T05:47:00.642204+00:00",
+  "last_updated": "2026-08-07T06:43:37.827146+00:00",
   "total": 200
 }
