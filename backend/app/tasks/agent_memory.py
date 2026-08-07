@@ -1,10 +1,11 @@
 """
-Redis-backed shared agent memory.
+Redis‑backed shared agent memory.
 
 Agents read and write structured observations to a shared Redis namespace.
-All data is JSON-serialised. Keys are namespaced under 'agent:memory:'.
+All data is JSON‑serialised. Keys are namespaced under ``agent:memory:``.
+The memory supports per‑topic list storage as well as a single‑latest slot.
 
-Usage:
+Typical usage::
     mem = AgentMemory(redis_client)
     await mem.write("strategy_insight", {"strategy": "ema_stack_tv", "sharpe": 1.8})
     observations = await mem.read_recent("strategy_insight", n=20)
@@ -18,7 +19,7 @@ import json
 import logging
 import time
 import asyncio
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -29,36 +30,80 @@ _CACHE_TTL = 60  # seconds
 
 
 class AgentMemory:
+    """Utility class for persisting and retrieving observations in Redis.
+
+    The class maintains a small in‑memory cache of the known topics to avoid
+    frequent Redis round‑trips. All write operations also ensure the topic is
+    recorded in a Redis set so that :meth:`read_all_topics` can enumerate them.
+    """
+
     def __init__(self, redis_client: Any):
+        """Create an ``AgentMemory`` instance.
+
+        Args:
+            redis_client: An async Redis client supporting ``lpush``, ``ltrim``,
+                ``set``, ``get``, ``lrange``, ``smembers`` and ``sadd``.
+        """
         self._r = redis_client
-        self._topics_cache: list[str] | None = None
+        self._topics_cache: Optional[List[str]] = None
         self._cache_timestamp: float = 0.0
         self._lock = asyncio.Lock()
 
     # ── Helper methods ────────────────────────────────────────────────────────
 
     def _key(self, topic: str, *, latest: bool = False) -> str:
-        """Construct a Redis key for a given topic."""
+        """Construct a Redis key for *topic*.
+
+        Args:
+            topic: The memory topic name.
+            latest: If ``True``, returns the key for the single‑latest slot;
+                otherwise returns the list key.
+
+        Returns:
+            The fully‑qualified Redis key.
+
+        Raises:
+            ValueError: If *topic* is empty.
+        """
         if not topic:
             raise ValueError("Topic must be a non‑empty string")
         prefix = f"{_PREFIX}latest:" if latest else _PREFIX
         return f"{prefix}{topic}"
 
-    def _payload(self, data: dict) -> str:
-        """Serialise data with a timestamp."""
+    def _payload(self, data: Dict[str, Any]) -> str:
+        """Serialise *data* together with a timestamp.
+
+        Args:
+            data: Arbitrary JSON‑serialisable payload.
+
+        Returns:
+            A JSON string containing the payload and a ``ts`` field.
+        """
         if data is None:
             data = {}
         return json.dumps({"ts": time.time(), **data})
 
-    async def _log_error(self, operation: str, topic: str | None, exc: Exception) -> None:
-        """Log a Redis operation failure."""
+    async def _log_error(self, operation: str, topic: Optional[str], exc: Exception) -> None:
+        """Log an exception that occurred during a Redis operation.
+
+        Args:
+            operation: Name of the operation (e.g. ``write``).
+            topic: The affected topic, if any.
+            exc: The caught exception.
+        """
         if topic:
             logger.warning("AgentMemory.%s failed for topic %s: %s", operation, topic, exc)
         else:
             logger.warning("AgentMemory.%s failed: %s", operation, exc)
 
     async def _add_topic_to_set(self, topic: str) -> None:
-        """Ensure the topic is recorded in the Redis set of topics."""
+        """Add *topic* to the Redis set tracking all known topics.
+
+        This method is tolerant to errors; failures are logged but do not raise.
+
+        Args:
+            topic: The memory topic to register.
+        """
         if not topic:
             await self._log_error("add_topic_to_set", topic, ValueError("Invalid topic"))
             return
@@ -69,8 +114,15 @@ class AgentMemory:
 
     # ── Write ─────────────────────────────────────────────────────────────────
 
-    async def write(self, topic: str, data: dict) -> None:
-        """Append an observation to a topic list with a timestamp."""
+    async def write(self, topic: str, data: Dict[str, Any]) -> None:
+        """Append a timestamped observation to the list for *topic*.
+
+        The list is trimmed to ``_MAX_LIST_LEN`` entries to prevent unbounded growth.
+
+        Args:
+            topic: The memory topic name.
+            data: The observation payload.
+        """
         if not topic:
             await self._log_error("write", topic, ValueError("Topic cannot be empty"))
             return
@@ -83,8 +135,13 @@ class AgentMemory:
         except Exception as e:
             await self._log_error("write", topic, e)
 
-    async def set_latest(self, topic: str, data: dict) -> None:
-        """Overwrite the latest value for a topic (single-value slot)."""
+    async def set_latest(self, topic: str, data: Dict[str, Any]) -> None:
+        """Overwrite the single‑latest value for *topic*.
+
+        Args:
+            topic: The memory topic name.
+            data: The payload to store.
+        """
         if not topic:
             await self._log_error("set_latest", topic, ValueError("Topic cannot be empty"))
             return
@@ -98,8 +155,17 @@ class AgentMemory:
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
-    async def read_recent(self, topic: str, n: int = 50) -> list[dict]:
-        """Return up to n most‑recent observations for a topic."""
+    async def read_recent(self, topic: str, n: int = 50) -> List[Dict[str, Any]]:
+        """Retrieve up to *n* most‑recent observations for *topic*.
+
+        Args:
+            topic: The memory topic name.
+            n: Maximum number of items to return. Must be positive.
+
+        Returns:
+            A list of deserialized observation dictionaries, newest first.
+            Returns an empty list if the topic is invalid or an error occurs.
+        """
         if not topic:
             await self._log_error("read_recent", topic, ValueError("Topic cannot be empty"))
             return []
@@ -113,8 +179,15 @@ class AgentMemory:
             await self._log_error("read_recent", topic, e)
             return []
 
-    async def get_latest(self, topic: str) -> dict | None:
-        """Return the latest single‑value for a topic."""
+    async def get_latest(self, topic: str) -> Optional[Dict[str, Any]]:
+        """Retrieve the latest single‑value payload for *topic*.
+
+        Args:
+            topic: The memory topic name.
+
+        Returns:
+            The deserialized payload if present, otherwise ``None``.
+        """
         if not topic:
             await self._log_error("get_latest", topic, ValueError("Topic cannot be empty"))
             return None
@@ -126,8 +199,14 @@ class AgentMemory:
             await self._log_error("get_latest", topic, e)
             return None
 
-    async def read_all_topics(self) -> list[str]:
-        """List all memory topics currently stored."""
+    async def read_all_topics(self) -> List[str]:
+        """Return a list of all topics currently stored in memory.
+
+        The result is cached for ``_CACHE_TTL`` seconds to reduce Redis load.
+
+        Returns:
+            A list of topic strings. Returns an empty list on error.
+        """
         async with self._lock:
             now = time.time()
             if self._topics_cache is not None and (now - self._cache_timestamp) < _CACHE_TTL:
@@ -139,7 +218,7 @@ class AgentMemory:
                     self._topics_cache = []
                     self._cache_timestamp = now
                     return []
-                # smembers may return bytes; ensure strings
+                # ``smembers`` may return bytes; ensure strings
                 topics = [
                     t.decode() if isinstance(t, (bytes, bytearray)) else str(t)
                     for t in raw_topics
