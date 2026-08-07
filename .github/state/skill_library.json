@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Verify file perms",
-    "Tighten type annotations",
-    "* **Prioritize stat_arb_etf**: Review stat_arb_etf strategy which has shown a 93% win rate and +31.89% total return in the last 30 days (attribution @ 2026-08-06).",
-    "Log trade errors",
     "Verify thread counts",
     "Verify dependency versions",
     "* **Investor Pipeline Analysis**: Currently parsing log files in `backend/logs/investor_pipeline.log` to identify potential bottlenecks and gain insights in the investor pipeline (investor_pipeline).",
@@ -199,8 +195,12 @@
     "Replace generic signatures",
     "Eliminate raw dictionaries",
     "Sweep for lingering annotations",
-    "Set memory limits"
+    "Set memory limits",
+    "Bind thread pools",
+    "Use EMA-VWAP-Stochastic-ADX strategy",
+    "Implement S4 block for state-space modeling",
+    "Prepend lightweight S4 blocks"
   ],
-  "last_updated": "2026-08-07T12:54:37.626003+00:00",
+  "last_updated": "2026-08-07T14:11:02.804589+00:00",
   "total": 200
 }
