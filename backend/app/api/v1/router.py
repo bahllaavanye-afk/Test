@@ -62,6 +62,13 @@ def _include(router_obj: Optional[APIRouter], name: str) -> None:
     if router_obj is None:
         logger.warning("Router %s is None and will be skipped.", name)
         return
+    if not isinstance(router_obj, APIRouter):
+        logger.warning(
+            "Router %s is not an APIRouter instance (%s) and will be skipped.",
+            name,
+            type(router_obj),
+        )
+        return
     try:
         api_router.include_router(router_obj)
     except Exception as exc:  # pragma: no cover
@@ -102,5 +109,14 @@ _routers: List[Tuple[Optional[APIRouter], str]] = [
     (webhooks_router, "webhooks"),
 ]
 
-for r, n in _routers:
-    _include(r, n)
+if not _routers:
+    logger.info("No sub‑routers defined for inclusion.")
+else:
+    for idx, (router_obj, name) in enumerate(_routers):
+        # Defensive check for empty entries (e.g., (None, '') or missing name)
+        if not name:
+            logger.warning(
+                "Router at position %d has an empty name; skipping inclusion.", idx
+            )
+            continue
+        _include(router_obj, name)
