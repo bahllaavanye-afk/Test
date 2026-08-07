@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-08-07T12:30:00.700928+00:00",
+  "timestamp": "2026-08-07T13:54:25.366243+00:00",
   "total_runs": 16,
-  "top_sharpe": 1.389,
+  "top_sharpe": 1.377,
   "desks": [
-    "crypto",
-    "equity"
+    "equity",
+    "crypto"
   ],
   "strategies": [
-    "mean_reversion",
+    "momentum",
     "breakout",
-    "rsi",
-    "momentum"
+    "mean_reversion",
+    "rsi"
   ]
 }
