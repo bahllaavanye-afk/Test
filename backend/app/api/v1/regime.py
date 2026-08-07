@@ -1,10 +1,11 @@
 """Market regime and cross-strategy correlation endpoints."""
 import logging
 import time
+import traceback
 from collections import Counter
 from typing import List, Optional, Tuple, Dict, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.ml.regime.detector import regime_monitor
@@ -87,6 +88,19 @@ def _log_endpoint(endpoint: str, signal_count: int, start_time: float) -> None:
     )
 
 
+def _log_error(endpoint: str, exc: Exception, start_time: float) -> None:
+    """Log error details for an endpoint."""
+    elapsed_ms = (time.time() - start_time) * 1000
+    logger.error(
+        f"endpoint={endpoint} error={type(exc).__name__}",
+        extra={
+            "execution_time_ms": round(elapsed_ms, 2),
+            "error_message": str(exc),
+            "traceback": traceback.format_exc(),
+        },
+    )
+
+
 @router.get("/current")
 async def get_current_regime(current_user: User = Depends(get_current_user)):
     """Overall market regime — aggregated across all tracked symbols.
@@ -95,61 +109,81 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     and average confidence. Falls back to safe defaults when no data is available.
     """
     start_time = time.time()
-    states = regime_monitor.all_states()
-    if not states:
-        _log_endpoint("get_current_regime", 0, start_time)
-        return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
+    try:
+        states = regime_monitor.all_states()
+        if not states:
+            _log_endpoint("get_current_regime", 0, start_time)
+            return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
 
-    overall_regime, avg_confidence, latest_updated = _compute_aggregates(states)
-    _log_endpoint("get_current_regime", len(states), start_time)
+        overall_regime, avg_confidence, latest_updated = _compute_aggregates(states)
+        _log_endpoint("get_current_regime", len(states), start_time)
 
-    return {
-        "regime": overall_regime,
-        "confidence": avg_confidence,
-        "updated_at": latest_updated,
-        "symbol_count": len(states),
-    }
+        return {
+            "regime": overall_regime,
+            "confidence": avg_confidence,
+            "updated_at": latest_updated,
+            "symbol_count": len(states),
+        }
+    except Exception as exc:
+        _log_error("get_current_regime", exc, start_time)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to retrieve current regime.")
 
 
 @router.get("/states")
 async def get_regime_states(current_user: User = Depends(get_current_user)):
     """Current regime classification for all tracked symbols."""
     start_time = time.time()
-    data = regime_monitor.all_states()
-    _log_endpoint("get_regime_states", len(data), start_time)
-    return data
+    try:
+        data = regime_monitor.all_states()
+        _log_endpoint("get_regime_states", len(data), start_time)
+        return data
+    except Exception as exc:
+        _log_error("get_regime_states", exc, start_time)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to retrieve regime states.")
 
 
 @router.get("/states/{symbol}")
 async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_current_user)):
     start_time = time.time()
-    state = regime_monitor.get(symbol.upper())
-    if not state:
-        _log_endpoint("get_regime_for_symbol", 0, start_time)
-        return {"error": f"No regime data for {symbol}. Feed price data first."}
-    result = state.to_dict()
-    _log_endpoint("get_regime_for_symbol", 1, start_time)
-    return result
+    try:
+        state = regime_monitor.get(symbol.upper())
+        if not state:
+            _log_endpoint("get_regime_for_symbol", 0, start_time)
+            return {"error": f"No regime data for {symbol}. Feed price data first."}
+        result = state.to_dict()
+        _log_endpoint("get_regime_for_symbol", 1, start_time)
+        return result
+    except Exception as exc:
+        _log_error("get_regime_for_symbol", exc, start_time)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error retrieving regime for symbol {symbol}.")
 
 
 @router.get("/correlation")
 async def get_correlation_matrix(current_user: User = Depends(get_current_user)):
     """Live cross-strategy correlation matrix."""
     start_time = time.time()
-    matrix = correlation_monitor.matrix_as_list()
-    reduced = list(correlation_monitor._reduced)
-    alerts = correlation_monitor.recent_alerts(10)
-    _log_endpoint("get_correlation_matrix", len(matrix), start_time)
-    return {
-        "matrix": matrix,
-        "reduced_strategies": reduced,
-        "recent_alerts": alerts,
-    }
+    try:
+        matrix = correlation_monitor.matrix_as_list()
+        reduced = list(correlation_monitor._reduced)
+        alerts = correlation_monitor.recent_alerts(10)
+        _log_endpoint("get_correlation_matrix", len(matrix), start_time)
+        return {
+            "matrix": matrix,
+            "reduced_strategies": reduced,
+            "recent_alerts": alerts,
+        }
+    except Exception as exc:
+        _log_error("get_correlation_matrix", exc, start_time)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to retrieve correlation matrix.")
 
 
 @router.get("/correlation/alerts")
 async def get_correlation_alerts(current_user: User = Depends(get_current_user)):
     start_time = time.time()
-    alerts = correlation_monitor.recent_alerts(50)
-    _log_endpoint("get_correlation_alerts", len(alerts), start_time)
-    return alerts
+    try:
+        alerts = correlation_monitor.recent_alerts(50)
+        _log_endpoint("get_correlation_alerts", len(alerts), start_time)
+        return alerts
+    except Exception as exc:
+        _log_error("get_correlation_alerts", exc, start_time)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to retrieve correlation alerts.")

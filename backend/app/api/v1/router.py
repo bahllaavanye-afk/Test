@@ -56,16 +56,37 @@ def _include(router_obj: Optional[APIRouter], name: str) -> None:
             warning and returns without raising an exception.
         name: Human‑readable identifier for the router, used in log messages.
 
-    The function catches any unexpected exception during inclusion, logs the
-    error, and continues processing the remaining routers.
+    The function validates the router type, catches specific exceptions during
+    inclusion, logs structured error information, and continues processing the
+    remaining routers.
     """
     if router_obj is None:
         logger.warning("Router %s is None and will be skipped.", name)
         return
+
+    if not isinstance(router_obj, APIRouter):
+        logger.error(
+            "Router %s is not an APIRouter instance and will be skipped.",
+            name,
+            extra={"router": name, "type": type(router_obj).__name__},
+        )
+        return
+
     try:
         api_router.include_router(router_obj)
+    except (ValueError, TypeError) as exc:
+        logger.error(
+            "Failed to include router %s due to invalid arguments.",
+            name,
+            exc_info=True,
+            extra={"router": name, "error": str(exc)},
+        )
     except Exception as exc:  # pragma: no cover
-        logger.error("Failed to include router %s: %s", name, exc)
+        logger.exception(
+            "Unexpected error while including router %s.",
+            name,
+            extra={"router": name, "error": str(exc)},
+        )
 
 
 # List of (router, name) tuples for systematic inclusion
