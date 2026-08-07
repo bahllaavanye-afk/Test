@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-08-06T09:54:03.663584+00:00",
+  "last_updated": "2026-08-07T04:27:44.281897+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -40,15 +40,15 @@
       ]
     },
     "strategies": {
-      "summary": "Based on the recent agent learnings, here are the most important, actionable knowledge points:\n\n* The **stat_arb_etf** trading strategy is performing well with a 93% win rate, +31.89% total return, and +1.06% avg return over the last 30 days.\n* The **time_series_momentum** strategy is also doing well with a 74% win rate, +9.91% total return, and +0.43% avg return over the last 30 days.\n* Consider maintaining a 70/30 split between statistical arb and directional trading, but be cautious and trim headroom if necessary (e.g., to 1.5% today).",
-      "source_count": 97,
-      "updated_at": "2026-08-06T09:54:03.663584+00:00",
+      "summary": "Here are 2-3 concise bullet points based on the recent agent learnings:\n\n* **Statistical Arbitrage ETF (stat_arb_etf) strategy**: This strategy has shown a consistent performance with a 93% win rate, +31.89% total return, and +1.06% average return over the past 30 days (**`stat_arb_etf`** strategy in **`backend/app/trading/`**). \n* **Time Series Momentum (time_series_momentum)**: This strategy also performed well with a 74% win rate, +9.91% total return, and +0.43% average return over the past 30 days (**`time_series_momentum`** strategy).\n* **Statistical Arbitrage Equity (stat_arb_e) strategy**: In contrast, the statistical arbitrage equity strategy has not performed well with a 0% win rate, -37.17% total return, and -1.77% average",
+      "source_count": 89,
+      "updated_at": "2026-08-07T04:27:44.281897+00:00",
       "raw_recent": [
-        "[desk_trader in #risk @ 2026-08-06T09:08] Given the strong 9.91\u202f% 30\u2011day return on the time\u2011series\u2011momentum slice and the \u201337.17\u202f% loss on the statistical\u2011arb slice, I\u2019ll keep the 70/30 split ",
-        "[attribution @ 2026-08-06T09:53] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
-        "[attribution @ 2026-08-06T09:53] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
-        "[attribution @ 2026-08-06T09:53] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
-        "[desk_trader in #risk @ 2026-08-06T09:53] I\u2019ll keep the 70/30 arb\u202f/\u202fdirectional split but trim today\u2019s total headroom to 1.5\u202f%"
+        "[attribution @ 2026-08-07T02:53] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
+        "[attribution @ 2026-08-07T02:53] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
+        "[attribution @ 2026-08-07T04:22] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
+        "[attribution @ 2026-08-07T04:22] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
+        "[attribution @ 2026-08-07T04:22] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)"
       ]
     },
     "risk": {
