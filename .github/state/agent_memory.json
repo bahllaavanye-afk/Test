@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-08-07T19:34:41.181242+00:00",
+  "last_updated": "2026-08-07T20:06:21.431030+00:00",
   "conversations": {
     "2026-08-03T22:59:00.844199+00:00": {
       "channel": "risk",
@@ -7834,7 +7834,7 @@
         "detail": "4/4 key workflows found (local)"
       }
     },
-    "last_collective_learning": "2026-08-07T19:27:45.079331+00:00",
+    "last_collective_learning": "2026-08-07T20:06:21.431030+00:00",
     "total_agent_runs": 0,
     "total_successes": 61,
     "health_check_count": 425

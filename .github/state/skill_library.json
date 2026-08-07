@@ -1,11 +1,5 @@
 {
   "skills": [
-    "Scan for duplicates",
-    "Parse log files regularly",
-    "Verify config files",
-    "Handle SSL errors",
-    "* Improvements are being made to increase UI contrast, including adjustments to `primary` colors in `src/ui/theme/DarkTheme.tsx`.",
-    "Add type checking",
     "* Consider maintaining a 70/30 split between statistical arb and directional trading, but be cautious and trim headroom if necessary (e.g., to 1.5% today).",
     "Apply strict type checking",
     "Monitor model performance.",
@@ -199,8 +193,14 @@
     "Log API responses",
     "Check SSL certs",
     "Use UUIDs",
-    "Test DB conn"
+    "Test DB conn",
+    "Check queue depths",
+    "Handle timeout errors",
+    "Rotate log files",
+    "Monitor agent performance",
+    "Analyze trade win rates",
+    "Optimize risk policies"
   ],
-  "last_updated": "2026-08-07T19:27:45.079331+00:00",
+  "last_updated": "2026-08-07T20:06:21.431030+00:00",
   "total": 200
 }
