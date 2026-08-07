@@ -48,7 +48,10 @@ def _load_health_report() -> Dict[str, Any]:
     try:
         return json.loads(HEALTH_REPORT_PATH.read_text())
     except Exception as exc:
-        raise HTTPException(status_code=HTTP_STATUS_INTERNAL_ERROR, detail=HEALTH_REPORT_CORRUPTED_DETAIL) from exc
+        raise HTTPException(
+            status_code=HTTP_STATUS_INTERNAL_ERROR,
+            detail=HEALTH_REPORT_CORRUPTED_DETAIL,
+        ) from exc
 
 
 def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
@@ -57,17 +60,45 @@ def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
     The log is stored as newline‑delimited JSON. Empty or missing files result in
     an empty list. Any parsing error raises an HTTPException.
     """
-    if not FIX_LOG_PATH.exists():
+    raw_text = _read_fix_log_file()
+    if not raw_text:
         return []
+    lines = raw_text.splitlines()
+    recent_lines = _select_recent_lines(lines, limit)
+    return _parse_fix_log_lines(recent_lines)
+
+
+def _read_fix_log_file() -> str:
+    """Read the raw fix‑log file content.
+
+    Returns the stripped file content or an empty string if the file does not
+    exist. Propagates parsing errors as HTTPException.
+    """
+    if not FIX_LOG_PATH.exists():
+        return ""
     try:
-        raw_text = FIX_LOG_PATH.read_text().strip()
-        if not raw_text:
-            return []
-        lines = raw_text.splitlines()
-        recent_lines = lines[-limit:]
-        return [json.loads(line) for line in recent_lines]
+        return FIX_LOG_PATH.read_text().strip()
     except Exception as exc:
-        raise HTTPException(status_code=HTTP_STATUS_INTERNAL_ERROR, detail=FIX_LOG_READ_ERROR_DETAIL.format(exc)) from exc
+        raise HTTPException(
+            status_code=HTTP_STATUS_INTERNAL_ERROR,
+            detail=FIX_LOG_READ_ERROR_DETAIL.format(exc),
+        ) from exc
+
+
+def _select_recent_lines(lines: List[str], limit: int) -> List[str]:
+    """Select the most recent *limit* lines from the log."""
+    return lines[-limit:] if limit > 0 else []
+
+
+def _parse_fix_log_lines(lines: List[str]) -> List[Dict[str, Any]]:
+    """Parse newline‑delimited JSON lines into a list of dictionaries."""
+    try:
+        return [json.loads(line) for line in lines]
+    except Exception as exc:
+        raise HTTPException(
+            status_code=HTTP_STATUS_INTERNAL_ERROR,
+            detail=FIX_LOG_READ_ERROR_DETAIL.format(exc),
+        ) from exc
 
 
 @router.get(ENDPOINT_HEALTH)
