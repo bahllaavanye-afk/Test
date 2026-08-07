@@ -2,7 +2,7 @@
 Redis-backed shared agent memory.
 
 Agents read and write structured observations to a shared Redis namespace.
-All data is JSON-serialised. Keys are namespaced under 'agent:memory:'.
+All data is JSON‑serialised. Keys are namespaced under 'agent:memory:'.
 
 Usage:
     mem = AgentMemory(redis_client)
@@ -18,7 +18,7 @@ import json
 import logging
 import time
 import asyncio
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +27,31 @@ _MAX_LIST_LEN = 500  # cap per topic to avoid unbounded growth
 _TOPICS_SET_KEY = f"{_PREFIX}topics"
 _CACHE_TTL = 60  # seconds
 
+# ── Redis client protocol ──────────────────────────────────────────────────────
+@runtime_checkable
+class _RedisClientProtocol(Protocol):
+    async def lpush(self, key: str, value: str) -> Any: ...
+    async def ltrim(self, key: str, start: int, end: int) -> Any: ...
+    async def sadd(self, key: str, member: str) -> Any: ...
+    async def lrange(self, key: str, start: int, end: int) -> list[bytes]: ...
+    async def get(self, key: str) -> bytes | None: ...
+    async def smembers(self, key: str) -> set[bytes]: ...
+
+# ── Specific Redis exception tuple ─────────────────────────────────────────────
+try:
+    from redis.exceptions import RedisError  # type: ignore
+except Exception:  # pragma: no cover
+    RedisError = Exception  # fallback if redis library not available
+
+_REDIS_EXCEPTIONS = (ConnectionError, TimeoutError, OSError, RedisError)
+
 
 class AgentMemory:
     def __init__(self, redis_client: Any):
+        if not isinstance(redis_client, _RedisClientProtocol):
+            logger.warning(
+                "Provided redis_client does not fully implement the expected async Redis protocol."
+            )
         self._r = redis_client
         self._topics_cache: list[str] | None = None
         self._cache_timestamp: float = 0.0
@@ -51,11 +73,17 @@ class AgentMemory:
         return json.dumps({"ts": time.time(), **data})
 
     async def _log_error(self, operation: str, topic: str | None, exc: Exception) -> None:
-        """Log a Redis operation failure."""
+        """Log a Redis operation failure with structured information."""
+        extra = {"operation": operation, "error": str(exc)}
         if topic:
-            logger.warning("AgentMemory.%s failed for topic %s: %s", operation, topic, exc)
-        else:
-            logger.warning("AgentMemory.%s failed: %s", operation, exc)
+            extra["topic"] = topic
+        logger.error(
+            "AgentMemory.%s failed%s",
+            operation,
+            f" for topic {topic}" if topic else "",
+            exc_info=exc,
+            extra=extra,
+        )
 
     async def _add_topic_to_set(self, topic: str) -> None:
         """Ensure the topic is recorded in the Redis set of topics."""
@@ -64,7 +92,9 @@ class AgentMemory:
             return
         try:
             await self._r.sadd(_TOPICS_SET_KEY, topic)
-        except Exception as e:
+        except _REDIS_EXCEPTIONS as e:
+            await self._log_error("add_topic_to_set", topic, e)
+        except Exception as e:  # pragma: no cover
             await self._log_error("add_topic_to_set", topic, e)
 
     # ── Write ─────────────────────────────────────────────────────────────────
@@ -80,7 +110,9 @@ class AgentMemory:
             await self._r.lpush(key, payload)
             await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
             await self._add_topic_to_set(topic)
-        except Exception as e:
+        except _REDIS_EXCEPTIONS as e:
+            await self._log_error("write", topic, e)
+        except Exception as e:  # pragma: no cover
             await self._log_error("write", topic, e)
 
     async def set_latest(self, topic: str, data: dict) -> None:
@@ -93,7 +125,9 @@ class AgentMemory:
         try:
             await self._r.set(key, payload)
             await self._add_topic_to_set(topic)
-        except Exception as e:
+        except _REDIS_EXCEPTIONS as e:
+            await self._log_error("set_latest", topic, e)
+        except Exception as e:  # pragma: no cover
             await self._log_error("set_latest", topic, e)
 
     # ── Read ──────────────────────────────────────────────────────────────────
@@ -109,7 +143,10 @@ class AgentMemory:
         try:
             items = await self._r.lrange(key, 0, n - 1)
             return [json.loads(i) for i in items]
-        except Exception as e:
+        except _REDIS_EXCEPTIONS as e:
+            await self._log_error("read_recent", topic, e)
+            return []
+        except Exception as e:  # pragma: no cover
             await self._log_error("read_recent", topic, e)
             return []
 
@@ -122,7 +159,10 @@ class AgentMemory:
         try:
             val = await self._r.get(key)
             return json.loads(val) if val else None
-        except Exception as e:
+        except _REDIS_EXCEPTIONS as e:
+            await self._log_error("get_latest", topic, e)
+            return None
+        except Exception as e:  # pragma: no cover
             await self._log_error("get_latest", topic, e)
             return None
 
@@ -147,6 +187,9 @@ class AgentMemory:
                 self._topics_cache = topics
                 self._cache_timestamp = now
                 return topics
-            except Exception as e:
+            except _REDIS_EXCEPTIONS as e:
+                await self._log_error("read_all_topics", None, e)
+                return []
+            except Exception as e:  # pragma: no cover
                 await self._log_error("read_all_topics", None, e)
                 return []

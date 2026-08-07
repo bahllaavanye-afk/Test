@@ -4,9 +4,11 @@ Provides routes to fetch benchmark statistics and recent comparison results.
 """
 from typing import Any, List
 
-from fastapi import APIRouter, Depends
+import logging
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import get_db
 from app.api.deps import get_current_user
@@ -28,6 +30,8 @@ WINNER_MANUAL = "manual"
 WINNER_ML = "ml"
 
 router = APIRouter(prefix=PREFIX, tags=[TAG])
+
+logger = logging.getLogger(__name__)
 
 
 class ComparisonOut(BaseModel):
@@ -110,7 +114,11 @@ async def get_benchmarks() -> Any:
     Any
         The raw benchmark data returned by ``get_benchmark_stats``.
     """
-    return get_benchmark_stats()
+    try:
+        return get_benchmark_stats()
+    except Exception as exc:
+        logger.exception("Failed to retrieve benchmark statistics: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to retrieve benchmark statistics") from exc
 
 
 @router.get(ENDPOINT_RESULTS, response_model=list[ComparisonOut])
@@ -136,12 +144,16 @@ async def list_comparisons(
     List[ComparisonOut]
         A list of transformed comparison results.
     """
-    # Guard against unexpected None from the DB layer
-    result = await db.execute(
-        select(ComparisonModel)
-        .order_by(ComparisonModel.created_at.desc())
-        .limit(max(DEFAULT_LIMIT, 1))
-    )
+    try:
+        result = await db.execute(
+            select(ComparisonModel)
+            .order_by(ComparisonModel.created_at.desc())
+            .limit(max(DEFAULT_LIMIT, 1))
+        )
+    except SQLAlchemyError as exc:
+        logger.exception("Database query failed while fetching comparisons: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to fetch comparison results") from exc
+
     rows = result.scalars().all() if result is not None else []
 
     # Ensure we always return a list, even if no rows are found

@@ -1,10 +1,13 @@
 """Self-improvement history endpoint."""
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import get_current_user
 from app.models.user import User
 from typing import List, Dict, Any
 
 router = APIRouter(prefix="/improvements", tags=["improvements"])
+
+logger = logging.getLogger(__name__)
 
 
 def _apply_entry_filters(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -16,18 +19,25 @@ def _apply_entry_filters(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         - avg_volume: float
         - ma_cross: bool (moving‑average crossover confirmation)
     """
-    filtered = []
+    filtered: List[Dict[str, Any]] = []
     for sig in signals:
-        # Basic score threshold
-        if sig.get("entry_score", 0) < 0.7:
-            continue
-        # Volume confirmation (at least 20% above average)
-        if sig.get("volume", 0) < sig.get("avg_volume", 0) * 1.2:
-            continue
-        # Moving‑average crossover confirmation
-        if not sig.get("ma_cross", False):
-            continue
-        filtered.append(sig)
+        try:
+            # Basic score threshold
+            if sig.get("entry_score", 0) < 0.7:
+                continue
+            # Volume confirmation (at least 20% above average)
+            if sig.get("volume", 0) < sig.get("avg_volume", 0) * 1.2:
+                continue
+            # Moving‑average crossover confirmation
+            if not sig.get("ma_cross", False):
+                continue
+            filtered.append(sig)
+        except Exception as exc:  # pragma: no cover
+            logger.error(
+                "Error applying entry filters to signal",
+                extra={"error": str(exc), "signal": sig},
+            )
+            # Skip malformed signal but continue processing others
     return filtered
 
 
@@ -39,16 +49,24 @@ def _apply_exit_logic(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         - trailing_stop_triggered: bool
     Signals that satisfy either condition are kept; otherwise they are removed.
     """
-    refined = []
+    refined: List[Dict[str, Any]] = []
     for sig in signals:
-        if sig.get("profit_target_hit") or sig.get("trailing_stop_triggered"):
-            refined.append(sig)
+        try:
+            if sig.get("profit_target_hit") or sig.get("trailing_stop_triggered"):
+                refined.append(sig)
+        except Exception as exc:  # pragma: no cover
+            logger.error(
+                "Error applying exit logic to signal",
+                extra={"error": str(exc), "signal": sig},
+            )
+            # Skip malformed signal but continue processing others
     return refined
 
 
 def _get_improver() -> Any:
     """Retrieve the self_improver instance from the global app state."""
     from app.main import app
+
     return getattr(app.state, "self_improver", None)
 
 
@@ -58,6 +76,10 @@ def _validate_signals(raw_signals: Any) -> List[Dict[str, Any]]:
     Raises HTTPException on validation failure.
     """
     if not isinstance(raw_signals, list):
+        logger.error(
+            "Invalid signal format received",
+            extra={"type": type(raw_signals).__name__, "value": raw_signals},
+        )
         raise HTTPException(status_code=500, detail="Invalid signal format")
     return raw_signals
 
@@ -70,27 +92,49 @@ def _process_signals(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 @router.get("/history")
 async def get_history(current_user: User = Depends(get_current_user)):
-    improver = _get_improver()
-    if improver:
-        return improver.get_history()
-    return []
+    try:
+        improver = _get_improver()
+        if improver:
+            return improver.get_history()
+        return []
+    except Exception as exc:  # pragma: no cover
+        logger.error(
+            "Failed to retrieve improvement history",
+            extra={"error": str(exc)},
+        )
+        raise HTTPException(status_code=500, detail="Unable to fetch history")
 
 
 @router.get("/quality")
 async def get_quality(current_user: User = Depends(get_current_user)):
-    from app.main import app
-    loop_ref = getattr(app.state, "code_quality_loop", None)
-    if loop_ref is None:
-        return {"status": "not_running", "message": "Code quality loop not started"}
-    return loop_ref.latest()
+    try:
+        from app.main import app
+
+        loop_ref = getattr(app.state, "code_quality_loop", None)
+        if loop_ref is None:
+            return {"status": "not_running", "message": "Code quality loop not started"}
+        return loop_ref.latest()
+    except Exception as exc:  # pragma: no cover
+        logger.error(
+            "Error accessing code quality loop",
+            extra={"error": str(exc)},
+        )
+        raise HTTPException(status_code=500, detail="Unable to fetch code quality")
 
 
 @router.get("/best_params")
 async def get_best_params(current_user: User = Depends(get_current_user)):
-    improver = _get_improver()
-    if improver is None:
-        return {"status": "not_running", "best_params": {}}
-    return {"best_params": getattr(improver, "_best_params", {})}
+    try:
+        improver = _get_improver()
+        if improver is None:
+            return {"status": "not_running", "best_params": {}}
+        return {"best_params": getattr(improver, "_best_params", {})}
+    except Exception as exc:  # pragma: no cover
+        logger.error(
+            "Error retrieving best parameters",
+            extra={"error": str(exc)},
+        )
+        raise HTTPException(status_code=500, detail="Unable to fetch best parameters")
 
 
 @router.get("/signal_quality")
@@ -98,10 +142,19 @@ async def get_signal_quality(current_user: User = Depends(get_current_user)):
     """
     Return signals after applying tightened entry conditions and improved exit logic.
     """
-    improver = _get_improver()
-    if improver is None:
-        raise HTTPException(status_code=404, detail="Improver not initialized")
-    raw_signals = getattr(improver, "latest_signals", [])
-    signals = _validate_signals(raw_signals)
-    final_signals = _process_signals(signals)
-    return {"filtered_signals": final_signals, "count": len(final_signals)}
+    try:
+        improver = _get_improver()
+        if improver is None:
+            raise HTTPException(status_code=404, detail="Improver not initialized")
+        raw_signals = getattr(improver, "latest_signals", [])
+        signals = _validate_signals(raw_signals)
+        final_signals = _process_signals(signals)
+        return {"filtered_signals": final_signals, "count": len(final_signals)}
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        logger.error(
+            "Error processing signal quality",
+            extra={"error": str(exc)},
+        )
+        raise HTTPException(status_code=500, detail="Unable to process signal quality")
