@@ -1,8 +1,12 @@
 """Integrations endpoints: Notion sync, etc."""
-from fastapi import APIRouter, Depends
+import logging
+from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import get_current_user
 from app.integrations.notion_sync import get_notion_sync
 from app.models.user import User
+
+# Logger setup
+logger = logging.getLogger(__name__)
 
 # Constants
 INTEGRATIONS_PREFIX: str = "/integrations"
@@ -38,20 +42,34 @@ def _get_sync_instance() -> object:
 @router.get(NOTION_STATUS_PATH)
 async def notion_status(current_user: User = Depends(get_current_user)):
     """Whether Notion sync is configured."""
-    _ensure_user(current_user)
-    sync = get_notion_sync()
-    return {
-        KEY_ENABLED: sync.enabled,
-        KEY_NOTION_TOKEN_SET: bool(sync.notion_token),
-        KEY_NOTION_DB_ID_SET: bool(sync.notion_db_id),
-        KEY_GITHUB_TOKEN_SET: bool(sync.github_token),
-        KEY_GITHUB_REPO: sync.github_repo or None,
-    }
+    try:
+        _ensure_user(current_user)
+        sync = get_notion_sync()
+        return {
+            KEY_ENABLED: sync.enabled,
+            KEY_NOTION_TOKEN_SET: bool(sync.notion_token),
+            KEY_NOTION_DB_ID_SET: bool(sync.notion_db_id),
+            KEY_GITHUB_TOKEN_SET: bool(sync.github_token),
+            KEY_GITHUB_REPO: sync.github_repo or None,
+        }
+    except ValueError as ve:
+        logger.error("Invalid request in notion_status: %s", ve, exc_info=True)
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error("Unexpected error in notion_status", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post(NOTION_SYNC_PATH)
 async def trigger_notion_sync(current_user: User = Depends(get_current_user)):
     """Trigger a bidirectional GitHub Issues ↔ Notion sync."""
-    _ensure_user(current_user)
-    sync = _get_sync_instance()
-    return await sync.sync_all()
+    try:
+        _ensure_user(current_user)
+        sync = _get_sync_instance()
+        return await sync.sync_all()
+    except ValueError as ve:
+        logger.error("Invalid request in trigger_notion_sync: %s", ve, exc_info=True)
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error("Unexpected error in trigger_notion_sync", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
