@@ -5,14 +5,14 @@ Provides routes to fetch benchmark statistics and recent comparison results.
 from typing import Any, List
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
 from app.api.deps import get_current_user
+from app.comparison.benchmarks import get_benchmark_stats
+from app.database import get_db
 from app.models.comparison import ComparisonResult as ComparisonModel
 from app.models.user import User
-from app.comparison.benchmarks import get_benchmark_stats
 from pydantic import BaseModel, ConfigDict
 
 # Constants
@@ -84,7 +84,6 @@ class ComparisonOut(BaseModel):
         """
         improvement = None
         if m.manual_sharpe is not None and m.ml_sharpe is not None:
-            # Use a minimal base to avoid division by zero
             base = float(m.manual_sharpe) if float(m.manual_sharpe) != 0 else MIN_MANUAL_SHARPE
             improvement = (float(m.ml_sharpe) - float(m.manual_sharpe)) / abs(base)
 
@@ -136,16 +135,10 @@ async def list_comparisons(
     List[ComparisonOut]
         A list of transformed comparison results.
     """
-    # Guard against unexpected None from the DB layer
     result = await db.execute(
         select(ComparisonModel)
         .order_by(ComparisonModel.created_at.desc())
-        .limit(max(DEFAULT_LIMIT, 1))
+        .limit(DEFAULT_LIMIT)
     )
-    rows = result.scalars().all() if result is not None else []
-
-    # Ensure we always return a list, even if no rows are found
-    if not rows:
-        return []
-
+    rows = result.scalars().all()
     return [ComparisonOut.from_model(r) for r in rows]
