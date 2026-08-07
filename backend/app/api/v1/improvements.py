@@ -46,10 +46,31 @@ def _apply_exit_logic(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return refined
 
 
+def _get_improver() -> Any:
+    """Retrieve the self_improver instance from the global app state."""
+    from app.main import app
+    return getattr(app.state, "self_improver", None)
+
+
+def _validate_signals(raw_signals: Any) -> List[Dict[str, Any]]:
+    """
+    Ensure raw_signals is a list of dictionaries.
+    Raises HTTPException on validation failure.
+    """
+    if not isinstance(raw_signals, list):
+        raise HTTPException(status_code=500, detail="Invalid signal format")
+    return raw_signals
+
+
+def _process_signals(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Apply entry filters followed by exit logic."""
+    entry_filtered = _apply_entry_filters(signals)
+    return _apply_exit_logic(entry_filtered)
+
+
 @router.get("/history")
 async def get_history(current_user: User = Depends(get_current_user)):
-    from app.main import app
-    improver = getattr(app.state, "self_improver", None)
+    improver = _get_improver()
     if improver:
         return improver.get_history()
     return []
@@ -66,8 +87,7 @@ async def get_quality(current_user: User = Depends(get_current_user)):
 
 @router.get("/best_params")
 async def get_best_params(current_user: User = Depends(get_current_user)):
-    from app.main import app
-    improver = getattr(app.state, "self_improver", None)
+    improver = _get_improver()
     if improver is None:
         return {"status": "not_running", "best_params": {}}
     return {"best_params": getattr(improver, "_best_params", {})}
@@ -78,14 +98,10 @@ async def get_signal_quality(current_user: User = Depends(get_current_user)):
     """
     Return signals after applying tightened entry conditions and improved exit logic.
     """
-    from app.main import app
-    improver = getattr(app.state, "self_improver", None)
+    improver = _get_improver()
     if improver is None:
         raise HTTPException(status_code=404, detail="Improver not initialized")
     raw_signals = getattr(improver, "latest_signals", [])
-    if not isinstance(raw_signals, list):
-        raise HTTPException(status_code=500, detail="Invalid signal format")
-    # Apply entry filters then exit logic
-    entry_filtered = _apply_entry_filters(raw_signals)
-    final_signals = _apply_exit_logic(entry_filtered)
+    signals = _validate_signals(raw_signals)
+    final_signals = _process_signals(signals)
     return {"filtered_signals": final_signals, "count": len(final_signals)}
