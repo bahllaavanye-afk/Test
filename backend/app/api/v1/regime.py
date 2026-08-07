@@ -1,8 +1,14 @@
-"""Market regime and cross-strategy correlation endpoints."""
+"""Market regime and cross‑strategy correlation endpoints.
+
+This module provides FastAPI routes to expose the current market regime,
+per‑symbol regime states, and live cross‑strategy correlation information.
+All endpoints log execution metrics and include basic error handling.
+"""
+
 import logging
 import time
 from collections import Counter
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user
@@ -15,7 +21,9 @@ try:
     from app.risk.pnl_tracker import get_current_pnl  # type: ignore
 except Exception:  # pragma: no cover
     def get_current_pnl() -> float:
+        """Return a default P&L value when the tracker is unavailable."""
         return 0.0
+
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +31,16 @@ router = APIRouter(prefix="/regime", tags=["regime"])
 
 
 @router.get("/current")
-async def get_current_regime(current_user: User = Depends(get_current_user)):
-    """Overall market regime — aggregated across all tracked symbols.
+async def get_current_regime(
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Return the aggregated market regime.
 
-    Returns the most common regime (bull/bear/sideways mapped from detector enums)
-    and average confidence. Falls back to safe defaults when no data is available.
+    The endpoint aggregates per‑symbol regime classifications from
+    ``regime_monitor`` and returns the most common regime label together
+    with the average confidence and the timestamp of the latest update.
+
+    If no regime data is available, a safe default response is returned.
     """
     start_time = time.time()
 
@@ -44,7 +57,7 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
         )
         return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
 
-    # Map detector regimes → frontend-friendly labels
+    # Map detector regimes → frontend‑friendly labels
     _label_map = {
         "trending": "bull",
         "mean_reverting": "sideways",
@@ -53,7 +66,7 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     }
 
     # Use comprehensions and Counter for efficient aggregation
-    label_counts: Counter = Counter(
+    label_counts: Counter[str] = Counter(
         _label_map.get(sym_state.get("regime", "unknown"), "unknown")
         for sym_state in states.values()
     )
@@ -61,7 +74,11 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
         float(sym_state.get("confidence", 0.0)) for sym_state in states.values()
     ]
     latest_updated: Optional[str] = max(
-        (sym_state.get("updated_at") for sym_state in states.values() if sym_state.get("updated_at")),
+        (
+            sym_state.get("updated_at")
+            for sym_state in states.values()
+            if sym_state.get("updated_at")
+        ),
         default=None,
     )
 
@@ -87,8 +104,10 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/states")
-async def get_regime_states(current_user: User = Depends(get_current_user)):
-    """Current regime classification for all tracked symbols."""
+async def get_regime_states(
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Return the current regime classification for all tracked symbols."""
     start_time = time.time()
     data = regime_monitor.all_states()
     elapsed_ms = (time.time() - start_time) * 1000
@@ -104,7 +123,14 @@ async def get_regime_states(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/states/{symbol}")
-async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_current_user)):
+async def get_regime_for_symbol(
+    symbol: str,
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Return the regime state for a specific symbol.
+
+    If the symbol has no associated regime data, an error message is returned.
+    """
     start_time = time.time()
     state = regime_monitor.get(symbol.upper())
     if not state:
@@ -134,8 +160,14 @@ async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_cu
 
 
 @router.get("/correlation")
-async def get_correlation_matrix(current_user: User = Depends(get_current_user)):
-    """Live cross-strategy correlation matrix."""
+async def get_correlation_matrix(
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Return the live cross‑strategy correlation matrix.
+
+    The response includes the full matrix, a list of reduced strategies,
+    and the most recent alerts.
+    """
     start_time = time.time()
     matrix = correlation_monitor.matrix_as_list()
     reduced = list(correlation_monitor._reduced)
@@ -157,7 +189,10 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
 
 
 @router.get("/correlation/alerts")
-async def get_correlation_alerts(current_user: User = Depends(get_current_user)):
+async def get_correlation_alerts(
+    current_user: User = Depends(get_current_user),
+) -> List[Any]:
+    """Return recent cross‑strategy correlation alerts."""
     start_time = time.time()
     alerts = correlation_monitor.recent_alerts(50)
     elapsed_ms = (time.time() - start_time) * 1000
