@@ -5,7 +5,43 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
+"""SQLAlchemy ORM model for audit log entries.
+
+This module defines the :class:`AuditLog` model which records user actions,
+including metadata such as IP address, user agent, and any additional data
+relevant to the event. The model is used throughout the platform for
+compliance, debugging, and operational monitoring.
+"""
+
+
 class AuditLog(Base):
+    """Represent a single audit log entry.
+
+    Attributes
+    ----------
+    id : Mapped[str]
+        Primary key, generated as a UUID string.
+    user_id : Mapped[str]
+        Identifier of the user who performed the action; foreign key to
+        ``users.id``.
+    action : Mapped[str]
+        Type of action performed (e.g., ``order_submit``, ``order_cancel``,
+        ``login``, ``key_add``).
+    resource_type : Mapped[str | None]
+        Optional type of the resource the action targets (e.g., ``order``,
+        ``account``).
+    resource_id : Mapped[str | None]
+        Optional identifier of the specific resource instance.
+    ip_address : Mapped[str | None]
+        IP address from which the action originated.
+    user_agent : Mapped[str | None]
+        User‑agent string of the client making the request.
+    extra_data : Mapped[dict]
+        Arbitrary JSON‑serialisable data providing additional context.
+    created_at : Mapped[datetime]
+        Timestamp of when the log entry was created, stored in UTC.
+    """
+
     __tablename__ = "audit_logs"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))

@@ -2,7 +2,8 @@
 
 Provides routes to fetch benchmark statistics and recent comparison results.
 """
-from typing import Any, List
+
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,8 +28,8 @@ DEFAULT_LIMIT = 20
 WINNER_MANUAL = "manual"
 WINNER_ML = "ml"
 
-router = APIRouter(prefix=PREFIX, tags=[TAG])
-
+router: APIRouter = APIRouter(prefix=PREFIX, tags=[TAG])
+"""FastAPI router handling comparison-related endpoints."""
 
 class ComparisonOut(BaseModel):
     """Schema representing a comparison between manual and ML strategies.
@@ -82,7 +83,7 @@ class ComparisonOut(BaseModel):
         ComparisonOut
             Pydantic model populated with transformed and rounded values.
         """
-        improvement = None
+        improvement: Optional[float] = None
         if m.manual_sharpe is not None and m.ml_sharpe is not None:
             base = float(m.manual_sharpe) or MIN_MANUAL_SHARPE
             improvement = (float(m.ml_sharpe) - float(m.manual_sharpe)) / abs(base)
@@ -98,7 +99,6 @@ class ComparisonOut(BaseModel):
             ml_improvement_pct=round(improvement, IMPROVEMENT_PRECISION) if improvement else None,
         )
 
-
 @router.get(ENDPOINT_BENCHMARKS)
 async def get_benchmarks() -> Any:
     """Retrieve benchmark statistics for strategy comparison.
@@ -109,7 +109,6 @@ async def get_benchmarks() -> Any:
         The raw benchmark data returned by ``get_benchmark_stats``.
     """
     return get_benchmark_stats()
-
 
 @router.get(ENDPOINT_RESULTS, response_model=list[ComparisonOut])
 @router.get(ENDPOINT_ROOT, response_model=list[ComparisonOut])
