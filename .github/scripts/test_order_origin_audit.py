@@ -283,8 +283,14 @@ def test_a_bug_in_the_burst_analysis_cannot_take_the_desk_down(monkeypatch, caps
 
 def test_the_alarm_names_its_candidates_instead_of_crying_intruder(monkeypatch, capsys):
     """The old headline said only "a second writer is on this account" and was
-    escalated as an intruder. Two of the three real candidates are ours, and
-    none can be distinguished until backend orders carry a client_order_id."""
+    escalated as an intruder. The candidates must be named and the limit stated.
+
+    This previously asserted the message said orders "CANNOT be told apart".
+    That blanket claim is now itself too strong and was removed deliberately:
+    an equity market+GTC order DOES carry the exit loop's signature, so exits
+    and openers CAN be separated. What genuinely cannot be separated is WHICH
+    backend — `9jz0` and `agb8` run identical code. The assertion below pins
+    that narrower, true limit instead of the old over-claim."""
     async def fake_get(path, params=None):
         return [_o("qe-momentum-SPY-1"), _o("agb8-runner-7", "TSLA")]
     monkeypatch.setattr(dop, "_alpaca_get", fake_get)
@@ -292,4 +298,97 @@ def test_the_alarm_names_its_candidates_instead_of_crying_intruder(monkeypatch, 
     out = capsys.readouterr().out
     assert "PositionMonitor" in out
     assert "agb8" in out
-    assert "CANNOT be told apart" in out
+    assert "not WHICH backend" in out
+
+
+# ── Narrowing "these cannot be told apart" ───────────────────────────────────
+#
+# Live 2026-08-07 00:29, run 31134848144 — the alarm path firing for real:
+#
+#   ⚠️ ORDER-ORIGIN AUDIT: 10 of 50 recent orders are untagged AND were not part
+#   of a bulk close-all ... These CANNOT be told apart until backend orders carry
+#   a client_order_id
+#
+# True, but weaker than the evidence allows. `PositionMonitor._close_position`
+# (position_monitor.py:340) submits order_type="market", time_in_force="GTC".
+# The desk submits equities as `"gtc" if is_crypto else "day"` — so on an EQUITY,
+# market+GTC is the exit loop's shape and day is not. That separates "a position
+# was closed" from "something opened one", which is the part worth acting on.
+#
+# It does NOT say which backend: 9jz0 and agb8 run the same code. Only a
+# client_order_id answers that, and that file is Do-Not-Modify. [P0] stands.
+
+def _eq(tif="day", typ="limit", symbol="SPY"):
+    return {"client_order_id": "x", "symbol": symbol, "side": "sell", "qty": "1",
+            "status": "filled", "submitted_at": "2026-08-07T00:00:00Z",
+            "time_in_force": tif, "type": typ}
+
+
+def test_the_exit_loop_signature_is_recognised():
+    assert dop.looks_like_a_position_monitor_exit(_eq(tif="gtc", typ="market")) is True
+
+
+def test_a_desk_style_equity_order_is_not_an_exit():
+    """The desk uses day orders on equities, limit-first."""
+    assert dop.looks_like_a_position_monitor_exit(_eq(tif="day", typ="limit")) is False
+    assert dop.looks_like_a_position_monitor_exit(_eq(tif="day", typ="market")) is False
+
+
+def test_a_gtc_limit_is_not_an_exit():
+    """PositionMonitor submits MARKET. GTC alone is not the signature."""
+    assert dop.looks_like_a_position_monitor_exit(_eq(tif="gtc", typ="limit")) is False
+
+
+def test_crypto_is_excluded_because_the_desk_also_uses_gtc():
+    """On crypto the desk itself submits GTC, so the signature cannot
+    distinguish — claiming it could would be a false attribution."""
+    assert dop.looks_like_a_position_monitor_exit(
+        _eq(tif="gtc", typ="market", symbol="BTC/USD")) is False
+
+
+def test_a_lone_order_is_not_in_a_burst():
+    assert dop._in_a_burst(REAL_FLATTEN[0], [REAL_FLATTEN[0]]) is False
+
+
+def test_burst_members_are_identified_individually():
+    """`bulk_burst_count` gives a total; attributing the remainder needs to know
+    which specific orders stood alone."""
+    for o in REAL_FLATTEN:
+        assert dop._in_a_burst(o, REAL_FLATTEN) is True
+
+
+def test_the_audit_separates_exits_from_openers(monkeypatch, capsys):
+    opener = _eq(tif="day", typ="limit", symbol="AAPL")
+    opener["client_order_id"] = "untagged-1"
+    opener["submitted_at"] = "2026-08-07T01:00:00Z"
+    exit_order = _eq(tif="gtc", typ="market", symbol="MSFT")
+    exit_order["client_order_id"] = "untagged-2"
+    exit_order["submitted_at"] = "2026-08-07T02:00:00Z"
+
+    async def fake_get(path, params=None):
+        return [opener, exit_order]
+    monkeypatch.setattr(dop, "_alpaca_get", fake_get)
+    asyncio.run(dop.audit_order_origins())
+    out = capsys.readouterr().out
+    assert "1 carry the backend exit loop's signature" in out
+    assert "1 do not" in out
+    assert "worth explaining" in out
+
+
+def test_all_exits_reads_as_our_own_backend(monkeypatch, capsys):
+    a = _eq(tif="gtc", typ="market", symbol="MSFT"); a["client_order_id"] = "u1"
+    a["submitted_at"] = "2026-08-07T02:00:00Z"
+    async def fake_get(path, params=None):
+        return [a]
+    monkeypatch.setattr(dop, "_alpaca_get", fake_get)
+    asyncio.run(dop.audit_order_origins())
+    out = capsys.readouterr().out
+    assert "all of them look like position exits" in out
+    assert "worth explaining" not in out
+
+
+def test_the_which_backend_limit_is_always_stated():
+    """The narrowing must not be mistaken for identification. 9jz0 and agb8
+    produce identical signatures."""
+    src = (SCRIPTS / "desk_order_placer.py").read_text()
+    assert "narrows WHAT happened, not WHICH backend" in src
