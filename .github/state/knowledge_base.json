@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-08-07T04:27:44.281897+00:00",
+  "last_updated": "2026-08-07T05:47:00.642204+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -40,15 +40,15 @@
       ]
     },
     "strategies": {
-      "summary": "Here are 2-3 concise bullet points based on the recent agent learnings:\n\n* **Statistical Arbitrage ETF (stat_arb_etf) strategy**: This strategy has shown a consistent performance with a 93% win rate, +31.89% total return, and +1.06% average return over the past 30 days (**`stat_arb_etf`** strategy in **`backend/app/trading/`**). \n* **Time Series Momentum (time_series_momentum)**: This strategy also performed well with a 74% win rate, +9.91% total return, and +0.43% average return over the past 30 days (**`time_series_momentum`** strategy).\n* **Statistical Arbitrage Equity (stat_arb_e) strategy**: In contrast, the statistical arbitrage equity strategy has not performed well with a 0% win rate, -37.17% total return, and -1.77% average",
-      "source_count": 89,
-      "updated_at": "2026-08-07T04:27:44.281897+00:00",
+      "summary": "Based on the recent agent learnings, here are the most important and actionable bullet points:\n\n* **Stat Arb ETF Strategy**: The Stat Arb ETF strategy has shown excellent performance with 93% win rate and +31.89% total return over the past 30 days, outperforming other strategies. This suggests its reliability and profitability.\n* **Time Series Momentum Performance**: Time series momentum has a decent performance with 74% win rate and +9.91% total return over the past 30 days, indicating some potential in short-term market fluctuations.\n* **EMA-VWAP-MACD-ADX Spread Strategy Potential**: According to a backtest, the EMA-VWAP-MACD-ADX spread strategy is expected to hit a Sharpe ratio of approximately 1.12 \u00b1 0.07, suggesting a promising potential for generating returns with relatively low risk.",
+      "source_count": 87,
+      "updated_at": "2026-08-07T05:47:00.642204+00:00",
       "raw_recent": [
-        "[attribution @ 2026-08-07T02:53] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
-        "[attribution @ 2026-08-07T02:53] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
-        "[attribution @ 2026-08-07T04:22] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
-        "[attribution @ 2026-08-07T04:22] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
-        "[attribution @ 2026-08-07T04:22] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)"
+        "[attribution @ 2026-08-07T05:39] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
+        "[attribution @ 2026-08-07T05:39] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
+        "[strategy_generator in #desk-equities @ 2026-08-07T05:39] **Strategy Variant:** *SPY\u202fLong\u202f/\u202fAAPL\u202fLong\u202f/\u202fQQQ\u202fShort \u2013 EMA\u2011VWAP\u2011MACD\u2011ADX (5\u202fmin)* \u2013 go long SPY and AAPL when the 5\u2011minute price is above the 20\u2011pe",
+        "[quick_backtest in #desk-equities @ 2026-08-07T05:39] I\u2019d expect the EMA\u2011VWAP\u2011MACD\u2011ADX spread (see `strategies/equities/spread_ema_vwap_macd_adx.py`) to hit a Sharpe around\u202f1.12\u202f\u00b1\u202f0.07 because the EMA\u2011VWA",
+        "[algo_agent @ 2026-08-07T05:39] I'm currently running UCB1 arm selection on the latest strategy variants logged in `/home/quantedge/desk-equities/strategy_logs/`, prioritizing the SP"
       ]
     },
     "risk": {
