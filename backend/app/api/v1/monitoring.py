@@ -54,20 +54,6 @@ def _load_health_report() -> Dict[str, Any]:
         ) from exc
 
 
-def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
-    """Read the fix log file and return the most recent *limit* entries.
-
-    The log is stored as newline‑delimited JSON. Empty or missing files result in
-    an empty list. Any parsing error raises an HTTPException.
-    """
-    raw_text = _read_fix_log_file()
-    if not raw_text:
-        return []
-    lines = raw_text.splitlines()
-    recent_lines = _select_recent_lines(lines, limit)
-    return _parse_fix_log_lines(recent_lines)
-
-
 def _read_fix_log_file() -> str:
     """Read the raw fix‑log file content.
 
@@ -85,11 +71,6 @@ def _read_fix_log_file() -> str:
         ) from exc
 
 
-def _select_recent_lines(lines: List[str], limit: int) -> List[str]:
-    """Select the most recent *limit* lines from the log."""
-    return lines[-limit:] if limit > 0 else []
-
-
 def _parse_fix_log_lines(lines: List[str]) -> List[Dict[str, Any]]:
     """Parse newline‑delimited JSON lines into a list of dictionaries."""
     try:
@@ -99,6 +80,25 @@ def _parse_fix_log_lines(lines: List[str]) -> List[Dict[str, Any]]:
             status_code=HTTP_STATUS_INTERNAL_ERROR,
             detail=FIX_LOG_READ_ERROR_DETAIL.format(exc),
         ) from exc
+
+
+def _select_recent_lines(lines: List[str], limit: int) -> List[str]:
+    """Select the most recent *limit* lines from the log."""
+    return lines[-limit:] if limit > 0 else []
+
+
+def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
+    """Read the fix log and return the most recent *limit* entries.
+
+    The log is stored as newline‑delimited JSON. Empty or missing files result in
+    an empty list. Any parsing error raises an HTTPException.
+    """
+    raw_text = _read_fix_log_file()
+    if not raw_text:
+        return []
+    lines = raw_text.splitlines()
+    recent = _select_recent_lines(lines, limit)
+    return _parse_fix_log_lines(recent)
 
 
 @router.get(ENDPOINT_HEALTH)
