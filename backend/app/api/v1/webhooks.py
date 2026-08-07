@@ -40,6 +40,8 @@ def _normalize(payload: dict[str, Any]) -> dict[str, Any]:
         "strategy": payload.get("strategy") or payload.get("indicator"),
         "message": str(payload.get("message") or payload.get("comment") or "")[:500] or None,
         "received_at": datetime.now(timezone.utc).isoformat(),
+        # Optional P&L if supplied by the alert; keep as‑is for logging
+        "pnl": payload.get("pnl"),
     }
 
 
@@ -65,7 +67,8 @@ async def receive_tradingview_alert(request: Request) -> dict:
         payload = await request.json()
         if not isinstance(payload, dict):
             raise ValueError("payload must be a JSON object")
-    except Exception:  # noqa: BLE001 — malformed body is a client error
+    except Exception as exc:  # noqa: BLE001 — malformed body is a client error
+        logger.debug("tradingview alert: malformed JSON", error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Body must be a JSON object.",
@@ -86,18 +89,18 @@ async def receive_tradingview_alert(request: Request) -> dict:
     _TOTAL_ALERTS += 1
 
     # Structured logging of the received alert with monitoring metrics
-    exec_time = time.perf_counter() - start_time
+    exec_time_ms = round((time.perf_counter() - start_time) * 1000, 2)
     logger.info(
         "tradingview alert received",
         symbol=alert["symbol"],
         side=alert["side"],
         strategy=str(alert["strategy"])[:40],
         signal_count=_TOTAL_ALERTS,
-        exec_time_ms=round(exec_time * 1000, 2),
+        exec_time_ms=exec_time_ms,
         pnl=alert.get("pnl"),
     )
 
-    # Best-effort fan-out to Redis subscribers (strategies/dashboards may listen).
+    # Best‑effort fan‑out to Redis subscribers (strategies/dashboards may listen).
     try:
         from app.redis_client import get_redis
 
@@ -116,4 +119,12 @@ async def receive_tradingview_alert(request: Request) -> dict:
 async def recent_tradingview_alerts(limit: int = 50) -> dict:
     """Most recent received alerts (process-local ring buffer)."""
     limit = max(1, min(limit, _MAX_RECENT))
-    return {"alerts": _RECENT_ALERTS[-limit:][::-1], "count": len(_RECENT_ALERTS)}
+    alerts = _RECENT_ALERTS[-limit:][::-1]
+
+    logger.info(
+        "tradingview recent alerts fetched",
+        limit=limit,
+        returned_count=len(alerts),
+        total_stored=_TOTAL_ALERTS,
+    )
+    return {"alerts": alerts, "count": len(_RECENT_ALERTS)}
