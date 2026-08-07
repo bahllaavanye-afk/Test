@@ -45,21 +45,28 @@ def _build_features(df: pd.DataFrame) -> np.ndarray:
     return np.stack([returns.values, log_vol.values, rsi_norm.values], axis=1)
 
 
-def _step_reward(df: pd.DataFrame, action: int, t: int) -> float:
+def _precompute_next_returns(df: pd.DataFrame) -> np.ndarray:
+    """Vectorized next‑step returns used for reward calculation."""
+    close = df["close"].values
+    next_close = np.empty_like(close)
+    next_close[:-1] = close[1:]
+    next_close[-1] = close[-1]  # last entry will never be used
+    return next_close / close - 1.0
+
+
+def _step_reward_from_array(next_returns: np.ndarray, action: int, t: int) -> float:
     """
-    Simple reward: profit/loss of the action taken at step t.
+    Reward based on pre‑computed next returns.
     Action 0=buy, 1=hold, 2=sell.
-    Returns the next-bar return scaled by direction.
     """
-    if t + 1 >= len(df):
+    if t + 1 >= len(next_returns):
         return 0.0
-    next_ret = float(df["close"].iloc[t + 1] / df["close"].iloc[t] - 1.0)
-    if action == 0:    # buy — reward is positive return
-        return next_ret
-    elif action == 2:  # sell — reward is negative return (profit from short)
-        return -next_ret
-    else:              # hold
-        return 0.0
+    nxt = next_returns[t]
+    if action == 0:    # buy
+        return float(nxt)
+    elif action == 2:  # sell
+        return -float(nxt)
+    return 0.0
 
 
 async def train_rl_agent(
@@ -94,27 +101,35 @@ async def train_rl_agent(
     Returns:
         Trained A3CLSTMAgent
     """
-    features = _build_features(ohlcv_df)  # (T, n_features_raw)
-    T = len(features)
+    # ---- Feature preparation -------------------------------------------------
+    raw_features = _build_features(ohlcv_df)                     # (T, raw_dim)
+    T = raw_features.shape[0]
 
     if T < _SEQ_LEN + 2:
         raise ValueError(f"DataFrame too short ({T} rows); need at least {_SEQ_LEN + 2}")
 
-    # Pad or trim to expected n_features
-    raw_dim = features.shape[1]
+    # Adjust feature dimension to match model expectations
+    raw_dim = raw_features.shape[1]
     if raw_dim < n_features:
-        pad = np.zeros((T, n_features - raw_dim))
-        features = np.hstack([features, pad])
+        pad = np.zeros((T, n_features - raw_dim), dtype=raw_features.dtype)
+        raw_features = np.hstack([raw_features, pad])
     else:
-        features = features[:, :n_features]
+        raw_features = raw_features[:, :n_features]
 
+    # Convert once to torch tensor (no gradient tracking needed here)
+    features_tensor = torch.from_numpy(raw_features).float()      # (T, n_features)
+
+    # Pre‑compute next‑step returns for reward calculation
+    next_returns_arr = _precompute_next_returns(ohlcv_df)
+
+    # ---- Model setup ---------------------------------------------------------
     agent = A3CLSTMAgent(n_features=n_features, hidden_size=hidden_size, n_actions=3)
     optimizer = torch.optim.Adam(agent.parameters(), lr=lr)
 
     save_path = model_path or str(_CHECKPOINT_DIR / "a3c_lstm_latest.pt")
-
     total_rewards: list[float] = []
 
+    # ---- Training loop --------------------------------------------------------
     for episode in range(1, n_episodes + 1):
         states: list[torch.Tensor] = []
         actions: list[int] = []
@@ -123,24 +138,27 @@ async def train_rl_agent(
         agent.eval()
         with torch.no_grad():
             for t in range(_SEQ_LEN, T - 1):
-                window = features[t - _SEQ_LEN : t]  # (seq_len, n_features)
-                x = torch.tensor(window, dtype=torch.float32).unsqueeze(0)  # (1, seq_len, n_feat)
+                # Slice view without copy
+                window = features_tensor[t - _SEQ_LEN : t]          # (seq_len, n_features)
+                x = window.unsqueeze(0)                             # (1, seq_len, n_features)
                 action = agent.select_action(x)
-                reward = _step_reward(ohlcv_df, action, t)
+                reward = _step_reward_from_array(next_returns_arr, action, t)
 
-                states.append(x.squeeze(0))  # (seq_len, n_features)
+                states.append(window)                               # keep view shape (seq_len, n_features)
                 actions.append(action)
                 rewards.append(reward)
 
         if not states:
             continue
 
-        # Stack trajectory
-        states_tensor = torch.stack(states)           # (T', seq_len, n_features)
+        # Stack trajectory tensors
+        states_tensor = torch.stack(states)                         # (T', seq_len, n_features)
         actions_tensor = torch.tensor(actions, dtype=torch.long)
+
+        # All steps are non‑terminal in this simplified setup
         dones = [False] * len(rewards)
 
-        # Single gradient update
+        # ---- Gradient update -------------------------------------------------
         agent.train()
         optimizer.zero_grad()
         loss_dict = agent.actor_critic_loss(
@@ -164,7 +182,7 @@ async def train_rl_agent(
                 loss_dict["loss"].item(),
             )
 
-        # Save checkpoint
+        # ---- Checkpointing ----------------------------------------------------
         if episode % checkpoint_every == 0:
             ckpt_path = save_path.replace(".pt", f"_ep{episode:04d}.pt")
             agent.save(
@@ -178,7 +196,7 @@ async def train_rl_agent(
             )
             logger.info("Checkpoint saved → %s", ckpt_path)
 
-    # Save final model as the "latest" checkpoint
+    # ---- Final model save -----------------------------------------------------
     agent.save(
         save_path,
         metadata={
