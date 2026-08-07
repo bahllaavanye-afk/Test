@@ -1,4 +1,6 @@
 """Strategy management endpoints."""
+import logging
+import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -13,6 +15,27 @@ from app.strategies import STRATEGY_REGISTRY, list_desks, strategies_by_desk
 from pydantic import BaseModel, ConfigDict, validator
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
+
+logger = logging.getLogger(__name__)
+
+
+def _log_metrics(
+    endpoint: str,
+    start_time: float,
+    count: Optional[int] = None,
+    pnl: Optional[float] = None,
+) -> None:
+    """Log structured metrics for an endpoint."""
+    duration = time.perf_counter() - start_time
+    logger.info(
+        f"{endpoint} completed",
+        extra={
+            "endpoint": endpoint,
+            "duration_seconds": round(duration, 4),
+            "record_count": count,
+            "pnl": pnl,
+        },
+    )
 
 
 class StrategyOut(BaseModel):
@@ -42,6 +65,7 @@ class StrategyToggle(BaseModel):
 @router.get("/params-schema")
 async def get_params_schema(current_user: User = Depends(get_current_user)):
     """Return configurable params for each strategy that exposes DEFAULT_PARAMS."""
+    start = time.perf_counter()
     schema = {}
     for name, cls in STRATEGY_REGISTRY.items():
         if hasattr(cls, "DEFAULT_PARAMS"):
@@ -49,13 +73,17 @@ async def get_params_schema(current_user: User = Depends(get_current_user)):
                 "params": cls.DEFAULT_PARAMS,
                 "display_name": getattr(cls, "display_name", name),
             }
+    _log_metrics("get_params_schema", start, count=len(schema))
     return schema
 
 
 @router.get("/available")
 async def list_available(current_user: User = Depends(get_current_user)):
     """List all registered strategy classes."""
-    return [{"name": k} for k in STRATEGY_REGISTRY.keys()]
+    start = time.perf_counter()
+    result = [{"name": k} for k in STRATEGY_REGISTRY.keys()]
+    _log_metrics("list_available", start, count=len(result))
+    return result
 
 
 @router.get("/desks")
@@ -66,13 +94,16 @@ async def list_strategy_desks(current_user: User = Depends(get_current_user)):
     so the equities/crypto/options/prediction-market/TradingView desks all share one
     format and a new strategy is placed automatically.
     """
+    start = time.perf_counter()
     grouped = strategies_by_desk()
-    return {
+    response = {
         "desks": list_desks(),
         "by_desk": grouped,
         "counts": {desk: len(members) for desk, members in grouped.items()},
         "total": sum(len(m) for m in grouped.values()),
     }
+    _log_metrics("list_strategy_desks", start, count=response["total"])
+    return response
 
 
 def _get_active_from_state(app) -> Optional[List[Dict[str, Any]]]:
@@ -135,10 +166,14 @@ async def list_active(
     Reads from app.state.active_strategies (populated at startup by main.py).
     Falls back to querying the DB when app state is not yet populated.
     """
+    start = time.perf_counter()
     active = _get_active_from_state(request.app)
     if active is not None:
+        _log_metrics("list_active", start, count=len(active))
         return active
-    return await _fetch_active_strategies_from_db()
+    active = await _fetch_active_strategies_from_db()
+    _log_metrics("list_active", start, count=len(active))
+    return active
 
 
 @router.get("/", response_model=list[StrategyOut])
@@ -146,8 +181,11 @@ async def list_strategies(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    start = time.perf_counter()
     result = await db.execute(select(Strategy))
-    return result.scalars().all()
+    strategies = result.scalars().all()
+    _log_metrics("list_strategies", start, count=len(strategies))
+    return strategies
 
 
 @router.patch("/{strategy_id}/toggle")
@@ -158,11 +196,14 @@ async def toggle_strategy(
     current_user: User = Depends(get_current_active_superuser),
 ):
     """Enable or disable a strategy, enforcing a minimum confidence threshold for activation."""
+    start = time.perf_counter()
     result = await db.execute(select(Strategy).where(Strategy.id == strategy_id))
     strategy = result.scalar_one_or_none()
     if not strategy:
+        _log_metrics("toggle_strategy", start, count=0)
         raise HTTPException(status_code=404, detail="Strategy not found")
     if body.is_enabled and strategy.confidence_threshold < 0.7:
+        _log_metrics("toggle_strategy", start, count=0)
         raise HTTPException(
             status_code=400,
             detail=(
@@ -172,4 +213,5 @@ async def toggle_strategy(
         )
     strategy.is_enabled = body.is_enabled
     await db.commit()
+    _log_metrics("toggle_strategy", start, count=1)
     return {"id": strategy_id, "is_enabled": body.is_enabled}
