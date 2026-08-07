@@ -22,11 +22,12 @@ from typing import Any, List
 
 logger = logging.getLogger(__name__)
 
-_PREFIX = "agent:memory:"
-_MAX_LIST_LEN = 500  # cap per topic to avoid unbounded growth
-_TOPICS_SET_KEY = f"{_PREFIX}topics"
-_CACHE_TTL = 60  # seconds
-
+# Constants
+PREFIX = "agent:memory:"
+MAX_LIST_LEN = 500  # cap per topic to avoid unbounded growth
+TOPICS_SET_KEY = f"{PREFIX}topics"
+CACHE_TTL = 60  # seconds
+DEFAULT_READ_COUNT = 50
 
 class AgentMemory:
     def __init__(self, redis_client: Any):
@@ -41,7 +42,7 @@ class AgentMemory:
         """Construct a Redis key for a given topic."""
         if not topic:
             raise ValueError("Topic must be a non‑empty string")
-        prefix = f"{_PREFIX}latest:" if latest else _PREFIX
+        prefix = f"{PREFIX}latest:" if latest else PREFIX
         return f"{prefix}{topic}"
 
     def _payload(self, data: dict) -> str:
@@ -63,7 +64,7 @@ class AgentMemory:
             await self._log_error("add_topic_to_set", topic, ValueError("Invalid topic"))
             return
         try:
-            await self._r.sadd(_TOPICS_SET_KEY, topic)
+            await self._r.sadd(TOPICS_SET_KEY, topic)
         except Exception as e:
             await self._log_error("add_topic_to_set", topic, e)
 
@@ -81,7 +82,7 @@ class AgentMemory:
 
     async def _fetch_topics_from_redis(self) -> List[str]:
         """Retrieve the set of topics from Redis, handling empty results."""
-        raw_topics = await self._r.smembers(_TOPICS_SET_KEY)
+        raw_topics = await self._r.smembers(TOPICS_SET_KEY)
         if not raw_topics:
             return []
         return self._decode_topics(raw_topics)
@@ -97,7 +98,7 @@ class AgentMemory:
         key = self._key(topic)
         try:
             await self._r.lpush(key, payload)
-            await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
+            await self._r.ltrim(key, 0, MAX_LIST_LEN - 1)
             await self._add_topic_to_set(topic)
         except Exception as e:
             await self._log_error("write", topic, e)
@@ -117,7 +118,7 @@ class AgentMemory:
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
-    async def read_recent(self, topic: str, n: int = 50) -> List[dict]:
+    async def read_recent(self, topic: str, n: int = DEFAULT_READ_COUNT) -> List[dict]:
         """Return up to n most‑recent observations for a topic."""
         if not topic:
             await self._log_error("read_recent", topic, ValueError("Topic cannot be empty"))
@@ -149,7 +150,7 @@ class AgentMemory:
         """List all memory topics currently stored, using a short‑lived cache."""
         async with self._lock:
             now = time.time()
-            if self._topics_cache is not None and (now - self._cache_timestamp) < _CACHE_TTL:
+            if self._topics_cache is not None and (now - self._cache_timestamp) < CACHE_TTL:
                 return self._topics_cache
 
             try:
