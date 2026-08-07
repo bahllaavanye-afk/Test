@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1786108739.6783648,
+    "last_updated": 1786113881.0511634,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -61,54 +61,54 @@
     "autopilot_best_oos_sharpe": 1.261,
     "autopilot_best_blended": 0.4082,
     "autopilot_overfit_count": 1,
-    "market_regime": "bull",
+    "market_regime": "strong_bull",
     "market_opinion": {
-      "generated_at": "2026-08-06T16:05:10.707975+00:00",
+      "generated_at": "2026-08-07T14:44:05.981652+00:00",
       "signals": {
         "vix": {
-          "value": 15.43,
-          "trend": "falling"
+          "value": 14.93,
+          "trend": "flat"
         },
         "spy": {
-          "price": 767.99,
-          "sma50": 746.11,
-          "sma200": 699.59,
+          "price": 771.92,
+          "sma50": 746.59,
+          "sma200": 700.12,
           "trend": "strong_uptrend"
         },
         "yield_curve": {
-          "ratio": 1.0088,
+          "ratio": 1.0089,
           "median": 1.0505,
           "signal": "flat_or_inverted"
         },
         "credit": {
-          "hyg_lqd_momentum_20d": 0.993,
+          "hyg_lqd_momentum_20d": 0.769,
           "signal": "tightening"
         },
         "breadth": {
-          "sectors_above_sma20": 9,
+          "sectors_above_sma20": 8,
           "total_sectors": 11,
-          "breadth_pct": 81.8
+          "breadth_pct": 72.7
         },
         "btc": {
-          "price": 64599,
-          "24h_pct": 0.36
+          "price": 65125,
+          "24h_pct": 0.66
         }
       },
-      "score": 4,
-      "regime": "bull",
+      "score": 5,
+      "regime": "strong_bull",
       "strategy_gates": {
         "directional": true,
-        "min_confidence": 0.6,
-        "size_multiplier": 1.0
+        "min_confidence": 0.55,
+        "size_multiplier": 1.2
       },
-      "summary": "Good morning. With a bull regime score of 4, tightening credit spreads, and strong sector breadth (9/11 sectors above 20-SMA), risk appetite remains elevated despite a flat yield curve. Favor long-biased momentum strategies today to capitalize on the persistent uptrend and falling VIX."
+      "summary": "[LLM unavailable \u2014 all providers failed]"
     },
     "strategy_gates": {
       "directional": true,
-      "min_confidence": 0.6,
-      "size_multiplier": 1.0
+      "min_confidence": 0.55,
+      "size_multiplier": 1.2
     },
-    "opinion_score": 4,
+    "opinion_score": 5,
     "macro_score": 2,
     "vix": 15.15,
     "market_scan_ts": 1786063896.3781304,
@@ -156,21 +156,6 @@
     "last_brain_update": 1786092828.8669753
   },
   "episodic": [
-    {
-      "source": "market_scanner_v2",
-      "regime": "bull",
-      "score": 3,
-      "sector_leaders": [
-        "Energy",
-        "Financials",
-        "Cons. Staples"
-      ],
-      "gap_count": 8,
-      "breakout_count": 1,
-      "risk_flags": [],
-      "lesson": "Regime=bull (score=3). Leading: Energy, Financials. Gaps: 8, Breakouts: 1, Risk flags: 0.",
-      "ts": 1785516170.8249462
-    },
     {
       "source": "market_scanner_v2",
       "regime": "bull",
@@ -1911,6 +1896,18 @@
       "priority": 2,
       "source": "company_brain_synthesis",
       "ts": 1786092827.7982018
+    },
+    {
+      "source": "market_opinion",
+      "regime": "strong_bull",
+      "score": 5,
+      "gates": {
+        "directional": true,
+        "min_confidence": 0.55,
+        "size_multiplier": 1.2
+      },
+      "lesson": "[LLM unavailable \u2014 all providers failed]",
+      "ts": 1786113881.0564055
     }
   ],
   "github_insights": [
