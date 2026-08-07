@@ -54,8 +54,12 @@ async def list_experiments(
     current_user: User = Depends(get_current_user),
 ) -> List[ExperimentOut]:
     """Return the most recent experiments limited by ``MAX_EXPERIMENTS``."""
+    if MAX_EXPERIMENTS <= 0:
+        return []
     result = await db.execute(
-        select(Experiment).order_by(Experiment.started_at.desc()).limit(MAX_EXPERIMENTS)
+        select(Experiment)
+        .order_by(Experiment.started_at.desc())
+        .limit(MAX_EXPERIMENTS)
     )
     return result.scalars().all()
 
@@ -70,6 +74,9 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
     """Background task: run the experiment script for the given config."""
     script = Path(__file__).parents[4] / "experiments" / "run_experiment.py"
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
+    if not config_path.is_file():
+        logger.error("Config file %s does not exist for experiment %s", config_path, experiment_id)
+        return
     try:
         proc = await asyncio.create_subprocess_exec(
             sys.executable,
@@ -98,8 +105,10 @@ def _format_config_not_found_message(config_name: str, available: List[str]) -> 
 
 def _validate_config_exists(config_name: str) -> Path:
     """Ensure the YAML config file exists, otherwise raise ``HTTPException``."""
+    if not config_name:
+        raise HTTPException(status_code=400, detail="Config name must not be empty")
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
-    if config_path.exists():
+    if config_path.is_file():
         return config_path
     available = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
     message = _format_config_not_found_message(config_name, available)
@@ -130,6 +139,8 @@ async def trigger_training(
     The training runs as a background asyncio task.
     """
     config_name = body.config_name.removesuffix(".yaml")
+    if not config_name:
+        raise HTTPException(status_code=400, detail="Config name must not be empty")
 
     # Validate config existence
     _validate_config_exists(config_name)
@@ -170,6 +181,8 @@ async def get_experiment(
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Retrieve detailed information for a specific experiment."""
+    if not experiment_id:
+        raise HTTPException(status_code=404, detail=EXPERIMENT_NOT_FOUND)
     result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
     exp = result.scalar_one_or_none()
     if not exp:

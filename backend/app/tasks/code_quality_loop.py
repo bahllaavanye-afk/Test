@@ -10,7 +10,7 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Any
 
 from app.utils.logging import logger
 
@@ -67,11 +67,22 @@ def _should_skip(py_file: Path) -> bool:
     return any(skip in py_file.parts for skip in SKIP_PATTERNS)
 
 
-def _count_loc(root: Path) -> dict:
+def _count_loc(root: Path | None) -> dict:
     """
     Count lines of code under ``root`` with caching.
     Only files whose modification time has changed are re‑processed.
+    Handles None or non‑existent roots gracefully.
     """
+    if root is None or not root.exists():
+        return {
+            "files": 0,
+            "total_lines": 0,
+            "code_lines": 0,
+            "comment_lines": 0,
+            "blank_lines": 0,
+            "comment_ratio": 0.0,
+        }
+
     global _loc_cache
 
     total_files = total_lines = code_lines = blank_lines = comment_lines = 0
@@ -84,7 +95,11 @@ def _count_loc(root: Path) -> dict:
             continue
         seen_files.add(py_file)
         total_files += 1
-        mtime = py_file.stat().st_mtime
+        try:
+            mtime = py_file.stat().st_mtime
+        except Exception:
+            # If the file cannot be stat'ed, skip it
+            continue
         cached = _loc_cache.get(py_file)
 
         if cached and cached[0] == mtime:
@@ -93,14 +108,16 @@ def _count_loc(root: Path) -> dict:
             stats = _compute_file_stats(py_file)
             _loc_cache[py_file] = (mtime, stats)
 
-        total_lines += stats["total_lines"]
-        code_lines += stats["code_lines"]
-        blank_lines += stats["blank_lines"]
-        comment_lines += stats["comment_lines"]
+        total_lines += stats.get("total_lines", 0)
+        code_lines += stats.get("code_lines", 0)
+        blank_lines += stats.get("blank_lines", 0)
+        comment_lines += stats.get("comment_lines", 0)
 
     # Remove cache entries for files that no longer exist
     for dead in set(_loc_cache) - seen_files:
         del _loc_cache[dead]
+
+    comment_ratio = round(comment_lines / max(code_lines, 1), 3) if code_lines else 0.0
 
     return {
         "files": total_files,
@@ -108,22 +125,44 @@ def _count_loc(root: Path) -> dict:
         "code_lines": code_lines,
         "comment_lines": comment_lines,
         "blank_lines": blank_lines,
-        "comment_ratio": round(comment_lines / max(code_lines, 1), 3),
+        "comment_ratio": comment_ratio,
     }
 
 
-def _count_strategies(root: Path) -> dict:
-    manual = list((root / MANUAL_STRATEGY_REL).glob("*.py"))
-    ml = list((root / ML_STRATEGY_REL).glob("*.py"))
+def _count_strategies(root: Path | None) -> dict:
+    """
+    Count manual and ML strategy files.
+    Handles None or missing directories safely.
+    """
+    if root is None or not root.exists():
+        return {"manual_strategies": 0, "ml_strategies": 0}
+
+    manual_path = root / MANUAL_STRATEGY_REL
+    ml_path = root / ML_STRATEGY_REL
+
+    manual = list(manual_path.glob("*.py")) if manual_path.exists() else []
+    ml = list(ml_path.glob("*.py")) if ml_path.exists() else []
+
     return {
         "manual_strategies": len([f for f in manual if not f.name.startswith("__")]),
         "ml_strategies": len([f for f in ml if not f.name.startswith("__")]),
     }
 
 
-def _count_tests(root: Path) -> dict:
-    unit = list((root / UNIT_TEST_REL).glob("test_*.py"))
-    integration = list((root / INTEGRATION_TEST_REL).glob("test_*.py"))
+def _count_tests(root: Path | None) -> dict:
+    """
+    Count unit and integration test files.
+    Handles None or missing directories safely.
+    """
+    if root is None or not root.exists():
+        return {"unit_test_files": 0, "integration_test_files": 0}
+
+    unit_path = root / UNIT_TEST_REL
+    integration_path = root / INTEGRATION_TEST_REL
+
+    unit = list(unit_path.glob("test_*.py")) if unit_path.exists() else []
+    integration = list(integration_path.glob("test_*.py")) if integration_path.exists() else []
+
     return {
         "unit_test_files": len(unit),
         "integration_test_files": len(integration),
@@ -147,11 +186,22 @@ class CodeQualityLoop:
             **tests,
         }
 
-    def _persist(self, snapshot: dict) -> None:
+    def _persist(self, snapshot: Any) -> None:
+        """
+        Persist a snapshot to disk.
+        Ignores None or malformed snapshots.
+        """
+        if not isinstance(snapshot, dict):
+            logger.warning("code_quality: snapshot is not a dict, skipping persist")
+            return
         try:
             history = json.loads(QUALITY_FILE.read_text()) if QUALITY_FILE.exists() else []
+            if not isinstance(history, list):
+                history = []
             history.append(snapshot)
-            history = history[-HISTORY_LIMIT:]
+            # Ensure we keep at most HISTORY_LIMIT entries
+            if len(history) > HISTORY_LIMIT:
+                history = history[-HISTORY_LIMIT:]
             QUALITY_FILE.write_text(json.dumps(history, indent=2))
         except Exception as e:
             logger.warning("code_quality: failed to persist snapshot", error=str(e))
@@ -186,10 +236,16 @@ class CodeQualityLoop:
         self._running = False
 
     def latest(self) -> dict | None:
+        """
+        Return the most recent snapshot, or None if unavailable or malformed.
+        """
         if not QUALITY_FILE.exists():
             return None
         try:
-            history = json.loads(QUALITY_FILE.read_text())
-            return history[-1] if history else None
+            content = QUALITY_FILE.read_text()
+            history = json.loads(content) if content else []
+            if not isinstance(history, list) or not history:
+                return None
+            return history[-1]
         except Exception:
             return None

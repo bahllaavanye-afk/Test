@@ -84,18 +84,20 @@ class ComparisonOut(BaseModel):
         """
         improvement = None
         if m.manual_sharpe is not None and m.ml_sharpe is not None:
-            base = float(m.manual_sharpe) or MIN_MANUAL_SHARPE
+            # Use a minimal base to avoid division by zero
+            base = float(m.manual_sharpe) if float(m.manual_sharpe) != 0 else MIN_MANUAL_SHARPE
             improvement = (float(m.ml_sharpe) - float(m.manual_sharpe)) / abs(base)
+
         return cls(
             id=m.id,
             strategy_name=m.strategy_name,
             symbol=m.symbol,
-            manual_sharpe=float(m.manual_sharpe) if m.manual_sharpe else None,
-            ml_sharpe=float(m.ml_sharpe) if m.ml_sharpe else None,
+            manual_sharpe=float(m.manual_sharpe) if m.manual_sharpe is not None else None,
+            ml_sharpe=float(m.ml_sharpe) if m.ml_sharpe is not None else None,
             is_significant=m.is_significant,
             winner=m.winner,
-            spy_sharpe=float(m.spy_sharpe) if m.spy_sharpe else None,
-            ml_improvement_pct=round(improvement, IMPROVEMENT_PRECISION) if improvement else None,
+            spy_sharpe=float(m.spy_sharpe) if m.spy_sharpe is not None else None,
+            ml_improvement_pct=round(improvement, IMPROVEMENT_PRECISION) if improvement is not None else None,
         )
 
 
@@ -134,8 +136,16 @@ async def list_comparisons(
     List[ComparisonOut]
         A list of transformed comparison results.
     """
+    # Guard against unexpected None from the DB layer
     result = await db.execute(
-        select(ComparisonModel).order_by(ComparisonModel.created_at.desc()).limit(DEFAULT_LIMIT)
+        select(ComparisonModel)
+        .order_by(ComparisonModel.created_at.desc())
+        .limit(max(DEFAULT_LIMIT, 1))
     )
-    rows = result.scalars().all()
+    rows = result.scalars().all() if result is not None else []
+
+    # Ensure we always return a list, even if no rows are found
+    if not rows:
+        return []
+
     return [ComparisonOut.from_model(r) for r in rows]
