@@ -1506,9 +1506,12 @@ none of it has to be re-derived.
       market-analysis, ml-experiments, pnl-daily, risk-alerts, signals, squad-backend, squad-data, strategy-lab`
 - [ ] **[P2] `#desk-kalshi` is referenced by the unbuilt Kalshi desk item** but no producer posts to it — it will
       stay empty until that desk ships. Either build it or drop the channel from the plan.
-- [ ] **[P2] Desk channels only receive output when a desk PLACES an order.** With buying power at zero the desk
-      channels have been silent for hours while the desks ran fine — the same "silence means broken" ambiguity the
-      run summary fixed for `#pnl-daily`. Post the per-desk funnel line even on a zero-order run.
+- [x] **~~[P2] Desk channels only receive output when a desk PLACES an order.~~ ALREADY FIXED — found stale
+      2026-08-07 02:30.** `desk_order_placer.py:2870` posts to each desk's own channel on a zero-order run with
+      the drop reason, and carries the measurement that motivated it. Confirmed live: the 04:49 run shows
+      `[notify] delivered #desk-equities` with `orders_placed=0`. It deliberately posts **only when signals
+      actually fired**, so a genuinely quiet market stays quiet rather than becoming weekend noise — a
+      constraint worth not re-litigating. **Sixth queued item this session found stale on inspection.**
 
 ## 🔇 2026-08-04 09:50 — the OA scout committed 56 times having never found anything
 - [x] **Fixed: no-op runs no longer commit.** `oa_library.json` has read `{"known": []}` since it was created — every OA
