@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Verify thread counts",
-    "Verify dependency versions",
-    "* **Investor Pipeline Analysis**: Currently parsing log files in `backend/logs/investor_pipeline.log` to identify potential bottlenecks and gain insights in the investor pipeline (investor_pipeline).",
     "Here are 2-3 concise bullet points of the most important, actionable knowledge distilled from the recent agent learnings:",
     "Alert on timeouts",
     "Use UUID identifiers",
@@ -199,8 +196,11 @@
     "Bind thread pools",
     "Use EMA-VWAP-Stochastic-ADX strategy",
     "Implement S4 block for state-space modeling",
-    "Prepend lightweight S4 blocks"
+    "Prepend lightweight S4 blocks",
+    "Log trade timestamps",
+    "Validate input data",
+    "Cache market quotes"
   ],
-  "last_updated": "2026-08-07T14:11:02.804589+00:00",
+  "last_updated": "2026-08-07T15:23:35.748294+00:00",
   "total": 200
 }
