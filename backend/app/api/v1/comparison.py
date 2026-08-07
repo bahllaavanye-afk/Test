@@ -136,6 +136,16 @@ async def list_comparisons(
     List[ComparisonOut]
         A list of transformed comparison results.
     """
+    # Input validation
+    if db is None:
+        raise ValueError("Database session (db) must be provided.")
+    if not isinstance(db, AsyncSession):
+        raise ValueError(f"Database session (db) must be an instance of AsyncSession, got {type(db)}.")
+    if current_user is None:
+        raise ValueError("Authenticated user (current_user) must be provided.")
+    if not isinstance(current_user, User):
+        raise ValueError(f"Authenticated user (current_user) must be an instance of User, got {type(current_user)}.")
+
     # Guard against unexpected None from the DB layer
     result = await db.execute(
         select(ComparisonModel)
