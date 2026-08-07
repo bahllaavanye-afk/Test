@@ -89,19 +89,31 @@ class TradeOut(BaseModel):
         return v
 
 
+def _safe_float(value):
+    """Convert a value to float safely, returning None for None inputs."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 @router.get("/", response_model=list[TradeOut])
 async def list_trades(
-    limit: int = Query(50, ge=1, le=500),
+    limit: int | None = Query(50, ge=1, le=500),
     symbol: str | None = Query(None, description="Filter by symbol"),
     account_id: str | None = Query(None, description="Filter by account ID"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Return a list of recent trades for the current user with optional filters."""
-    # Guard against unexpected None or out‑of‑range values for limit.
-    if limit is None:
+    # Normalize limit, handling None and out‑of‑range values.
+    try:
+        limit = int(limit) if limit is not None else 50
+    except (TypeError, ValueError):
         limit = 50
-    elif limit < 1:
+    if limit < 1:
         limit = 1
     elif limit > 500:
         limit = 500
@@ -147,17 +159,17 @@ async def list_trades(
     if not rows:
         return []
 
-    # Convert rows to response models using a list comprehension for speed.
+    # Convert rows to response models, handling potential None values safely.
     return [
         TradeOut(
-            id=row.id,
-            symbol=row.symbol,
-            side=row.side,
-            realized_pnl=float(row.realized_pnl) if row.realized_pnl is not None else None,
-            entry_price=float(row.entry_price) if row.entry_price is not None else None,
-            exit_price=float(row.exit_price) if row.exit_price is not None else None,
-            avg_fill_price=float(row.avg_fill_price) if row.avg_fill_price is not None else None,
-            quantity=float(row.quantity),
+            id=str(row.id) if row.id is not None else "",
+            symbol=row.symbol or "",
+            side=row.side or "buy",
+            realized_pnl=_safe_float(row.realized_pnl),
+            entry_price=_safe_float(row.entry_price),
+            exit_price=_safe_float(row.exit_price),
+            avg_fill_price=_safe_float(row.avg_fill_price),
+            quantity=_safe_float(row.quantity) or 0.0,
             opened_at=row.opened_at,
             closed_at=row.closed_at,
             strategy_name=row.strategy_name,
