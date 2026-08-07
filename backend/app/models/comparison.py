@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, date
 from typing import Dict, Optional
+from functools import cached_property
 
 from sqlalchemy import String, Numeric, DateTime, Date, Boolean, JSON
 from sqlalchemy.orm import Mapped, mapped_column
@@ -108,3 +109,26 @@ class ComparisonResult(Base):
     equity_curves: Mapped[Optional[Dict]] = mapped_column(JSON)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    @cached_property
+    def computed_winner(self) -> str:
+        """
+        Determine the winning approach based on total returns.
+        Cached to avoid recomputation on repeated accesses.
+        Returns ``"ml"``, ``"manual"``, or ``"neither"``.
+        """
+        # Early exit if any required metric is missing
+        if self.ml_return is None or self.manual_return is None:
+            return "neither"
+
+        if self.ml_return > self.manual_return:
+            return "ml"
+        if self.manual_return > self.ml_return:
+            return "manual"
+        return "neither"
+
+    def __repr__(self) -> str:
+        return (
+            f"<ComparisonResult id={self.id} strategy={self.strategy_name} "
+            f"symbol={self.symbol} interval={self.interval} winner={self.winner}>"
+        )
