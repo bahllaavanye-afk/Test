@@ -1,9 +1,5 @@
 {
   "skills": [
-    "Verify SSL certificates",
-    "Set CPU quotas",
-    "Log memory usage",
-    "Monitor CPU usage",
     "Scan for duplicates",
     "Parse log files regularly",
     "Verify config files",
@@ -199,8 +195,12 @@
     "Track memory usage",
     "Monitor API rate limits",
     "Implement circuit breaker",
-    "Check clock sync"
+    "Check clock sync",
+    "Log API responses",
+    "Check SSL certs",
+    "Use UUIDs",
+    "Test DB conn"
   ],
-  "last_updated": "2026-08-07T18:09:37.299293+00:00",
+  "last_updated": "2026-08-07T19:27:45.079331+00:00",
   "total": 200
 }
