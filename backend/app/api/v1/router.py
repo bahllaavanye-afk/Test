@@ -3,8 +3,9 @@
 This module aggregates the individual feature routers for version 1 of the
 public API and registers them with a top‑level :class:`fastapi.APIRouter`
 instance. The resulting ``api_router`` is imported by the main FastAPI
-application.
+application and exposed under the ``/api/v1`` prefix.
 """
+
 import logging
 from typing import List, Optional, Tuple
 
@@ -46,7 +47,7 @@ from app.api.v1.webhooks import router as webhooks_router
 logger = logging.getLogger(__name__)
 
 api_router: APIRouter = APIRouter()
-
+"""Top‑level FastAPI router aggregating all version‑1 sub‑routers."""
 
 def _include(router_obj: Optional[APIRouter], name: str) -> None:
     """Safely include a sub‑router into the top‑level ``api_router``.
