@@ -26,6 +26,16 @@ ML_STRATEGY_REL = "app/strategies/ml_enhanced"
 UNIT_TEST_REL = "tests/unit"
 INTEGRATION_TEST_REL = "tests/integration"
 
+# File patterns
+PYTHON_GLOB_PATTERN = "*.py"
+TEST_GLOB_PATTERN = "test_*.py"
+DUNDER_PREFIX = "__"
+
+# Numeric constants
+MIN_CODE_LINES = 1
+RATIO_PRECISION = 3
+JSON_INDENT = 2
+
 QUALITY_FILE = Path(__file__).parents[3] / "experiments" / "results" / "code_quality.json"
 QUALITY_FILE.parent.mkdir(parents=True, exist_ok=True)
 
@@ -79,7 +89,7 @@ def _count_loc(root: Path) -> dict:
     # Track files we encounter to later purge stale cache entries
     seen_files = set()
 
-    for py_file in root.rglob("*.py"):
+    for py_file in root.rglob(PYTHON_GLOB_PATTERN):
         if _should_skip(py_file):
             continue
         seen_files.add(py_file)
@@ -108,22 +118,22 @@ def _count_loc(root: Path) -> dict:
         "code_lines": code_lines,
         "comment_lines": comment_lines,
         "blank_lines": blank_lines,
-        "comment_ratio": round(comment_lines / max(code_lines, 1), 3),
+        "comment_ratio": round(comment_lines / max(code_lines, MIN_CODE_LINES), RATIO_PRECISION),
     }
 
 
 def _count_strategies(root: Path) -> dict:
-    manual = list((root / MANUAL_STRATEGY_REL).glob("*.py"))
-    ml = list((root / ML_STRATEGY_REL).glob("*.py"))
+    manual = list((root / MANUAL_STRATEGY_REL).glob(PYTHON_GLOB_PATTERN))
+    ml = list((root / ML_STRATEGY_REL).glob(PYTHON_GLOB_PATTERN))
     return {
-        "manual_strategies": len([f for f in manual if not f.name.startswith("__")]),
-        "ml_strategies": len([f for f in ml if not f.name.startswith("__")]),
+        "manual_strategies": len([f for f in manual if not f.name.startswith(DUNDER_PREFIX)]),
+        "ml_strategies": len([f for f in ml if not f.name.startswith(DUNDER_PREFIX)]),
     }
 
 
 def _count_tests(root: Path) -> dict:
-    unit = list((root / UNIT_TEST_REL).glob("test_*.py"))
-    integration = list((root / INTEGRATION_TEST_REL).glob("test_*.py"))
+    unit = list((root / UNIT_TEST_REL).glob(TEST_GLOB_PATTERN))
+    integration = list((root / INTEGRATION_TEST_REL).glob(TEST_GLOB_PATTERN))
     return {
         "unit_test_files": len(unit),
         "integration_test_files": len(integration),
@@ -152,7 +162,7 @@ class CodeQualityLoop:
             history = json.loads(QUALITY_FILE.read_text()) if QUALITY_FILE.exists() else []
             history.append(snapshot)
             history = history[-HISTORY_LIMIT:]
-            QUALITY_FILE.write_text(json.dumps(history, indent=2))
+            QUALITY_FILE.write_text(json.dumps(history, indent=JSON_INDENT))
         except Exception as e:
             logger.warning("code_quality: failed to persist snapshot", error=str(e))
 
@@ -166,7 +176,7 @@ class CodeQualityLoop:
                 self._persist(snapshot)
 
                 signal_count = snapshot.get("manual_strategies", 0) + snapshot.get("ml_strategies", 0)
-                execution_time = round(time.perf_counter() - start_time, 3)
+                execution_time = round(time.perf_counter() - start_time, RATIO_PRECISION)
                 pnl = snapshot.get("pnl")
 
                 logger.info(
