@@ -50,36 +50,76 @@ def _float_or_none(v: Any) -> float | None:
         return None
 
 
-@router.post("/tradingview")
-async def receive_tradingview_alert(request: Request) -> dict:
-    start_time = time.perf_counter()
+def _get_secret() -> str:
+    """Retrieve the webhook secret from the environment."""
+    return os.environ.get("TRADINGVIEW_WEBHOOK_SECRET", "").strip()
 
-    secret = os.environ.get("TRADINGVIEW_WEBHOOK_SECRET", "").strip()
+
+def _ensure_secret_enabled(secret: str) -> None:
+    """Raise HTTPException if the webhook receiver is disabled."""
     if not secret:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="TradingView webhook receiver disabled — set TRADINGVIEW_WEBHOOK_SECRET.",
         )
 
+
+async def _parse_payload(request: Request) -> dict:
+    """Parse JSON body and ensure it is a dictionary."""
     try:
         payload = await request.json()
         if not isinstance(payload, dict):
             raise ValueError("payload must be a JSON object")
+        return payload
     except Exception:  # noqa: BLE001 — malformed body is a client error
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Body must be a JSON object.",
         )
 
+
+def _validate_secret(payload: dict, secret: str) -> None:
+    """Validate the secret contained in the payload."""
     if str(payload.get("secret") or "") != secret:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Bad or missing webhook secret.",
         )
 
-    alert = _normalize(payload)
+
+def _record_alert(alert: dict) -> None:
+    """Append alert to the ring buffer and trim to max size."""
     _RECENT_ALERTS.append(alert)
+    # Keep only the most recent _MAX_RECENT entries
     del _RECENT_ALERTS[:-_MAX_RECENT]
+
+
+async def _publish_to_redis(alert: dict) -> None:
+    """Publish the alert to Redis if a client is available."""
+    try:
+        from app.redis_client import get_redis
+
+        r = get_redis()
+        if r is not None:
+            import json as _json
+
+            await r.publish("tradingview:alerts", _json.dumps(alert))
+    except Exception as exc:  # noqa: BLE001 — receiver must not depend on Redis
+        logger.debug("tradingview alert: redis publish skipped", error=str(exc))
+
+
+@router.post("/tradingview")
+async def receive_tradingview_alert(request: Request) -> dict:
+    start_time = time.perf_counter()
+
+    secret = _get_secret()
+    _ensure_secret_enabled(secret)
+
+    payload = await _parse_payload(request)
+    _validate_secret(payload, secret)
+
+    alert = _normalize(payload)
+    _record_alert(alert)
 
     # Update monitoring counters
     global _TOTAL_ALERTS
@@ -97,17 +137,7 @@ async def receive_tradingview_alert(request: Request) -> dict:
         pnl=alert.get("pnl"),
     )
 
-    # Best-effort fan-out to Redis subscribers (strategies/dashboards may listen).
-    try:
-        from app.redis_client import get_redis
-
-        r = get_redis()
-        if r is not None:
-            import json as _json
-
-            await r.publish("tradingview:alerts", _json.dumps(alert))
-    except Exception as exc:  # noqa: BLE001 — receiver must not depend on Redis
-        logger.debug("tradingview alert: redis publish skipped", error=str(exc))
+    await _publish_to_redis(alert)
 
     return {"ok": True, "alert": alert}
 

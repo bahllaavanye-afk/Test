@@ -10,7 +10,7 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 
 from app.utils.logging import logger
 
@@ -61,55 +61,70 @@ def _compute_file_stats(py_file: Path) -> Dict[str, int]:
     return stats
 
 
-def _count_loc(root: Path) -> dict:
-    """
-    Count lines of code under ``root`` with caching.
-    Only files whose modification time has changed are re‑processed.
-    """
-    global _loc_cache
-
-    total_files = 0
-    total_lines = 0
-    code_lines = 0
-    blank_lines = 0
-    comment_lines = 0
-
-    # Gather current python files, respecting skip patterns
-    current_files = [
+def _gather_python_files(root: Path) -> List[Path]:
+    """Return a list of python files under ``root`` excluding skip patterns."""
+    return [
         py_file
         for py_file in root.rglob("*.py")
         if not any(skip in str(py_file) for skip in SKIP_PATTERNS)
     ]
 
-    # Remove cache entries for files that disappeared
+
+def _purge_vanished_cache(current_files: List[Path]) -> None:
+    """Remove cache entries for files that no longer exist."""
     vanished = set(_loc_cache) - set(current_files)
     for dead in vanished:
         del _loc_cache[dead]
 
-    for py_file in current_files:
-        total_files += 1
-        mtime = py_file.stat().st_mtime
-        cached = _loc_cache.get(py_file)
 
-        if cached and cached[0] == mtime:
-            stats = cached[1]
-        else:
-            stats = _compute_file_stats(py_file)
-            _loc_cache[py_file] = (mtime, stats)
+def _get_file_stats(py_file: Path) -> Dict[str, int]:
+    """
+    Retrieve LOC statistics for ``py_file`` using the cache when possible.
+    Updates the cache if the file has changed.
+    """
+    mtime = py_file.stat().st_mtime
+    cached = _loc_cache.get(py_file)
 
-        total_lines += stats["total_lines"]
-        code_lines += stats["code_lines"]
-        blank_lines += stats["blank_lines"]
-        comment_lines += stats["comment_lines"]
+    if cached and cached[0] == mtime:
+        return cached[1]
 
-    return {
-        "files": total_files,
-        "total_lines": total_lines,
-        "code_lines": code_lines,
-        "comment_lines": comment_lines,
-        "blank_lines": blank_lines,
-        "comment_ratio": round(comment_lines / max(code_lines, 1), 3),
+    stats = _compute_file_stats(py_file)
+    _loc_cache[py_file] = (mtime, stats)
+    return stats
+
+
+def _aggregate_loc_stats(files: List[Path]) -> Dict[str, int]:
+    """Aggregate LOC statistics across a list of python files."""
+    totals = {
+        "files": 0,
+        "total_lines": 0,
+        "code_lines": 0,
+        "blank_lines": 0,
+        "comment_lines": 0,
     }
+
+    for py_file in files:
+        totals["files"] += 1
+        stats = _get_file_stats(py_file)
+        totals["total_lines"] += stats["total_lines"]
+        totals["code_lines"] += stats["code_lines"]
+        totals["blank_lines"] += stats["blank_lines"]
+        totals["comment_lines"] += stats["comment_lines"]
+
+    totals["comment_ratio"] = round(
+        totals["comment_lines"] / max(totals["code_lines"], 1), 3
+    )
+    return totals
+
+
+def _count_loc(root: Path) -> dict:
+    """
+    Count lines of code under ``root`` with caching.
+    Only files whose modification time has changed are re‑processed.
+    """
+    python_files = _gather_python_files(root)
+    _purge_vanished_cache(python_files)
+    return _aggregate_loc_stats(python_files)
 
 
 def _count_strategies(root: Path) -> dict:
@@ -166,7 +181,9 @@ class CodeQualityLoop:
                 self._persist(snapshot)
 
                 # Compute key metrics for structured logging
-                signal_count = snapshot.get("manual_strategies", 0) + snapshot.get("ml_strategies", 0)
+                signal_count = snapshot.get("manual_strategies", 0) + snapshot.get(
+                    "ml_strategies", 0
+                )
                 execution_time = round(time.perf_counter() - start_time, 3)
                 pnl = snapshot.get("pnl")  # P&L not tracked here; will be None if absent
 
