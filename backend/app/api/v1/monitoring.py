@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import time
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -10,6 +12,9 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import get_current_user
 from app.models.user import User
+
+# Logger setup
+logger = logging.getLogger(__name__)
 
 # Constants
 ROUTER_PREFIX = "/monitoring"
@@ -108,7 +113,23 @@ async def get_health_report():
     Returns the most recent QA health report written by the QAMonitor background
     task, or a placeholder if the monitor has not yet completed its first cycle.
     """
-    return _load_health_report()
+    start_time = time.perf_counter()
+    report = _load_health_report()
+    elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+    # Extract key metrics if present
+    signal_count = report.get("signal_count")
+    pnl = report.get("pnl")
+    logger.info(
+        "Health report fetched",
+        extra={
+            "signal_count": signal_count,
+            "execution_time_ms": round(elapsed_ms, 2),
+            "pnl": pnl,
+            "status": report.get("status"),
+        },
+    )
+    return report
 
 
 @router.get(ENDPOINT_FIXES)
@@ -120,7 +141,20 @@ async def get_fix_log(
 
     Returns the last *limit* entries from the fix log (newest last).
     """
-    return _read_fix_log(limit)
+    start_time = time.perf_counter()
+    fixes = _read_fix_log(limit)
+    elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+    logger.info(
+        "Fix log retrieved",
+        extra={
+            "requested_limit": limit,
+            "returned_count": len(fixes),
+            "execution_time_ms": round(elapsed_ms, 2),
+            "user_id": getattr(current_user, "id", None),
+        },
+    )
+    return fixes
 
 
 @router.post(ENDPOINT_RUN_NOW)
@@ -133,5 +167,15 @@ async def trigger_qa_cycle(
     """
     from app.tasks.qa_monitor import run_one_cycle
 
+    start_time = time.perf_counter()
     asyncio.create_task(run_one_cycle())
+    elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+    logger.info(
+        "QA cycle triggered",
+        extra={
+            "user_id": getattr(current_user, "id", None),
+            "execution_time_ms": round(elapsed_ms, 2),
+        },
+    )
     return {RESPONSE_MESSAGE_KEY: QA_CYCLE_STARTED_MESSAGE}

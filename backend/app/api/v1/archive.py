@@ -1,8 +1,13 @@
 """Trade archive replay endpoints."""
+import logging
+import time
 from fastapi import APIRouter, Depends, Query, HTTPException
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.archive.trade_archiver import replay, list_archives
+
+# Logger
+logger = logging.getLogger(__name__)
 
 # Constants
 ARCHIVE_PREFIX: str = "/archive"
@@ -50,8 +55,15 @@ async def get_index(current_user: User = Depends(get_current_user)):
     Handles the case where the underlying function returns None.
     """
     archives = list_archives()
-    # Ensure a list is always returned
-    return archives if archives else []
+    result = archives if archives else []
+    logger.info(
+        "Archive index retrieved",
+        extra={
+            "user_id": getattr(current_user, "id", None),
+            "archive_count": len(result),
+        },
+    )
+    return result
 
 
 @router.get("/{category}")
@@ -77,6 +89,27 @@ async def get_archive(
     """
     normalized_date = _normalize_date(date)
     _validate_limit(limit)
+
+    start_time = time.perf_counter()
     result = _execute_replay(category, normalized_date, limit)
+    elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+    # Metrics
+    signal_count = len(result) if result else 0
+    pnl_total = sum(trade.get("pnl", 0) for trade in result) if result else 0
+
+    logger.info(
+        "Archive replay executed",
+        extra={
+            "user_id": getattr(current_user, "id", None),
+            "category": category,
+            "date": normalized_date,
+            "limit": limit,
+            "signal_count": signal_count,
+            "execution_time_ms": round(elapsed_ms, 2),
+            "pnl_total": pnl_total,
+        },
+    )
+
     # Ensure the endpoint always returns a list
     return result if result else []

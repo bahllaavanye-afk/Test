@@ -1,4 +1,6 @@
 """Self-improvement history endpoint."""
+import logging
+import time
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,6 +9,8 @@ from app.api.deps import get_current_user
 from app.models.user import User
 
 router = APIRouter(prefix="/improvements", tags=["improvements"])
+
+logger = logging.getLogger(__name__)
 
 
 def _apply_entry_filters(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -115,8 +119,21 @@ async def get_signal_quality(current_user: User = Depends(get_current_user)):
     """
     Return signals after applying tightened entry conditions and improved exit logic.
     """
+    start_time = time.perf_counter()
     improver = _get_improver()
     if improver is None:
         raise HTTPException(status_code=404, detail="Improver not initialized")
     final_signals = _retrieve_and_filter_signals(improver)
-    return {"filtered_signals": final_signals, "count": len(final_signals)}
+    count = len(final_signals)
+    total_pnl = sum(sig.get("pnl", 0) for sig in final_signals)
+    duration_ms = (time.perf_counter() - start_time) * 1000
+
+    logger.info(
+        "Processed signal quality",
+        extra={
+            "signal_count": count,
+            "execution_time_ms": round(duration_ms, 2),
+            "total_pnl": total_pnl,
+        },
+    )
+    return {"filtered_signals": final_signals, "count": count}

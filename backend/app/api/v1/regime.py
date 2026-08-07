@@ -30,7 +30,7 @@ _LABEL_MAP = {
 
 
 def _map_label(regime: str) -> str:
-    """Map detector regime to frontend-friendly label."""
+    """Map detector regime to frontend‑friendly label."""
     return _LABEL_MAP.get(regime, "unknown")
 
 
@@ -47,7 +47,7 @@ def _extract_confidences(states: Dict[str, Any]) -> List[float]:
 
 
 def _find_latest_updated(states: Dict[str, Any]) -> Optional[str]:
-    """Return the most recent updated_at timestamp among symbol states."""
+    """Return the most recent ``updated_at`` timestamp among symbol states."""
     return max(
         (sym_state.get("updated_at") for sym_state in states.values() if sym_state.get("updated_at")),
         default=None,
@@ -75,11 +75,19 @@ def _compute_aggregates(
 
 
 def _log_endpoint(endpoint: str, signal_count: int, start_time: float) -> None:
-    """Log execution details for an endpoint."""
+    """
+    Emit a structured INFO log entry for an endpoint execution.
+
+    Args:
+        endpoint: Name of the endpoint (function) that was called.
+        signal_count: Number of signals or items processed by the call.
+        start_time: Timestamp (seconds) captured at the beginning of the call.
+    """
     elapsed_ms = (time.time() - start_time) * 1000
     logger.info(
-        f"endpoint={endpoint}",
+        "Endpoint executed",
         extra={
+            "endpoint": endpoint,
             "signal_count": signal_count,
             "execution_time_ms": round(elapsed_ms, 2),
             "pnl": get_current_pnl(),
@@ -122,6 +130,7 @@ async def get_regime_states(current_user: User = Depends(get_current_user)):
 
 @router.get("/states/{symbol}")
 async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_current_user)):
+    """Regime classification for a single symbol."""
     start_time = time.time()
     state = regime_monitor.get(symbol.upper())
     if not state:
@@ -134,7 +143,7 @@ async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_cu
 
 @router.get("/correlation")
 async def get_correlation_matrix(current_user: User = Depends(get_current_user)):
-    """Live cross-strategy correlation matrix."""
+    """Live cross‑strategy correlation matrix."""
     start_time = time.time()
     matrix = correlation_monitor.matrix_as_list()
     reduced = list(correlation_monitor._reduced)
@@ -149,6 +158,7 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
 
 @router.get("/correlation/alerts")
 async def get_correlation_alerts(current_user: User = Depends(get_current_user)):
+    """Recent correlation alerts."""
     start_time = time.time()
     alerts = correlation_monitor.recent_alerts(50)
     _log_endpoint("get_correlation_alerts", len(alerts), start_time)
