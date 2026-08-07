@@ -22,10 +22,13 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_PREFIX = "agent:memory:"
-_MAX_LIST_LEN = 500  # cap per topic to avoid unbounded growth
-_TOPICS_SET_KEY = f"{_PREFIX}topics"
-_CACHE_TTL = 60  # seconds
+# ── Constants ─────────────────────────────────────────────────────────────
+AGENT_MEMORY_PREFIX = "agent:memory:"
+LATEST_SUBPREFIX = "latest:"
+MAX_LIST_LEN = 500  # cap per topic to avoid unbounded growth
+CACHE_TTL_SECONDS = 60  # seconds
+DEFAULT_READ_COUNT = 50
+TOPICS_SET_KEY = f"{AGENT_MEMORY_PREFIX}topics"
 
 
 class AgentMemory:
@@ -39,7 +42,7 @@ class AgentMemory:
 
     def _key(self, topic: str, *, latest: bool = False) -> str:
         """Construct a Redis key for a given topic."""
-        prefix = f"{_PREFIX}latest:" if latest else _PREFIX
+        prefix = f"{AGENT_MEMORY_PREFIX}{LATEST_SUBPREFIX}" if latest else AGENT_MEMORY_PREFIX
         return f"{prefix}{topic}"
 
     def _payload(self, data: dict) -> str:
@@ -56,7 +59,7 @@ class AgentMemory:
     async def _add_topic_to_set(self, topic: str) -> None:
         """Ensure the topic is recorded in the Redis set of topics."""
         try:
-            await self._r.sadd(_TOPICS_SET_KEY, topic)
+            await self._r.sadd(TOPICS_SET_KEY, topic)
         except Exception as e:
             await self._log_error("add_topic_to_set", topic, e)
 
@@ -68,7 +71,7 @@ class AgentMemory:
         key = self._key(topic)
         try:
             await self._r.lpush(key, payload)
-            await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
+            await self._r.ltrim(key, 0, MAX_LIST_LEN - 1)
             await self._add_topic_to_set(topic)
         except Exception as e:
             await self._log_error("write", topic, e)
@@ -85,7 +88,7 @@ class AgentMemory:
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
-    async def read_recent(self, topic: str, n: int = 50) -> list[dict]:
+    async def read_recent(self, topic: str, n: int = DEFAULT_READ_COUNT) -> list[dict]:
         """Return up to n most‑recent observations for a topic."""
         if n <= 0:
             return []
@@ -111,11 +114,11 @@ class AgentMemory:
         """List all memory topics currently stored."""
         async with self._lock:
             now = time.time()
-            if self._topics_cache is not None and (now - self._cache_timestamp) < _CACHE_TTL:
+            if self._topics_cache is not None and (now - self._cache_timestamp) < CACHE_TTL_SECONDS:
                 return self._topics_cache
 
             try:
-                raw_topics = await self._r.smembers(_TOPICS_SET_KEY)
+                raw_topics = await self._r.smembers(TOPICS_SET_KEY)
                 # smembers may return bytes; ensure strings
                 topics = [t.decode() if isinstance(t, (bytes, bytearray)) else str(t) for t in raw_topics]
                 self._topics_cache = topics
