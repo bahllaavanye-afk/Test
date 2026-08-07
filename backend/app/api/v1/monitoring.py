@@ -30,6 +30,7 @@ ENDPOINT_RUN_NOW = "/run-now"
 
 # Response keys
 RESPONSE_MESSAGE_KEY = "message"
+RESPONSE_STATUS_KEY = "status"
 
 # HTTP status codes
 HTTP_STATUS_INTERNAL_ERROR = 500
@@ -44,7 +45,10 @@ def _load_health_report() -> Dict[str, Any]:
     file exists but cannot be parsed.
     """
     if not HEALTH_REPORT_PATH.exists():
-        return {"status": DEFAULT_HEALTH_STATUS, "message": DEFAULT_HEALTH_MESSAGE}
+        return {
+            RESPONSE_STATUS_KEY: DEFAULT_HEALTH_STATUS,
+            RESPONSE_MESSAGE_KEY: DEFAULT_HEALTH_MESSAGE,
+        }
     try:
         return json.loads(HEALTH_REPORT_PATH.read_text())
     except Exception as exc:
