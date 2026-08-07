@@ -31,21 +31,25 @@ _MAX_RECENT = 200
 _TOTAL_ALERTS: int = 0
 
 
-def _normalize(payload: dict[str, Any]) -> dict[str, Any]:
+def _normalize(payload: dict[str, Any] | None) -> dict[str, Any]:
     """Best-effort normalization of TradingView's free-form alert JSON."""
+    if not payload:
+        payload = {}
+    symbol = str(payload.get("ticker") or payload.get("symbol") or "").strip().upper()
+    side = str(payload.get("action") or payload.get("side") or "").strip().lower()
     return {
-        "symbol": str(payload.get("ticker") or payload.get("symbol") or "").upper() or None,
-        "side": (str(payload.get("action") or payload.get("side") or "").lower() or None),
+        "symbol": symbol or None,
+        "side": side or None,
         "price": _float_or_none(payload.get("price") or payload.get("close")),
         "strategy": payload.get("strategy") or payload.get("indicator"),
-        "message": str(payload.get("message") or payload.get("comment") or "")[:500] or None,
+        "message": str(payload.get("message") or payload.get("comment") or "").strip()[:500] or None,
         "received_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
 def _float_or_none(v: Any) -> float | None:
     try:
-        return float(v) if v is not None else None
+        return float(v) if v is not None and v != "" else None
     except (TypeError, ValueError):
         return None
 
@@ -71,7 +75,7 @@ async def receive_tradingview_alert(request: Request) -> dict:
             detail="Body must be a JSON object.",
         )
 
-    if str(payload.get("secret") or "") != secret:
+    if str(payload.get("secret") or "").strip() != secret:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Bad or missing webhook secret.",
@@ -79,7 +83,9 @@ async def receive_tradingview_alert(request: Request) -> dict:
 
     alert = _normalize(payload)
     _RECENT_ALERTS.append(alert)
-    del _RECENT_ALERTS[:-_MAX_RECENT]
+    # Ensure the ring buffer never exceeds _MAX_RECENT items
+    if len(_RECENT_ALERTS) > _MAX_RECENT:
+        del _RECENT_ALERTS[:-_MAX_RECENT]
 
     # Update monitoring counters
     global _TOTAL_ALERTS
@@ -113,7 +119,16 @@ async def receive_tradingview_alert(request: Request) -> dict:
 
 
 @router.get("/tradingview/recent")
-async def recent_tradingview_alerts(limit: int = 50) -> dict:
+async def recent_tradingview_alerts(limit: int | None = 50) -> dict:
     """Most recent received alerts (process-local ring buffer)."""
+    # Guard against None or non‑positive limits
+    if limit is None:
+        limit = 0
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = 0
+    if limit <= 0:
+        return {"alerts": [], "count": len(_RECENT_ALERTS)}
     limit = max(1, min(limit, _MAX_RECENT))
     return {"alerts": _RECENT_ALERTS[-limit:][::-1], "count": len(_RECENT_ALERTS)}
