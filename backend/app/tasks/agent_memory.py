@@ -18,7 +18,7 @@ import json
 import logging
 import time
 import asyncio
-from typing import Any
+from typing import Any, Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,18 @@ class AgentMemory:
         else:
             logger.warning("AgentMemory.%s failed: %s", operation, exc)
 
+    async def _log_info(self, operation: str, topic: str | None, metrics: Mapping[str, Any]) -> None:
+        """Log successful operation metrics at INFO level."""
+        if topic:
+            logger.info(
+                "AgentMemory.%s success for topic %s | metrics=%s",
+                operation,
+                topic,
+                metrics,
+            )
+        else:
+            logger.info("AgentMemory.%s success | metrics=%s", operation, metrics)
+
     async def _add_topic_to_set(self, topic: str) -> None:
         """Ensure the topic is recorded in the Redis set of topics."""
         if not topic:
@@ -76,10 +88,19 @@ class AgentMemory:
             return
         payload = self._payload(data)
         key = self._key(topic)
+        start = time.monotonic()
         try:
             await self._r.lpush(key, payload)
             await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
             await self._add_topic_to_set(topic)
+            elapsed = time.monotonic() - start
+            metrics = {
+                "signal_count": 1,
+                "exec_time_ms": round(elapsed * 1000, 2),
+            }
+            if isinstance(data, dict) and "pnl" in data:
+                metrics["pnl"] = data["pnl"]
+            await self._log_info("write", topic, metrics)
         except Exception as e:
             await self._log_error("write", topic, e)
 
@@ -90,9 +111,18 @@ class AgentMemory:
             return
         payload = self._payload(data)
         key = self._key(topic, latest=True)
+        start = time.monotonic()
         try:
             await self._r.set(key, payload)
             await self._add_topic_to_set(topic)
+            elapsed = time.monotonic() - start
+            metrics = {
+                "signal_count": 1,
+                "exec_time_ms": round(elapsed * 1000, 2),
+            }
+            if isinstance(data, dict) and "pnl" in data:
+                metrics["pnl"] = data["pnl"]
+            await self._log_info("set_latest", topic, metrics)
         except Exception as e:
             await self._log_error("set_latest", topic, e)
 
@@ -106,9 +136,17 @@ class AgentMemory:
         if n <= 0:
             return []
         key = self._key(topic)
+        start = time.monotonic()
         try:
             items = await self._r.lrange(key, 0, n - 1)
-            return [json.loads(i) for i in items]
+            result = [json.loads(i) for i in items]
+            elapsed = time.monotonic() - start
+            metrics = {
+                "signal_count": len(result),
+                "exec_time_ms": round(elapsed * 1000, 2),
+            }
+            await self._log_info("read_recent", topic, metrics)
+            return result
         except Exception as e:
             await self._log_error("read_recent", topic, e)
             return []
@@ -119,9 +157,19 @@ class AgentMemory:
             await self._log_error("get_latest", topic, ValueError("Topic cannot be empty"))
             return None
         key = self._key(topic, latest=True)
+        start = time.monotonic()
         try:
             val = await self._r.get(key)
-            return json.loads(val) if val else None
+            result = json.loads(val) if val else None
+            elapsed = time.monotonic() - start
+            metrics = {
+                "signal_count": 1 if result else 0,
+                "exec_time_ms": round(elapsed * 1000, 2),
+            }
+            if isinstance(result, dict) and "pnl" in result:
+                metrics["pnl"] = result["pnl"]
+            await self._log_info("get_latest", topic, metrics)
+            return result
         except Exception as e:
             await self._log_error("get_latest", topic, e)
             return None
@@ -131,13 +179,25 @@ class AgentMemory:
         async with self._lock:
             now = time.time()
             if self._topics_cache is not None and (now - self._cache_timestamp) < _CACHE_TTL:
+                await self._log_info(
+                    "read_all_topics",
+                    None,
+                    {"signal_count": len(self._topics_cache), "exec_time_ms": 0},
+                )
                 return self._topics_cache
 
+            start = time.monotonic()
             try:
                 raw_topics = await self._r.smembers(_TOPICS_SET_KEY)
                 if not raw_topics:
                     self._topics_cache = []
                     self._cache_timestamp = now
+                    elapsed = time.monotonic() - start
+                    await self._log_info(
+                        "read_all_topics",
+                        None,
+                        {"signal_count": 0, "exec_time_ms": round(elapsed * 1000, 2)},
+                    )
                     return []
                 # smembers may return bytes; ensure strings
                 topics = [
@@ -146,6 +206,12 @@ class AgentMemory:
                 ]
                 self._topics_cache = topics
                 self._cache_timestamp = now
+                elapsed = time.monotonic() - start
+                await self._log_info(
+                    "read_all_topics",
+                    None,
+                    {"signal_count": len(topics), "exec_time_ms": round(elapsed * 1000, 2)},
+                )
                 return topics
             except Exception as e:
                 await self._log_error("read_all_topics", None, e)
