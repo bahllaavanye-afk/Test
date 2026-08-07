@@ -8,7 +8,7 @@ import asyncio
 import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 
 import pandas as pd
 
@@ -105,6 +105,64 @@ async def _download_hist(symbol: str, interval: str, start: datetime, end: datet
     return hist
 
 
+def _parse_config_file(cfg_path: Path) -> tuple[str, str, str]:
+    """
+    Parse a YAML configuration file (or fallback regex extraction) to obtain
+    the model name, symbol, and interval.
+
+    Returns a tuple (model, symbol, interval). If parsing fails, defaults are
+    returned.
+    """
+    try:
+        with open(cfg_path) as f:
+            if _load_yaml:
+                cfg = _load_yaml(f)
+            else:
+                # Minimal fallback: regex‑extract model/symbol/interval from YAML text
+                text = f.read()
+                cfg = {
+                    "experiment": {
+                        k: v
+                        for k, v in re.findall(
+                            REGEX_EXTRACT_PATTERN,
+                            text,
+                            re.MULTILINE,
+                        )
+                    }
+                }
+        exp = cfg.get("experiment", {})
+        model = exp.get("model", "lstm")
+        symbol = exp.get("symbol", "SPY")
+        interval = exp.get("interval", "1d")
+        return model, symbol, interval
+    except Exception:
+        # Return defaults on any error to keep the pipeline robust
+        return "lstm", "SPY", "1d"
+
+
+def _load_retrain_configs() -> list[tuple[str, str, str]]:
+    """
+    Discover retrain targets dynamically from experiment configs (*.yaml).
+    Falls back to a minimal default set if no configs exist or yaml is unavailable.
+    Returns list of (model_name, symbol, interval).
+    """
+    configs_dir = CONFIGS_DIR
+    seen: set[tuple[str, str, str]] = set()
+    results: list[tuple[str, str, str]] = []
+
+    for cfg_path in sorted(configs_dir.glob("*.yaml")):
+        model, symbol, interval = _parse_config_file(cfg_path)
+        key = (model, symbol, interval)
+        if key not in seen:
+            seen.add(key)
+            results.append(key)
+
+    if not results:
+        results = list(DEFAULT_RETRAIN_CONFIGS)
+
+    return results
+
+
 async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_INTERVAL) -> dict:
     """Download 2 years of data and retrain a model. Returns result dict."""
     try:
@@ -139,49 +197,12 @@ async def retrain_model(model_name: str, symbol: str, interval: str = DEFAULT_IN
         return {"status": "error", "error": str(e)}
 
 
-def _load_retrain_configs() -> list[tuple[str, str, str]]:
+def _aggregate_results(results: List[object]) -> int:
     """
-    Discover retrain targets dynamically from experiment configs (*.yaml).
-    Falls back to a minimal default set if no configs exist or yaml is unavailable.
-    Returns list of (model_name, symbol, interval).
+    Count successful retrain results. A result is considered successful if it is a
+    dictionary without a ``status`` of ``error``.
     """
-    configs_dir = CONFIGS_DIR
-    seen: set[tuple[str, str, str]] = set()
-    results: list[tuple[str, str, str]] = []
-
-    for cfg_path in sorted(configs_dir.glob("*.yaml")):
-        try:
-            with open(cfg_path) as f:
-                if _load_yaml:
-                    cfg = _load_yaml(f)
-                else:
-                    # Minimal fallback: regex‑extract model/symbol/interval from YAML text
-                    text = f.read()
-                    cfg = {
-                        "experiment": {
-                            k: v
-                            for k, v in re.findall(
-                                REGEX_EXTRACT_PATTERN,
-                                text,
-                                re.MULTILINE,
-                            )
-                        }
-                    }
-            exp = cfg.get("experiment", {})
-            model = exp.get("model", "lstm")
-            symbol = exp.get("symbol", "SPY")
-            interval = exp.get("interval", "1d")
-            key = (model, symbol, interval)
-            if key not in seen:
-                seen.add(key)
-                results.append(key)
-        except Exception:
-            continue
-
-    if not results:
-        results = list(DEFAULT_RETRAIN_CONFIGS)
-
-    return results
+    return sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
 
 
 async def nightly_retrain() -> None:
@@ -199,7 +220,7 @@ async def nightly_retrain() -> None:
         *(retrain_model(m, s, i) for m, s, i in retrain_configs),
         return_exceptions=True,
     )
-    successes = sum(1 for r in results if isinstance(r, dict) and r.get("status") != "error")
+    successes = _aggregate_results(results)
     logger.info(
         "Nightly retrain complete",
         total=len(retrain_configs),
