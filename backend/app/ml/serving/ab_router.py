@@ -1,16 +1,17 @@
 """
 A/B traffic router for ML model serving.
 
-Maintains an in-memory snapshot of release states refreshed lazily from DB.
+Maintains an in‑memory snapshot of release states refreshed lazily from DB.
 Routes each inference request to champion or challenger based on traffic_pct.
 
-Thread-safety: uses asyncio.Lock to prevent thundering-herd refreshes.
+Thread‑safety: uses asyncio.Lock to prevent thundering‑herd refreshes.
 """
 from __future__ import annotations
 
 import asyncio
 import random
 import time
+from collections import defaultdict
 from typing import NamedTuple
 
 import structlog
@@ -26,7 +27,7 @@ class RouteDecision(NamedTuple):
     version: str
     artifact_path: str
     framework: str
-    ab_group: str       # "champion" | "challenger" | "shadow"
+    ab_group: str  # "champion" | "challenger" | "shadow"
     traffic_pct: float
 
 
@@ -34,11 +35,11 @@ class RouteDecision(NamedTuple):
 
 class ABRouter:
     """
-    In-memory A/B router backed by the model_releases DB table.
+    In‑memory A/B router backed by the model_releases DB table.
 
     The snapshot is a dict mapping model_name → list of active release dicts.
     It is refreshed at most once per `refresh_interval_s` seconds using a
-    lazy-refresh strategy so the hot inference path is never blocked by a DB
+    lazy‑refresh strategy so the hot inference path is never blocked by a DB
     query (unless the cache is completely cold).
 
     Usage::
@@ -57,13 +58,15 @@ class ABRouter:
         self._snapshot: dict[str, list[dict]] = {}
         self._last_refresh: float = 0.0
         self._refresh_lock: asyncio.Lock = asyncio.Lock()
+        # Cache of recent route decisions to avoid repeated look‑ups within the same interval.
+        self._route_cache: dict[str, tuple[RouteDecision, float]] = {}
 
     # ── Snapshot management ────────────────────────────────────────────────────
 
     async def refresh(self) -> None:
         """Reload champion/challenger/shadow state from DB."""
         async with self._refresh_lock:
-            # Double-checked locking: another coroutine may have refreshed while
+            # Double‑checked locking: another coroutine may have refreshed while
             # we were waiting for the lock.
             if time.monotonic() - self._last_refresh < self._refresh_interval:
                 return
@@ -87,7 +90,7 @@ class ABRouter:
                     )
                     rows = result.all()
 
-                snapshot: dict[str, list[dict]] = {}
+                snapshot: dict[str, list[dict]] = defaultdict(list)
                 for row in rows:
                     entry = {
                         "id": row.id,
@@ -98,14 +101,17 @@ class ABRouter:
                         "status": row.status,
                         "traffic_pct": float(row.traffic_pct or 0),
                     }
-                    snapshot.setdefault(row.model_name, []).append(entry)
+                    snapshot[row.model_name].append(entry)
 
-                self._snapshot = snapshot
+                # Convert back to a regular dict for external visibility.
+                self._snapshot = dict(snapshot)
                 self._last_refresh = time.monotonic()
+                # Invalidate stale route decisions after a refresh.
+                self._route_cache.clear()
                 logger.debug(
                     "ABRouter: snapshot refreshed",
-                    n_models=len(snapshot),
-                    total_releases=sum(len(v) for v in snapshot.values()),
+                    n_models=len(self._snapshot),
+                    total_releases=sum(len(v) for v in self._snapshot.values()),
                 )
             except Exception as exc:
                 logger.error("ABRouter: refresh failed", error=str(exc))
@@ -123,12 +129,20 @@ class ABRouter:
         Returns None if no champion exists for this model name.
 
         Traffic splitting:
-        - If no challenger: champion receives 100 % of calls.
-        - If challenger with traffic_pct=T: challenger receives T % of calls,
-          champion receives (100-T) %.
+        - If no challenger: champion receives 100 % of calls.
+        - If challenger with traffic_pct=T: challenger receives T % of calls,
+          champion receives (100‑T) %.
         - Shadow releases: never routed; use :meth:`route_shadow` for logging.
         """
         await self._maybe_refresh()
+
+        # Fast‑path: reuse a cached decision if it is still fresh.
+        cached = self._route_cache.get(model_name)
+        now = time.monotonic()
+        if cached:
+            decision, ts = cached
+            if now - ts < self._refresh_interval:
+                return decision
 
         releases = self._snapshot.get(model_name, [])
         champion = next((r for r in releases if r["status"] == "champion"), None)
@@ -142,7 +156,7 @@ class ABRouter:
         else:
             chosen = champion
 
-        return RouteDecision(
+        decision = RouteDecision(
             release_id=chosen["id"],
             model_name=chosen["model_name"],
             version=chosen["version"],
@@ -151,6 +165,9 @@ class ABRouter:
             ab_group=chosen["status"],
             traffic_pct=chosen["traffic_pct"],
         )
+        # Store for the remainder of the current refresh interval.
+        self._route_cache[model_name] = (decision, now)
+        return decision
 
     def get_champion(self, model_name: str) -> dict | None:
         """Return the champion release dict for *model_name* from the snapshot."""
@@ -168,19 +185,21 @@ class ABRouter:
 
     def invalidate(self, model_name: str | None = None) -> None:
         """
-        Force the next call to route() to re-read from DB.
+        Force the next call to route() to re‑read from DB.
 
         Call this after any promote/archive action to prevent stale routing.
         Pass model_name to invalidate just one model, or None for full invalidation.
         """
         if model_name:
             self._snapshot.pop(model_name, None)
+            self._route_cache.pop(model_name, None)
         else:
             self._snapshot.clear()
+            self._route_cache.clear()
         self._last_refresh = 0.0
 
 
-# ── Module-level singleton ────────────────────────────────────────────────────
+# ── Module‑level singleton ────────────────────────────────────────────────────
 # Initialised in app startup (main.py lifespan or first use).
 _router: ABRouter | None = None
 
@@ -189,5 +208,6 @@ def get_ab_router() -> ABRouter:
     global _router
     if _router is None:
         from app.database import AsyncSessionLocal
+
         _router = ABRouter(AsyncSessionLocal)
     return _router
