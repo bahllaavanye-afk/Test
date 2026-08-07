@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -41,12 +41,16 @@ def _load_health_report() -> Dict[str, Any]:
     """Load the health report JSON from disk.
 
     Returns a dictionary with the report contents. Raises HTTPException if the
-    file exists but cannot be parsed.
+    file exists but cannot be parsed or is empty.
     """
     if not HEALTH_REPORT_PATH.exists():
         return {"status": DEFAULT_HEALTH_STATUS, "message": DEFAULT_HEALTH_MESSAGE}
     try:
-        return json.loads(HEALTH_REPORT_PATH.read_text())
+        raw = HEALTH_REPORT_PATH.read_text().strip()
+        if not raw:
+            # Empty file – treat as not yet run
+            return {"status": DEFAULT_HEALTH_STATUS, "message": DEFAULT_HEALTH_MESSAGE}
+        return json.loads(raw)
     except Exception as exc:
         raise HTTPException(
             status_code=HTTP_STATUS_INTERNAL_ERROR,
@@ -71,10 +75,16 @@ def _read_fix_log_file() -> str:
         ) from exc
 
 
-def _parse_fix_log_lines(lines: List[str]) -> List[Dict[str, Any]]:
-    """Parse newline‑delimited JSON lines into a list of dictionaries."""
+def _parse_fix_log_lines(lines: Optional[List[str]]) -> List[Dict[str, Any]]:
+    """Parse newline‑delimited JSON lines into a list of dictionaries.
+
+    Empty or None inputs result in an empty list.
+    """
+    if not lines:
+        return []
     try:
-        return [json.loads(line) for line in lines]
+        # Skip any empty lines that may appear due to trailing newlines
+        return [json.loads(line) for line in lines if line.strip()]
     except Exception as exc:
         raise HTTPException(
             status_code=HTTP_STATUS_INTERNAL_ERROR,
@@ -82,22 +92,40 @@ def _parse_fix_log_lines(lines: List[str]) -> List[Dict[str, Any]]:
         ) from exc
 
 
-def _select_recent_lines(lines: List[str], limit: int) -> List[str]:
-    """Select the most recent *limit* lines from the log."""
-    return lines[-limit:] if limit > 0 else []
+def _select_recent_lines(lines: Optional[List[str]], limit: Optional[int]) -> List[str]:
+    """Select the most recent *limit* lines from the log.
+
+    Handles None or negative limits gracefully by returning an empty list.
+    """
+    if not lines or not limit or limit <= 0:
+        return []
+    # Python slicing handles limits larger than the list length correctly
+    return lines[-limit:]
 
 
-def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
+def _sanitize_limit(limit: Optional[int]) -> int:
+    """Ensure *limit* is a non‑negative integer.
+
+    If the supplied limit is None, negative, or not an int, fall back to
+    DEFAULT_FIX_LOG_LIMIT. Zero is allowed and results in an empty list.
+    """
+    if isinstance(limit, int) and limit >= 0:
+        return limit
+    return DEFAULT_FIX_LOG_LIMIT
+
+
+def _read_fix_log(limit: Optional[int]) -> List[Dict[str, Any]]:
     """Read the fix log and return the most recent *limit* entries.
 
     The log is stored as newline‑delimited JSON. Empty or missing files result in
     an empty list. Any parsing error raises an HTTPException.
     """
+    safe_limit = _sanitize_limit(limit)
     raw_text = _read_fix_log_file()
     if not raw_text:
         return []
     lines = raw_text.splitlines()
-    recent = _select_recent_lines(lines, limit)
+    recent = _select_recent_lines(lines, safe_limit)
     return _parse_fix_log_lines(recent)
 
 
@@ -113,12 +141,13 @@ async def get_health_report():
 
 @router.get(ENDPOINT_FIXES)
 async def get_fix_log(
-    limit: int = DEFAULT_FIX_LOG_LIMIT,
+    limit: Optional[int] = DEFAULT_FIX_LOG_LIMIT,
     current_user: User = Depends(get_current_user),
 ):
     """Recent auto‑fixes applied by the QA monitor (requires auth).
 
-    Returns the last *limit* entries from the fix log (newest last).
+    Returns the last *limit* entries from the fix log (newest last). A None,
+    negative, or non‑integer limit is treated as the default limit.
     """
     return _read_fix_log(limit)
 
