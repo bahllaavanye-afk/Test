@@ -1,8 +1,5 @@
 {
   "skills": [
-    "* Consider maintaining a 70/30 split between statistical arb and directional trading, but be cautious and trim headroom if necessary (e.g., to 1.5% today).",
-    "Apply strict type checking",
-    "Monitor model performance.",
     "Check SSL cert",
     "Verify clock sync",
     "Limit trade size",
@@ -199,8 +196,11 @@
     "Rotate log files",
     "Monitor agent performance",
     "Analyze trade win rates",
-    "Optimize risk policies"
+    "Optimize risk policies",
+    "Validate user inputs",
+    "Check API rate limits",
+    "Verify trade syntax"
   ],
-  "last_updated": "2026-08-07T20:06:21.431030+00:00",
+  "last_updated": "2026-08-07T21:09:11.219877+00:00",
   "total": 200
 }
