@@ -49,7 +49,7 @@
       "lstm_btc_1h_v1",
       "xgb_spy_daily_v1"
     ],
-    "last_updated": 1786125080.958024,
+    "last_updated": 1786128309.6240773,
     "paper_active_strategies": [],
     "live_candidate_strategies": [],
     "top_strategies": [
@@ -110,8 +110,8 @@
     },
     "opinion_score": 5,
     "macro_score": 2,
-    "vix": 14.97,
-    "market_scan_ts": 1786125080.9296415,
+    "vix": 14.94,
+    "market_scan_ts": 1786128309.5900893,
     "sector_leaders": [
       "Energy",
       "Materials",
@@ -131,17 +131,17 @@
       "EOG",
       "ADBE",
       "FCX",
-      "XLK",
       "CRWD",
+      "XLK",
       "PANW",
       "QQQ",
+      "XLI",
       "ORCL",
       "IWM",
+      "MA",
       "MSFT",
       "AVGO",
-      "MA",
-      "XLI",
-      "META",
+      "CVX",
       "SPY"
     ],
     "top_momentum": [
@@ -152,19 +152,12 @@
       "ADBE"
     ],
     "risk_flags": [
-      "Gold/SPY ratio surging (+3.2% 20d) \u2014 safe-haven rotation"
+      "Gold/SPY ratio surging (+3.3% 20d) \u2014 safe-haven rotation"
     ],
     "risk_status": "normal",
     "last_brain_update": 1786092828.8669753
   },
   "episodic": [
-    {
-      "lesson": "Equities desk only placed 3 orders from 18 surviving signals \u2014 investigate funnel drop-off from generation to placement for optimization",
-      "category": "strategy",
-      "priority": 2,
-      "source": "company_brain_synthesis",
-      "ts": 1785521779.7403119
-    },
     {
       "lesson": "Crypto desk has no signals fired while other desks are active \u2014 check if the signal generation pipeline or market conditions are the cause",
       "category": "strategy",
@@ -1942,6 +1935,23 @@
       ],
       "lesson": "Regime=bull (score=2). Leading: Energy, Materials. Gaps: 8, Breakouts: 0, Risk flags: 1.",
       "ts": 1786125080.963504
+    },
+    {
+      "source": "market_scanner_v2",
+      "regime": "bull",
+      "score": 2,
+      "sector_leaders": [
+        "Energy",
+        "Materials",
+        "Financials"
+      ],
+      "gap_count": 8,
+      "breakout_count": 0,
+      "risk_flags": [
+        "Gold/SPY ratio surging (+3.3% 20d) \u2014 safe-haven rotation"
+      ],
+      "lesson": "Regime=bull (score=2). Leading: Energy, Materials. Gaps: 8, Breakouts: 0, Risk flags: 1.",
+      "ts": 1786128309.6282861
     }
   ],
   "github_insights": [
