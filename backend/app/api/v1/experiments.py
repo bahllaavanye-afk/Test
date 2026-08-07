@@ -1,4 +1,10 @@
-"""ML experiment tracking endpoints."""
+"""API endpoints for tracking and managing ML experiments.
+
+Provides routes to list experiments, trigger training runs, list available
+configuration files, and retrieve detailed information about a specific
+experiment. All endpoints require authentication via ``get_current_user``.
+"""
+
 import asyncio
 import logging
 import uuid
@@ -53,7 +59,15 @@ async def list_experiments(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> List[ExperimentOut]:
-    """Return the most recent experiments limited by ``MAX_EXPERIMENTS``."""
+    """Return the most recent experiments limited by ``MAX_EXPERIMENTS``.
+
+    Args:
+        db: Asynchronous SQLAlchemy session.
+        current_user: Authenticated user (unused but required for auth).
+
+    Returns:
+        A list of up to ``MAX_EXPERIMENTS`` experiment summary objects.
+    """
     if MAX_EXPERIMENTS <= 0:
         return []
     result = await db.execute(
@@ -71,11 +85,21 @@ class TrainRequest(BaseModel):
 
 
 async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
-    """Background task: run the experiment script for the given config."""
+    """Run the experiment script as a background asyncio task.
+
+    The function spawns a subprocess that executes ``run_experiment.py`` with
+    the supplied configuration file and experiment identifier.
+
+    Args:
+        config_name: Name of the configuration (without extension).
+        experiment_id: Unique identifier for the experiment.
+    """
     script = Path(__file__).parents[4] / "experiments" / "run_experiment.py"
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
     if not config_path.is_file():
-        logger.error("Config file %s does not exist for experiment %s", config_path, experiment_id)
+        logger.error(
+            "Config file %s does not exist for experiment %s", config_path, experiment_id
+        )
         return
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -94,7 +118,15 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
 
 
 def _format_config_not_found_message(config_name: str, available: List[str]) -> str:
-    """Create a user‑friendly error message when a config file cannot be found."""
+    """Create a user‑friendly error message when a config file cannot be found.
+
+    Args:
+        config_name: The requested configuration name.
+        available: List of available configuration names.
+
+    Returns:
+        Formatted error message string.
+    """
     display_list = available[:CONFIGS_LIMIT_DISPLAY]
     suffix = "..." if len(available) > CONFIGS_LIMIT_DISPLAY else ""
     return CONFIG_NOT_FOUND_TEMPLATE.format(
@@ -104,7 +136,17 @@ def _format_config_not_found_message(config_name: str, available: List[str]) -> 
 
 
 def _validate_config_exists(config_name: str) -> Path:
-    """Ensure the YAML config file exists, otherwise raise ``HTTPException``."""
+    """Ensure the YAML config file exists, otherwise raise ``HTTPException``.
+
+    Args:
+        config_name: Name of the configuration (without extension).
+
+    Returns:
+        Path to the existing configuration file.
+
+    Raises:
+        HTTPException: If ``config_name`` is empty (400) or the file does not exist (404).
+    """
     if not config_name:
         raise HTTPException(status_code=400, detail="Config name must not be empty")
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
@@ -116,7 +158,16 @@ def _validate_config_exists(config_name: str) -> Path:
 
 
 def _create_experiment_record(config_name: str, experiment_id: str, now: datetime) -> Experiment:
-    """Construct a new ``Experiment`` ORM instance with initial status."""
+    """Construct a new ``Experiment`` ORM instance with initial status.
+
+    Args:
+        config_name: Name of the configuration used for the experiment.
+        experiment_id: Unique identifier for the new experiment.
+        now: Timestamp representing the creation time (UTC).
+
+    Returns:
+        An ``Experiment`` model instance ready to be persisted.
+    """
     return Experiment(
         id=experiment_id,
         name=f"{config_name}-{now.strftime('%Y%m%d%H%M%S')}",
@@ -137,6 +188,15 @@ async def trigger_training(
 
     Returns immediately with ``experiment_id`` and ``status='queued'``.
     The training runs as a background asyncio task.
+
+    Args:
+        body: Payload containing the configuration name.
+        db: Asynchronous SQLAlchemy session.
+        current_user: Authenticated user.
+
+    Returns:
+        Mapping with the generated ``experiment_id``, queued ``status``,
+        and the normalized ``config_name``.
     """
     config_name = body.config_name.removesuffix(".yaml")
     if not config_name:
@@ -167,7 +227,16 @@ async def trigger_training(
 async def list_train_configs(
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, List[str]]:
-    """List available training config names."""
+    """List available training config names.
+
+    Args:
+        current_user: Authenticated user.
+
+    Returns:
+        Dictionary with a single key ``CONFIGS_KEY`` mapping to a list of config
+        base names (without extension). Returns an empty list if the directory
+        does not exist.
+    """
     if not CONFIGS_DIR.exists():
         return {CONFIGS_KEY: []}
     configs = sorted(p.stem for p in CONFIGS_DIR.glob("*.yaml"))
@@ -180,7 +249,20 @@ async def get_experiment(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """Retrieve detailed information for a specific experiment."""
+    """Retrieve detailed information for a specific experiment.
+
+    Args:
+        experiment_id: Unique identifier of the experiment to fetch.
+        db: Asynchronous SQLAlchemy session.
+        current_user: Authenticated user.
+
+    Returns:
+        Dictionary containing all stored fields of the experiment.
+
+    Raises:
+        HTTPException: If ``experiment_id`` is empty or the experiment cannot be
+        found in the database.
+    """
     if not experiment_id:
         raise HTTPException(status_code=404, detail=EXPERIMENT_NOT_FOUND)
     result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))

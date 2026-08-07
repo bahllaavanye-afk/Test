@@ -1,3 +1,9 @@
+"""ORM models for machine‑learning models and their predictions.
+
+This module defines the SQLAlchemy ``Base`` subclasses used throughout the
+platform to store trained models and the predictions they generate.
+"""
+
 import uuid
 from datetime import datetime
 from typing import List, Optional
@@ -14,6 +20,48 @@ EXIT_CONFIDENCE_DROP: float = 0.20        # Confidence drop that triggers an exi
 
 
 class MLModel(Base):
+    """SQLAlchemy model representing a trained machine‑learning model.
+
+    Attributes
+    ----------
+    id : Mapped[str]
+        Primary‑key UUID string.
+    name : Mapped[str]
+        Human‑readable name of the model.
+    model_type : Mapped[str]
+        Type of model (e.g., ``'lstm'``, ``'xgboost'``, ``'lorentzian'``, ``'tft'``,
+        ``'ensemble'``).
+    market_type : Mapped[str]
+        Market the model is built for (e.g., ``'equity'``, ``'crypto'``,
+        ``'polymarket'``).
+    symbol : Mapped[Optional[str]]
+        Specific symbol the model targets, or ``None`` for a multi‑symbol model.
+    version : Mapped[int]
+        Incremental version number of the model.
+    artifact_path : Mapped[str]
+        Filesystem path to the serialized model artifact.
+    hyperparams : Mapped[dict]
+        Hyper‑parameter dictionary stored as JSON.
+    features : Mapped[list]
+        List of feature names used by the model.
+    train_start : Mapped[Optional[datetime]]
+        Timestamp marking the start of the training period.
+    train_end : Mapped[Optional[datetime]]
+        Timestamp marking the end of the training period.
+    val_accuracy : Mapped[Optional[float]]
+        Validation accuracy metric.
+    val_sharpe : Mapped[Optional[float]]
+        Validation Sharpe ratio.
+    val_loss : Mapped[Optional[float]]
+        Validation loss.
+    is_active : Mapped[bool]
+        Flag indicating whether the model is currently active.
+    trained_at : Mapped[datetime]
+        Timestamp when the model was trained.
+    predictions : Mapped[List[\"MLPrediction\"]]
+        Relationship to :class:`MLPrediction` objects.
+    """
+
     __tablename__ = "ml_models"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -38,19 +86,37 @@ class MLModel(Base):
     )
 
     def latest_prediction(self) -> Optional["MLPrediction"]:
-        """Return the most recent prediction based on timestamp."""
+        """Return the most recent prediction based on timestamp.
+
+        Returns
+        -------
+        Optional[MLPrediction]
+            The prediction with the highest ``ts`` value, or ``None`` if no
+            predictions are associated with the model.
+        """
         if not self.predictions:
             return None
         return max(self.predictions, key=lambda p: p.ts)
 
     def is_signal_strong(self, recent: List["MLPrediction"]) -> bool:
-        """
-        Determine if the entry signal meets tightened criteria.
+        """Determine whether a recent set of predictions satisfies entry criteria.
 
-        Conditions:
-        1. Latest prediction confidence exceeds ENTRY_CONFIDENCE_THRESHOLD.
-        2. Prediction direction is not 'neutral'.
-        3. At least CONFIRMATION_COUNT of the most recent predictions share the same direction.
+        The signal is considered strong when:
+
+        * The latest prediction confidence exceeds :data:`ENTRY_CONFIDENCE_THRESHOLD`.
+        * The latest prediction direction is not ``'neutral'``.
+        * At least :data:`CONFIRMATION_COUNT` of the most recent predictions share
+          the same direction as the latest one.
+
+        Parameters
+        ----------
+        recent : List[MLPrediction]
+            A list of recent predictions to evaluate.
+
+        Returns
+        -------
+        bool
+            ``True`` if the entry signal meets all criteria; otherwise ``False``.
         """
         if not recent:
             return False
@@ -59,7 +125,6 @@ class MLModel(Base):
         if latest.prediction == "neutral" or latest.confidence < ENTRY_CONFIDENCE_THRESHOLD:
             return False
 
-        # Count consecutive predictions with the same direction as the latest
         same_dir_count = 0
         for pred in sorted(recent, key=lambda p: p.ts, reverse=True):
             if pred.prediction == latest.prediction:
@@ -67,17 +132,29 @@ class MLModel(Base):
                 if same_dir_count >= CONFIRMATION_COUNT:
                     return True
             else:
-                break  # Stop counting once a different direction appears
+                break
 
         return False
 
     def should_exit(self, recent: List["MLPrediction"]) -> bool:
-        """
-        Evaluate exit conditions.
+        """Evaluate whether the position should be exited based on recent predictions.
 
-        Exit is triggered when:
-        * Confidence drops below (ENTRY_CONFIDENCE_THRESHOLD - EXIT_CONFIDENCE_DROP), or
-        * An opposite prediction appears within the recent window.
+        Exit conditions are triggered when:
+
+        * The latest prediction confidence falls below
+          ``ENTRY_CONFIDENCE_THRESHOLD - EXIT_CONFIDENCE_DROP``.
+        * An opposite prediction direction appears within the supplied recent
+          window.
+
+        Parameters
+        ----------
+        recent : List[MLPrediction]
+            A list of recent predictions to evaluate.
+
+        Returns
+        -------
+        bool
+            ``True`` if any exit condition is met; otherwise ``False``.
         """
         if not recent:
             return False
@@ -87,7 +164,6 @@ class MLModel(Base):
         if latest.confidence < confidence_floor:
             return True
 
-        # Detect opposite direction within the recent predictions
         opposite = {"up": "down", "down": "up"}
         opposite_dir = opposite.get(latest.prediction)
         if opposite_dir:
@@ -99,6 +175,32 @@ class MLModel(Base):
 
 
 class MLPrediction(Base):
+    """SQLAlchemy model representing a single prediction generated by an :class:`MLModel`.
+
+    Attributes
+    ----------
+    id : Mapped[str]
+        Primary‑key UUID string.
+    model_id : Mapped[str]
+        Foreign key linking to the originating :class:`MLModel`.
+    symbol : Mapped[str]
+        Symbol the prediction applies to.
+    ts : Mapped[datetime]
+        Timestamp of the prediction (timezone‑aware).
+    prediction : Mapped[str]
+        Directional prediction – ``'up'``, ``'down'`` or ``'neutral'``.
+    confidence : Mapped[float]
+        Model confidence for the prediction (0‑1 range).
+    feature_values : Mapped[dict]
+        Feature values used for this prediction, stored as JSON.
+    actual_outcome : Mapped[Optional[str]]
+        Realised outcome filled in ex‑post; ``None`` if not yet known.
+    created_at : Mapped[datetime]
+        Timestamp when the record was created.
+    model : Mapped[MLModel]
+        Relationship back to the originating model.
+    """
+
     __tablename__ = "ml_predictions"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))

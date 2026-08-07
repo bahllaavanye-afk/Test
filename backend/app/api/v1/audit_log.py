@@ -23,7 +23,7 @@ from app.models.user import User
 from pydantic import BaseModel, ConfigDict
 
 
-router = APIRouter(prefix="/audit-log", tags=["audit-log"])
+router: APIRouter = APIRouter(prefix="/audit-log", tags=["audit-log"])
 
 
 class AuditLogOut(BaseModel):
@@ -55,10 +55,10 @@ class AuditLogOut(BaseModel):
 
     id: str
     action: str
-    resource_type: str | None
-    resource_id: str | None
-    ip_address: str | None
-    user_agent: str | None
+    resource_type: Optional[str]
+    resource_id: Optional[str]
+    ip_address: Optional[str]
+    user_agent: Optional[str]
     extra_data: dict
     created_at: datetime
 
