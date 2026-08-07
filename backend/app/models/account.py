@@ -43,17 +43,32 @@ class Account(Base, TimestampMixin):
         Returns:
             bool: ``True`` if the signal passes all checks, ``False`` otherwise.
         """
-        if not self.is_active:
-            return False
+        if not isinstance(signal, dict):
+            raise ValueError("signal must be a dictionary")
+        if not isinstance(market_data, dict):
+            raise ValueError("market_data must be a dictionary")
 
-        price = signal.get("price")
-        volume = signal.get("volume")
-        if price is None or volume is None:
+        required_fields = ("price", "volume")
+        for field in required_fields:
+            if field not in signal:
+                raise ValueError(f"signal missing required field: '{field}'")
+
+        price = signal["price"]
+        volume = signal["volume"]
+
+        if not isinstance(price, (int, float)):
+            raise ValueError("signal field 'price' must be a numeric type")
+        if not isinstance(volume, (int, float)):
+            raise ValueError("signal field 'volume' must be a numeric type")
+
+        if not self.is_active:
             return False
         if price <= 0:
             return False
 
         min_volume = self.extra_config.get("min_volume", 0)
+        if not isinstance(min_volume, (int, float)):
+            raise ValueError("extra_config field 'min_volume' must be numeric")
         if volume < min_volume:
             return False
 
@@ -62,6 +77,8 @@ class Account(Base, TimestampMixin):
             ma = market_data.get("ma")
             if ma is None:
                 return False
+            if not isinstance(ma, (int, float)):
+                raise ValueError("market_data field 'ma' must be numeric")
             if price <= ma:
                 return False
 
@@ -84,24 +101,48 @@ class Account(Base, TimestampMixin):
         Returns:
             bool: ``True`` if the position meets any exit condition, ``False`` otherwise.
         """
-        entry_price = position.get("entry_price")
-        unrealized_pnl = position.get("unrealized_pnl")
-        if entry_price is None or unrealized_pnl is None:
-            return False
+        if not isinstance(position, dict):
+            raise ValueError("position must be a dictionary")
+        if not isinstance(market_data, dict):
+            raise ValueError("market_data must be a dictionary")
+
+        required_fields = ("entry_price", "unrealized_pnl")
+        for field in required_fields:
+            if field not in position:
+                raise ValueError(f"position missing required field: '{field}'")
+
+        entry_price = position["entry_price"]
+        unrealized_pnl = position["unrealized_pnl"]
+
+        if not isinstance(entry_price, (int, float)):
+            raise ValueError("position field 'entry_price' must be numeric")
+        if not isinstance(unrealized_pnl, (int, float)):
+            raise ValueError("position field 'unrealized_pnl' must be numeric")
 
         stop_loss_pct = self.extra_config.get("stop_loss_pct", 0.05)  # 5% default
         take_profit_pct = self.extra_config.get("take_profit_pct", 0.10)  # 10% default
 
+        if not isinstance(stop_loss_pct, (int, float)):
+            raise ValueError("extra_config field 'stop_loss_pct' must be numeric")
+        if not isinstance(take_profit_pct, (int, float)):
+            raise ValueError("extra_config field 'take_profit_pct' must be numeric")
+
         if unrealized_pnl <= -stop_loss_pct * entry_price:
             return True
-        if unrealized_pnl >= take_profit_pct * entry_price:
+        if unrealified_pnl >= take_profit_pct * entry_price:
             return True
 
         trailing_stop_pct = self.extra_config.get("trailing_stop_pct")
         if trailing_stop_pct is not None:
+            if not isinstance(trailing_stop_pct, (int, float)):
+                raise ValueError("extra_config field 'trailing_stop_pct' must be numeric")
             high_price = market_data.get("high_price")
             current_price = market_data.get("price")
             if high_price is not None and current_price is not None:
+                if not isinstance(high_price, (int, float)):
+                    raise ValueError("market_data field 'high_price' must be numeric")
+                if not isinstance(current_price, (int, float)):
+                    raise ValueError("market_data field 'price' must be numeric")
                 if (high_price - current_price) / high_price >= trailing_stop_pct:
                     return True
 

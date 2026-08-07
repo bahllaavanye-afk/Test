@@ -9,6 +9,12 @@ from app.models.user import User
 router = APIRouter(prefix="/improvements", tags=["improvements"])
 
 
+def _validate_user(user: Any) -> None:
+    """Validate that the provided user is a proper User instance."""
+    if not isinstance(user, User):
+        raise ValueError("Invalid user object supplied to endpoint")
+
+
 def _apply_entry_filters(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Tighten entry conditions and add confirmation filters.
@@ -21,6 +27,19 @@ def _apply_entry_filters(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     filtered: List[Dict[str, Any]] = []
     for sig in signals:
+        # Validate required fields
+        if "entry_score" not in sig or not isinstance(sig["entry_score"], (int, float)):
+            raise ValueError("Signal missing valid 'entry_score' field")
+        if not (0 <= sig["entry_score"] <= 1):
+            raise ValueError("'entry_score' must be between 0 and 1")
+
+        if "volume" not in sig or not isinstance(sig["volume"], (int, float)):
+            raise ValueError("Signal missing valid 'volume' field")
+        if "avg_volume" not in sig or not isinstance(sig["avg_volume"], (int, float)):
+            raise ValueError("Signal missing valid 'avg_volume' field")
+        if "ma_cross" not in sig or not isinstance(sig["ma_cross"], bool):
+            raise ValueError("Signal missing valid 'ma_cross' field")
+
         # Basic score threshold
         if sig.get("entry_score", 0) < 0.7:
             continue
@@ -46,6 +65,12 @@ def _apply_exit_logic(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     refined: List[Dict[str, Any]] = []
     for sig in signals:
+        # Validate required fields
+        if "profit_target_hit" not in sig or not isinstance(sig["profit_target_hit"], bool):
+            raise ValueError("Signal missing valid 'profit_target_hit' field")
+        if "trailing_stop_triggered" not in sig or not isinstance(sig["trailing_stop_triggered"], bool):
+            raise ValueError("Signal missing valid 'trailing_stop_triggered' field")
+
         if sig.get("profit_target_hit") or sig.get("trailing_stop_triggered"):
             refined.append(sig)
     return refined
@@ -65,6 +90,8 @@ def _validate_signals(raw_signals: Any) -> List[Dict[str, Any]]:
     """
     if not isinstance(raw_signals, list):
         raise HTTPException(status_code=500, detail="Invalid signal format")
+    if not all(isinstance(sig, dict) for sig in raw_signals):
+        raise HTTPException(status_code=500, detail="Signal list must contain dictionaries")
     return raw_signals
 
 
@@ -86,6 +113,7 @@ def _retrieve_and_filter_signals(improver: Any) -> List[Dict[str, Any]]:
 
 @router.get("/history")
 async def get_history(current_user: User = Depends(get_current_user)):
+    _validate_user(current_user)
     improver = _get_improver()
     if improver:
         return improver.get_history()
@@ -94,6 +122,7 @@ async def get_history(current_user: User = Depends(get_current_user)):
 
 @router.get("/quality")
 async def get_quality(current_user: User = Depends(get_current_user)):
+    _validate_user(current_user)
     from app.main import app
 
     loop_ref = getattr(app.state, "code_quality_loop", None)
@@ -104,6 +133,7 @@ async def get_quality(current_user: User = Depends(get_current_user)):
 
 @router.get("/best_params")
 async def get_best_params(current_user: User = Depends(get_current_user)):
+    _validate_user(current_user)
     improver = _get_improver()
     if improver is None:
         return {"status": "not_running", "best_params": {}}
@@ -115,6 +145,7 @@ async def get_signal_quality(current_user: User = Depends(get_current_user)):
     """
     Return signals after applying tightened entry conditions and improved exit logic.
     """
+    _validate_user(current_user)
     improver = _get_improver()
     if improver is None:
         raise HTTPException(status_code=404, detail="Improver not initialized")
