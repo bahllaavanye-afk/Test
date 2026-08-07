@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections import OrderedDict
 from datetime import datetime, timezone
+from typing import Any, Tuple
 
 import pandas as pd
 from sqlalchemy import select
@@ -44,6 +46,37 @@ MSG_WORKER_POLL_ERROR = "Backtest worker poll error: {exc}"
 MSG_BACKTEST_COMPLETE = "Backtest {run_id} complete"
 MSG_BACKTEST_FAILED = "Backtest {run_id} failed: {exc}"
 
+# Simple in‑memory LRU cache for OHLCV data
+_OHLCV_CACHE_MAXSIZE = 128
+_OHLCV_CACHE: OrderedDict[Tuple[str, str, str, str], pd.DataFrame] = OrderedDict()
+_OHLCV_LOCKS: dict[Tuple[str, str, str, str], asyncio.Lock] = {}
+
+
+async def _get_cached_ohlcv(symbol: str, start: str, end: str, interval: str) -> pd.DataFrame:
+    """Retrieve OHLCV data from cache or fetch it if missing."""
+    key = (symbol, start, end, interval)
+    # Fast path: cached value
+    if key in _OHLCV_CACHE:
+        _OHLCV_CACHE.move_to_end(key)  # mark as recently used
+        return _OHLCV_CACHE[key]
+
+    # Ensure only one fetch per unique key at a time
+    lock = _OHLCV_LOCKS.setdefault(key, asyncio.Lock())
+    async with lock:
+        # Re‑check after acquiring lock (another coroutine may have filled the cache)
+        if key in _OHLCV_CACHE:
+            _OHLCV_CACHE.move_to_end(key)
+            return _OHLCV_CACHE[key]
+
+        from app.backtest.data_loader import fetch_ohlcv
+
+        df = await fetch_ohlcv(symbol=symbol, start=start, end=end, interval=interval)
+        # Store in cache respecting max size
+        _OHLCV_CACHE[key] = df
+        if len(_OHLCV_CACHE) > _OHLCV_CACHE_MAXSIZE:
+            _OHLCV_CACHE.popitem(last=False)  # remove least‑recently used
+        return df
+
 
 async def run_backtest_job(run_id: str | None) -> None:
     """Fetch one queued BacktestRun, execute it, write results back to DB."""
@@ -54,7 +87,6 @@ async def run_backtest_job(run_id: str | None) -> None:
     from app.database import AsyncSessionLocal
     from app.models.backtest import BacktestRun, BacktestResult
     from app.backtest.engine import run_backtest
-    from app.backtest.data_loader import fetch_ohlcv
     from app.strategies import STRATEGY_REGISTRY
 
     async with AsyncSessionLocal() as db:
@@ -73,7 +105,6 @@ async def run_backtest_job(run_id: str | None) -> None:
         run.status = STATUS_RUNNING
         run.started_at = datetime.now(timezone.utc)
         await db.commit()
-        # capture fields before session closes
         symbol = run.symbol
         start_date = run.start_date
         end_date = run.end_date
@@ -82,7 +113,8 @@ async def run_backtest_job(run_id: str | None) -> None:
         initial_equity = (run.params or {}).get("initial_equity", DEFAULT_INITIAL_EQUITY)
 
     try:
-        df = await fetch_ohlcv(symbol=symbol, start=start_date, end=end_date, interval=interval)
+        # Use cached OHLCV fetch
+        df = await _get_cached_ohlcv(symbol=symbol, start=start_date, end=end_date, interval=interval)
         if df.empty:
             raise ValueError(MSG_NO_OHLCV_DATA.format(symbol=symbol, start_date=start_date, end_date=end_date))
 
@@ -91,18 +123,13 @@ async def run_backtest_job(run_id: str | None) -> None:
             raise ValueError(MSG_UNKNOWN_STRATEGY.format(strategy_name=strategy_name))
 
         strategy = StratClass()
-        # backtest_signals may be sync or async depending on the strategy
         import inspect
         from app.strategies.base import BacktestSignals as _BSig
 
         _result = strategy.backtest_signals(df)
         raw_signals = (await _result) if inspect.isawaitable(_result) else _result
 
-        # Convert BacktestSignals → pd.Series[int] expected by run_backtest
         if isinstance(raw_signals, _BSig):
-            import numpy as np
-
-            # Ensure entries/exits are not None and have matching index
             entries = raw_signals.entries
             exits = raw_signals.exits
             if entries is None or exits is None:
@@ -115,23 +142,34 @@ async def run_backtest_job(run_id: str | None) -> None:
                 sig[raw_signals.short_entries.astype(bool)] = SHORT_ENTRY_VALUE
             signals_series = sig
         else:
-            # Expect a pandas Series; guard against empty or mismatched index
             if not isinstance(raw_signals, pd.Series):
                 raise TypeError(MSG_STRATEGY_SIGNALS_TYPE)
             if raw_signals.empty:
-                # An empty signal series is treated as no trades
                 signals_series = pd.Series(DEFAULT_SIGNAL_VALUE, index=df.index, dtype=int)
             else:
-                # Align index if needed
                 signals_series = raw_signals.reindex(df.index, fill_value=DEFAULT_SIGNAL_VALUE).astype(int)
 
-        metrics = run_backtest(
-            signals=signals_series,
-            prices=df["close"],
-            opens=df["open"],
-            volume=df["volume"],
-            initial_equity=initial_equity,
-        )
+        # Early exit: if signals contain only DEFAULT_SIGNAL_VALUE, skip heavy backtest computation
+        if (signals_series == DEFAULT_SIGNAL_VALUE).all():
+            logger.info("No active signals for run %s – skipping backtest engine.", run_id)
+            metrics = type("Metrics", (), {"total_return": 0.0,
+                                          "annualized_return": 0.0,
+                                          "sharpe": 0.0,
+                                          "sortino": 0.0,
+                                          "calmar": 0.0,
+                                          "max_drawdown": 0.0,
+                                          "win_rate": 0.0,
+                                          "profit_factor": 0.0,
+                                          "num_trades": 0,
+                                          "equity_curve": pd.Series([initial_equity])})
+        else:
+            metrics = run_backtest(
+                signals=signals_series,
+                prices=df["close"],
+                opens=df["open"],
+                volume=df["volume"],
+                initial_equity=initial_equity,
+            )
 
         async with AsyncSessionLocal() as db:
             run = await db.get(BacktestRun, run_id)
