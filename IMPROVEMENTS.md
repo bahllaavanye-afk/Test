@@ -1,5 +1,35 @@
 # QuantEdge — Improvements & Task Tracker
 
+## 🧊 2026-08-07 05:40 — THE IMPROVER ADDED A SHARED-OBJECT CACHE. IT IS CORRECT BY LUCK.
+
+`improve(optimization)` #1621 merged (5 backend files, CI bypassed as always) and added an LRU cache to
+`backtest_worker`:
+
+        if key in _OHLCV_CACHE:
+            _OHLCV_CACHE.move_to_end(key)
+            return _OHLCV_CACHE[key]          # the SAME object, not a copy
+
+- [x] **That frame goes straight into `strategy.backtest_signals(df)`.** A strategy doing `df["sma"] = ...`
+  would poison the cache for every other strategy sharing the same
+  `(symbol, start, end, interval)` key — silently, and **only from the second backtest onward**, which is
+  about the hardest failure mode to notice.
+- [x] **Measured rather than reasoned about: all 116 registered strategies run against a shared frame, 114
+  executed, ZERO mutated it** — no added columns, no altered values. So the cache is correct today.
+- [x] **It is correct BY LUCK.** Nothing stated or enforced the invariant the cache depends on, and the
+  improver plainly did not check it: the whole registry was one `df['rsi'] = ...` away from silently corrupting
+  backtest inputs. **An optimization whose safety rests on an unstated property of 116 other files is a bet,
+  not a design.**
+- [x] **Shipped the invariant as a test** rather than the `.copy()`. Copying on every cache hit pays a cost on
+  every call to insure against a hazard that does not exist yet; a test that runs the full registry catches the
+  moment it does, and names both remedies in the failure message. `.copy()` remains the right fix *if* a
+  strategy ever legitimately needs to mutate.
+- [x] **2 mutations, 2 caught** — a strategy that mutates, and the cache starting to `.copy()`. The second is a
+  guard on the premise: if the cache stops sharing, this test's rationale is flagged rather than quietly
+  becoming redundant, which is how dead guards accumulate.
+- [ ] **[P2] The other cache from the same run is unexamined.** `agent_memory` gained a 60s TTL topics cache.
+  Lower stakes (topics, not market data) but the same question applies — what happens to a caller that holds
+  the returned list. Not checked here because the OHLCV one was the one touching money-path data.
+
 ## 🔬 2026-08-07 01:15 — "THESE CANNOT BE TOLD APART" WAS ITSELF AN OVER-CLAIM
 
 The order-origin alarm fired for real at 00:29 (run `31134848144`) — first time on the rewritten path — and
