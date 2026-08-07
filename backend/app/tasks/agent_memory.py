@@ -17,17 +17,23 @@ from __future__ import annotations
 import json
 import logging
 import time
+import asyncio
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 _PREFIX = "agent:memory:"
 _MAX_LIST_LEN = 500  # cap per topic to avoid unbounded growth
+_TOPICS_SET_KEY = f"{_PREFIX}topics"
+_CACHE_TTL = 60  # seconds
 
 
 class AgentMemory:
     def __init__(self, redis_client: Any):
         self._r = redis_client
+        self._topics_cache: list[str] | None = None
+        self._cache_timestamp: float = 0.0
+        self._lock = asyncio.Lock()
 
     # ── Helper methods ────────────────────────────────────────────────────────
 
@@ -47,6 +53,13 @@ class AgentMemory:
         else:
             logger.warning("AgentMemory.%s failed: %s", operation, exc)
 
+    async def _add_topic_to_set(self, topic: str) -> None:
+        """Ensure the topic is recorded in the Redis set of topics."""
+        try:
+            await self._r.sadd(_TOPICS_SET_KEY, topic)
+        except Exception as e:
+            await self._log_error("add_topic_to_set", topic, e)
+
     # ── Write ─────────────────────────────────────────────────────────────────
 
     async def write(self, topic: str, data: dict) -> None:
@@ -56,6 +69,7 @@ class AgentMemory:
         try:
             await self._r.lpush(key, payload)
             await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
+            await self._add_topic_to_set(topic)
         except Exception as e:
             await self._log_error("write", topic, e)
 
@@ -65,6 +79,7 @@ class AgentMemory:
         key = self._key(topic, latest=True)
         try:
             await self._r.set(key, payload)
+            await self._add_topic_to_set(topic)
         except Exception as e:
             await self._log_error("set_latest", topic, e)
 
@@ -72,6 +87,8 @@ class AgentMemory:
 
     async def read_recent(self, topic: str, n: int = 50) -> list[dict]:
         """Return up to n most‑recent observations for a topic."""
+        if n <= 0:
+            return []
         key = self._key(topic)
         try:
             items = await self._r.lrange(key, 0, n - 1)
@@ -92,10 +109,18 @@ class AgentMemory:
 
     async def read_all_topics(self) -> list[str]:
         """List all memory topics currently stored."""
-        try:
-            pattern = f"{_PREFIX}*"
-            keys = await self._r.keys(pattern)
-            return [k.removeprefix(_PREFIX) for k in keys]
-        except Exception as e:
-            await self._log_error("read_all_topics", None, e)
-            return []
+        async with self._lock:
+            now = time.time()
+            if self._topics_cache is not None and (now - self._cache_timestamp) < _CACHE_TTL:
+                return self._topics_cache
+
+            try:
+                raw_topics = await self._r.smembers(_TOPICS_SET_KEY)
+                # smembers may return bytes; ensure strings
+                topics = [t.decode() if isinstance(t, (bytes, bytearray)) else str(t) for t in raw_topics]
+                self._topics_cache = topics
+                self._cache_timestamp = now
+                return topics
+            except Exception as e:
+                await self._log_error("read_all_topics", None, e)
+                return []

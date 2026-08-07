@@ -47,18 +47,24 @@ def _compute_file_stats(py_file: Path) -> Dict[str, int]:
         "comment_lines": 0,
     }
     try:
-        for line in py_file.read_text(errors="ignore").splitlines():
-            stats["total_lines"] += 1
-            stripped = line.strip()
-            if not stripped:
-                stats["blank_lines"] += 1
-            elif stripped.startswith("#"):
-                stats["comment_lines"] += 1
-            else:
-                stats["code_lines"] += 1
+        with py_file.open("r", errors="ignore") as f:
+            for line in f:
+                stats["total_lines"] += 1
+                stripped = line.strip()
+                if not stripped:
+                    stats["blank_lines"] += 1
+                elif stripped.startswith("#"):
+                    stats["comment_lines"] += 1
+                else:
+                    stats["code_lines"] += 1
     except Exception as e:
         logger.debug("code_quality: skip unreadable file", error=str(e))
     return stats
+
+
+def _should_skip(py_file: Path) -> bool:
+    """Return True if the file matches any skip pattern."""
+    return any(skip in py_file.parts for skip in SKIP_PATTERNS)
 
 
 def _count_loc(root: Path) -> dict:
@@ -68,25 +74,15 @@ def _count_loc(root: Path) -> dict:
     """
     global _loc_cache
 
-    total_files = 0
-    total_lines = 0
-    code_lines = 0
-    blank_lines = 0
-    comment_lines = 0
+    total_files = total_lines = code_lines = blank_lines = comment_lines = 0
 
-    # Gather current python files, respecting skip patterns
-    current_files = [
-        py_file
-        for py_file in root.rglob("*.py")
-        if not any(skip in str(py_file) for skip in SKIP_PATTERNS)
-    ]
+    # Track files we encounter to later purge stale cache entries
+    seen_files = set()
 
-    # Remove cache entries for files that disappeared
-    vanished = set(_loc_cache) - set(current_files)
-    for dead in vanished:
-        del _loc_cache[dead]
-
-    for py_file in current_files:
+    for py_file in root.rglob("*.py"):
+        if _should_skip(py_file):
+            continue
+        seen_files.add(py_file)
         total_files += 1
         mtime = py_file.stat().st_mtime
         cached = _loc_cache.get(py_file)
@@ -101,6 +97,10 @@ def _count_loc(root: Path) -> dict:
         code_lines += stats["code_lines"]
         blank_lines += stats["blank_lines"]
         comment_lines += stats["comment_lines"]
+
+    # Remove cache entries for files that no longer exist
+    for dead in set(_loc_cache) - seen_files:
+        del _loc_cache[dead]
 
     return {
         "files": total_files,
@@ -165,10 +165,9 @@ class CodeQualityLoop:
                 snapshot = await self._snapshot()
                 self._persist(snapshot)
 
-                # Compute key metrics for structured logging
                 signal_count = snapshot.get("manual_strategies", 0) + snapshot.get("ml_strategies", 0)
                 execution_time = round(time.perf_counter() - start_time, 3)
-                pnl = snapshot.get("pnl")  # P&L not tracked here; will be None if absent
+                pnl = snapshot.get("pnl")
 
                 logger.info(
                     "code_quality: iteration metrics",
