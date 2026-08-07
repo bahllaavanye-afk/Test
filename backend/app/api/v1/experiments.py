@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, ConfigDict
 
@@ -56,12 +57,16 @@ async def list_experiments(
     """Return the most recent experiments limited by ``MAX_EXPERIMENTS``."""
     if MAX_EXPERIMENTS <= 0:
         return []
-    result = await db.execute(
-        select(Experiment)
-        .order_by(Experiment.started_at.desc())
-        .limit(MAX_EXPERIMENTS)
-    )
-    return result.scalars().all()
+    try:
+        result = await db.execute(
+            select(Experiment)
+            .order_by(Experiment.started_at.desc())
+            .limit(MAX_EXPERIMENTS)
+        )
+        return result.scalars().all()
+    except SQLAlchemyError as exc:
+        logger.exception("Failed to list experiments: %s", exc)
+        raise HTTPException(status_code=500, detail="Unable to retrieve experiments") from exc
 
 
 class TrainRequest(BaseModel):
@@ -75,7 +80,12 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
     script = Path(__file__).parents[4] / "experiments" / "run_experiment.py"
     config_path = CONFIGS_DIR / f"{config_name}.yaml"
     if not config_path.is_file():
-        logger.error("Config file %s does not exist for experiment %s", config_path, experiment_id)
+        logger.error(
+            "Config file %s does not exist for experiment %s",
+            config_path,
+            experiment_id,
+            extra={"experiment_id": experiment_id, "config_name": config_name},
+        )
         return
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -90,7 +100,12 @@ async def _run_experiment_async(config_name: str, experiment_id: str) -> None:
         )
         await proc.wait()
     except Exception as exc:  # pragma: no cover
-        logger.error("Experiment %s failed: %s", experiment_id, exc)
+        logger.exception(
+            "Experiment %s failed during subprocess execution",
+            experiment_id,
+            extra={"experiment_id": experiment_id, "config_name": config_name},
+        )
+        # No re‑raise; background task failures are logged only
 
 
 def _format_config_not_found_message(config_name: str, available: List[str]) -> str:
@@ -151,10 +166,26 @@ async def trigger_training(
     # Persist experiment record
     exp = _create_experiment_record(config_name, experiment_id, now)
     db.add(exp)
-    await db.commit()
+    try:
+        await db.commit()
+    except SQLAlchemyError as exc:
+        logger.exception(
+            "Failed to persist experiment %s",
+            experiment_id,
+            extra={"experiment_id": experiment_id, "config_name": config_name},
+        )
+        raise HTTPException(status_code=500, detail="Unable to create experiment record") from exc
 
     # Launch background training task (fire-and-forget)
-    asyncio.create_task(_run_experiment_async(config_name, experiment_id))
+    try:
+        asyncio.create_task(_run_experiment_async(config_name, experiment_id))
+    except Exception as exc:  # pragma: no cover
+        logger.exception(
+            "Failed to schedule background task for experiment %s",
+            experiment_id,
+            extra={"experiment_id": experiment_id, "config_name": config_name},
+        )
+        raise HTTPException(status_code=500, detail="Unable to start training task") from exc
 
     return {
         "experiment_id": experiment_id,
@@ -183,8 +214,17 @@ async def get_experiment(
     """Retrieve detailed information for a specific experiment."""
     if not experiment_id:
         raise HTTPException(status_code=404, detail=EXPERIMENT_NOT_FOUND)
-    result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
-    exp = result.scalar_one_or_none()
+    try:
+        result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
+        exp = result.scalar_one_or_none()
+    except SQLAlchemyError as exc:
+        logger.exception(
+            "Database error while fetching experiment %s",
+            experiment_id,
+            extra={"experiment_id": experiment_id},
+        )
+        raise HTTPException(status_code=500, detail="Unable to retrieve experiment") from exc
+
     if not exp:
         raise HTTPException(404, EXPERIMENT_NOT_FOUND)
     return {
