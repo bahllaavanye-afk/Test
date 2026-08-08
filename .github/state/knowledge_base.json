@@ -1,6 +1,6 @@
 {
   "consolidated_at": "2026-06-09T12:27:04.559086+00:00",
-  "last_updated": "2026-08-07T05:47:00.642204+00:00",
+  "last_updated": "2026-08-08T03:35:30.054828+00:00",
   "total_learnings_processed": 200,
   "topics": {
     "ml_models": {
@@ -28,27 +28,27 @@
       ]
     },
     "general": {
-      "summary": "Based on the recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge:\n\n\u2022 **Options PC strategy excels in short-term gains**: The Options PC strategy has achieved a combined 100% win rate, +24.03% total return, and +1.72% average return across 56 trades (14 trades with 4 consecutive 100% win rate and high returns).\n\u2022 **Avellaneda-Stoikov MM strategy maintains high performance**: The Avellaneda-Stoikov MM strategy has demonstrated a consistent 90% win rate, +53.48% total return, and +5.35% average return across 40 trades.\n\u2022 **Time Serie strategy lags, but provides diversification**: The Time Serie strategy has shown a relatively lower win rate (72%), but still offers a notable +43.01% total return and +2.39% average return, potentially providing a diversification benefit.",
-      "source_count": 68,
-      "updated_at": "2026-08-05T19:01:43.927323+00:00",
+      "summary": "Based on the recent agent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:\n\n- **Avellaneda Stoikov Market Making (avellaneda_stoikov_mm) strategy** is consistently performing well, with a 90% win rate and an average return of +5.35% (period 30d), demonstrating its potential as a reliable trading source.\n- **Time Serie (time_serie)** strategy shows stable results with 72% win rate and +2.39% average return (period 30d), suggesting its ability to generate consistent returns over time.\n- **Options PC (options_pc) strategy** excels with a 100% win rate, but its average return is lower at +1.72% (period 30d), indicating it prioritizes high-risk, high-reward trades.",
+      "source_count": 74,
+      "updated_at": "2026-08-08T03:35:30.054828+00:00",
       "raw_recent": [
-        "[attribution @ 2026-08-05T17:43] time_serie: 18 trades, 72% win rate, +43.01% total return, +2.39% avg (period 30d)",
-        "[attribution @ 2026-08-05T17:43] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)",
-        "[attribution @ 2026-08-05T18:33] avellaneda_stoikov_mm: 10 trades, 90% win rate, +53.48% total return, +5.35% avg (period 30d)",
-        "[attribution @ 2026-08-05T18:33] time_serie: 18 trades, 72% win rate, +43.01% total return, +2.39% avg (period 30d)",
-        "[attribution @ 2026-08-05T18:33] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)"
+        "[attribution @ 2026-08-08T03:10] time_serie: 18 trades, 72% win rate, +43.01% total return, +2.39% avg (period 30d)",
+        "[attribution @ 2026-08-08T03:10] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)",
+        "[attribution @ 2026-08-08T03:24] avellaneda_stoikov_mm: 10 trades, 90% win rate, +53.48% total return, +5.35% avg (period 30d)",
+        "[attribution @ 2026-08-08T03:24] time_serie: 18 trades, 72% win rate, +43.01% total return, +2.39% avg (period 30d)",
+        "[attribution @ 2026-08-08T03:24] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)"
       ]
     },
     "strategies": {
-      "summary": "Based on the recent agent learnings, here are the most important and actionable bullet points:\n\n* **Stat Arb ETF Strategy**: The Stat Arb ETF strategy has shown excellent performance with 93% win rate and +31.89% total return over the past 30 days, outperforming other strategies. This suggests its reliability and profitability.\n* **Time Series Momentum Performance**: Time series momentum has a decent performance with 74% win rate and +9.91% total return over the past 30 days, indicating some potential in short-term market fluctuations.\n* **EMA-VWAP-MACD-ADX Spread Strategy Potential**: According to a backtest, the EMA-VWAP-MACD-ADX spread strategy is expected to hit a Sharpe ratio of approximately 1.12 \u00b1 0.07, suggesting a promising potential for generating returns with relatively low risk.",
-      "source_count": 87,
-      "updated_at": "2026-08-07T05:47:00.642204+00:00",
+      "summary": "* **Statistical Arbitrage ETF (stat_arb_etf)**: Consistently performs well with a 93% win rate and average return of +1.06% over 30 days, making it a suitable strategy for consideration in the trading platform.\n* **Time Series Momentum (time_series_momentum)**: Demonstrates a moderate win rate of 74% with an average return of +0.43% over 30 days, indicating potential as a complementary strategy to improve diversity in the portfolio.\n* **Avoid Statistical Arbitrage Equity (stat_arb_e)**: Currently underperforming with a 0% win rate and average return of -1.77% over 30 days, suggesting that this strategy may not be effective in its current form and should be further refined or replaced.",
+      "source_count": 78,
+      "updated_at": "2026-08-08T03:35:30.054828+00:00",
       "raw_recent": [
-        "[attribution @ 2026-08-07T05:39] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
-        "[attribution @ 2026-08-07T05:39] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
-        "[strategy_generator in #desk-equities @ 2026-08-07T05:39] **Strategy Variant:** *SPY\u202fLong\u202f/\u202fAAPL\u202fLong\u202f/\u202fQQQ\u202fShort \u2013 EMA\u2011VWAP\u2011MACD\u2011ADX (5\u202fmin)* \u2013 go long SPY and AAPL when the 5\u2011minute price is above the 20\u2011pe",
-        "[quick_backtest in #desk-equities @ 2026-08-07T05:39] I\u2019d expect the EMA\u2011VWAP\u2011MACD\u2011ADX spread (see `strategies/equities/spread_ema_vwap_macd_adx.py`) to hit a Sharpe around\u202f1.12\u202f\u00b1\u202f0.07 because the EMA\u2011VWA",
-        "[algo_agent @ 2026-08-07T05:39] I'm currently running UCB1 arm selection on the latest strategy variants logged in `/home/quantedge/desk-equities/strategy_logs/`, prioritizing the SP"
+        "[attribution @ 2026-08-08T03:10] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
+        "[attribution @ 2026-08-08T03:10] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
+        "[attribution @ 2026-08-08T03:24] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
+        "[attribution @ 2026-08-08T03:24] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
+        "[attribution @ 2026-08-08T03:24] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)"
       ]
     },
     "risk": {
