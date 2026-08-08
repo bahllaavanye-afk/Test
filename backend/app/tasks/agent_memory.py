@@ -22,10 +22,16 @@ from typing import Any, List
 
 logger = logging.getLogger(__name__)
 
+# ── Constants ─────────────────────────────────────────────────────────────────
 _PREFIX = "agent:memory:"
 _MAX_LIST_LEN = 500  # cap per topic to avoid unbounded growth
 _TOPICS_SET_KEY = f"{_PREFIX}topics"
 _CACHE_TTL = 60  # seconds
+
+_DEFAULT_READ_RECENT_LIMIT = 50
+
+_ERROR_TOPIC_INVALID = "Topic must be a non‑empty string"
+_ERROR_TOPIC_EMPTY = "Topic cannot be empty"
 
 # Optional import of Redis‑specific exception hierarchy.
 try:
@@ -46,7 +52,7 @@ class AgentMemory:
     def _key(self, topic: str, *, latest: bool = False) -> str:
         """Construct a Redis key for a given topic."""
         if not topic:
-            raise ValueError("Topic must be a non‑empty string")
+            raise ValueError(_ERROR_TOPIC_INVALID)
         prefix = f"{_PREFIX}latest:" if latest else _PREFIX
         return f"{prefix}{topic}"
 
@@ -72,7 +78,7 @@ class AgentMemory:
     async def _add_topic_to_set(self, topic: str) -> None:
         """Ensure the topic is recorded in the Redis set of topics."""
         if not topic:
-            await self._log_error("add_topic_to_set", topic, ValueError("Invalid topic"))
+            await self._log_error("add_topic_to_set", topic, ValueError(_ERROR_TOPIC_INVALID))
             return
         try:
             await self._r.sadd(_TOPICS_SET_KEY, topic)
@@ -105,7 +111,7 @@ class AgentMemory:
     async def write(self, topic: str, data: dict) -> None:
         """Append an observation to a topic list with a timestamp."""
         if not topic:
-            await self._log_error("write", topic, ValueError("Topic cannot be empty"))
+            await self._log_error("write", topic, ValueError(_ERROR_TOPIC_EMPTY))
             return
         payload = self._payload(data)
         key = self._key(topic)
@@ -121,7 +127,7 @@ class AgentMemory:
     async def set_latest(self, topic: str, data: dict) -> None:
         """Overwrite the latest value for a topic (single-value slot)."""
         if not topic:
-            await self._log_error("set_latest", topic, ValueError("Topic cannot be empty"))
+            await self._log_error("set_latest", topic, ValueError(_ERROR_TOPIC_EMPTY))
             return
         payload = self._payload(data)
         key = self._key(topic, latest=True)
@@ -135,10 +141,10 @@ class AgentMemory:
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
-    async def read_recent(self, topic: str, n: int = 50) -> List[dict]:
+    async def read_recent(self, topic: str, n: int = _DEFAULT_READ_RECENT_LIMIT) -> List[dict]:
         """Return up to n most‑recent observations for a topic."""
         if not topic:
-            await self._log_error("read_recent", topic, ValueError("Topic cannot be empty"))
+            await self._log_error("read_recent", topic, ValueError(_ERROR_TOPIC_EMPTY))
             return []
         if n <= 0:
             return []
@@ -156,7 +162,7 @@ class AgentMemory:
     async def get_latest(self, topic: str) -> dict | None:
         """Return the latest single‑value for a topic."""
         if not topic:
-            await self._log_error("get_latest", topic, ValueError("Topic cannot be empty"))
+            await self._log_error("get_latest", topic, ValueError(_ERROR_TOPIC_EMPTY))
             return None
         key = self._key(topic, latest=True)
         try:

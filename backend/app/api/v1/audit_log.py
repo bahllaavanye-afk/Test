@@ -22,8 +22,16 @@ from app.models.audit_log import AuditLog
 from app.models.user import User
 from pydantic import BaseModel, ConfigDict
 
+# Constants
+DEFAULT_LIMIT = 100
+MIN_LIMIT = 1
+MAX_LIMIT = 500
+AUTH_ERROR_STATUS = status.HTTP_401_UNAUTHORIZED
+AUTH_ERROR_DETAIL = "Authenticated user not found."
+ROUTER_PREFIX = "/audit-log"
+ROUTER_TAGS = ["audit-log"]
 
-router = APIRouter(prefix="/audit-log", tags=["audit-log"])
+router = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
 
 
 class AuditLogOut(BaseModel):
@@ -83,8 +91,8 @@ def _validate_limit(limit: Optional[int]) -> int:
     """
     if limit is None:
         raise ValueError("limit must not be None")
-    if limit < 1 or limit > 500:
-        raise ValueError(f"limit must be between 1 and 500, got {limit}")
+    if limit < MIN_LIMIT or limit > MAX_LIMIT:
+        raise ValueError(f"limit must be between {MIN_LIMIT} and {MAX_LIMIT}, got {limit}")
     return limit
 
 
@@ -118,7 +126,7 @@ async def _fetch_audit_logs(
 
 @router.get("/", response_model=List[AuditLogOut])
 async def list_audit_log(
-    limit: Optional[int] = Query(default=100, ge=1, le=500),
+    limit: Optional[int] = Query(default=DEFAULT_LIMIT, ge=MIN_LIMIT, le=MAX_LIMIT),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> List[AuditLogOut]:
@@ -151,8 +159,8 @@ async def list_audit_log(
     """
     if current_user is None:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authenticated user not found.",
+            status_code=AUTH_ERROR_STATUS,
+            detail=AUTH_ERROR_DETAIL,
         )
 
     validated_limit = _validate_limit(limit)
