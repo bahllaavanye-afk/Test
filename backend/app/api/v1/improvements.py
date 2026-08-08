@@ -1,8 +1,9 @@
 """Self-improvement history endpoint."""
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, root_validator
 
 from app.api.deps import get_current_user
 from app.models.user import User
@@ -27,6 +28,29 @@ LOG_MSG_VALIDATION_NON_DICT = "Signal validation failed: list contains non-dict 
 router = APIRouter(prefix="/improvements", tags=["improvements"])
 
 logger = logging.getLogger(__name__)
+
+
+class SignalQualityResponse(BaseModel):
+    """Response model for the `/signal_quality` endpoint."""
+
+    filtered_signals: List[Dict[str, Any]] = Field(
+        ...,
+        description="Signals that passed entry and exit filters.",
+        example=[],
+    )
+    count: int = Field(
+        ...,
+        description="Number of signals after filtering.",
+        example=0,
+    )
+
+    @root_validator
+    def check_count_matches_signals(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        filtered = values.get("filtered_signals")
+        count = values.get("count")
+        if filtered is not None and count != len(filtered):
+            raise ValueError("`count` does not match length of `filtered_signals`")
+        return values
 
 
 def _apply_entry_filters(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -162,7 +186,7 @@ async def get_best_params(current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=DETAIL_BEST_PARAMS_FETCH_FAILED)
 
 
-@router.get("/signal_quality")
+@router.get("/signal_quality", response_model=SignalQualityResponse)
 async def get_signal_quality(current_user: User = Depends(get_current_user)):
     """
     Return signals after applying tightened entry conditions and improved exit logic.
