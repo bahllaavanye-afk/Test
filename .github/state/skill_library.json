@@ -1,12 +1,5 @@
 {
   "skills": [
-    "Limit open orders",
-    "Log database queries",
-    "Disambiguate overloaded code",
-    "Based on the recent agent learnings, the following are 2-3 concise bullet points of the most important and actionable knowledge:",
-    "Log trade timestamps",
-    "Verify trade IDs",
-    "Check data types",
     "Validate config",
     "Limit API calls",
     "Optimize model training",
@@ -199,8 +192,15 @@
     "Check thread limits",
     "Check CPU usage",
     "Scan for deadlocks",
-    "Flush cache regularly"
+    "Flush cache regularly",
+    "Check RAM usage",
+    "Validate API keys",
+    "Test database queries",
+    "Monitor disk space",
+    "Tighten type safety in pipelines.",
+    "Replace lingering Any signatures.",
+    "Apply peer-learned fixes regularly."
   ],
-  "last_updated": "2026-08-08T09:33:14.352014+00:00",
+  "last_updated": "2026-08-08T10:27:45.534038+00:00",
   "total": 200
 }
