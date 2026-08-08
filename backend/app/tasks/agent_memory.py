@@ -27,6 +27,12 @@ _MAX_LIST_LEN = 500  # cap per topic to avoid unbounded growth
 _TOPICS_SET_KEY = f"{_PREFIX}topics"
 _CACHE_TTL = 60  # seconds
 
+# Optional import of Redis‑specific exception hierarchy.
+try:
+    from aioredis.exceptions import RedisError  # type: ignore
+except Exception:  # pragma: no cover
+    RedisError = Exception  # Fallback if aioredis is not installed.
+
 
 class AgentMemory:
     def __init__(self, redis_client: Any):
@@ -51,11 +57,17 @@ class AgentMemory:
         return json.dumps({"ts": time.time(), **data})
 
     async def _log_error(self, operation: str, topic: str | None, exc: Exception) -> None:
-        """Log a Redis operation failure."""
-        if topic:
-            logger.warning("AgentMemory.%s failed for topic %s: %s", operation, topic, exc)
-        else:
-            logger.warning("AgentMemory.%s failed: %s", operation, exc)
+        """Log a Redis operation failure with structured context."""
+        extra = {
+            "operation": operation,
+            "topic": topic,
+            "error_type": type(exc).__name__,
+            "error_msg": str(exc),
+        }
+        logger.error(
+            "AgentMemory operation failed",
+            extra=extra,
+        )
 
     async def _add_topic_to_set(self, topic: str) -> None:
         """Ensure the topic is recorded in the Redis set of topics."""
@@ -64,7 +76,9 @@ class AgentMemory:
             return
         try:
             await self._r.sadd(_TOPICS_SET_KEY, topic)
-        except Exception as e:
+        except RedisError as e:
+            await self._log_error("add_topic_to_set", topic, e)
+        except Exception as e:  # pragma: no cover
             await self._log_error("add_topic_to_set", topic, e)
 
     def _decode_topics(self, raw_topics: Any) -> List[str]:
@@ -99,7 +113,9 @@ class AgentMemory:
             await self._r.lpush(key, payload)
             await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
             await self._add_topic_to_set(topic)
-        except Exception as e:
+        except RedisError as e:
+            await self._log_error("write", topic, e)
+        except Exception as e:  # pragma: no cover
             await self._log_error("write", topic, e)
 
     async def set_latest(self, topic: str, data: dict) -> None:
@@ -112,7 +128,9 @@ class AgentMemory:
         try:
             await self._r.set(key, payload)
             await self._add_topic_to_set(topic)
-        except Exception as e:
+        except RedisError as e:
+            await self._log_error("set_latest", topic, e)
+        except Exception as e:  # pragma: no cover
             await self._log_error("set_latest", topic, e)
 
     # ── Read ──────────────────────────────────────────────────────────────────
@@ -128,7 +146,10 @@ class AgentMemory:
         try:
             items = await self._r.lrange(key, 0, n - 1)
             return [json.loads(i) for i in items]
-        except Exception as e:
+        except RedisError as e:
+            await self._log_error("read_recent", topic, e)
+            return []
+        except Exception as e:  # pragma: no cover
             await self._log_error("read_recent", topic, e)
             return []
 
@@ -141,7 +162,10 @@ class AgentMemory:
         try:
             val = await self._r.get(key)
             return json.loads(val) if val else None
-        except Exception as e:
+        except RedisError as e:
+            await self._log_error("get_latest", topic, e)
+            return None
+        except Exception as e:  # pragma: no cover
             await self._log_error("get_latest", topic, e)
             return None
 
@@ -156,6 +180,9 @@ class AgentMemory:
                 topics = await self._fetch_topics_from_redis()
                 self._update_topics_cache(topics)
                 return topics
-            except Exception as e:
+            except RedisError as e:
+                await self._log_error("read_all_topics", None, e)
+                return []
+            except Exception as e:  # pragma: no cover
                 await self._log_error("read_all_topics", None, e)
                 return []

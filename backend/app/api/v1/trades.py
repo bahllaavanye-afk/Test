@@ -1,9 +1,11 @@
 """Trade history endpoints."""
+import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import case, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -13,6 +15,8 @@ from app.models.trade import Trade
 from app.models.user import User
 
 router = APIRouter(prefix="/trades", tags=["trades"])
+
+logger = logging.getLogger(__name__)
 
 
 class TradeOut(BaseModel):
@@ -142,25 +146,48 @@ async def list_trades(
     if symbol:
         query = query.where(Trade.symbol == symbol)
 
-    result = await db.execute(query)
+    try:
+        result = await db.execute(query)
+    except SQLAlchemyError as e:
+        logger.error(
+            "Database error while fetching trades",
+            exc_info=e,
+            extra={"user_id": current_user.id, "limit": limit, "symbol": symbol, "account_id": account_id},
+        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve trades") from e
+    except Exception as e:
+        logger.error(
+            "Unexpected error while fetching trades",
+            exc_info=e,
+            extra={"user_id": current_user.id, "limit": limit, "symbol": symbol, "account_id": account_id},
+        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected error") from e
+
     rows = result.all() or []
     if not rows:
         return []
 
-    # Convert rows to response models using a list comprehension for speed.
-    return [
-        TradeOut(
-            id=row.id,
-            symbol=row.symbol,
-            side=row.side,
-            realized_pnl=float(row.realized_pnl) if row.realized_pnl is not None else None,
-            entry_price=float(row.entry_price) if row.entry_price is not None else None,
-            exit_price=float(row.exit_price) if row.exit_price is not None else None,
-            avg_fill_price=float(row.avg_fill_price) if row.avg_fill_price is not None else None,
-            quantity=float(row.quantity),
-            opened_at=row.opened_at,
-            closed_at=row.closed_at,
-            strategy_name=row.strategy_name,
+    try:
+        return [
+            TradeOut(
+                id=row.id,
+                symbol=row.symbol,
+                side=row.side,
+                realized_pnl=float(row.realized_pnl) if row.realized_pnl is not None else None,
+                entry_price=float(row.entry_price) if row.entry_price is not None else None,
+                exit_price=float(row.exit_price) if row.exit_price is not None else None,
+                avg_fill_price=float(row.avg_fill_price) if row.avg_fill_price is not None else None,
+                quantity=float(row.quantity),
+                opened_at=row.opened_at,
+                closed_at=row.closed_at,
+                strategy_name=row.strategy_name,
+            )
+            for row in rows
+        ]
+    except Exception as e:
+        logger.error(
+            "Error converting trade rows to response models",
+            exc_info=e,
+            extra={"user_id": current_user.id, "row_count": len(rows)},
         )
-        for row in rows
-    ]
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error processing trade data") from e

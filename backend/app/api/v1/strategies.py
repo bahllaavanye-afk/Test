@@ -1,8 +1,11 @@
 """Strategy management endpoints."""
 from typing import Any, Dict, List, Optional
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_superuser, get_current_user
@@ -13,6 +16,8 @@ from app.strategies import STRATEGY_REGISTRY, list_desks, strategies_by_desk
 from pydantic import BaseModel, ConfigDict, validator
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
+
+logger = logging.getLogger(__name__)
 
 
 class StrategyOut(BaseModel):
@@ -42,20 +47,36 @@ class StrategyToggle(BaseModel):
 @router.get("/params-schema")
 async def get_params_schema(current_user: User = Depends(get_current_user)):
     """Return configurable params for each strategy that exposes DEFAULT_PARAMS."""
-    schema = {}
-    for name, cls in STRATEGY_REGISTRY.items():
-        if hasattr(cls, "DEFAULT_PARAMS"):
-            schema[name] = {
-                "params": cls.DEFAULT_PARAMS,
-                "display_name": getattr(cls, "display_name", name),
-            }
-    return schema
+    try:
+        schema = {}
+        for name, cls in STRATEGY_REGISTRY.items():
+            if hasattr(cls, "DEFAULT_PARAMS"):
+                schema[name] = {
+                    "params": cls.DEFAULT_PARAMS,
+                    "display_name": getattr(cls, "display_name", name),
+                }
+        return schema
+    except Exception as exc:
+        logger.error(
+            "Failed to generate params schema",
+            exc_info=True,
+            extra={"user_id": getattr(current_user, "id", None)},
+        )
+        raise HTTPException(status_code=500, detail="Unable to retrieve params schema") from exc
 
 
 @router.get("/available")
 async def list_available(current_user: User = Depends(get_current_user)):
     """List all registered strategy classes."""
-    return [{"name": k} for k in STRATEGY_REGISTRY.keys()]
+    try:
+        return [{"name": k} for k in STRATEGY_REGISTRY.keys()]
+    except Exception as exc:
+        logger.error(
+            "Error listing available strategies",
+            exc_info=True,
+            extra={"user_id": getattr(current_user, "id", None)},
+        )
+        raise HTTPException(status_code=500, detail="Unable to list strategies") from exc
 
 
 @router.get("/desks")
@@ -66,13 +87,21 @@ async def list_strategy_desks(current_user: User = Depends(get_current_user)):
     so the equities/crypto/options/prediction-market/TradingView desks all share one
     format and a new strategy is placed automatically.
     """
-    grouped = strategies_by_desk()
-    return {
-        "desks": list_desks(),
-        "by_desk": grouped,
-        "counts": {desk: len(members) for desk, members in grouped.items()},
-        "total": sum(len(m) for m in grouped.values()),
-    }
+    try:
+        grouped = strategies_by_desk()
+        return {
+            "desks": list_desks(),
+            "by_desk": grouped,
+            "counts": {desk: len(members) for desk, members in grouped.items()},
+            "total": sum(len(m) for m in grouped.values()),
+        }
+    except Exception as exc:
+        logger.error(
+            "Failed to retrieve strategy desks",
+            exc_info=True,
+            extra={"user_id": getattr(current_user, "id", None)},
+        )
+        raise HTTPException(status_code=500, detail="Unable to retrieve desks") from exc
 
 
 def _get_active_from_state(app) -> Optional[List[Dict[str, Any]]]:
@@ -120,9 +149,18 @@ async def _fetch_active_strategies_from_db() -> List[Dict[str, Any]]:
             result = await db.execute(stmt)
             rows = result.mappings().all()
             return _process_strategy_rows(rows)
-    except Exception:
-        # Return empty list rather than crashing — frontend must handle this gracefully
-        return []
+    except SQLAlchemyError as exc:
+        logger.error(
+            "Database error fetching active strategies",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Database error while fetching active strategies") from exc
+    except Exception as exc:
+        logger.error(
+            "Unexpected error fetching active strategies",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Unexpected error while fetching active strategies") from exc
 
 
 @router.get("/active")
@@ -146,8 +184,23 @@ async def list_strategies(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Strategy))
-    return result.scalars().all()
+    try:
+        result = await db.execute(select(Strategy))
+        return result.scalars().all()
+    except SQLAlchemyError as exc:
+        logger.error(
+            "Database error listing strategies",
+            exc_info=True,
+            extra={"user_id": getattr(current_user, "id", None)},
+        )
+        raise HTTPException(status_code=500, detail="Database error while listing strategies") from exc
+    except Exception as exc:
+        logger.error(
+            "Unexpected error listing strategies",
+            exc_info=True,
+            extra={"user_id": getattr(current_user, "id", None)},
+        )
+        raise HTTPException(status_code=500, detail="Unexpected error while listing strategies") from exc
 
 
 @router.patch("/{strategy_id}/toggle")
@@ -158,18 +211,36 @@ async def toggle_strategy(
     current_user: User = Depends(get_current_active_superuser),
 ):
     """Enable or disable a strategy, enforcing a minimum confidence threshold for activation."""
-    result = await db.execute(select(Strategy).where(Strategy.id == strategy_id))
-    strategy = result.scalar_one_or_none()
-    if not strategy:
-        raise HTTPException(status_code=404, detail="Strategy not found")
-    if body.is_enabled and strategy.confidence_threshold < 0.7:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Cannot enable strategy: confidence_threshold "
-                f"{strategy.confidence_threshold:.2f} is below the required minimum of 0.70."
-            ),
+    try:
+        result = await db.execute(select(Strategy).where(Strategy.id == strategy_id))
+        strategy = result.scalar_one_or_none()
+        if not strategy:
+            raise HTTPException(status_code=404, detail="Strategy not found")
+        if body.is_enabled and strategy.confidence_threshold < 0.7:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Cannot enable strategy: confidence_threshold "
+                    f"{strategy.confidence_threshold:.2f} is below the required minimum of 0.70."
+                ),
+            )
+        strategy.is_enabled = body.is_enabled
+        await db.commit()
+        return {"id": strategy_id, "is_enabled": body.is_enabled}
+    except HTTPException:
+        # Re‑raise known HTTP errors without logging to avoid duplicate entries
+        raise
+    except SQLAlchemyError as exc:
+        logger.error(
+            "Database error toggling strategy",
+            exc_info=True,
+            extra={"strategy_id": strategy_id, "user_id": getattr(current_user, "id", None)},
         )
-    strategy.is_enabled = body.is_enabled
-    await db.commit()
-    return {"id": strategy_id, "is_enabled": body.is_enabled}
+        raise HTTPException(status_code=500, detail="Database error while toggling strategy") from exc
+    except Exception as exc:
+        logger.error(
+            "Unexpected error toggling strategy",
+            exc_info=True,
+            extra={"strategy_id": strategy_id, "user_id": getattr(current_user, "id", None)},
+        )
+        raise HTTPException(status_code=500, detail="Unexpected error while toggling strategy") from exc

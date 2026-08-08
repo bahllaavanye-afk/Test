@@ -1,4 +1,5 @@
 """Self-improvement history endpoint."""
+import logging
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,6 +8,8 @@ from app.api.deps import get_current_user
 from app.models.user import User
 
 router = APIRouter(prefix="/improvements", tags=["improvements"])
+
+logger = logging.getLogger(__name__)
 
 
 def _apply_entry_filters(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -64,7 +67,14 @@ def _validate_signals(raw_signals: Any) -> List[Dict[str, Any]]:
     Raises HTTPException on validation failure.
     """
     if not isinstance(raw_signals, list):
-        raise HTTPException(status_code=500, detail="Invalid signal format")
+        logger.error(
+            "Signal validation failed: expected list, got %s",
+            type(raw_signals).__name__,
+        )
+        raise HTTPException(status_code=400, detail="Invalid signal format")
+    if not all(isinstance(sig, dict) for sig in raw_signals):
+        logger.error("Signal validation failed: list contains non-dict elements")
+        raise HTTPException(status_code=400, detail="Signal items must be dictionaries")
     return raw_signals
 
 
@@ -79,7 +89,11 @@ def _retrieve_and_filter_signals(improver: Any) -> List[Dict[str, Any]]:
     Helper to fetch the latest signals from the improver,
     validate them, and apply entry/exit filters.
     """
-    raw_signals = getattr(improver, "latest_signals", [])
+    try:
+        raw_signals = getattr(improver, "latest_signals", [])
+    except Exception as exc:
+        logger.exception("Failed to access latest_signals on improver: %s", exc)
+        raise HTTPException(status_code=500, detail="Improver signal retrieval error")
     validated = _validate_signals(raw_signals)
     return _process_signals(validated)
 
@@ -88,7 +102,13 @@ def _retrieve_and_filter_signals(improver: Any) -> List[Dict[str, Any]]:
 async def get_history(current_user: User = Depends(get_current_user)):
     improver = _get_improver()
     if improver:
-        return improver.get_history()
+        try:
+            return improver.get_history()
+        except Exception as exc:
+            logger.exception(
+                "Error retrieving history for user %s: %s", getattr(current_user, "id", "unknown"), exc
+            )
+            raise HTTPException(status_code=500, detail="Failed to retrieve history")
     return []
 
 
@@ -99,7 +119,15 @@ async def get_quality(current_user: User = Depends(get_current_user)):
     loop_ref = getattr(app.state, "code_quality_loop", None)
     if loop_ref is None:
         return {"status": "not_running", "message": "Code quality loop not started"}
-    return loop_ref.latest()
+    try:
+        return loop_ref.latest()
+    except Exception as exc:
+        logger.exception(
+            "Error fetching code quality loop for user %s: %s",
+            getattr(current_user, "id", "unknown"),
+            exc,
+        )
+        raise HTTPException(status_code=500, detail="Failed to fetch code quality")
 
 
 @router.get("/best_params")
@@ -107,7 +135,15 @@ async def get_best_params(current_user: User = Depends(get_current_user)):
     improver = _get_improver()
     if improver is None:
         return {"status": "not_running", "best_params": {}}
-    return {"best_params": getattr(improver, "_best_params", {})}
+    try:
+        return {"best_params": getattr(improver, "_best_params", {})}
+    except Exception as exc:
+        logger.exception(
+            "Error retrieving best_params for user %s: %s",
+            getattr(current_user, "id", "unknown"),
+            exc,
+        )
+        raise HTTPException(status_code=500, detail="Failed to retrieve best parameters")
 
 
 @router.get("/signal_quality")
@@ -118,5 +154,16 @@ async def get_signal_quality(current_user: User = Depends(get_current_user)):
     improver = _get_improver()
     if improver is None:
         raise HTTPException(status_code=404, detail="Improver not initialized")
-    final_signals = _retrieve_and_filter_signals(improver)
-    return {"filtered_signals": final_signals, "count": len(final_signals)}
+    try:
+        final_signals = _retrieve_and_filter_signals(improver)
+        return {"filtered_signals": final_signals, "count": len(final_signals)}
+    except HTTPException:
+        # Propagate HTTPExceptions raised in helper functions unchanged
+        raise
+    except Exception as exc:
+        logger.exception(
+            "Unexpected error processing signal quality for user %s: %s",
+            getattr(current_user, "id", "unknown"),
+            exc,
+        )
+        raise HTTPException(status_code=500, detail="Failed to process signal quality")
