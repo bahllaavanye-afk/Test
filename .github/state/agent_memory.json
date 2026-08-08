@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-08-08T05:07:06.345588+00:00",
+  "last_updated": "2026-08-08T05:32:13.122892+00:00",
   "conversations": {
     "2026-08-05T02:26:40.120894+00:00": {
       "channel": "desk-equities",
@@ -8072,7 +8072,7 @@
     "last_discussion": "2026-08-08T04:55:45.745824+00:00",
     "total_discussions": 447,
     "heartbeat_count": 2,
-    "last_watchdog_run": "2026-08-08T04:43:32.524419+00:00",
+    "last_watchdog_run": "2026-08-08T05:32:13.122892+00:00",
     "health_status": "3 failing",
     "watchdog_checks": {
       "Gemini LLM": {
@@ -8097,7 +8097,7 @@
       },
       "Recent commits": {
         "ok": true,
-        "detail": "last commit 2m ago"
+        "detail": "last commit 4m ago"
       },
       "Workflows": {
         "ok": true,
