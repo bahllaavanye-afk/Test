@@ -1,6 +1,7 @@
 """Trade history endpoints."""
 import logging
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -22,9 +23,17 @@ logger = logging.getLogger(__name__)
 class TradeOut(BaseModel):
     """Schema representing a trade record returned by the API."""
 
-    id: str = Field(..., description="Unique identifier for the trade.", json_schema_extra={"example": "trd_12345"})
-    symbol: str = Field(..., description="Ticker symbol of the traded instrument.", json_schema_extra={"example": "AAPL"})
-    side: str = Field(
+    id: str = Field(
+        ...,
+        description="Unique identifier for the trade.",
+        json_schema_extra={"example": "trd_12345"},
+    )
+    symbol: str = Field(
+        ...,
+        description="Ticker symbol of the traded instrument.",
+        json_schema_extra={"example": "AAPL"},
+    )
+    side: Literal["buy", "sell"] = Field(
         ...,
         description="Trade direction; either 'buy' or 'sell'.",
         json_schema_extra={"example": "buy"},
@@ -90,6 +99,15 @@ class TradeOut(BaseModel):
         """Quantity must be a positive number."""
         if v <= 0:
             raise ValueError("quantity must be greater than 0")
+        return v
+
+    @field_validator("entry_price", "exit_price", "avg_fill_price")
+    @classmethod
+    def validate_price(cls, v: float | None, info) -> float | None:
+        """Price fields, if provided, must be positive."""
+        if v is not None and v <= 0:
+            field_name = info.field_name
+            raise ValueError(f"{field_name} must be greater than 0 if provided")
         return v
 
 
