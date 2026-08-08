@@ -15,12 +15,12 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, ConfigDict, Field, validator
 
 from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.user import User
-from pydantic import BaseModel, ConfigDict
 
 # Constants
 DEFAULT_LIMIT = 100
@@ -37,40 +37,74 @@ router = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
 class AuditLogOut(BaseModel):
     """Schema for exposing audit log entries via the API.
 
-    This model mirrors the fields of :class:`app.models.audit_log.AuditLog` that
-    are relevant for external consumption. It is used as the response model for
-    the ``/audit-log`` endpoint.
-
-    Attributes
-    ----------
-    id: str
-        Unique identifier of the audit log record.
-    action: str
-        The action performed (e.g., ``login``, ``order_create``).
-    resource_type: str | None
-        Type of the resource affected by the action, if applicable.
-    resource_id: str | None
-        Identifier of the specific resource affected, if applicable.
-    ip_address: str | None
-        IP address from which the action originated.
-    user_agent: str | None
-        User‑agent string of the client that triggered the action.
-    extra_data: dict
-        Arbitrary additional data supplied by the audit event.
-    created_at: datetime
-        Timestamp when the audit record was created.
+    Mirrors the fields of :class:`app.models.audit_log.AuditLog` that are
+    relevant for external consumption.
     """
 
-    id: str
-    action: str
-    resource_type: str | None
-    resource_id: str | None
-    ip_address: str | None
-    user_agent: str | None
-    extra_data: dict
-    created_at: datetime
+    id: str = Field(
+        ...,
+        description="Unique identifier of the audit log record.",
+        example="a1b2c3d4e5f6g7h8i9j0",
+    )
+    action: str = Field(
+        ...,
+        description="The action performed (e.g., ``login``, ``order_create``).",
+        example="login",
+    )
+    resource_type: Optional[str] = Field(
+        None,
+        description="Type of the resource affected by the action, if applicable.",
+        example="order",
+    )
+    resource_id: Optional[str] = Field(
+        None,
+        description="Identifier of the specific resource affected, if applicable.",
+        example="order-12345",
+    )
+    ip_address: Optional[str] = Field(
+        None,
+        description="IP address from which the action originated.",
+        example="192.168.1.1",
+    )
+    user_agent: Optional[str] = Field(
+        None,
+        description="User‑agent string of the client that triggered the action.",
+        example="Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    )
+    extra_data: dict = Field(
+        default_factory=dict,
+        description="Arbitrary additional data supplied by the audit event.",
+        example={"key": "value"},
+    )
+    created_at: datetime = Field(
+        ...,
+        description="Timestamp when the audit record was created.",
+        example="2023-01-01T12:00:00Z",
+    )
 
     model_config = ConfigDict(from_attributes=True)
+
+    @validator("extra_data", pre=True, always=True)
+    def ensure_extra_data_is_dict(cls, v):
+        """Guarantee that ``extra_data`` is always a dictionary."""
+        if v is None:
+            return {}
+        if not isinstance(v, dict):
+            raise ValueError("extra_data must be a dictionary")
+        return v
+
+    @validator("ip_address")
+    def validate_ip_address(cls, v):
+        """Very light validation of IPv4/IPv6 address format."""
+        if v is None:
+            return v
+        parts = v.split(".")
+        if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
+            return v
+        # Basic IPv6 check (contains ':')
+        if ":" in v:
+            return v
+        raise ValueError("ip_address must be a valid IPv4 or IPv6 address")
 
 
 def _validate_limit(limit: Optional[int]) -> int:
