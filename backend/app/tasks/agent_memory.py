@@ -2,7 +2,7 @@
 Redis-backed shared agent memory.
 
 Agents read and write structured observations to a shared Redis namespace.
-All data is JSON-serialised. Keys are namespaced under 'agent:memory:'.
+All data is JSON‑serialised. Keys are namespaced under 'agent:memory:'.
 
 Usage:
     mem = AgentMemory(redis_client)
@@ -64,10 +64,7 @@ class AgentMemory:
             "error_type": type(exc).__name__,
             "error_msg": str(exc),
         }
-        logger.error(
-            "AgentMemory operation failed",
-            extra=extra,
-        )
+        logger.error("AgentMemory operation failed", extra=extra)
 
     async def _add_topic_to_set(self, topic: str) -> None:
         """Ensure the topic is recorded in the Redis set of topics."""
@@ -103,31 +100,45 @@ class AgentMemory:
     # ── Write ─────────────────────────────────────────────────────────────────
 
     async def write(self, topic: str, data: dict) -> None:
-        """Append an observation to a topic list with a timestamp."""
+        """Append an observation to a topic list with a timestamp.
+
+        Uses a Redis pipeline to minimise round‑trips.
+        """
         if not topic:
             await self._log_error("write", topic, ValueError("Topic cannot be empty"))
             return
+
         payload = self._payload(data)
         key = self._key(topic)
+
         try:
-            await self._r.lpush(key, payload)
-            await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
-            await self._add_topic_to_set(topic)
+            pipe = self._r.pipeline()
+            await pipe.lpush(key, payload)
+            await pipe.ltrim(key, 0, _MAX_LIST_LEN - 1)
+            await pipe.sadd(_TOPICS_SET_KEY, topic)
+            await pipe.execute()
         except RedisError as e:
             await self._log_error("write", topic, e)
         except Exception as e:  # pragma: no cover
             await self._log_error("write", topic, e)
 
     async def set_latest(self, topic: str, data: dict) -> None:
-        """Overwrite the latest value for a topic (single-value slot)."""
+        """Overwrite the latest value for a topic (single-value slot).
+
+        Uses a Redis pipeline to batch the set and topic‑registration operations.
+        """
         if not topic:
             await self._log_error("set_latest", topic, ValueError("Topic cannot be empty"))
             return
+
         payload = self._payload(data)
         key = self._key(topic, latest=True)
+
         try:
-            await self._r.set(key, payload)
-            await self._add_topic_to_set(topic)
+            pipe = self._r.pipeline()
+            await pipe.set(key, payload)
+            await pipe.sadd(_TOPICS_SET_KEY, topic)
+            await pipe.execute()
         except RedisError as e:
             await self._log_error("set_latest", topic, e)
         except Exception as e:  # pragma: no cover
@@ -142,6 +153,7 @@ class AgentMemory:
             return []
         if n <= 0:
             return []
+
         key = self._key(topic)
         try:
             items = await self._r.lrange(key, 0, n - 1)
@@ -158,6 +170,7 @@ class AgentMemory:
         if not topic:
             await self._log_error("get_latest", topic, ValueError("Topic cannot be empty"))
             return None
+
         key = self._key(topic, latest=True)
         try:
             val = await self._r.get(key)
