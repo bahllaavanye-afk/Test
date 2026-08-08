@@ -10,7 +10,7 @@ function.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy import select
@@ -31,15 +31,15 @@ AUTH_ERROR_DETAIL = "Authenticated user not found."
 ROUTER_PREFIX = "/audit-log"
 ROUTER_TAGS = ["audit-log"]
 
-router = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
+router: APIRouter = APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
 
 
 class AuditLogOut(BaseModel):
     """Schema for exposing audit log entries via the API.
 
-    This model mirrors the fields of :class:`app.models.audit_log.AuditLog` that
-    are relevant for external consumption. It is used as the response model for
-    the ``/audit-log`` endpoint.
+    Mirrors the fields of :class:`app.models.audit_log.AuditLog` that are
+    relevant for external consumption. Used as the response model for the
+    ``/audit-log`` endpoint.
 
     Attributes
     ----------
@@ -55,7 +55,7 @@ class AuditLogOut(BaseModel):
         IP address from which the action originated.
     user_agent: str | None
         User‑agent string of the client that triggered the action.
-    extra_data: dict
+    extra_data: Dict[str, Any]
         Arbitrary additional data supplied by the audit event.
     created_at: datetime
         Timestamp when the audit record was created.
@@ -63,11 +63,11 @@ class AuditLogOut(BaseModel):
 
     id: str
     action: str
-    resource_type: str | None
-    resource_id: str | None
-    ip_address: str | None
-    user_agent: str | None
-    extra_data: dict
+    resource_type: Optional[str]
+    resource_id: Optional[str]
+    ip_address: Optional[str]
+    user_agent: Optional[str]
+    extra_data: Dict[str, Any]
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -92,7 +92,9 @@ def _validate_limit(limit: Optional[int]) -> int:
     if limit is None:
         raise ValueError("limit must not be None")
     if limit < MIN_LIMIT or limit > MAX_LIMIT:
-        raise ValueError(f"limit must be between {MIN_LIMIT} and {MAX_LIMIT}, got {limit}")
+        raise ValueError(
+            f"limit must be between {MIN_LIMIT} and {MAX_LIMIT}, got {limit}"
+        )
     return limit
 
 
@@ -158,10 +160,7 @@ async def list_audit_log(
         If ``limit`` is ``None`` or outside the allowed range.
     """
     if current_user is None:
-        raise HTTPException(
-            status_code=AUTH_ERROR_STATUS,
-            detail=AUTH_ERROR_DETAIL,
-        )
+        raise HTTPException(status_code=AUTH_ERROR_STATUS, detail=AUTH_ERROR_DETAIL)
 
     validated_limit = _validate_limit(limit)
     audit_logs = await _fetch_audit_logs(db, current_user.id, validated_limit)
