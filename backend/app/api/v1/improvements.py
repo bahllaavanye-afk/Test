@@ -98,6 +98,16 @@ def _retrieve_and_filter_signals(improver: Any) -> List[Dict[str, Any]]:
     return _process_signals(validated)
 
 
+def _fetch_filtered_signals(improver: Any) -> List[Dict[str, Any]]:
+    """Fetch and filter signals using the existing retrieval helper."""
+    return _retrieve_and_filter_signals(improver)
+
+
+def _format_signal_quality_response(signals: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Construct the response payload for signal quality endpoint."""
+    return {"filtered_signals": signals, "count": len(signals)}
+
+
 @router.get("/history")
 async def get_history(current_user: User = Depends(get_current_user)):
     improver = _get_improver()
@@ -106,7 +116,9 @@ async def get_history(current_user: User = Depends(get_current_user)):
             return improver.get_history()
         except Exception as exc:
             logger.exception(
-                "Error retrieving history for user %s: %s", getattr(current_user, "id", "unknown"), exc
+                "Error retrieving history for user %s: %s",
+                getattr(current_user, "id", "unknown"),
+                exc,
             )
             raise HTTPException(status_code=500, detail="Failed to retrieve history")
     return []
@@ -155,8 +167,8 @@ async def get_signal_quality(current_user: User = Depends(get_current_user)):
     if improver is None:
         raise HTTPException(status_code=404, detail="Improver not initialized")
     try:
-        final_signals = _retrieve_and_filter_signals(improver)
-        return {"filtered_signals": final_signals, "count": len(final_signals)}
+        filtered_signals = _fetch_filtered_signals(improver)
+        return _format_signal_quality_response(filtered_signals)
     except HTTPException:
         # Propagate HTTPExceptions raised in helper functions unchanged
         raise

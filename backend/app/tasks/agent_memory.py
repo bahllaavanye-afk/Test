@@ -100,6 +100,17 @@ class AgentMemory:
             return []
         return self._decode_topics(raw_topics)
 
+    async def _get_cached_topics(self) -> List[str]:
+        """Return topics using the cache, refreshing it when stale."""
+        async with self._lock:
+            now = time.time()
+            if self._topics_cache is not None and (now - self._cache_timestamp) < _CACHE_TTL:
+                return self._topics_cache
+
+            topics = await self._fetch_topics_from_redis()
+            self._update_topics_cache(topics)
+            return topics
+
     # ── Write ─────────────────────────────────────────────────────────────────
 
     async def write(self, topic: str, data: dict) -> None:
@@ -171,18 +182,11 @@ class AgentMemory:
 
     async def read_all_topics(self) -> List[str]:
         """List all memory topics currently stored, using a short‑lived cache."""
-        async with self._lock:
-            now = time.time()
-            if self._topics_cache is not None and (now - self._cache_timestamp) < _CACHE_TTL:
-                return self._topics_cache
-
-            try:
-                topics = await self._fetch_topics_from_redis()
-                self._update_topics_cache(topics)
-                return topics
-            except RedisError as e:
-                await self._log_error("read_all_topics", None, e)
-                return []
-            except Exception as e:  # pragma: no cover
-                await self._log_error("read_all_topics", None, e)
-                return []
+        try:
+            return await self._get_cached_topics()
+        except RedisError as e:
+            await self._log_error("read_all_topics", None, e)
+            return []
+        except Exception as e:  # pragma: no cover
+            await self._log_error("read_all_topics", None, e)
+            return []

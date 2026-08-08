@@ -32,8 +32,8 @@ def _validate_limit(limit: int) -> None:
         raise HTTPException(status_code=400, detail=ERR_LIMIT_POSITIVE)
 
 
-def _execute_replay(category: str, date: str | None, limit: int) -> list:
-    """Run the replay function and translate unexpected errors to HTTPException."""
+def _run_replay(category: str, date: str | None, limit: int) -> list:
+    """Execute the replay function and translate unexpected errors to HTTPException."""
     try:
         return replay(category, date, limit)
     except Exception as exc:
@@ -43,6 +43,14 @@ def _execute_replay(category: str, date: str | None, limit: int) -> list:
         ) from exc
 
 
+def _process_archive_request(category: str, date: str | None, limit: int) -> list:
+    """Normalize inputs, validate them, run replay, and ensure a list is returned."""
+    normalized_date = _normalize_date(date)
+    _validate_limit(limit)
+    result = _run_replay(category, normalized_date, limit)
+    return result if result else []
+
+
 @router.get("/index")
 async def get_index(current_user: User = Depends(get_current_user)):
     """
@@ -50,7 +58,6 @@ async def get_index(current_user: User = Depends(get_current_user)):
     Handles the case where the underlying function returns None.
     """
     archives = list_archives()
-    # Ensure a list is always returned
     return archives if archives else []
 
 
@@ -75,8 +82,4 @@ async def get_archive(
     * `limit` is validated to be at least 1.
     * Returns an empty list if the replay yields no data.
     """
-    normalized_date = _normalize_date(date)
-    _validate_limit(limit)
-    result = _execute_replay(category, normalized_date, limit)
-    # Ensure the endpoint always returns a list
-    return result if result else []
+    return _process_archive_request(category, date, limit)
