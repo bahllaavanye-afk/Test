@@ -65,12 +65,25 @@ def _compute_aggregates(
         avg_confidence: Average confidence rounded to three decimals.
         latest_updated: ISO timestamp of the most recent update, if any.
     """
-    label_counts = _count_labels(states)
-    confidences = _extract_confidences(states)
-    latest_updated = _find_latest_updated(states)
+    if not states:
+        return "unknown", 0.0, None
+
+    label_counts = Counter()
+    total_confidence = 0.0
+    latest_updated: Optional[str] = None
+    count = 0
+
+    for sym_state in states.values():
+        label_counts[_map_label(sym_state.get("regime", "unknown"))] += 1
+        total_confidence += float(sym_state.get("confidence", 0.0))
+        count += 1
+
+        upd = sym_state.get("updated_at")
+        if upd and (latest_updated is None or upd > latest_updated):
+            latest_updated = upd
 
     overall_regime = label_counts.most_common(1)[0][0] if label_counts else "unknown"
-    avg_confidence = round(sum(confidences) / len(confidences), 3) if confidences else 0.0
+    avg_confidence = round(total_confidence / count, 3) if count else 0.0
     return overall_regime, avg_confidence, latest_updated
 
 
