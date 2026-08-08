@@ -1,6 +1,7 @@
 """Trade history endpoints."""
 import logging
 from datetime import datetime
+from time import perf_counter
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -102,6 +103,8 @@ async def list_trades(
     current_user: User = Depends(get_current_user),
 ):
     """Return a list of recent trades for the current user with optional filters."""
+    start_time = perf_counter()
+
     # Guard against unexpected None or out‑of‑range values for limit.
     if limit is None:
         limit = 50
@@ -164,6 +167,23 @@ async def list_trades(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected error") from e
 
     rows = result.all() or []
+    row_count = len(rows)
+    total_pnl = sum(row.realized_pnl or 0 for row in rows)
+
+    # Log key metrics at INFO level.
+    elapsed_ms = (perf_counter() - start_time) * 1000
+    logger.info(
+        "Fetched trade history",
+        extra={
+            "user_id": current_user.id,
+            "row_count": row_count,
+            "total_realized_pnl": total_pnl,
+            "elapsed_ms": round(elapsed_ms, 2),
+            "symbol_filter": symbol,
+            "account_id_filter": account_id,
+        },
+    )
+
     if not rows:
         return []
 
@@ -188,6 +208,6 @@ async def list_trades(
         logger.error(
             "Error converting trade rows to response models",
             exc_info=e,
-            extra={"user_id": current_user.id, "row_count": len(rows)},
+            extra={"user_id": current_user.id, "row_count": row_count},
         )
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error processing trade data") from e

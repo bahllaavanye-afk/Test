@@ -18,7 +18,7 @@ import json
 import logging
 import time
 import asyncio
-from typing import Any, List
+from typing import Any, List, Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,11 @@ class AgentMemory:
             extra=extra,
         )
 
+    def _log_info(self, operation: str, topic: str, metrics: Mapping[str, Any]) -> None:
+        """Emit an INFO‑level log entry with operation metrics."""
+        extra = {"operation": operation, "topic": topic, **metrics}
+        logger.info("AgentMemory operation completed", extra=extra)
+
     async def _add_topic_to_set(self, topic: str) -> None:
         """Ensure the topic is recorded in the Redis set of topics."""
         if not topic:
@@ -113,12 +118,20 @@ class AgentMemory:
         if not topic:
             await self._log_error("write", topic, ValueError(_ERROR_TOPIC_EMPTY))
             return
+        start = time.time()
         payload = self._payload(data)
         key = self._key(topic)
         try:
             await self._r.lpush(key, payload)
             await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
             await self._add_topic_to_set(topic)
+            duration = time.time() - start
+            metrics = {
+                "signal_count": 1,
+                "execution_time_ms": int(duration * 1000),
+                "pnl": data.get("pnl"),
+            }
+            self._log_info("write", topic, metrics)
         except RedisError as e:
             await self._log_error("write", topic, e)
         except Exception as e:  # pragma: no cover
@@ -129,11 +142,19 @@ class AgentMemory:
         if not topic:
             await self._log_error("set_latest", topic, ValueError(_ERROR_TOPIC_EMPTY))
             return
+        start = time.time()
         payload = self._payload(data)
         key = self._key(topic, latest=True)
         try:
             await self._r.set(key, payload)
             await self._add_topic_to_set(topic)
+            duration = time.time() - start
+            metrics = {
+                "signal_count": 1,
+                "execution_time_ms": int(duration * 1000),
+                "pnl": data.get("pnl"),
+            }
+            self._log_info("set_latest", topic, metrics)
         except RedisError as e:
             await self._log_error("set_latest", topic, e)
         except Exception as e:  # pragma: no cover
@@ -148,10 +169,18 @@ class AgentMemory:
             return []
         if n <= 0:
             return []
+        start = time.time()
         key = self._key(topic)
         try:
             items = await self._r.lrange(key, 0, n - 1)
-            return [json.loads(i) for i in items]
+            result = [json.loads(i) for i in items]
+            duration = time.time() - start
+            metrics = {
+                "signal_count": len(result),
+                "execution_time_ms": int(duration * 1000),
+            }
+            self._log_info("read_recent", topic, metrics)
+            return result
         except RedisError as e:
             await self._log_error("read_recent", topic, e)
             return []
@@ -164,10 +193,19 @@ class AgentMemory:
         if not topic:
             await self._log_error("get_latest", topic, ValueError(_ERROR_TOPIC_EMPTY))
             return None
+        start = time.time()
         key = self._key(topic, latest=True)
         try:
             val = await self._r.get(key)
-            return json.loads(val) if val else None
+            result = json.loads(val) if val else None
+            duration = time.time() - start
+            metrics = {
+                "signal_count": 1 if result is not None else 0,
+                "execution_time_ms": int(duration * 1000),
+                "pnl": result.get("pnl") if isinstance(result, dict) else None,
+            }
+            self._log_info("get_latest", topic, metrics)
+            return result
         except RedisError as e:
             await self._log_error("get_latest", topic, e)
             return None

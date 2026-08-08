@@ -2,6 +2,8 @@
 
 Provides routes to fetch benchmark statistics and recent comparison results.
 """
+import logging
+import time
 from typing import Any, List
 
 from fastapi import APIRouter, Depends
@@ -28,6 +30,8 @@ WINNER_MANUAL = "manual"
 WINNER_ML = "ml"
 
 router = APIRouter(prefix=PREFIX, tags=[TAG])
+
+logger = logging.getLogger(__name__)
 
 
 class ComparisonOut(BaseModel):
@@ -110,7 +114,20 @@ async def get_benchmarks() -> Any:
     Any
         The raw benchmark data returned by ``get_benchmark_stats``.
     """
-    return get_benchmark_stats()
+    start_time = time.perf_counter()
+    result = get_benchmark_stats()
+    exec_time = time.perf_counter() - start_time
+
+    # Structured logging
+    logger.info(
+        "Benchmark stats retrieved",
+        extra={
+            "signal_count": len(result) if hasattr(result, "__len__") else None,
+            "execution_time": exec_time,
+            "pnl": None,
+        },
+    )
+    return result
 
 
 @router.get(ENDPOINT_RESULTS, response_model=list[ComparisonOut])
@@ -136,7 +153,7 @@ async def list_comparisons(
     List[ComparisonOut]
         A list of transformed comparison results.
     """
-    # Guard against unexpected None from the DB layer
+    start_time = time.perf_counter()
     result = await db.execute(
         select(ComparisonModel)
         .order_by(ComparisonModel.created_at.desc())
@@ -144,8 +161,30 @@ async def list_comparisons(
     )
     rows = result.scalars().all() if result is not None else []
 
-    # Ensure we always return a list, even if no rows are found
     if not rows:
+        exec_time = time.perf_counter() - start_time
+        logger.info(
+            "Comparison list fetched - empty result",
+            extra={"signal_count": 0, "execution_time": exec_time, "pnl": None},
+        )
         return []
 
-    return [ComparisonOut.from_model(r) for r in rows]
+    comparisons = [ComparisonOut.from_model(r) for r in rows]
+
+    # Compute simple P&L metric: sum of ML Sharpe minus manual Sharpe where both exist
+    pnl = sum(
+        (c.ml_sharpe or 0) - (c.manual_sharpe or 0)
+        for c in comparisons
+        if c.ml_sharpe is not None and c.manual_sharpe is not None
+    )
+    exec_time = time.perf_counter() - start_time
+
+    logger.info(
+        "Comparison list fetched",
+        extra={
+            "signal_count": len(rows),
+            "execution_time": exec_time,
+            "pnl": pnl,
+        },
+    )
+    return comparisons

@@ -6,6 +6,7 @@ instance. The resulting ``api_router`` is imported by the main FastAPI
 application.
 """
 import logging
+import time
 from typing import List, Optional, Tuple
 
 from fastapi import APIRouter
@@ -110,5 +111,45 @@ def _include(router_obj: Optional[APIRouter], name: str) -> None:
         logger.error(LOG_ERROR_INCLUDE_ROUTER, name, exc)
 
 
+# -------------------------------------------------------------------------
+# Router inclusion with monitoring
+# -------------------------------------------------------------------------
+
+_start_time = time.perf_counter()
+_included_count = 0
+
 for r, n in _ROUTER_DEFINITIONS:
+    if r is not None:
+        _included_count += 1
     _include(r, n)
+
+_elapsed_ms = (time.perf_counter() - _start_time) * 1000
+
+# Optional metric helpers – they may not exist in every deployment.
+def _safe_getattr(module, attr_name):
+    return getattr(module, attr_name, None)
+
+_signal_count = _safe_getattr(monitoring, "get_signal_count")
+if callable(_signal_count):
+    signal_count = _signal_count()
+else:
+    signal_count = None
+
+_pnl_fetcher = _safe_getattr(monitoring, "get_current_pnl")
+if callable(_pnl_fetcher):
+    pnl = _pnl_fetcher()
+else:
+    pnl = None
+
+logger.info(
+    "router_initialization",
+    extra={
+        "router_total": len(_ROUTER_DEFINITIONS),
+        "router_included": _included_count,
+        "initialization_ms": round(_elapsed_ms, 2),
+        "signal_count": signal_count,
+        "pnl": pnl,
+    },
+)
+
+# End of file.

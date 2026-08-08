@@ -1,8 +1,15 @@
 """Trade archive replay endpoints."""
+import logging
+import time
+from typing import Any, List
+
 from fastapi import APIRouter, Depends, Query, HTTPException
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.archive.trade_archiver import replay, list_archives
+
+# Logger configuration
+logger = logging.getLogger(__name__)
 
 # Constants
 ARCHIVE_PREFIX: str = "/archive"
@@ -37,7 +44,7 @@ def _validate_limit(limit: int) -> None:
         raise HTTPException(status_code=400, detail=ERR_LIMIT_POSITIVE)
 
 
-def _execute_replay(category: str, date: str | None, limit: int) -> list:
+def _execute_replay(category: str, date: str | None, limit: int) -> List[Any]:
     """Run the replay function and translate unexpected errors to HTTPException."""
     try:
         return replay(category, date, limit)
@@ -56,7 +63,15 @@ async def get_index(current_user: User = Depends(get_current_user)):
     """
     archives = list_archives()
     # Ensure a list is always returned
-    return archives if archives else []
+    result = archives if archives else []
+    logger.info(
+        "Archive index retrieved",
+        extra={
+            "user_id": getattr(current_user, "id", None),
+            "archive_count": len(result),
+        },
+    )
+    return result
 
 
 @router.get(ROUTE_CATEGORY)
@@ -82,6 +97,34 @@ async def get_archive(
     """
     normalized_date = _normalize_date(date)
     _validate_limit(limit)
+
+    start_time = time.time()
     result = _execute_replay(category, normalized_date, limit)
+    elapsed = time.time() - start_time
+
+    # Compute metrics
+    signal_count = len(result) if result else 0
+    total_pnl: float | None = None
+    if result and isinstance(result, list):
+        pnl_values = [
+            trade.get("pnl")
+            for trade in result
+            if isinstance(trade, dict) and "pnl" in trade and isinstance(trade["pnl"], (int, float))
+        ]
+        total_pnl = sum(pnl_values) if pnl_values else 0.0
+
+    logger.info(
+        "Archive replay executed",
+        extra={
+            "user_id": getattr(current_user, "id", None),
+            "category": category,
+            "date": normalized_date,
+            "limit": limit,
+            "signal_count": signal_count,
+            "execution_time_seconds": elapsed,
+            "total_pnl": total_pnl,
+        },
+    )
+
     # Ensure the endpoint always returns a list
     return result if result else []
