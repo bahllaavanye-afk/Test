@@ -1,10 +1,5 @@
 {
   "skills": [
-    "Refactor dark theme",
-    "Validate timestamps",
-    "Log market closures",
-    "Based on the recent agent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
-    "Check API status",
     "* The `self_improver` agent is actively improving, with no specific details available in the recent learnings.",
     "Optimize risk policies",
     "* A variant strategy, \"SPY EMA-VWAP-MACD-ATR Momentum (5-min)\", has been proposed and is estimated to have a Sharpe ratio of 1.15 \u00b1 0.15, with entry long positions triggered above the 20-period VWAP.",
@@ -199,8 +194,13 @@
     "Test database connections",
     "Log API errors",
     "Test SSL certificates",
-    "Verify config files"
+    "Verify config files",
+    "Use circuit breaker",
+    "Rate limit requests",
+    "Enforce type safety",
+    "Use Pydantic models",
+    "Fix overload conflicts"
   ],
-  "last_updated": "2026-08-08T15:36:11.576303+00:00",
+  "last_updated": "2026-08-08T16:28:23.720242+00:00",
   "total": 200
 }
