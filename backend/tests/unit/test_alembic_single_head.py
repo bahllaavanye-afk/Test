@@ -6,6 +6,7 @@ guards against that returning: every ``down_revision`` must resolve to a real
 revision, and there must be a single head.
 """
 import re
+import tempfile
 from pathlib import Path
 from typing import Dict, Tuple, Optional
 
@@ -58,3 +59,32 @@ def test_no_duplicate_revisions():
             rev_counts[rev] = rev_counts.get(rev, 0) + 1
     duplicates = [rev for rev, cnt in rev_counts.items() if cnt > 1]
     assert not duplicates, f"Duplicate revision IDs found: {duplicates}"
+
+
+def test_initial_revision_exists():
+    """There should be at least one revision without a down_revision (the base migration)."""
+    revs, downs = _graph()
+    roots = [rev for rev, dr in downs.items() if dr is None]
+    assert roots, "No initial revision (with down_revision=None) found in migration graph"
+
+
+def test_revision_id_pattern():
+    """Revision identifiers should follow the expected hexadecimal format."""
+    revs, _ = _graph()
+    pattern = re.compile(r'^[0-9a-f]{12}$')
+    invalid = [rev for rev in revs if not pattern.fullmatch(rev)]
+    assert not invalid, f"Revision IDs not matching expected pattern: {invalid}"
+
+
+def test_empty_versions_directory(monkeypatch):
+    """The graph functions should handle an empty migrations directory without error."""
+    with tempfile.TemporaryDirectory() as td:
+        empty_path = Path(td)
+        monkeypatch.setattr('backend.tests.unit.test_alembic_single_head._VERSIONS', empty_path, raising=False)
+        revs, downs = _graph()
+        assert revs == {}, "Expected no revisions in an empty versions directory"
+        assert downs == {}, "Expected no down revisions in an empty versions directory"
+        # With no revisions, there should be no heads
+        referenced = {dr for dr in downs.values() if dr}
+        heads = [rev for rev in revs if rev not in referenced]
+        assert heads == [] , "Expected no heads when there are no revisions"
