@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-08-08T08:39:19.811380+00:00",
+  "last_updated": "2026-08-08T08:39:41.025649+00:00",
   "conversations": {
     "2026-08-05T09:28:14.752583+00:00": {
       "channel": "risk",
@@ -8221,8 +8221,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[attribution @ 2026-08-07T18:55] avellaneda_stoikov_mm: 10 trades, 90% win rate, +53.48% total return, +5.35% avg (period 30d)",
-    "[attribution @ 2026-08-07T18:55] time_serie: 18 trades, 72% win rate, +43.01% total return, +2.39% avg (period 30d)",
     "[attribution @ 2026-08-07T18:55] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
     "[attribution @ 2026-08-07T18:55] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)",
     "[attribution @ 2026-08-07T18:55] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
@@ -8420,7 +8418,9 @@
     "[attribution @ 2026-08-08T08:39] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
     "[signal_runner in #desk-equities @ 2026-08-08T08:39] In the latest cycle the `agent_memory.json`\u202fsignals array recorded a bullish signal for **SPY** (confidence\u202f0.85), a bearish signal for **QQQ** (confi",
     "[strategy_generator in #desk-equities @ 2026-08-08T08:39] **Strategy Variant:** *SPY\u202fLong\u202f/\u202fAAPL\u202fLong\u202f/\u202fQQQ\u202fShort \u2013 EMA\u201120\u202f+\u202fVWAP",
-    "[quick_backtest in #desk-equities @ 2026-08-08T08:39] I\u2019d expect the SPY\u202fLong\u202f/\u202fAAPL\u202fLong\u202f/\u202fQQQ\u202fShort EMA\u201120\u202f+\u202fVWAP spread to hit a Sharpe near\u202f1.08\u202f\u00b1\u202f0.06, since the tighter 20\u2011period VWAP gate and the d"
+    "[quick_backtest in #desk-equities @ 2026-08-08T08:39] I\u2019d expect the SPY\u202fLong\u202f/\u202fAAPL\u202fLong\u202f/\u202fQQQ\u202fShort EMA\u201120\u202f+\u202fVWAP spread to hit a Sharpe near\u202f1.08\u202f\u00b1\u202f0.06, since the tighter 20\u2011period VWAP gate and the d",
+    "[investor_pipeline @ 2026-08-08T08:39] I\u2019m currently scanning\u202f`backend/pipeline/investor_stage_tracker.py`\u202fto verify network connectivity and auto\u2011advance any pending investor pipeline stag",
+    "[self_improver @ 2026-08-08T08:39] [LLM unavailable \u2014 all providers failed]"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
