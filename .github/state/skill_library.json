@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Run mypy --strict",
-    "Log market gaps",
-    "Replace generic signatures",
     "Monitor agent performance",
     "Ping exchange sync",
     "Catch SSL exceptions",
@@ -199,8 +196,11 @@
     "Test API timeouts",
     "Use retry mechanisms",
     "Check network latency",
-    "Limit API calls"
+    "Limit API calls",
+    "Sanitize database queries",
+    "Check dependency updates",
+    "Track system clock sync"
   ],
-  "last_updated": "2026-08-08T11:52:49.824195+00:00",
+  "last_updated": "2026-08-08T12:39:24.623616+00:00",
   "total": 200
 }
