@@ -1,8 +1,12 @@
 """Trade archive replay endpoints."""
+import logging
 from fastapi import APIRouter, Depends, Query, HTTPException
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.archive.trade_archiver import replay, list_archives
+
+# Logger configuration
+logger = logging.getLogger(__name__)
 
 # Constants
 ARCHIVE_PREFIX: str = "/archive"
@@ -17,6 +21,7 @@ LIMIT_DESCRIPTION: str = "Maximum number of records to return (1-5000)"
 
 ERR_LIMIT_POSITIVE: str = "Limit must be a positive integer."
 ERR_RETRIEVE_ARCHIVE: str = "Failed to retrieve archive: {exc}"
+ERR_LIST_ARCHIVES: str = "Failed to list archives: {exc}"
 
 router = APIRouter(prefix=ARCHIVE_PREFIX, tags=[ARCHIVE_TAG])
 
@@ -33,14 +38,33 @@ def _validate_limit(limit: int) -> None:
 
 
 def _execute_replay(category: str, date: str | None, limit: int) -> list:
-    """Run the replay function and translate unexpected errors to HTTPException."""
+    """
+    Run the replay function and translate errors to HTTPException.
+    Specific exceptions are mapped to appropriate HTTP status codes.
+    """
     try:
         return replay(category, date, limit)
+    except ValueError as exc:
+        logger.error(
+            "Invalid replay parameters",
+            exc_info=exc,
+            extra={"category": category, "date": date, "limit": limit},
+        )
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        logger.error(
+            "Runtime error during replay",
+            exc_info=exc,
+            extra={"category": category, "date": date, "limit": limit},
+        )
+        raise HTTPException(status_code=500, detail=ERR_RETRIEVE_ARCHIVE.format(exc=exc)) from exc
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=ERR_RETRIEVE_ARCHIVE.format(exc=exc),
-        ) from exc
+        logger.error(
+            "Unexpected error during replay",
+            exc_info=exc,
+            extra={"category": category, "date": date, "limit": limit},
+        )
+        raise HTTPException(status_code=500, detail=ERR_RETRIEVE_ARCHIVE.format(exc=exc)) from exc
 
 
 @router.get("/index")
@@ -49,7 +73,18 @@ async def get_index(current_user: User = Depends(get_current_user)):
     Return a list of available archives.
     Handles the case where the underlying function returns None.
     """
-    archives = list_archives()
+    try:
+        archives = list_archives()
+    except Exception as exc:
+        logger.error(
+            "Failed to retrieve archive list",
+            exc_info=exc,
+            extra={"user_id": getattr(current_user, "id", None)},
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=ERR_LIST_ARCHIVES.format(exc=exc),
+        ) from exc
     # Ensure a list is always returned
     return archives if archives else []
 

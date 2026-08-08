@@ -9,11 +9,13 @@ The module defines the FastAPI router, the response schema, and the handler
 function.
 """
 
+import logging
 from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -22,6 +24,7 @@ from app.models.audit_log import AuditLog
 from app.models.user import User
 from pydantic import BaseModel, ConfigDict
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/audit-log", tags=["audit-log"])
 
@@ -145,9 +148,7 @@ async def list_audit_log(
     Raises
     ------
     HTTPException
-        If the user is not authenticated.
-    ValueError
-        If ``limit`` is ``None`` or outside the allowed range.
+        If the user is not authenticated or if an error occurs during processing.
     """
     if current_user is None:
         raise HTTPException(
@@ -155,6 +156,37 @@ async def list_audit_log(
             detail="Authenticated user not found.",
         )
 
-    validated_limit = _validate_limit(limit)
-    audit_logs = await _fetch_audit_logs(db, current_user.id, validated_limit)
+    try:
+        validated_limit = _validate_limit(limit)
+    except ValueError as ve:
+        logger.error(
+            "Invalid limit parameter",
+            extra={"limit": limit, "user_id": current_user.id, "error": str(ve)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve),
+        ) from ve
+
+    try:
+        audit_logs = await _fetch_audit_logs(db, current_user.id, validated_limit)
+    except SQLAlchemyError as db_err:
+        logger.error(
+            "Database error while fetching audit logs",
+            extra={"user_id": current_user.id, "limit": validated_limit, "error": str(db_err)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve audit logs due to a server error.",
+        ) from db_err
+    except Exception as exc:
+        logger.error(
+            "Unexpected error while fetching audit logs",
+            extra={"user_id": current_user.id, "limit": validated_limit, "error": str(exc)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred.",
+        ) from exc
+
     return audit_logs

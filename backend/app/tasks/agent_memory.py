@@ -29,9 +29,11 @@ _CACHE_TTL = 60  # seconds
 
 # Optional import of Redis‑specific exception hierarchy.
 try:
-    from aioredis.exceptions import RedisError  # type: ignore
+    from aioredis.exceptions import RedisError, ConnectionError, TimeoutError  # type: ignore
 except Exception:  # pragma: no cover
     RedisError = Exception  # Fallback if aioredis is not installed.
+    ConnectionError = Exception
+    TimeoutError = Exception
 
 
 class AgentMemory:
@@ -54,7 +56,15 @@ class AgentMemory:
         """Serialise data with a timestamp."""
         if data is None:
             data = {}
-        return json.dumps({"ts": time.time(), **data})
+        try:
+            return json.dumps({"ts": time.time(), **data})
+        except (TypeError, ValueError) as e:
+            # Fallback to timestamp‑only payload if data is not serialisable.
+            logger.error(
+                "Failed to serialize payload, falling back to timestamp only",
+                extra={"error_type": type(e).__name__, "error_msg": str(e), "data": str(data)},
+            )
+            return json.dumps({"ts": time.time()})
 
     async def _log_error(self, operation: str, topic: str | None, exc: Exception) -> None:
         """Log a Redis operation failure with structured context."""
@@ -64,10 +74,7 @@ class AgentMemory:
             "error_type": type(exc).__name__,
             "error_msg": str(exc),
         }
-        logger.error(
-            "AgentMemory operation failed",
-            extra=extra,
-        )
+        logger.error("AgentMemory operation failed", extra=extra)
 
     async def _add_topic_to_set(self, topic: str) -> None:
         """Ensure the topic is recorded in the Redis set of topics."""
@@ -76,6 +83,8 @@ class AgentMemory:
             return
         try:
             await self._r.sadd(_TOPICS_SET_KEY, topic)
+        except (ConnectionError, TimeoutError) as e:
+            await self._log_error("add_topic_to_set", topic, e)
         except RedisError as e:
             await self._log_error("add_topic_to_set", topic, e)
         except Exception as e:  # pragma: no cover
@@ -113,6 +122,8 @@ class AgentMemory:
             await self._r.lpush(key, payload)
             await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
             await self._add_topic_to_set(topic)
+        except (ConnectionError, TimeoutError) as e:
+            await self._log_error("write", topic, e)
         except RedisError as e:
             await self._log_error("write", topic, e)
         except Exception as e:  # pragma: no cover
@@ -128,6 +139,8 @@ class AgentMemory:
         try:
             await self._r.set(key, payload)
             await self._add_topic_to_set(topic)
+        except (ConnectionError, TimeoutError) as e:
+            await self._log_error("set_latest", topic, e)
         except RedisError as e:
             await self._log_error("set_latest", topic, e)
         except Exception as e:  # pragma: no cover
@@ -145,7 +158,16 @@ class AgentMemory:
         key = self._key(topic)
         try:
             items = await self._r.lrange(key, 0, n - 1)
-            return [json.loads(i) for i in items]
+            results: List[dict] = []
+            for i in items:
+                try:
+                    results.append(json.loads(i))
+                except json.JSONDecodeError as e:
+                    await self._log_error("read_recent_decode", topic, e)
+            return results
+        except (ConnectionError, TimeoutError) as e:
+            await self._log_error("read_recent", topic, e)
+            return []
         except RedisError as e:
             await self._log_error("read_recent", topic, e)
             return []
@@ -161,7 +183,16 @@ class AgentMemory:
         key = self._key(topic, latest=True)
         try:
             val = await self._r.get(key)
-            return json.loads(val) if val else None
+            if not val:
+                return None
+            try:
+                return json.loads(val)
+            except json.JSONDecodeError as e:
+                await self._log_error("get_latest_decode", topic, e)
+                return None
+        except (ConnectionError, TimeoutError) as e:
+            await self._log_error("get_latest", topic, e)
+            return None
         except RedisError as e:
             await self._log_error("get_latest", topic, e)
             return None
@@ -180,6 +211,9 @@ class AgentMemory:
                 topics = await self._fetch_topics_from_redis()
                 self._update_topics_cache(topics)
                 return topics
+            except (ConnectionError, TimeoutError) as e:
+                await self._log_error("read_all_topics", None, e)
+                return []
             except RedisError as e:
                 await self._log_error("read_all_topics", None, e)
                 return []

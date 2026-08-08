@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+from json import JSONDecodeError
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -10,6 +12,9 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import get_current_user
 from app.models.user import User
+
+# Logger
+logger = logging.getLogger(__name__)
 
 # Constants
 ROUTER_PREFIX = "/monitoring"
@@ -46,8 +51,15 @@ def _load_health_report() -> Dict[str, Any]:
     if not HEALTH_REPORT_PATH.exists():
         return {"status": DEFAULT_HEALTH_STATUS, "message": DEFAULT_HEALTH_MESSAGE}
     try:
-        return json.loads(HEALTH_REPORT_PATH.read_text())
-    except Exception as exc:
+        raw = HEALTH_REPORT_PATH.read_text()
+        return json.loads(raw)
+    except (OSError, JSONDecodeError) as exc:
+        logger.error(
+            "Failed to load health report from %s: %s",
+            HEALTH_REPORT_PATH,
+            exc,
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=HTTP_STATUS_INTERNAL_ERROR,
             detail=HEALTH_REPORT_CORRUPTED_DETAIL,
@@ -64,7 +76,13 @@ def _read_fix_log_file() -> str:
         return ""
     try:
         return FIX_LOG_PATH.read_text().strip()
-    except Exception as exc:
+    except OSError as exc:
+        logger.error(
+            "Could not read fix log file %s: %s",
+            FIX_LOG_PATH,
+            exc,
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=HTTP_STATUS_INTERNAL_ERROR,
             detail=FIX_LOG_READ_ERROR_DETAIL.format(exc),
@@ -75,7 +93,12 @@ def _parse_fix_log_lines(lines: List[str]) -> List[Dict[str, Any]]:
     """Parse newline‑delimited JSON lines into a list of dictionaries."""
     try:
         return [json.loads(line) for line in lines]
-    except Exception as exc:
+    except JSONDecodeError as exc:
+        logger.error(
+            "Failed to parse fix log lines as JSON: %s",
+            exc,
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=HTTP_STATUS_INTERNAL_ERROR,
             detail=FIX_LOG_READ_ERROR_DETAIL.format(exc),
