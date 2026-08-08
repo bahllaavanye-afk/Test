@@ -35,11 +35,8 @@ def _get_sync_instance() -> object:
     return sync
 
 
-@router.get(NOTION_STATUS_PATH)
-async def notion_status(current_user: User = Depends(get_current_user)):
-    """Whether Notion sync is configured."""
-    _ensure_user(current_user)
-    sync = get_notion_sync()
+def _build_status_dict(sync: object) -> dict:
+    """Construct the status payload for a Notion sync instance."""
     return {
         KEY_ENABLED: sync.enabled,
         KEY_NOTION_TOKEN_SET: bool(sync.notion_token),
@@ -47,6 +44,14 @@ async def notion_status(current_user: User = Depends(get_current_user)):
         KEY_GITHUB_TOKEN_SET: bool(sync.github_token),
         KEY_GITHUB_REPO: sync.github_repo or None,
     }
+
+
+@router.get(NOTION_STATUS_PATH)
+async def notion_status(current_user: User = Depends(get_current_user)):
+    """Whether Notion sync is configured."""
+    _ensure_user(current_user)
+    sync = get_notion_sync()
+    return _build_status_dict(sync)
 
 
 @router.post(NOTION_SYNC_PATH)

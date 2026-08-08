@@ -2,7 +2,7 @@
 
 Provides routes to fetch benchmark statistics and recent comparison results.
 """
-from typing import Any, List
+from typing import Any, List, Sequence
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,7 +84,6 @@ class ComparisonOut(BaseModel):
         """
         improvement = None
         if m.manual_sharpe is not None and m.ml_sharpe is not None:
-            # Use a minimal base to avoid division by zero
             base = float(m.manual_sharpe) if float(m.manual_sharpe) != 0 else MIN_MANUAL_SHARPE
             improvement = (float(m.ml_sharpe) - float(m.manual_sharpe)) / abs(base)
 
@@ -113,6 +112,46 @@ async def get_benchmarks() -> Any:
     return get_benchmark_stats()
 
 
+def _build_response(rows: Sequence[ComparisonModel]) -> List[ComparisonOut]:
+    """Transform a sequence of ``ComparisonModel`` instances into Pydantic responses.
+
+    Parameters
+    ----------
+    rows : Sequence[ComparisonModel]
+        ORM records fetched from the database.
+
+    Returns
+    -------
+    List[ComparisonOut]
+        List of serialized comparison results; empty list if ``rows`` is empty.
+    """
+    if not rows:
+        return []
+    return [ComparisonOut.from_model(row) for row in rows]
+
+
+async def _fetch_recent_comparisons(db: AsyncSession) -> List[ComparisonModel]:
+    """Fetch the most recent comparison records for the current user.
+
+    Parameters
+    ----------
+    db : AsyncSession
+        Asynchronous database session.
+
+    Returns
+    -------
+    List[ComparisonModel]
+        Ordered list of comparison records limited by ``DEFAULT_LIMIT``.
+    """
+    stmt = (
+        select(ComparisonModel)
+        .order_by(ComparisonModel.created_at.desc())
+        .limit(max(DEFAULT_LIMIT, 1))
+    )
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
 @router.get(ENDPOINT_RESULTS, response_model=list[ComparisonOut])
 @router.get(ENDPOINT_ROOT, response_model=list[ComparisonOut])
 async def list_comparisons(
@@ -136,16 +175,5 @@ async def list_comparisons(
     List[ComparisonOut]
         A list of transformed comparison results.
     """
-    # Guard against unexpected None from the DB layer
-    result = await db.execute(
-        select(ComparisonModel)
-        .order_by(ComparisonModel.created_at.desc())
-        .limit(max(DEFAULT_LIMIT, 1))
-    )
-    rows = result.scalars().all() if result is not None else []
-
-    # Ensure we always return a list, even if no rows are found
-    if not rows:
-        return []
-
-    return [ComparisonOut.from_model(r) for r in rows]
+    rows = await _fetch_recent_comparisons(db)
+    return _build_response(rows)
