@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Ping exchange sync",
-    "Catch SSL exceptions",
     "Improve type safety",
     "Refactor dark theme",
     "Validate timestamps",
@@ -199,8 +197,10 @@
     "Sanitize database queries",
     "Check dependency updates",
     "Track system clock sync",
-    "Test database connections"
+    "Test database connections",
+    "Log API errors",
+    "Test SSL certificates"
   ],
-  "last_updated": "2026-08-08T13:41:51.862761+00:00",
+  "last_updated": "2026-08-08T14:28:01.027510+00:00",
   "total": 200
 }
