@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Validate cache fixes.",
-    "Monitor log files",
     "Run mypy --strict",
     "Log market gaps",
     "Replace generic signatures",
@@ -199,8 +197,10 @@
     "Check thread counts",
     "Verify file paths",
     "Test API timeouts",
-    "Use retry mechanisms"
+    "Use retry mechanisms",
+    "Check network latency",
+    "Limit API calls"
   ],
-  "last_updated": "2026-08-08T11:01:17.736743+00:00",
+  "last_updated": "2026-08-08T11:52:49.824195+00:00",
   "total": 200
 }
