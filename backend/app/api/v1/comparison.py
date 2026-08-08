@@ -24,8 +24,6 @@ ENDPOINT_ROOT = "/"
 MIN_MANUAL_SHARPE = 1e-9
 IMPROVEMENT_PRECISION = 4
 DEFAULT_LIMIT = 20
-WINNER_MANUAL = "manual"
-WINNER_ML = "ml"
 
 router = APIRouter(prefix=PREFIX, tags=[TAG])
 
@@ -84,7 +82,6 @@ class ComparisonOut(BaseModel):
         """
         improvement = None
         if m.manual_sharpe is not None and m.ml_sharpe is not None:
-            # Use a minimal base to avoid division by zero
             base = float(m.manual_sharpe) if float(m.manual_sharpe) != 0 else MIN_MANUAL_SHARPE
             improvement = (float(m.ml_sharpe) - float(m.manual_sharpe)) / abs(base)
 
@@ -136,7 +133,6 @@ async def list_comparisons(
     List[ComparisonOut]
         A list of transformed comparison results.
     """
-    # Guard against unexpected None from the DB layer
     result = await db.execute(
         select(ComparisonModel)
         .order_by(ComparisonModel.created_at.desc())
@@ -144,7 +140,6 @@ async def list_comparisons(
     )
     rows = result.scalars().all() if result is not None else []
 
-    # Ensure we always return a list, even if no rows are found
     if not rows:
         return []
 
