@@ -2,7 +2,7 @@
 
 Provides routes to fetch benchmark statistics and recent comparison results.
 """
-from typing import Any, List
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -82,7 +82,7 @@ class ComparisonOut(BaseModel):
         ComparisonOut
             Pydantic model populated with transformed and rounded values.
         """
-        improvement = None
+        improvement: Optional[float] = None
         if m.manual_sharpe is not None and m.ml_sharpe is not None:
             # Use a minimal base to avoid division by zero
             base = float(m.manual_sharpe) if float(m.manual_sharpe) != 0 else MIN_MANUAL_SHARPE
@@ -142,7 +142,7 @@ async def list_comparisons(
         .order_by(ComparisonModel.created_at.desc())
         .limit(max(DEFAULT_LIMIT, 1))
     )
-    rows = result.scalars().all() if result is not None else []
+    rows: List[ComparisonModel] = result.scalars().all() if result is not None else []
 
     # Ensure we always return a list, even if no rows are found
     if not rows:
