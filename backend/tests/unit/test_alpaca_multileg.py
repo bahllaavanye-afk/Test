@@ -33,6 +33,11 @@ def test_occ_symbol_put_fractional_strike():
     assert build_occ_symbol("qqq", date(2026, 12, 18), 462.5, "put") == "QQQ261218P00462500"
 
 
+def test_occ_symbol_zero_strike():
+    # Edge case where strike is zero; should still produce a padded strike field
+    assert build_occ_symbol("AAPL", date(2025, 1, 15), 0, "call") == "AAPL250115C00000000"
+
+
 # ── Delta-nearest contract picking ────────────────────────────────────────────
 
 def _snap(delta):
@@ -56,6 +61,27 @@ def test_pick_contract_uses_abs_for_puts_and_skips_missing_greeks():
         "SPY..P00550000": None,                  # malformed — must be skipped
     }
     assert pick_contract_by_delta(snaps, 0.16, "put") == "SPY..P00580000"
+
+
+def test_pick_contract_exact_match():
+    snaps = {
+        "SPY..C00610000": _snap(0.25),
+        "SPY..C00620000": _snap(0.30),
+        "SPY..C00630000": _snap(0.35),
+    }
+    # Target delta exactly matches one contract; should return that contract
+    assert pick_contract_by_delta(snaps, 0.30, "call") == "SPY..C00620000"
+
+
+def test_pick_contract_multiple_equal_delta():
+    snaps = {
+        "SPY..C00610000": _snap(0.20),
+        "SPY..C00620000": _snap(0.40),
+        "SPY..C00630000": _snap(0.40),
+    }
+    # Both 0.40 contracts are equally distant from target 0.30 (abs diff 0.10)
+    result = pick_contract_by_delta(snaps, 0.30, "call")
+    assert result in {"SPY..C00620000", "SPY..C00630000"}
 
 
 def test_pick_contract_empty_returns_none():
@@ -142,3 +168,19 @@ async def test_multileg_broker_rejection_returns_none():
          patch("app.brokers.alpaca_orders._base_url", return_value="https://paper-api.alpaca.markets"), \
          patch("httpx.AsyncClient.post", new=fake_post):
         assert await submit_alpaca_multileg_order(_account(), "SPY", legs) is None
+
+
+@pytest.mark.asyncio
+async def test_multileg_empty_legs_returns_none():
+    posted = []
+
+    async def fake_post(self, url, json=None, headers=None):
+        posted.append(url)
+        return _Resp(200)
+
+    # Empty leg list should result in no request being sent
+    with patch("app.brokers.alpaca_orders.resolve_leg_symbol", new=AsyncMock()), \
+         patch("httpx.AsyncClient.post", new=fake_post):
+        result = await submit_alpaca_multileg_order(_account(), "SPY", [])
+    assert result is None
+    assert posted == []

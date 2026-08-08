@@ -18,9 +18,16 @@ from app.execution import smart_router as mod
 
 def _req(qty=10.0, algo="auto"):
     return OrderRequest(
-        account_id="test", symbol="AAPL", side="buy", order_type="market",
-        quantity=qty, limit_price=100.0, stop_price=None, time_in_force="GTC",
-        execution_algo=algo, risk_bucket="directional",
+        account_id="test",
+        symbol="AAPL",
+        side="buy",
+        order_type="market",
+        quantity=qty,
+        limit_price=100.0,
+        stop_price=None,
+        time_in_force="GTC",
+        execution_algo=algo,
+        risk_bucket="directional",
     )
 
 
@@ -33,8 +40,12 @@ class _Broker:
         self.calls += 1
         if self.fail_all:
             raise ConnectionError("broker unreachable")
-        return OrderResult(broker_order_id=f"ord-{self.calls}", status="filled",
-                           filled_qty=request.quantity, avg_fill_price=100.0)
+        return OrderResult(
+            broker_order_id=f"ord-{self.calls}",
+            status="filled",
+            filled_qty=request.quantity,
+            avg_fill_price=100.0,
+        )
 
 
 @pytest.mark.asyncio
@@ -98,3 +109,55 @@ async def test_almgren_chriss_total_failure_is_rejected(monkeypatch):
 
 async def _noop(*_args, **_kwargs):
     return None
+
+
+@pytest.mark.asyncio
+async def test_zero_quantity_returns_none_and_does_not_invoke_rl(monkeypatch):
+    """A zero‑quantity request should be short‑circuited without calling RL."""
+    rl_called = {"executed": False}
+
+    class _RL:
+        def __init__(self, broker, agent=None):
+            pass
+
+        async def execute(self, request, signal_price=None):
+            rl_called["executed"] = True
+            return [{"qty": 0.0, "price": 100.0}]
+
+    monkeypatch.setattr(mod, "_RL_EXEC_AVAILABLE", True, raising=False)
+    monkeypatch.setattr(mod, "RLExecution", _RL, raising=False)
+    monkeypatch.setattr(mod, "get_rl_agent", lambda: object(), raising=False)
+
+    router = mod.SmartOrderRouter(broker=_Broker())
+    result = await router.execute(_req(qty=0.0, algo="rl_exec"))
+    assert result is None
+    assert not rl_called["executed"], "RL execution should not be invoked for zero quantity"
+
+
+@pytest.mark.asyncio
+async def test_rl_overfill_caps_filled_qty_to_requested(monkeypatch):
+    """When RL returns more quantity than requested, the result should be capped."""
+    fills = [{"qty": 8.0, "price": 100.0}, {"qty": 5.0, "price": 110.0}]  # total 13 > 10
+
+    class _RL:
+        def __init__(self, broker, agent=None):
+            pass
+
+        async def execute(self, request, signal_price=None):
+            return fills
+
+    monkeypatch.setattr(mod, "_RL_EXEC_AVAILABLE", True, raising=False)
+    monkeypatch.setattr(mod, "RLExecution", _RL, raising=False)
+    monkeypatch.setattr(mod, "get_rl_agent", lambda: object(), raising=False)
+
+    broker = _Broker()
+    router = mod.SmartOrderRouter(broker=broker)
+    res = await router.execute(_req(qty=10.0, algo="rl_exec"))
+
+    assert res is not None
+    # Filled quantity must not exceed the original request
+    assert res.filled_qty == pytest.approx(10.0)
+    # Average price should reflect only the portion up to the request quantity
+    # (8 @100 + 2 @110) / 10 = 102
+    assert res.avg_fill_price == pytest.approx(102.0)
+    assert res.broker_order_id == "rl_AAPL"
