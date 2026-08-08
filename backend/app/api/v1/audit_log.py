@@ -28,6 +28,8 @@ MIN_LIMIT = 1
 MAX_LIMIT = 500
 AUTH_ERROR_STATUS = status.HTTP_401_UNAUTHORIZED
 AUTH_ERROR_DETAIL = "Authenticated user not found."
+BAD_REQUEST_STATUS = status.HTTP_400_BAD_REQUEST
+BAD_REQUEST_DETAIL = "Invalid request parameters."
 ROUTER_PREFIX = "/audit-log"
 ROUTER_TAGS = ["audit-log"]
 
@@ -63,10 +65,10 @@ class AuditLogOut(BaseModel):
 
     id: str
     action: str
-    resource_type: str | None
-    resource_id: str | None
-    ip_address: str | None
-    user_agent: str | None
+    resource_type: Optional[str]
+    resource_id: Optional[str]
+    ip_address: Optional[str]
+    user_agent: Optional[str]
     extra_data: dict
     created_at: datetime
 
@@ -76,8 +78,8 @@ class AuditLogOut(BaseModel):
 def _validate_limit(limit: Optional[int]) -> int:
     """Validate the ``limit`` query parameter.
 
-    Ensures the limit is not ``None`` and lies within the allowed range.
-    Raises ``ValueError`` if validation fails.
+    Handles ``None`` and out‑of‑range values, falling back to ``DEFAULT_LIMIT`` for
+    ``None`` and raising ``ValueError`` for other invalid inputs.
 
     Parameters
     ----------
@@ -88,11 +90,20 @@ def _validate_limit(limit: Optional[int]) -> int:
     -------
     int
         The validated limit.
+
+    Raises
+    ------
+    ValueError
+        If ``limit`` is out of the allowed range.
     """
     if limit is None:
-        raise ValueError("limit must not be None")
+        return DEFAULT_LIMIT
+    if not isinstance(limit, int):
+        raise ValueError("limit must be an integer")
     if limit < MIN_LIMIT or limit > MAX_LIMIT:
-        raise ValueError(f"limit must be between {MIN_LIMIT} and {MAX_LIMIT}, got {limit}")
+        raise ValueError(
+            f"limit must be between {MIN_LIMIT} and {MAX_LIMIT}, got {limit}"
+        )
     return limit
 
 
@@ -115,13 +126,18 @@ async def _fetch_audit_logs(
     List[AuditLog]
         List of audit log entries ordered by creation time descending.
     """
+    if db is None:
+        return []
     result = await db.execute(
         select(AuditLog)
         .where(AuditLog.user_id == user_id)
         .order_by(AuditLog.created_at.desc())
         .limit(limit)
     )
-    return result.scalars().all()
+    # ``scalars().all()`` returns an empty list when no rows are found,
+    # but guard against a ``None`` result for extra safety.
+    logs = result.scalars().all()
+    return logs if logs is not None else []
 
 
 @router.get("/", response_model=List[AuditLogOut])
@@ -153,16 +169,19 @@ async def list_audit_log(
     Raises
     ------
     HTTPException
-        If the user is not authenticated.
-    ValueError
-        If ``limit`` is ``None`` or outside the allowed range.
+        If the user is not authenticated or request parameters are invalid.
     """
     if current_user is None:
-        raise HTTPException(
-            status_code=AUTH_ERROR_STATUS,
-            detail=AUTH_ERROR_DETAIL,
-        )
+        raise HTTPException(status_code=AUTH_ERROR_STATUS, detail=AUTH_ERROR_DETAIL)
 
-    validated_limit = _validate_limit(limit)
+    if getattr(current_user, "id", None) is None:
+        raise HTTPException(status_code=BAD_REQUEST_STATUS, detail=BAD_REQUEST_DETAIL)
+
+    try:
+        validated_limit = _validate_limit(limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=BAD_REQUEST_STATUS, detail=str(exc))
+
     audit_logs = await _fetch_audit_logs(db, current_user.id, validated_limit)
-    return audit_logs
+    # Ensure the response is always a list, even if the query returned None.
+    return audit_logs if audit_logs is not None else []
