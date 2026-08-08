@@ -1,4 +1,5 @@
 """Real-time price WebSocket endpoint."""
+import asyncio
 import logging
 from typing import Optional
 
@@ -11,6 +12,9 @@ router = APIRouter()
 
 # Wildcard topic used for subscribers that want all symbols
 PRICES_ALL_TOPIC = "prices:*"
+
+# Inactivity timeout (seconds) after which the connection is closed
+INACTIVITY_TIMEOUT = 300
 
 
 async def _handle_ws(
@@ -41,7 +45,15 @@ async def _handle_ws(
     try:
         while True:
             try:
-                await websocket.receive_text()  # keep alive / ping handling
+                # Wait for a message with a timeout to allow early exit on inactivity
+                await asyncio.wait_for(websocket.receive_text(), timeout=INACTIVITY_TIMEOUT)
+            except asyncio.TimeoutError:
+                # No activity within the timeout period; close connection early
+                logger.debug(
+                    "WebSocket inactive, closing connection",
+                    extra={"symbol": symbol, "topic": topic},
+                )
+                break
             except WebSocketDisconnect:
                 # Normal disconnect; break the loop to cleanup
                 break
