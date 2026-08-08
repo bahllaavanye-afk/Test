@@ -1,9 +1,12 @@
 """SSM (State Space Model) training entry point. Mirrors train_lstm.py interface."""
 from __future__ import annotations
+
 import argparse
 import asyncio
 import json
+import time
 from pathlib import Path
+
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader, TensorDataset
@@ -36,6 +39,16 @@ def build_dataloaders(
     test_ds = TensorDataset(X_t[n_train + n_val:], y_t[n_train + n_val:])
 
     n_features = X_t.shape[2]
+
+    logger.debug(
+        "DataLoaders built",
+        total_sequences=n,
+        train_sequences=n_train,
+        val_sequences=n_val,
+        test_sequences=n - n_train - n_val,
+        n_features=n_features,
+    )
+
     return (
         DataLoader(train_ds, batch_size=batch_size, shuffle=False),
         DataLoader(val_ds, batch_size=batch_size),
@@ -55,7 +68,11 @@ async def train(
     batch_size: int = 256,
     lr: float = 1e-3,
 ) -> dict:
-    train_loader, val_loader, test_loader, n_features = build_dataloaders(ohlcv_df, seq_len, batch_size)
+    start_time = time.time()
+
+    train_loader, val_loader, test_loader, n_features = build_dataloaders(
+        ohlcv_df, seq_len, batch_size
+    )
 
     model = SSMPredictor(
         input_size=n_features,
@@ -88,14 +105,29 @@ async def train(
         str(save_path),
     )
 
+    # Monitoring metrics
+    execution_time = time.time() - start_time
+    signal_count = len(ohlcv_df)  # number of raw input rows considered as signals
+    pnl = results.get("pnl")  # optional, may be absent
+
     results["artifact_path"] = str(save_path)
-    logger.info("SSM training complete", **results)
+    logger.info(
+        "SSM training complete",
+        signal_count=signal_count,
+        execution_time=execution_time,
+        pnl=pnl,
+        **results,
+    )
     return results
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", required=True, help="Path to OHLCV CSV with columns: open,high,low,close,volume")
+    parser.add_argument(
+        "--csv",
+        required=True,
+        help="Path to OHLCV CSV with columns: open,high,low,close,volume",
+    )
     parser.add_argument("--name", default="ssm_run")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--d-model", type=int, default=64)
@@ -104,6 +136,12 @@ if __name__ == "__main__":
 
     df = pd.read_csv(args.csv, index_col=0, parse_dates=True)
     result = asyncio.run(
-        train(df, experiment_name=args.name, max_epochs=args.epochs, d_model=args.d_model, n_layers=args.n_layers)
+        train(
+            df,
+            experiment_name=args.name,
+            max_epochs=args.epochs,
+            d_model=args.d_model,
+            n_layers=args.n_layers,
+        )
     )
     print(json.dumps(result, indent=2))
