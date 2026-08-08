@@ -1,7 +1,5 @@
 {
   "skills": [
-    "Validate API keys",
-    "Add explicit error checks",
     "Track model drift",
     "Track performance metrics",
     "Use Temporal Fusion Transformers",
@@ -199,8 +197,10 @@
     "Verify SSL certs",
     "Monitor model win rates",
     "Test Temporal Fusion",
-    "Analyze trade returns"
+    "Analyze trade returns",
+    "Verify API keys",
+    "Limit API batch"
   ],
-  "last_updated": "2026-08-08T05:39:25.262569+00:00",
+  "last_updated": "2026-08-08T06:44:21.850125+00:00",
   "total": 200
 }
