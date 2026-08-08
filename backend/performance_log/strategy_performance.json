@@ -1,72 +1,17 @@
 {
-  "generated_at": "2026-08-07T19:39:27.629839+00:00",
+  "generated_at": "2026-08-08T02:15:05.040189+00:00",
   "period_days": 30,
   "strategies": {
-    "analyst_re": {
-      "trades": 9,
+    "analyst_revision_momentum": {
+      "trades": 4,
       "wins": 4,
-      "win_rate": 0.4444,
-      "avg_return_pct": -1.0201,
-      "total_return_pct": -9.1808,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "stat_arb_e": {
-      "trades": 21,
-      "wins": 0,
-      "win_rate": 0.0,
-      "avg_return_pct": -1.7701,
-      "total_return_pct": -37.1719,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "poly_time_": {
-      "trades": 2,
-      "wins": 0,
-      "win_rate": 0.0,
-      "avg_return_pct": -1.5747,
-      "total_return_pct": -3.1493,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "avellaneda": {
-      "trades": 34,
-      "wins": 18,
-      "win_rate": 0.5294,
-      "avg_return_pct": -0.8441,
-      "total_return_pct": -28.6984,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "options_pc": {
-      "trades": 14,
-      "wins": 14,
       "win_rate": 1.0,
-      "avg_return_pct": 1.7162,
-      "total_return_pct": 24.0265,
+      "avg_return_pct": 0.5757,
+      "total_return_pct": 2.3027,
       "stdev_return_pct": 0.0,
       "worst_trade_pct": 0.0,
       "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "options_pcr_reversal": {
-      "trades": 13,
-      "wins": 2,
-      "win_rate": 0.1538,
-      "avg_return_pct": -1.0699,
-      "total_return_pct": -13.9091,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
     },
     "low_volatility": {
       "trades": 9,
@@ -77,128 +22,7 @@
       "stdev_return_pct": 0.0,
       "worst_trade_pct": 0.0,
       "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "vol_of_vol": {
-      "trades": 10,
-      "wins": 2,
-      "win_rate": 0.2,
-      "avg_return_pct": -0.2286,
-      "total_return_pct": -2.2857,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "put_call_r": {
-      "trades": 1,
-      "wins": 1,
-      "win_rate": 1.0,
-      "avg_return_pct": 1.2281,
-      "total_return_pct": 1.2281,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "put_call_ratio_contrarian": {
-      "trades": 3,
-      "wins": 1,
-      "win_rate": 0.3333,
-      "avg_return_pct": -0.5163,
-      "total_return_pct": -1.5489,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "analyst_revision_momentum": {
-      "trades": 4,
-      "wins": 4,
-      "win_rate": 1.0,
-      "avg_return_pct": 0.5757,
-      "total_return_pct": 2.3027,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "avellaneda_stoikov_mm": {
-      "trades": 10,
-      "wins": 9,
-      "win_rate": 0.9,
-      "avg_return_pct": 5.3481,
-      "total_return_pct": 53.481,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "wheel": {
-      "trades": 2,
-      "wins": 0,
-      "win_rate": 0.0,
-      "avg_return_pct": -1.4861,
-      "total_return_pct": -2.9721,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "stat_arb_etf": {
-      "trades": 30,
-      "wins": 28,
-      "win_rate": 0.9333,
-      "avg_return_pct": 1.063,
-      "total_return_pct": 31.8899,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "time_serie": {
-      "trades": 18,
-      "wins": 13,
-      "win_rate": 0.7222,
-      "avg_return_pct": 2.3894,
-      "total_return_pct": 43.0084,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "vol_of_vol_timing": {
-      "trades": 5,
-      "wins": 4,
-      "win_rate": 0.8,
-      "avg_return_pct": 0.3521,
-      "total_return_pct": 1.7607,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "gamma_expo": {
-      "trades": 3,
-      "wins": 3,
-      "win_rate": 1.0,
-      "avg_return_pct": 1.9789,
-      "total_return_pct": 5.9367,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
-    },
-    "low_volati": {
-      "trades": 7,
-      "wins": 2,
-      "win_rate": 0.2857,
-      "avg_return_pct": -0.2394,
-      "total_return_pct": -1.6757,
-      "stdev_return_pct": 0.0,
-      "worst_trade_pct": 0.0,
-      "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
     },
     "time_series_momentum": {
       "trades": 23,
@@ -209,29 +33,62 @@
       "stdev_return_pct": 0.0,
       "worst_trade_pct": 0.0,
       "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
     },
-    "sector_rotation": {
-      "trades": 5,
-      "wins": 0,
-      "win_rate": 0.0,
-      "avg_return_pct": -0.2839,
-      "total_return_pct": -1.4195,
+    "time_serie": {
+      "trades": 18,
+      "wins": 13,
+      "win_rate": 0.7222,
+      "avg_return_pct": 2.3894,
+      "total_return_pct": 43.0084,
       "stdev_return_pct": 0.0,
       "worst_trade_pct": 0.0,
       "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
     },
-    "realized_vol_asymmetry": {
-      "trades": 14,
-      "wins": 5,
-      "win_rate": 0.3571,
-      "avg_return_pct": -0.9378,
-      "total_return_pct": -13.1298,
+    "low_volati": {
+      "trades": 7,
+      "wins": 2,
+      "win_rate": 0.2857,
+      "avg_return_pct": -0.2394,
+      "total_return_pct": -1.6757,
       "stdev_return_pct": 0.0,
       "worst_trade_pct": 0.0,
       "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "vol_of_vol": {
+      "trades": 10,
+      "wins": 2,
+      "win_rate": 0.2,
+      "avg_return_pct": -0.2286,
+      "total_return_pct": -2.2857,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "gamma_expo": {
+      "trades": 3,
+      "wins": 3,
+      "win_rate": 1.0,
+      "avg_return_pct": 1.9789,
+      "total_return_pct": 5.9367,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "put_call_ratio_contrarian": {
+      "trades": 3,
+      "wins": 1,
+      "win_rate": 0.3333,
+      "avg_return_pct": -0.5163,
+      "total_return_pct": -1.5489,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
     },
     "sector_rot": {
       "trades": 10,
@@ -242,7 +99,150 @@
       "stdev_return_pct": 0.0,
       "worst_trade_pct": 0.0,
       "sum_sq_return_pct": 0.0,
-      "last_updated": "2026-08-07T19:39:27.629839+00:00"
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "analyst_re": {
+      "trades": 9,
+      "wins": 4,
+      "win_rate": 0.4444,
+      "avg_return_pct": -1.0201,
+      "total_return_pct": -9.1808,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "realized_vol_asymmetry": {
+      "trades": 14,
+      "wins": 5,
+      "win_rate": 0.3571,
+      "avg_return_pct": -0.9378,
+      "total_return_pct": -13.1298,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "put_call_r": {
+      "trades": 1,
+      "wins": 1,
+      "win_rate": 1.0,
+      "avg_return_pct": 1.2281,
+      "total_return_pct": 1.2281,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "stat_arb_e": {
+      "trades": 21,
+      "wins": 0,
+      "win_rate": 0.0,
+      "avg_return_pct": -1.7701,
+      "total_return_pct": -37.1719,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "options_pc": {
+      "trades": 14,
+      "wins": 14,
+      "win_rate": 1.0,
+      "avg_return_pct": 1.7162,
+      "total_return_pct": 24.0265,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "wheel": {
+      "trades": 2,
+      "wins": 0,
+      "win_rate": 0.0,
+      "avg_return_pct": -1.4861,
+      "total_return_pct": -2.9721,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "options_pcr_reversal": {
+      "trades": 13,
+      "wins": 2,
+      "win_rate": 0.1538,
+      "avg_return_pct": -1.0699,
+      "total_return_pct": -13.9091,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "avellaneda": {
+      "trades": 34,
+      "wins": 18,
+      "win_rate": 0.5294,
+      "avg_return_pct": -0.8441,
+      "total_return_pct": -28.6984,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "sector_rotation": {
+      "trades": 5,
+      "wins": 0,
+      "win_rate": 0.0,
+      "avg_return_pct": -0.2839,
+      "total_return_pct": -1.4195,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "avellaneda_stoikov_mm": {
+      "trades": 10,
+      "wins": 9,
+      "win_rate": 0.9,
+      "avg_return_pct": 5.3481,
+      "total_return_pct": 53.481,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "poly_time_": {
+      "trades": 2,
+      "wins": 0,
+      "win_rate": 0.0,
+      "avg_return_pct": -1.5747,
+      "total_return_pct": -3.1493,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "vol_of_vol_timing": {
+      "trades": 5,
+      "wins": 4,
+      "win_rate": 0.8,
+      "avg_return_pct": 0.3521,
+      "total_return_pct": 1.7607,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
+    },
+    "stat_arb_etf": {
+      "trades": 30,
+      "wins": 28,
+      "win_rate": 0.9333,
+      "avg_return_pct": 1.063,
+      "total_return_pct": 31.8899,
+      "stdev_return_pct": 0.0,
+      "worst_trade_pct": 0.0,
+      "sum_sq_return_pct": 0.0,
+      "last_updated": "2026-08-08T02:15:05.040189+00:00"
     }
   },
   "tracked_order_ids": [
