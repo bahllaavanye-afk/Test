@@ -4,7 +4,7 @@ Provides routes to fetch benchmark statistics and recent comparison results.
 """
 from typing import Any, List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -83,20 +83,37 @@ class ComparisonOut(BaseModel):
             Pydantic model populated with transformed and rounded values.
         """
         improvement = None
-        if m.manual_sharpe is not None and m.ml_sharpe is not None:
-            # Use a minimal base to avoid division by zero
-            base = float(m.manual_sharpe) if float(m.manual_sharpe) != 0 else MIN_MANUAL_SHARPE
-            improvement = (float(m.ml_sharpe) - float(m.manual_sharpe)) / abs(base)
+        # Safely extract numeric values; fall back to None on conversion errors
+        try:
+            manual_val = float(m.manual_sharpe) if m.manual_sharpe is not None else None
+        except (TypeError, ValueError):
+            manual_val = None
+
+        try:
+            ml_val = float(m.ml_sharpe) if m.ml_sharpe is not None else None
+        except (TypeError, ValueError):
+            ml_val = None
+
+        if manual_val is not None and ml_val is not None:
+            # Use a minimal base to avoid division by zero or near‑zero values
+            base = manual_val if abs(manual_val) > MIN_MANUAL_SHARPE else MIN_MANUAL_SHARPE
+            improvement = (ml_val - manual_val) / abs(base)
+
+        # Safely convert benchmark Sharpe as well
+        try:
+            spy_val = float(m.spy_sharpe) if m.spy_sharpe is not None else None
+        except (TypeError, ValueError):
+            spy_val = None
 
         return cls(
             id=m.id,
             strategy_name=m.strategy_name,
             symbol=m.symbol,
-            manual_sharpe=float(m.manual_sharpe) if m.manual_sharpe is not None else None,
-            ml_sharpe=float(m.ml_sharpe) if m.ml_sharpe is not None else None,
+            manual_sharpe=manual_val,
+            ml_sharpe=ml_val,
             is_significant=m.is_significant,
             winner=m.winner,
-            spy_sharpe=float(m.spy_sharpe) if m.spy_sharpe is not None else None,
+            spy_sharpe=spy_val,
             ml_improvement_pct=round(improvement, IMPROVEMENT_PRECISION) if improvement is not None else None,
         )
 
@@ -136,15 +153,22 @@ async def list_comparisons(
     List[ComparisonOut]
         A list of transformed comparison results.
     """
-    # Guard against unexpected None from the DB layer
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database session is unavailable.")
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="User authentication failed.")
+
+    # Ensure limit is at least 1 to avoid zero‑row queries (off‑by‑one safety)
+    limit = DEFAULT_LIMIT if DEFAULT_LIMIT > 0 else 1
+
     result = await db.execute(
         select(ComparisonModel)
         .order_by(ComparisonModel.created_at.desc())
-        .limit(max(DEFAULT_LIMIT, 1))
+        .limit(limit)
     )
     rows = result.scalars().all() if result is not None else []
 
-    # Ensure we always return a list, even if no rows are found
+    # Guard against None or unexpected non‑iterable results
     if not rows:
         return []
 
