@@ -99,21 +99,30 @@ def _crypto_confidence_min() -> float:
     raise AssertionError("Crypto desk not found in DESKS — the registry moved")
 
 
-def _trending_bars(n: int = 300, drift: float = 0.004,
-                   vol_ann: float = 0.50, seed: int = 7) -> pd.DataFrame:
+def _trending_bars(
+    n: int = 300,
+    drift: float = 0.004,
+    vol_ann: float = 0.50,
+    seed: int = 7,
+) -> pd.DataFrame:
     """A strongly trending series at a realistic crypto volatility.
 
-    drift=0.4%/day compounds to roughly +200% over the window — about as
-    unambiguous an uptrend as crypto produces. If the gate is unreachable here it
+    drift=0.4%/day compounds to roughly +200% over the window — about
+    as unambiguous an uptrend as crypto produces. If the gate is unreachable here it
     is unreachable in practice.
     """
     rng = np.random.default_rng(seed)
     daily_vol = vol_ann / np.sqrt(365)
     close = 100 * np.exp(np.cumsum(rng.normal(drift, daily_vol, n)))
-    return pd.DataFrame({
-        "open": close, "high": close * 1.01,
-        "low": close * 0.99, "close": close, "volume": 1e6,
-    })
+    return pd.DataFrame(
+        {
+            "open": close,
+            "high": close * 1.01,
+            "low": close * 0.99,
+            "close": close,
+            "volume": 1e6,
+        }
+    )
 
 
 def _confidence(df: pd.DataFrame) -> float | None:
@@ -174,3 +183,33 @@ def test_confidence_falls_as_volatility_rises_which_is_the_defect():
         f"if this no longer holds, the confidence formula changed and the xfail "
         f"tests above need re-checking rather than trusting."
     )
+
+
+def test_confidence_none_on_flat_series():
+    """A flat price series should produce no signal, resulting in None confidence."""
+    flat_df = pd.DataFrame(
+        {
+            "open": np.full(100, 100.0),
+            "high": np.full(100, 100.0),
+            "low": np.full(100, 100.0),
+            "close": np.full(100, 100.0),
+            "volume": np.full(100, 1e6),
+        }
+    )
+    conf = _confidence(flat_df)
+    assert conf is None, "Expected no signal (None confidence) on a flat series"
+
+
+def test_confidence_never_exceeds_maximum():
+    """Even under low volatility the confidence should be capped at 0.95."""
+    # Very low annualized volatility to push the vol_scalar to its cap (3.0)
+    conf = _confidence(_trending_bars(vol_ann=0.05))
+    assert conf is not None, "Strategy should produce a signal even with low vol"
+    assert conf <= 0.95, f"Confidence {conf:.3f} exceeds the maximum allowed 0.95"
+
+
+def test_confidence_none_on_empty_dataframe():
+    """An empty DataFrame should safely return None without raising."""
+    empty_df = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+    conf = _confidence(empty_df)
+    assert conf is None, "Expected None confidence for empty input DataFrame"
