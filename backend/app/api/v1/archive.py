@@ -48,6 +48,13 @@ def _execute_replay(category: str, date: str | None, limit: int) -> list:
         ) from exc
 
 
+def _prepare_archive_params(date: str | None, limit: int) -> tuple[str | None, int]:
+    """Normalize date and validate limit, returning processed values."""
+    normalized_date = _normalize_date(date)
+    _validate_limit(limit)
+    return normalized_date, limit
+
+
 @router.get(ROUTE_INDEX)
 async def get_index(current_user: User = Depends(get_current_user)):
     """
@@ -75,13 +82,12 @@ async def get_archive(
 ):
     """
     Replay trades for a given category and optional date.
-    Edge‑case handling:
+
     * `date` empty string is treated as None.
     * `limit` is validated to be at least 1.
     * Returns an empty list if the replay yields no data.
     """
-    normalized_date = _normalize_date(date)
-    _validate_limit(limit)
-    result = _execute_replay(category, normalized_date, limit)
+    normalized_date, validated_limit = _prepare_archive_params(date, limit)
+    result = _execute_replay(category, normalized_date, validated_limit)
     # Ensure the endpoint always returns a list
     return result if result else []

@@ -87,6 +87,17 @@ def _select_recent_lines(lines: List[str], limit: int) -> List[str]:
     return lines[-limit:] if limit > 0 else []
 
 
+def _process_fix_log(raw_text: str, limit: int) -> List[Dict[str, Any]]:
+    """Convert raw fix‑log text into a list of structured entries.
+
+    This function splits the raw text into lines, selects the most recent
+    ``limit`` lines, and parses each line as JSON.
+    """
+    lines = raw_text.splitlines()
+    recent = _select_recent_lines(lines, limit)
+    return _parse_fix_log_lines(recent)
+
+
 def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
     """Read the fix log and return the most recent *limit* entries.
 
@@ -96,9 +107,7 @@ def _read_fix_log(limit: int) -> List[Dict[str, Any]]:
     raw_text = _read_fix_log_file()
     if not raw_text:
         return []
-    lines = raw_text.splitlines()
-    recent = _select_recent_lines(lines, limit)
-    return _parse_fix_log_lines(recent)
+    return _process_fix_log(raw_text, limit)
 
 
 @router.get(ENDPOINT_HEALTH)

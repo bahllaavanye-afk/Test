@@ -30,7 +30,7 @@ _LABEL_MAP = {
 
 
 def _map_label(regime: str) -> str:
-    """Map detector regime to frontend-friendly label."""
+    """Map detector regime to a frontend‑friendly label."""
     return _LABEL_MAP.get(regime, "unknown")
 
 
@@ -47,7 +47,7 @@ def _extract_confidences(states: Dict[str, Any]) -> List[float]:
 
 
 def _find_latest_updated(states: Dict[str, Any]) -> Optional[str]:
-    """Return the most recent updated_at timestamp among symbol states."""
+    """Return the most recent `updated_at` timestamp among symbol states."""
     return max(
         (sym_state.get("updated_at") for sym_state in states.values() if sym_state.get("updated_at")),
         default=None,
@@ -74,6 +74,22 @@ def _compute_aggregates(
     return overall_regime, avg_confidence, latest_updated
 
 
+def _build_current_regime_response(states: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Assemble the JSON payload for the `/current` endpoint.
+
+    This isolates the response‑building logic from the endpoint handler,
+    improving readability and testability.
+    """
+    overall_regime, avg_confidence, latest_updated = _compute_aggregates(states)
+    return {
+        "regime": overall_regime,
+        "confidence": avg_confidence,
+        "updated_at": latest_updated,
+        "symbol_count": len(states),
+    }
+
+
 def _log_endpoint(endpoint: str, signal_count: int, start_time: float) -> None:
     """Log execution details for an endpoint."""
     elapsed_ms = (time.time() - start_time) * 1000
@@ -98,17 +114,11 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     states = regime_monitor.all_states()
     if not states:
         _log_endpoint("get_current_regime", 0, start_time)
-        return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
+        return {"regime": "unknown", "confidence": 0.0, "updated_at": None, "symbol_count": 0}
 
-    overall_regime, avg_confidence, latest_updated = _compute_aggregates(states)
+    response = _build_current_regime_response(states)
     _log_endpoint("get_current_regime", len(states), start_time)
-
-    return {
-        "regime": overall_regime,
-        "confidence": avg_confidence,
-        "updated_at": latest_updated,
-        "symbol_count": len(states),
-    }
+    return response
 
 
 @router.get("/states")
@@ -122,6 +132,7 @@ async def get_regime_states(current_user: User = Depends(get_current_user)):
 
 @router.get("/states/{symbol}")
 async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_current_user)):
+    """Regime data for a specific symbol."""
     start_time = time.time()
     state = regime_monitor.get(symbol.upper())
     if not state:
@@ -134,7 +145,7 @@ async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_cu
 
 @router.get("/correlation")
 async def get_correlation_matrix(current_user: User = Depends(get_current_user)):
-    """Live cross-strategy correlation matrix."""
+    """Live cross‑strategy correlation matrix."""
     start_time = time.time()
     matrix = correlation_monitor.matrix_as_list()
     reduced = list(correlation_monitor._reduced)
@@ -149,6 +160,7 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
 
 @router.get("/correlation/alerts")
 async def get_correlation_alerts(current_user: User = Depends(get_current_user)):
+    """Recent correlation alerts."""
     start_time = time.time()
     alerts = correlation_monitor.recent_alerts(50)
     _log_endpoint("get_correlation_alerts", len(alerts), start_time)
