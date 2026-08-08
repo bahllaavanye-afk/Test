@@ -1,12 +1,5 @@
 {
   "skills": [
-    "Check RAM usage",
-    "* A circuit-breaker wrapper will be added to `backend/app/api/external_client.py` for resilience and fault-tolerance.",
-    "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
-    "Use timeout exceptions",
-    "* Introducing an `ExecutionResult` dataclass to `backend/app/trading/order_manager.py` can help tighten types and improve code organization.",
-    "**Options PC (options_pc) strategy** excels with a 100% win rate, but its average return is lower at +1.72% (period 30d), indicating it prioritizes high-risk, high-reward trades.",
-    "Handle empty order books",
     "Validate API keys",
     "Add explicit error checks",
     "Track model drift",
@@ -199,8 +192,15 @@
     "Check RAM limits",
     "Timeout API requests",
     "Hash user inputs",
-    "Log GPU usage"
+    "Log GPU usage",
+    "Set retry counts",
+    "Validate JSON",
+    "Bind API threads",
+    "Verify SSL certs",
+    "Monitor model win rates",
+    "Test Temporal Fusion",
+    "Analyze trade returns"
   ],
-  "last_updated": "2026-08-08T04:34:06.831811+00:00",
+  "last_updated": "2026-08-08T05:39:25.262569+00:00",
   "total": 200
 }
