@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-08-08T05:58:34.638356+00:00",
+  "timestamp": "2026-08-08T07:08:02.714831+00:00",
   "total_runs": 16,
   "top_sharpe": 1.377,
   "desks": [
-    "equity",
-    "crypto"
+    "crypto",
+    "equity"
   ],
   "strategies": [
     "breakout",
