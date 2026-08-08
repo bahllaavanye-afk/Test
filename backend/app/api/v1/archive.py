@@ -1,4 +1,5 @@
 """Trade archive replay endpoints."""
+from datetime import datetime
 from fastapi import APIRouter, Depends, Query, HTTPException
 from app.api.deps import get_current_user
 from app.models.user import User
@@ -17,6 +18,8 @@ LIMIT_DESCRIPTION: str = "Maximum number of records to return (1-5000)"
 
 ERR_LIMIT_POSITIVE: str = "Limit must be a positive integer."
 ERR_RETRIEVE_ARCHIVE: str = "Failed to retrieve archive: {exc}"
+ERR_CATEGORY: str = "Category must be a non-empty string."
+ERR_DATE_FORMAT: str = "Date must be in YYYY-MM-DD format."
 
 router = APIRouter(prefix=ARCHIVE_PREFIX, tags=[ARCHIVE_TAG])
 
@@ -30,6 +33,22 @@ def _validate_limit(limit: int) -> None:
     """Raise an HTTPException if limit is not within allowed bounds."""
     if limit < MIN_LIMIT:
         raise HTTPException(status_code=400, detail=ERR_LIMIT_POSITIVE)
+
+
+def _validate_category(category: str) -> None:
+    """Validate that category is a non‑empty string."""
+    if not isinstance(category, str) or not category.strip():
+        raise ValueError(ERR_CATEGORY)
+
+
+def _validate_date_format(date: str | None) -> None:
+    """Validate that date, if provided, matches YYYY‑MM‑DD."""
+    if date is None:
+        return
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+    except Exception as exc:
+        raise ValueError(f"{ERR_DATE_FORMAT}: {exc}") from exc
 
 
 def _execute_replay(category: str, date: str | None, limit: int) -> list:
@@ -75,8 +94,12 @@ async def get_archive(
     * `limit` is validated to be at least 1.
     * Returns an empty list if the replay yields no data.
     """
+    # Input validation
+    _validate_category(category)
     normalized_date = _normalize_date(date)
+    _validate_date_format(normalized_date)
     _validate_limit(limit)
+
     result = _execute_replay(category, normalized_date, limit)
     # Ensure the endpoint always returns a list
     return result if result else []
