@@ -1,12 +1,5 @@
 {
   "skills": [
-    "Track model drift",
-    "Track performance metrics",
-    "Use Temporal Fusion Transformers",
-    "* Agents are required to provide one-sentence status updates, referencing specific file paths and tasks (e.g. `algo_agent`: \"Actively parsing JSON entries in `logs/api_calls.log`\").",
-    "* Given the current market conditions and risk status, we recommend using position sizing guidelines based on the 70/30 arbitrage/directional allocation ratio, as discussed in the #risk channel.",
-    "Based on recent agent learnings, here are 3 concise bullet points of the most important, actionable knowledge regarding code quality:",
-    "Reference file paths",
     "Set thread timeouts",
     "Retrain models",
     "Log exception stacks",
@@ -199,8 +192,15 @@
     "Test Temporal Fusion",
     "Analyze trade returns",
     "Verify API keys",
-    "Limit API batch"
+    "Limit API batch",
+    "Check RAM overflow",
+    "Track API timeouts",
+    "Log database errors",
+    "Verify network connectivity",
+    "Monitor winning trades.",
+    "Analyze Sharpe ratios.",
+    "Optimize model retraining."
   ],
-  "last_updated": "2026-08-08T06:44:21.850125+00:00",
+  "last_updated": "2026-08-08T07:45:14.877159+00:00",
   "total": 200
 }
