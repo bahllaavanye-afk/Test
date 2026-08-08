@@ -18,6 +18,10 @@ LIMIT_DESCRIPTION: str = "Maximum number of records to return (1-5000)"
 ERR_LIMIT_POSITIVE: str = "Limit must be a positive integer."
 ERR_RETRIEVE_ARCHIVE: str = "Failed to retrieve archive: {exc}"
 
+# HTTP status codes
+HTTP_STATUS_BAD_REQUEST: int = 400
+HTTP_STATUS_INTERNAL_ERROR: int = 500
+
 # Endpoint path constants
 ROUTE_INDEX: str = "/index"
 ROUTE_CATEGORY: str = "/{category}"
@@ -34,7 +38,7 @@ def _normalize_date(date: str | None) -> str | None:
 def _validate_limit(limit: int) -> None:
     """Raise an HTTPException if limit is not within allowed bounds."""
     if limit < MIN_LIMIT:
-        raise HTTPException(status_code=400, detail=ERR_LIMIT_POSITIVE)
+        raise HTTPException(status_code=HTTP_STATUS_BAD_REQUEST, detail=ERR_LIMIT_POSITIVE)
 
 
 def _execute_replay(category: str, date: str | None, limit: int) -> list:
@@ -43,7 +47,7 @@ def _execute_replay(category: str, date: str | None, limit: int) -> list:
         return replay(category, date, limit)
     except Exception as exc:
         raise HTTPException(
-            status_code=500,
+            status_code=HTTP_STATUS_INTERNAL_ERROR,
             detail=ERR_RETRIEVE_ARCHIVE.format(exc=exc),
         ) from exc
 

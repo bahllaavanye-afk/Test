@@ -10,6 +10,21 @@ from app.models.user import User
 from app.ml.regime.detector import regime_monitor
 from app.risk.correlation_monitor import correlation_monitor
 
+# Constants
+DEFAULT_REGIME: str = "unknown"
+DEFAULT_CONFIDENCE: float = 0.0
+DEFAULT_UPDATED_AT: None = None
+ROUND_PRECISION: int = 3
+MS_CONVERSION: int = 1000
+
+ENDPOINT_GET_CURRENT_REGIME = "get_current_regime"
+ENDPOINT_GET_REGIME_STATES = "get_regime_states"
+ENDPOINT_GET_REGIME_FOR_SYMBOL = "get_regime_for_symbol"
+ENDPOINT_GET_CORRELATION_MATRIX = "get_correlation_matrix"
+ENDPOINT_GET_CORRELATION_ALERTS = "get_correlation_alerts"
+
+ERROR_NO_REGIME_DATA = "No regime data for {symbol}. Feed price data first."
+
 # Optional P&L import – fallback to zero if unavailable
 try:
     from app.risk.pnl_tracker import get_current_pnl  # type: ignore
@@ -31,19 +46,19 @@ _LABEL_MAP = {
 
 def _map_label(regime: str) -> str:
     """Map detector regime to frontend-friendly label."""
-    return _LABEL_MAP.get(regime, "unknown")
+    return _LABEL_MAP.get(regime, DEFAULT_REGIME)
 
 
 def _count_labels(states: Dict[str, Any]) -> Counter:
     """Count mapped regime labels across all symbol states."""
     return Counter(
-        _map_label(sym_state.get("regime", "unknown")) for sym_state in states.values()
+        _map_label(sym_state.get("regime", DEFAULT_REGIME)) for sym_state in states.values()
     )
 
 
 def _extract_confidences(states: Dict[str, Any]) -> List[float]:
     """Extract confidence values from all symbol states."""
-    return [float(sym_state.get("confidence", 0.0)) for sym_state in states.values()]
+    return [float(sym_state.get("confidence", DEFAULT_CONFIDENCE)) for sym_state in states.values()]
 
 
 def _find_latest_updated(states: Dict[str, Any]) -> Optional[str]:
@@ -62,21 +77,21 @@ def _compute_aggregates(
 
     Returns:
         overall_regime: The most common mapped regime.
-        avg_confidence: Average confidence rounded to three decimals.
+        avg_confidence: Average confidence rounded to defined precision.
         latest_updated: ISO timestamp of the most recent update, if any.
     """
     label_counts = _count_labels(states)
     confidences = _extract_confidences(states)
     latest_updated = _find_latest_updated(states)
 
-    overall_regime = label_counts.most_common(1)[0][0] if label_counts else "unknown"
-    avg_confidence = round(sum(confidences) / len(confidences), 3) if confidences else 0.0
+    overall_regime = label_counts.most_common(1)[0][0] if label_counts else DEFAULT_REGIME
+    avg_confidence = round(sum(confidences) / len(confidences), ROUND_PRECISION) if confidences else DEFAULT_CONFIDENCE
     return overall_regime, avg_confidence, latest_updated
 
 
 def _log_endpoint(endpoint: str, signal_count: int, start_time: float) -> None:
     """Log execution details for an endpoint."""
-    elapsed_ms = (time.time() - start_time) * 1000
+    elapsed_ms = (time.time() - start_time) * MS_CONVERSION
     logger.info(
         f"endpoint={endpoint}",
         extra={
@@ -97,11 +112,11 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     start_time = time.time()
     states = regime_monitor.all_states()
     if not states:
-        _log_endpoint("get_current_regime", 0, start_time)
-        return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
+        _log_endpoint(ENDPOINT_GET_CURRENT_REGIME, 0, start_time)
+        return {"regime": DEFAULT_REGIME, "confidence": DEFAULT_CONFIDENCE, "updated_at": DEFAULT_UPDATED_AT}
 
     overall_regime, avg_confidence, latest_updated = _compute_aggregates(states)
-    _log_endpoint("get_current_regime", len(states), start_time)
+    _log_endpoint(ENDPOINT_GET_CURRENT_REGIME, len(states), start_time)
 
     return {
         "regime": overall_regime,
@@ -116,7 +131,7 @@ async def get_regime_states(current_user: User = Depends(get_current_user)):
     """Current regime classification for all tracked symbols."""
     start_time = time.time()
     data = regime_monitor.all_states()
-    _log_endpoint("get_regime_states", len(data), start_time)
+    _log_endpoint(ENDPOINT_GET_REGIME_STATES, len(data), start_time)
     return data
 
 
@@ -125,10 +140,10 @@ async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_cu
     start_time = time.time()
     state = regime_monitor.get(symbol.upper())
     if not state:
-        _log_endpoint("get_regime_for_symbol", 0, start_time)
-        return {"error": f"No regime data for {symbol}. Feed price data first."}
+        _log_endpoint(ENDPOINT_GET_REGIME_FOR_SYMBOL, 0, start_time)
+        return {"error": ERROR_NO_REGIME_DATA.format(symbol=symbol)}
     result = state.to_dict()
-    _log_endpoint("get_regime_for_symbol", 1, start_time)
+    _log_endpoint(ENDPOINT_GET_REGIME_FOR_SYMBOL, 1, start_time)
     return result
 
 
@@ -139,7 +154,7 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
     matrix = correlation_monitor.matrix_as_list()
     reduced = list(correlation_monitor._reduced)
     alerts = correlation_monitor.recent_alerts(10)
-    _log_endpoint("get_correlation_matrix", len(matrix), start_time)
+    _log_endpoint(ENDPOINT_GET_CORRELATION_MATRIX, len(matrix), start_time)
     return {
         "matrix": matrix,
         "reduced_strategies": reduced,
@@ -151,5 +166,5 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
 async def get_correlation_alerts(current_user: User = Depends(get_current_user)):
     start_time = time.time()
     alerts = correlation_monitor.recent_alerts(50)
-    _log_endpoint("get_correlation_alerts", len(alerts), start_time)
+    _log_endpoint(ENDPOINT_GET_CORRELATION_ALERTS, len(alerts), start_time)
     return alerts

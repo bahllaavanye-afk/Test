@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 _PREFIX = "agent:memory:"
+_LATEST_SUFFIX = "latest:"
 _MAX_LIST_LEN = 500  # cap per topic to avoid unbounded growth
 _TOPICS_SET_KEY = f"{_PREFIX}topics"
 _CACHE_TTL = 60  # seconds
@@ -32,6 +33,8 @@ _DEFAULT_READ_RECENT_LIMIT = 50
 
 _ERROR_TOPIC_INVALID = "Topic must be a non‑empty string"
 _ERROR_TOPIC_EMPTY = "Topic cannot be empty"
+
+_LOG_OPERATION_FAILED = "AgentMemory operation failed"
 
 # Optional import of Redis‑specific exception hierarchy.
 try:
@@ -53,7 +56,7 @@ class AgentMemory:
         """Construct a Redis key for a given topic."""
         if not topic:
             raise ValueError(_ERROR_TOPIC_INVALID)
-        prefix = f"{_PREFIX}latest:" if latest else _PREFIX
+        prefix = f"{_PREFIX}{_LATEST_SUFFIX}" if latest else _PREFIX
         return f"{prefix}{topic}"
 
     def _payload(self, data: dict) -> str:
@@ -71,7 +74,7 @@ class AgentMemory:
             "error_msg": str(exc),
         }
         logger.error(
-            "AgentMemory operation failed",
+            _LOG_OPERATION_FAILED,
             extra=extra,
         )
 

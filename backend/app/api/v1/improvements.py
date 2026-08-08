@@ -24,6 +24,14 @@ ERROR_MSG_NON_DICT = "Signal items must be dictionaries"
 LOG_MSG_VALIDATION_TYPE = "Signal validation failed: expected list, got %s"
 LOG_MSG_VALIDATION_NON_DICT = "Signal validation failed: list contains non-dict elements"
 
+# Additional string constants for logging and error details
+DETAIL_IMPROVER_RETRIEVAL_ERROR = "Improver signal retrieval error"
+LOG_MSG_IMPROVER_ACCESS_FAILED = "Failed to access latest_signals on improver: %s"
+LOG_MSG_HISTORY_ERROR = "Error retrieving history for user %s: %s"
+LOG_MSG_QUALITY_ERROR = "Error fetching code quality loop for user %s: %s"
+LOG_MSG_BEST_PARAMS_ERROR = "Error retrieving best_params for user %s: %s"
+LOG_MSG_SIGNAL_QUALITY_UNEXPECTED = "Unexpected error processing signal quality for user %s: %s"
+
 router = APIRouter(prefix="/improvements", tags=["improvements"])
 
 logger = logging.getLogger(__name__)
@@ -106,8 +114,8 @@ def _retrieve_and_filter_signals(improver: Any) -> List[Dict[str, Any]]:
     try:
         raw_signals = getattr(improver, "latest_signals", [])
     except Exception as exc:
-        logger.exception("Failed to access latest_signals on improver: %s", exc)
-        raise HTTPException(status_code=500, detail="Improver signal retrieval error")
+        logger.exception(LOG_MSG_IMPROVER_ACCESS_FAILED, exc)
+        raise HTTPException(status_code=500, detail=DETAIL_IMPROVER_RETRIEVAL_ERROR)
     validated = _validate_signals(raw_signals)
     return _process_signals(validated)
 
@@ -120,7 +128,7 @@ async def get_history(current_user: User = Depends(get_current_user)):
             return improver.get_history()
         except Exception as exc:
             logger.exception(
-                "Error retrieving history for user %s: %s",
+                LOG_MSG_HISTORY_ERROR,
                 getattr(current_user, "id", "unknown"),
                 exc,
             )
@@ -139,7 +147,7 @@ async def get_quality(current_user: User = Depends(get_current_user)):
         return loop_ref.latest()
     except Exception as exc:
         logger.exception(
-            "Error fetching code quality loop for user %s: %s",
+            LOG_MSG_QUALITY_ERROR,
             getattr(current_user, "id", "unknown"),
             exc,
         )
@@ -155,7 +163,7 @@ async def get_best_params(current_user: User = Depends(get_current_user)):
         return {"best_params": getattr(improver, "_best_params", {})}
     except Exception as exc:
         logger.exception(
-            "Error retrieving best_params for user %s: %s",
+            LOG_MSG_BEST_PARAMS_ERROR,
             getattr(current_user, "id", "unknown"),
             exc,
         )
@@ -178,7 +186,7 @@ async def get_signal_quality(current_user: User = Depends(get_current_user)):
         raise
     except Exception as exc:
         logger.exception(
-            "Unexpected error processing signal quality for user %s: %s",
+            LOG_MSG_SIGNAL_QUALITY_UNEXPECTED,
             getattr(current_user, "id", "unknown"),
             exc,
         )
