@@ -92,7 +92,9 @@ def _validate_limit(limit: Optional[int]) -> int:
     if limit is None:
         raise ValueError("limit must not be None")
     if limit < MIN_LIMIT or limit > MAX_LIMIT:
-        raise ValueError(f"limit must be between {MIN_LIMIT} and {MAX_LIMIT}, got {limit}")
+        raise ValueError(
+            f"limit must be between {MIN_LIMIT} and {MAX_LIMIT}, got {limit}"
+        )
     return limit
 
 
@@ -122,6 +124,32 @@ async def _fetch_audit_logs(
         .limit(limit)
     )
     return result.scalars().all()
+
+
+def _ensure_authenticated_user(user: Optional[User]) -> User:
+    """Raise an HTTPException if the user is not authenticated.
+
+    Parameters
+    ----------
+    user: Optional[User]
+        The user object obtained from the authentication dependency.
+
+    Returns
+    -------
+    User
+        The validated authenticated user.
+
+    Raises
+    ------
+    HTTPException
+        If ``user`` is ``None``.
+    """
+    if user is None:
+        raise HTTPException(
+            status_code=AUTH_ERROR_STATUS,
+            detail=AUTH_ERROR_DETAIL,
+        )
+    return user
 
 
 @router.get("/", response_model=List[AuditLogOut])
@@ -157,12 +185,7 @@ async def list_audit_log(
     ValueError
         If ``limit`` is ``None`` or outside the allowed range.
     """
-    if current_user is None:
-        raise HTTPException(
-            status_code=AUTH_ERROR_STATUS,
-            detail=AUTH_ERROR_DETAIL,
-        )
-
+    user = _ensure_authenticated_user(current_user)
     validated_limit = _validate_limit(limit)
-    audit_logs = await _fetch_audit_logs(db, current_user.id, validated_limit)
+    audit_logs = await _fetch_audit_logs(db, user.id, validated_limit)
     return audit_logs
