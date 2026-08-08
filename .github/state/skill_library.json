@@ -1,6 +1,5 @@
 {
   "skills": [
-    "Monitor agent performance",
     "Ping exchange sync",
     "Catch SSL exceptions",
     "Improve type safety",
@@ -199,8 +198,9 @@
     "Limit API calls",
     "Sanitize database queries",
     "Check dependency updates",
-    "Track system clock sync"
+    "Track system clock sync",
+    "Test database connections"
   ],
-  "last_updated": "2026-08-08T12:39:24.623616+00:00",
+  "last_updated": "2026-08-08T13:41:51.862761+00:00",
   "total": 200
 }
