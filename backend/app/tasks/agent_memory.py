@@ -106,6 +106,21 @@ class AgentMemory:
             return []
         return self._decode_topics(raw_topics)
 
+    def _is_cache_valid(self) -> bool:
+        """Check whether the in‑memory topics cache is still fresh."""
+        if self._topics_cache is None:
+            return False
+        return (time.time() - self._cache_timestamp) < _CACHE_TTL
+
+    async def _get_cached_or_fresh_topics(self) -> List[str]:
+        """Return cached topics if valid; otherwise fetch from Redis and update cache."""
+        if self._is_cache_valid():
+            return self._topics_cache  # type: ignore[return-value]
+
+        topics = await self._fetch_topics_from_redis()
+        self._update_topics_cache(topics)
+        return topics
+
     # ── Write ─────────────────────────────────────────────────────────────────
 
     async def write(self, topic: str, data: dict) -> None:
@@ -178,14 +193,8 @@ class AgentMemory:
     async def read_all_topics(self) -> List[str]:
         """List all memory topics currently stored, using a short‑lived cache."""
         async with self._lock:
-            now = time.time()
-            if self._topics_cache is not None and (now - self._cache_timestamp) < _CACHE_TTL:
-                return self._topics_cache
-
             try:
-                topics = await self._fetch_topics_from_redis()
-                self._update_topics_cache(topics)
-                return topics
+                return await self._get_cached_or_fresh_topics()
             except RedisError as e:
                 await self._log_error("read_all_topics", None, e)
                 return []
