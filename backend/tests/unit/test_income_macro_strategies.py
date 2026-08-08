@@ -90,10 +90,67 @@ def test_insufficient_data_no_crash(name):
     """Too few rows must return empty/aligned signals, never raise."""
     inst = _get(name)
     tiny = pd.DataFrame(
-        {"open": [100.0, 101.0], "high": [101.0, 102.0], "low": [99.0, 100.0],
-         "close": [100.5, 101.5], "volume": [1e6, 1e6]},
+        {
+            "open": [100.0, 101.0],
+            "high": [101.0, 102.0],
+            "low": [99.0, 100.0],
+            "close": [100.5, 101.5],
+            "volume": [1e6, 1e6],
+        },
         index=pd.date_range("2023-01-01", periods=2, freq="1D"),
     )
     sig = inst.backtest_signals(tiny)
     assert isinstance(sig, BacktestSignals)
     assert len(sig.entries) == len(tiny)
+
+
+@pytest.mark.parametrize("name", list(_STRATEGIES))
+def test_nan_input_handling(name):
+    """DataFrames containing NaNs should still produce valid boolean signals."""
+    inst = _get(name)
+    df = pd.DataFrame(
+        {
+            "open": [np.nan, 100.0, 101.0],
+            "high": [np.nan, 101.0, 102.0],
+            "low": [np.nan, 99.0, 100.0],
+            "close": [np.nan, 100.5, 101.5],
+            "volume": [np.nan, 1e6, 1e6],
+        },
+        index=pd.date_range("2023-01-01", periods=3, freq="1D"),
+    )
+    sig = inst.backtest_signals(df)
+    assert isinstance(sig, BacktestSignals)
+    assert len(sig.entries) == len(df)
+    assert not sig.entries.isna().any()
+    assert not sig.exits.isna().any()
+
+
+@pytest.mark.parametrize("name", list(_STRATEGIES))
+def test_empty_dataframe(name):
+    """An empty OHLCV DataFrame should return empty signals without error."""
+    inst = _get(name)
+    empty_df = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+    sig = inst.backtest_signals(empty_df)
+    assert isinstance(sig, BacktestSignals)
+    assert len(sig.entries) == 0
+    assert len(sig.exits) == 0
+
+
+@pytest.mark.parametrize("name", list(_STRATEGIES))
+def test_single_row_no_lookahead(name):
+    """A single‑row input must not generate an entry signal (no lookahead)."""
+    inst = _get(name)
+    single = pd.DataFrame(
+        {
+            "open": [100.0],
+            "high": [101.0],
+            "low": [99.0],
+            "close": [100.5],
+            "volume": [1e6],
+        },
+        index=pd.date_range("2023-01-01", periods=1, freq="1D"),
+    )
+    sig = inst.backtest_signals(single)
+    assert isinstance(sig, BacktestSignals)
+    assert len(sig.entries) == 1
+    assert not bool(sig.entries.iloc[0]), "entry on the first (and only) bar is lookahead bias"

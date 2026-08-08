@@ -147,6 +147,61 @@ def test_an_untagged_close_only_touches_its_own_symbol():
     assert trades[0]["symbol"] == "AAA"
 
 
+# ── new edge‑case tests ───────────────────────────────────────────────────────
+
+def test_multiple_symbols_untagged_closes():
+    """Untagged closes must affect only their own symbols, preserving strategy."""
+    orders = [
+        _order("qe-alpha-AAA-1", "AAA", "buy", 5, 10.0, 0),
+        _order("qe-beta-BBB-1", "BBB", "buy", 3, 20.0, 0),
+        _order("broker-close-AAA", "AAA", "sell", 5, 12.0, 10),
+        _order("broker-close-BBB", "BBB", "sell", 3, 22.0, 11),
+    ]
+    trades = reconstruct_closed_trades(orders, ["alpha", "beta"])
+    assert len(trades) == 2
+    # Verify each trade retains its originating strategy
+    trade_by_symbol = {t["symbol"]: t for t in trades}
+    assert trade_by_symbol["AAA"]["strategy_name"] == "alpha"
+    assert trade_by_symbol["BBB"]["strategy_name"] == "beta"
+    # Verify PnL calculations
+    assert trade_by_symbol["AAA"]["realized_pnl"] == pytest.approx(10.0)
+    assert trade_by_symbol["BBB"]["realized_pnl"] == pytest.approx(6.0)
+
+
+def test_untagged_close_exact_inventory_multiple_strategies_fifo():
+    """Closing quantity equal to total inventory across strategies should close FIFO."""
+    orders = [
+        _order("qe-alpha-XYZ-1", "XYZ", "buy", 2, 10.0, 0),
+        _order("qe-beta-XYZ-2", "XYZ", "buy", 3, 12.0, 5),
+        _order("broker-flat-XYZ", "XYZ", "sell", 5, 15.0, 20),
+    ]
+    trades = reconstruct_closed_trades(orders, ["alpha", "beta"])
+    assert len(trades) == 2
+    # First trade should be from the oldest lot (alpha)
+    assert trades[0]["strategy_name"] == "alpha"
+    assert trades[0]["quantity"] == pytest.approx(2)
+    assert trades[0]["realized_pnl"] == pytest.approx((15.0 - 10.0) * 2)
+    # Second trade from beta
+    assert trades[1]["strategy_name"] == "beta"
+    assert trades[1]["quantity"] == pytest.approx(3)
+    assert trades[1]["realized_pnl"] == pytest.approx((15.0 - 12.0) * 3)
+
+
+def test_untagged_close_same_timestamp_fifo():
+    """When open lots share the same timestamp, FIFO should follow input order."""
+    orders = [
+        _order("qe-alpha-XYZ-1", "XYZ", "buy", 1, 10.0, 0),
+        _order("qe-beta-XYZ-2", "XYZ", "buy", 1, 20.0, 0),
+        _order("broker-close-XYZ", "XYZ", "sell", 1, 30.0, 10),
+    ]
+    trades = reconstruct_closed_trades(orders, ["alpha", "beta"])
+    assert len(trades) == 1
+    # The first opened lot (alpha) should be closed
+    assert trades[0]["strategy_name"] == "alpha"
+    assert trades[0]["entry_price"] == pytest.approx(10.0)
+    assert trades[0]["realized_pnl"] == pytest.approx(20.0)
+
+
 # ── existing behaviour must be untouched ─────────────────────────────────────
 
 def test_a_fully_tagged_round_trip_is_unchanged():
