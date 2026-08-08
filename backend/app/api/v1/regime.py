@@ -29,33 +29,52 @@ _LABEL_MAP = {
 }
 
 
-def _map_label(regime: str) -> str:
+def _map_label(regime: Optional[str]) -> str:
     """Map detector regime to frontend-friendly label."""
+    if not regime:
+        return "unknown"
     return _LABEL_MAP.get(regime, "unknown")
 
 
-def _count_labels(states: Dict[str, Any]) -> Counter:
+def _count_labels(states: Optional[Dict[str, Any]]) -> Counter:
     """Count mapped regime labels across all symbol states."""
+    if not states:
+        return Counter()
     return Counter(
-        _map_label(sym_state.get("regime", "unknown")) for sym_state in states.values()
+        _map_label(sym_state.get("regime", "unknown"))
+        for sym_state in states.values()
+        if isinstance(sym_state, dict)
     )
 
 
-def _extract_confidences(states: Dict[str, Any]) -> List[float]:
+def _extract_confidences(states: Optional[Dict[str, Any]]) -> List[float]:
     """Extract confidence values from all symbol states."""
-    return [float(sym_state.get("confidence", 0.0)) for sym_state in states.values()]
+    if not states:
+        return []
+    confidences: List[float] = []
+    for sym_state in states.values():
+        if isinstance(sym_state, dict):
+            try:
+                confidences.append(float(sym_state.get("confidence", 0.0)))
+            except (TypeError, ValueError):
+                confidences.append(0.0)
+    return confidences
 
 
-def _find_latest_updated(states: Dict[str, Any]) -> Optional[str]:
+def _find_latest_updated(states: Optional[Dict[str, Any]]) -> Optional[str]:
     """Return the most recent updated_at timestamp among symbol states."""
-    return max(
-        (sym_state.get("updated_at") for sym_state in states.values() if sym_state.get("updated_at")),
-        default=None,
-    )
+    if not states:
+        return None
+    timestamps = [
+        sym_state.get("updated_at")
+        for sym_state in states.values()
+        if isinstance(sym_state, dict) and sym_state.get("updated_at")
+    ]
+    return max(timestamps, default=None)
 
 
 def _compute_aggregates(
-    states: Dict[str, Any],
+    states: Optional[Dict[str, Any]],
 ) -> Tuple[str, float, Optional[str]]:
     """
     Compute overall regime, average confidence, and most recent update timestamp.
@@ -115,7 +134,7 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
 async def get_regime_states(current_user: User = Depends(get_current_user)):
     """Current regime classification for all tracked symbols."""
     start_time = time.time()
-    data = regime_monitor.all_states()
+    data = regime_monitor.all_states() or {}
     _log_endpoint("get_regime_states", len(data), start_time)
     return data
 
@@ -136,9 +155,9 @@ async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_cu
 async def get_correlation_matrix(current_user: User = Depends(get_current_user)):
     """Live cross-strategy correlation matrix."""
     start_time = time.time()
-    matrix = correlation_monitor.matrix_as_list()
-    reduced = list(correlation_monitor._reduced)
-    alerts = correlation_monitor.recent_alerts(10)
+    matrix = correlation_monitor.matrix_as_list() or []
+    reduced = list(correlation_monitor._reduced) if getattr(correlation_monitor, "_reduced", None) else []
+    alerts = correlation_monitor.recent_alerts(10) or []
     _log_endpoint("get_correlation_matrix", len(matrix), start_time)
     return {
         "matrix": matrix,
@@ -150,6 +169,6 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
 @router.get("/correlation/alerts")
 async def get_correlation_alerts(current_user: User = Depends(get_current_user)):
     start_time = time.time()
-    alerts = correlation_monitor.recent_alerts(50)
+    alerts = correlation_monitor.recent_alerts(50) or []
     _log_endpoint("get_correlation_alerts", len(alerts), start_time)
     return alerts
