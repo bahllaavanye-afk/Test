@@ -51,7 +51,7 @@ class AgentMemory:
 
     def _key(self, topic: str, *, latest: bool = False) -> str:
         """Construct a Redis key for a given topic."""
-        if not topic:
+        if not isinstance(topic, str) or not topic:
             raise ValueError(_ERROR_TOPIC_INVALID)
         prefix = f"{_PREFIX}latest:" if latest else _PREFIX
         return f"{prefix}{topic}"
@@ -60,7 +60,15 @@ class AgentMemory:
         """Serialise data with a timestamp."""
         if data is None:
             data = {}
-        return json.dumps({"ts": time.time(), **data})
+        try:
+            return json.dumps({"ts": time.time(), **data})
+        except (TypeError, ValueError) as e:
+            # Log and re‑raise to let callers handle malformed data.
+            logger.error(
+                "Failed to serialise payload",
+                extra={"operation": "payload_serialisation", "error_type": type(e).__name__, "error_msg": str(e)},
+            )
+            raise
 
     async def _log_error(self, operation: str, topic: str | None, exc: Exception) -> None:
         """Log a Redis operation failure with structured context."""
@@ -70,10 +78,7 @@ class AgentMemory:
             "error_type": type(exc).__name__,
             "error_msg": str(exc),
         }
-        logger.error(
-            "AgentMemory operation failed",
-            extra=extra,
-        )
+        logger.error("AgentMemory operation failed", extra=extra)
 
     async def _add_topic_to_set(self, topic: str) -> None:
         """Ensure the topic is recorded in the Redis set of topics."""
@@ -113,7 +118,12 @@ class AgentMemory:
         if not topic:
             await self._log_error("write", topic, ValueError(_ERROR_TOPIC_EMPTY))
             return
-        payload = self._payload(data)
+        try:
+            payload = self._payload(data)
+        except Exception as e:
+            await self._log_error("write", topic, e)
+            return
+
         key = self._key(topic)
         try:
             await self._r.lpush(key, payload)
@@ -129,7 +139,12 @@ class AgentMemory:
         if not topic:
             await self._log_error("set_latest", topic, ValueError(_ERROR_TOPIC_EMPTY))
             return
-        payload = self._payload(data)
+        try:
+            payload = self._payload(data)
+        except Exception as e:
+            await self._log_error("set_latest", topic, e)
+            return
+
         key = self._key(topic, latest=True)
         try:
             await self._r.set(key, payload)
@@ -155,6 +170,9 @@ class AgentMemory:
         except RedisError as e:
             await self._log_error("read_recent", topic, e)
             return []
+        except json.JSONDecodeError as e:
+            await self._log_error("read_recent", topic, e)
+            return []
         except Exception as e:  # pragma: no cover
             await self._log_error("read_recent", topic, e)
             return []
@@ -169,6 +187,9 @@ class AgentMemory:
             val = await self._r.get(key)
             return json.loads(val) if val else None
         except RedisError as e:
+            await self._log_error("get_latest", topic, e)
+            return None
+        except json.JSONDecodeError as e:
             await self._log_error("get_latest", topic, e)
             return None
         except Exception as e:  # pragma: no cover

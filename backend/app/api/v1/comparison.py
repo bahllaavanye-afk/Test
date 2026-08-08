@@ -2,9 +2,11 @@
 
 Provides routes to fetch benchmark statistics and recent comparison results.
 """
+import logging
 from typing import Any, List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -14,6 +16,9 @@ from app.models.comparison import ComparisonResult as ComparisonModel
 from app.models.user import User
 from app.comparison.benchmarks import get_benchmark_stats
 from pydantic import BaseModel, ConfigDict
+
+# Logger configuration
+logger = logging.getLogger(__name__)
 
 # Constants
 PREFIX = "/comparison"
@@ -110,7 +115,11 @@ async def get_benchmarks() -> Any:
     Any
         The raw benchmark data returned by ``get_benchmark_stats``.
     """
-    return get_benchmark_stats()
+    try:
+        return get_benchmark_stats()
+    except Exception as exc:
+        logger.error("Failed to retrieve benchmark statistics", exc_info=True, extra={"exception": exc})
+        raise HTTPException(status_code=500, detail="Unable to fetch benchmark statistics") from exc
 
 
 @router.get(ENDPOINT_RESULTS, response_model=list[ComparisonOut])
@@ -136,12 +145,19 @@ async def list_comparisons(
     List[ComparisonOut]
         A list of transformed comparison results.
     """
-    # Guard against unexpected None from the DB layer
-    result = await db.execute(
-        select(ComparisonModel)
-        .order_by(ComparisonModel.created_at.desc())
-        .limit(max(DEFAULT_LIMIT, 1))
-    )
+    try:
+        result = await db.execute(
+            select(ComparisonModel)
+            .order_by(ComparisonModel.created_at.desc())
+            .limit(max(DEFAULT_LIMIT, 1))
+        )
+    except SQLAlchemyError as exc:
+        logger.error("Database error while fetching comparison results", exc_info=True, extra={"exception": exc})
+        raise HTTPException(status_code=500, detail="Database query failed") from exc
+    except Exception as exc:
+        logger.error("Unexpected error while fetching comparison results", exc_info=True, extra={"exception": exc})
+        raise HTTPException(status_code=500, detail="Unable to retrieve comparison results") from exc
+
     rows = result.scalars().all() if result is not None else []
 
     # Ensure we always return a list, even if no rows are found

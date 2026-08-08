@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -10,6 +11,9 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import get_current_user
 from app.models.user import User
+
+# Logger configuration
+logger = logging.getLogger(__name__)
 
 # Constants
 ROUTER_PREFIX = "/monitoring"
@@ -47,7 +51,8 @@ def _load_health_report() -> Dict[str, Any]:
         return {"status": DEFAULT_HEALTH_STATUS, "message": DEFAULT_HEALTH_MESSAGE}
     try:
         return json.loads(HEALTH_REPORT_PATH.read_text())
-    except Exception as exc:
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.exception("Failed to load health report from %s", HEALTH_REPORT_PATH)
         raise HTTPException(
             status_code=HTTP_STATUS_INTERNAL_ERROR,
             detail=HEALTH_REPORT_CORRUPTED_DETAIL,
@@ -64,7 +69,8 @@ def _read_fix_log_file() -> str:
         return ""
     try:
         return FIX_LOG_PATH.read_text().strip()
-    except Exception as exc:
+    except OSError as exc:
+        logger.exception("Could not read fix log file %s", FIX_LOG_PATH)
         raise HTTPException(
             status_code=HTTP_STATUS_INTERNAL_ERROR,
             detail=FIX_LOG_READ_ERROR_DETAIL.format(exc),
@@ -75,7 +81,8 @@ def _parse_fix_log_lines(lines: List[str]) -> List[Dict[str, Any]]:
     """Parse newline‑delimited JSON lines into a list of dictionaries."""
     try:
         return [json.loads(line) for line in lines]
-    except Exception as exc:
+    except json.JSONDecodeError as exc:
+        logger.exception("Failed to parse fix log lines")
         raise HTTPException(
             status_code=HTTP_STATUS_INTERNAL_ERROR,
             detail=FIX_LOG_READ_ERROR_DETAIL.format(exc),
@@ -108,7 +115,16 @@ async def get_health_report():
     Returns the most recent QA health report written by the QAMonitor background
     task, or a placeholder if the monitor has not yet completed its first cycle.
     """
-    return _load_health_report()
+    try:
+        return _load_health_report()
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Unexpected error while getting health report")
+        raise HTTPException(
+            status_code=HTTP_STATUS_INTERNAL_ERROR,
+            detail="Unexpected error retrieving health report",
+        ) from exc
 
 
 @router.get(ENDPOINT_FIXES)
@@ -120,7 +136,16 @@ async def get_fix_log(
 
     Returns the last *limit* entries from the fix log (newest last).
     """
-    return _read_fix_log(limit)
+    try:
+        return _read_fix_log(limit)
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Unexpected error while reading fix log")
+        raise HTTPException(
+            status_code=HTTP_STATUS_INTERNAL_ERROR,
+            detail="Unexpected error retrieving fix log",
+        ) from exc
 
 
 @router.post(ENDPOINT_RUN_NOW)
@@ -131,7 +156,14 @@ async def trigger_qa_cycle(
 
     The cycle runs asynchronously; poll GET /monitoring/health to see the result.
     """
-    from app.tasks.qa_monitor import run_one_cycle
+    try:
+        from app.tasks.qa_monitor import run_one_cycle
 
-    asyncio.create_task(run_one_cycle())
-    return {RESPONSE_MESSAGE_KEY: QA_CYCLE_STARTED_MESSAGE}
+        asyncio.create_task(run_one_cycle())
+        return {RESPONSE_MESSAGE_KEY: QA_CYCLE_STARTED_MESSAGE}
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Failed to trigger QA cycle")
+        raise HTTPException(
+            status_code=HTTP_STATUS_INTERNAL_ERROR,
+            detail="Failed to trigger QA cycle",
+        ) from exc

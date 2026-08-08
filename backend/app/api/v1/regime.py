@@ -4,7 +4,7 @@ import time
 from collections import Counter
 from typing import List, Optional, Tuple, Dict, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.ml.regime.detector import regime_monitor
@@ -87,6 +87,19 @@ def _log_endpoint(endpoint: str, signal_count: int, start_time: float) -> None:
     )
 
 
+def _log_error(endpoint: str, exc: Exception, start_time: float) -> None:
+    """Log error details for an endpoint."""
+    elapsed_ms = (time.time() - start_time) * 1000
+    logger.error(
+        f"endpoint={endpoint} error={exc}",
+        extra={
+            "execution_time_ms": round(elapsed_ms, 2),
+            "error_type": type(exc).__name__,
+        },
+        exc_info=True,
+    )
+
+
 @router.get("/current")
 async def get_current_regime(current_user: User = Depends(get_current_user)):
     """Overall market regime — aggregated across all tracked symbols.
@@ -95,7 +108,12 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
     and average confidence. Falls back to safe defaults when no data is available.
     """
     start_time = time.time()
-    states = regime_monitor.all_states()
+    try:
+        states = regime_monitor.all_states()
+    except Exception as exc:  # pragma: no cover
+        _log_error("get_current_regime", exc, start_time)
+        raise HTTPException(status_code=500, detail="Failed to retrieve regime data") from exc
+
     if not states:
         _log_endpoint("get_current_regime", 0, start_time)
         return {"regime": "unknown", "confidence": 0.0, "updated_at": None}
@@ -115,7 +133,12 @@ async def get_current_regime(current_user: User = Depends(get_current_user)):
 async def get_regime_states(current_user: User = Depends(get_current_user)):
     """Current regime classification for all tracked symbols."""
     start_time = time.time()
-    data = regime_monitor.all_states()
+    try:
+        data = regime_monitor.all_states()
+    except Exception as exc:  # pragma: no cover
+        _log_error("get_regime_states", exc, start_time)
+        raise HTTPException(status_code=500, detail="Failed to retrieve regime states") from exc
+
     _log_endpoint("get_regime_states", len(data), start_time)
     return data
 
@@ -123,7 +146,12 @@ async def get_regime_states(current_user: User = Depends(get_current_user)):
 @router.get("/states/{symbol}")
 async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_current_user)):
     start_time = time.time()
-    state = regime_monitor.get(symbol.upper())
+    try:
+        state = regime_monitor.get(symbol.upper())
+    except Exception as exc:  # pragma: no cover
+        _log_error("get_regime_for_symbol", exc, start_time)
+        raise HTTPException(status_code=500, detail=f"Error retrieving regime for {symbol}") from exc
+
     if not state:
         _log_endpoint("get_regime_for_symbol", 0, start_time)
         return {"error": f"No regime data for {symbol}. Feed price data first."}
@@ -136,9 +164,14 @@ async def get_regime_for_symbol(symbol: str, current_user: User = Depends(get_cu
 async def get_correlation_matrix(current_user: User = Depends(get_current_user)):
     """Live cross-strategy correlation matrix."""
     start_time = time.time()
-    matrix = correlation_monitor.matrix_as_list()
-    reduced = list(correlation_monitor._reduced)
-    alerts = correlation_monitor.recent_alerts(10)
+    try:
+        matrix = correlation_monitor.matrix_as_list()
+        reduced = list(correlation_monitor._reduced)
+        alerts = correlation_monitor.recent_alerts(10)
+    except Exception as exc:  # pragma: no cover
+        _log_error("get_correlation_matrix", exc, start_time)
+        raise HTTPException(status_code=500, detail="Failed to retrieve correlation matrix") from exc
+
     _log_endpoint("get_correlation_matrix", len(matrix), start_time)
     return {
         "matrix": matrix,
@@ -150,6 +183,11 @@ async def get_correlation_matrix(current_user: User = Depends(get_current_user))
 @router.get("/correlation/alerts")
 async def get_correlation_alerts(current_user: User = Depends(get_current_user)):
     start_time = time.time()
-    alerts = correlation_monitor.recent_alerts(50)
+    try:
+        alerts = correlation_monitor.recent_alerts(50)
+    except Exception as exc:  # pragma: no cover
+        _log_error("get_correlation_alerts", exc, start_time)
+        raise HTTPException(status_code=500, detail="Failed to retrieve correlation alerts") from exc
+
     _log_endpoint("get_correlation_alerts", len(alerts), start_time)
     return alerts
