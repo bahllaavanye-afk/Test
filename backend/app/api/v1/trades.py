@@ -1,6 +1,7 @@
 """Trade history endpoints."""
 import logging
 from datetime import datetime
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -93,30 +94,27 @@ class TradeOut(BaseModel):
         return v
 
 
-@router.get("/", response_model=list[TradeOut])
-async def list_trades(
-    limit: int = Query(50, ge=1, le=500),
-    symbol: str | None = Query(None, description="Filter by symbol"),
-    account_id: str | None = Query(None, description="Filter by account ID"),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Return a list of recent trades for the current user with optional filters."""
-    # Guard against unexpected None or out‑of‑range values for limit.
+def _normalize_limit(limit: Optional[int]) -> int:
+    """Clamp limit to allowed bounds and provide a default."""
     if limit is None:
-        limit = 50
-    elif limit < 1:
-        limit = 1
-    elif limit > 500:
-        limit = 500
+        return 50
+    return max(1, min(limit, 500))
 
-    # Treat empty strings as missing filters.
-    if symbol == "":
-        symbol = None
-    if account_id == "":
-        account_id = None
 
-    # Build a lightweight query that selects only needed columns and computes avg_fill_price in SQL.
+def _normalize_str_filter(value: Optional[str]) -> Optional[str]:
+    """Treat empty strings as missing filters."""
+    if value == "":
+        return None
+    return value
+
+
+def _build_query(
+    limit: int,
+    symbol: Optional[str],
+    account_id: Optional[str],
+    user_id: int,
+) -> select:
+    """Compose the SQLAlchemy query with optional filters."""
     fill_price_expr = case(
         (Trade.side == "buy", Trade.entry_price),
         else_=Trade.exit_price,
@@ -137,7 +135,7 @@ async def list_trades(
             Trade.strategy_name,
         )
         .join(Account, Trade.account_id == Account.id)
-        .where(Account.user_id == current_user.id)
+        .where(Account.user_id == user_id)
         .order_by(Trade.opened_at.desc())
         .limit(limit)
     )
@@ -145,9 +143,52 @@ async def list_trades(
         query = query.where(Trade.account_id == account_id)
     if symbol:
         query = query.where(Trade.symbol == symbol)
+    return query
+
+
+async def _execute_query(db: AsyncSession, query) -> List:
+    """Run the query against the DB and return raw rows."""
+    result = await db.execute(query)
+    return result.all() or []
+
+
+def _convert_rows_to_models(rows: List) -> List[TradeOut]:
+    """Transform DB rows into the API response model."""
+    return [
+        TradeOut(
+            id=row.id,
+            symbol=row.symbol,
+            side=row.side,
+            realized_pnl=float(row.realized_pnl) if row.realized_pnl is not None else None,
+            entry_price=float(row.entry_price) if row.entry_price is not None else None,
+            exit_price=float(row.exit_price) if row.exit_price is not None else None,
+            avg_fill_price=float(row.avg_fill_price) if row.avg_fill_price is not None else None,
+            quantity=float(row.quantity),
+            opened_at=row.opened_at,
+            closed_at=row.closed_at,
+            strategy_name=row.strategy_name,
+        )
+        for row in rows
+    ]
+
+
+@router.get("/", response_model=list[TradeOut])
+async def list_trades(
+    limit: int = Query(50, ge=1, le=500),
+    symbol: str | None = Query(None, description="Filter by symbol"),
+    account_id: str | None = Query(None, description="Filter by account ID"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return a list of recent trades for the current user with optional filters."""
+    limit = _normalize_limit(limit)
+    symbol = _normalize_str_filter(symbol)
+    account_id = _normalize_str_filter(account_id)
+
+    query = _build_query(limit, symbol, account_id, current_user.id)
 
     try:
-        result = await db.execute(query)
+        rows = await _execute_query(db, query)
     except SQLAlchemyError as e:
         logger.error(
             "Database error while fetching trades",
@@ -163,27 +204,11 @@ async def list_trades(
         )
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected error") from e
 
-    rows = result.all() or []
     if not rows:
         return []
 
     try:
-        return [
-            TradeOut(
-                id=row.id,
-                symbol=row.symbol,
-                side=row.side,
-                realized_pnl=float(row.realized_pnl) if row.realized_pnl is not None else None,
-                entry_price=float(row.entry_price) if row.entry_price is not None else None,
-                exit_price=float(row.exit_price) if row.exit_price is not None else None,
-                avg_fill_price=float(row.avg_fill_price) if row.avg_fill_price is not None else None,
-                quantity=float(row.quantity),
-                opened_at=row.opened_at,
-                closed_at=row.closed_at,
-                strategy_name=row.strategy_name,
-            )
-            for row in rows
-        ]
+        return _convert_rows_to_models(rows)
     except Exception as e:
         logger.error(
             "Error converting trade rows to response models",
