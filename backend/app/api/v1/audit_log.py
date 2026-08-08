@@ -20,7 +20,7 @@ from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.user import User
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, validator
 
 
 router = APIRouter(prefix="/audit-log", tags=["audit-log"])
@@ -29,38 +29,71 @@ router = APIRouter(prefix="/audit-log", tags=["audit-log"])
 class AuditLogOut(BaseModel):
     """Schema for exposing audit log entries via the API.
 
-    This model mirrors the fields of :class:`app.models.audit_log.AuditLog` that
-    are relevant for external consumption. It is used as the response model for
-    the ``/audit-log`` endpoint.
-
-    Attributes
-    ----------
-    id: str
-        Unique identifier of the audit log record.
-    action: str
-        The action performed (e.g., ``login``, ``order_create``).
-    resource_type: str | None
-        Type of the resource affected by the action, if applicable.
-    resource_id: str | None
-        Identifier of the specific resource affected, if applicable.
-    ip_address: str | None
-        IP address from which the action originated.
-    user_agent: str | None
-        User‑agent string of the client that triggered the action.
-    extra_data: dict
-        Arbitrary additional data supplied by the audit event.
-    created_at: datetime
-        Timestamp when the audit record was created.
+    Mirrors the fields of :class:`app.models.audit_log.AuditLog` relevant for
+    external consumption. Used as the response model for the ``/audit-log``
+    endpoint.
     """
 
-    id: str
-    action: str
-    resource_type: str | None
-    resource_id: str | None
-    ip_address: str | None
-    user_agent: str | None
-    extra_data: dict
-    created_at: datetime
+    id: str = Field(
+        ...,
+        description="Unique identifier of the audit log record.",
+        example="123e4567-e89b-12d3-a456-426614174000",
+    )
+    action: str = Field(
+        ...,
+        description="The action performed (e.g., ``login``, ``order_create``).",
+        example="login",
+    )
+    resource_type: Optional[str] = Field(
+        None,
+        description="Type of the resource affected by the action, if applicable.",
+        example="order",
+    )
+    resource_id: Optional[str] = Field(
+        None,
+        description="Identifier of the specific resource affected, if applicable.",
+        example="order_987",
+    )
+    ip_address: Optional[str] = Field(
+        None,
+        description="IP address from which the action originated.",
+        example="192.168.1.1",
+    )
+    user_agent: Optional[str] = Field(
+        None,
+        description="User‑agent string of the client that triggered the action.",
+        example="Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    )
+    extra_data: dict = Field(
+        default_factory=dict,
+        description="Arbitrary additional data supplied by the audit event.",
+        example={"key": "value"},
+    )
+    created_at: datetime = Field(
+        ...,
+        description="Timestamp when the audit record was created.",
+        example="2023-01-01T12:00:00Z",
+    )
+
+    @validator("ip_address")
+    def validate_ip_address(cls, v: Optional[str]) -> Optional[str]:
+        """Validate that the provided IP address, if any, is syntactically correct."""
+        if v is None:
+            return v
+        import ipaddress
+
+        try:
+            ipaddress.ip_address(v)
+        except ValueError as exc:
+            raise ValueError(f"Invalid IP address: {v}") from exc
+        return v
+
+    @validator("extra_data")
+    def validate_extra_data(cls, v: dict) -> dict:
+        """Ensure ``extra_data`` is a dictionary."""
+        if not isinstance(v, dict):
+            raise TypeError("extra_data must be a dict")
+        return v
 
     model_config = ConfigDict(from_attributes=True)
 
