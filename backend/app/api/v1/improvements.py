@@ -16,7 +16,6 @@ DETAIL_IMPROVER_NOT_INITIALIZED = "Improver not initialized"
 DETAIL_HISTORY_RETRIEVAL_FAILED = "Failed to retrieve history"
 DETAIL_CODE_QUALITY_NOT_STARTED = "Code quality loop not started"
 DETAIL_CODE_QUALITY_FETCH_FAILED = "Failed to fetch code quality"
-DETAIL_BEST_PARAMS_NOT_RUNNING = "not_running"
 DETAIL_BEST_PARAMS_FETCH_FAILED = "Failed to retrieve best parameters"
 DETAIL_PROCESS_SIGNAL_QUALITY_FAILED = "Failed to process signal quality"
 ERROR_MSG_INVALID_FORMAT = "Invalid signal format"
@@ -41,13 +40,10 @@ def _apply_entry_filters(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     filtered: List[Dict[str, Any]] = []
     for sig in signals:
-        # Basic score threshold
         if sig.get("entry_score", 0) < ENTRY_SCORE_THRESHOLD:
             continue
-        # Volume confirmation (at least VOLUME_MULTIPLIER above average)
         if sig.get("volume", 0) < sig.get("avg_volume", 0) * VOLUME_MULTIPLIER:
             continue
-        # Moving‑average crossover confirmation
         if not sig.get("ma_cross", False):
             continue
         filtered.append(sig)
@@ -174,7 +170,6 @@ async def get_signal_quality(current_user: User = Depends(get_current_user)):
         final_signals = _retrieve_and_filter_signals(improver)
         return {"filtered_signals": final_signals, "count": len(final_signals)}
     except HTTPException:
-        # Propagate HTTPExceptions raised in helper functions unchanged
         raise
     except Exception as exc:
         logger.exception(
