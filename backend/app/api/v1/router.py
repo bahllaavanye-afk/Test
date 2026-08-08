@@ -5,6 +5,7 @@ public API and registers them with a top‑level :class:`fastapi.APIRouter`
 instance. The resulting ``api_router`` is imported by the main FastAPI
 application.
 """
+
 import logging
 from typing import List, Optional, Tuple
 
@@ -88,18 +89,21 @@ _ROUTER_DEFINITIONS: List[Tuple[Optional[APIRouter], str]] = [
 logger = logging.getLogger(__name__)
 
 api_router: APIRouter = APIRouter()
-
+"""Top‑level router that aggregates all version‑1 sub‑routers."""
 
 def _include(router_obj: Optional[APIRouter], name: str) -> None:
     """Safely include a sub‑router into the top‑level ``api_router``.
 
-    Args:
-        router_obj: The router to include. If ``None`` the function logs a
-            warning and returns without raising an exception.
-        name: Human‑readable identifier for the router, used in log messages.
+    This helper isolates the inclusion logic, handling cases where a router
+    may be ``None`` (e.g., optional features) and guarding against unexpected
+    exceptions that could prevent the rest of the routers from being
+    registered.
 
-    The function catches any unexpected exception during inclusion, logs the
-    error, and continues processing the remaining routers.
+    Args:
+        router_obj: The :class:`fastapi.APIRouter` instance to include. If
+            ``None`` the function logs a warning and returns without raising
+            an exception.
+        name: Human‑readable identifier for the router, used in log messages.
     """
     if router_obj is None:
         logger.warning(LOG_WARN_ROUTER_NONE, name)

@@ -1,6 +1,15 @@
-"""InferenceLog ORM — records every prediction made by a serving model."""
+"""InferenceLog ORM — records every prediction made by a serving model.
+
+This module defines the :class:`InferenceLog` SQLAlchemy model which stores a
+single inference event.  The record is immutable except for the
+``actual_return`` and ``is_correct`` columns that are populated after the
+market outcome is known.  The model is used by the API layer to log
+predictions and later compute live accuracy metrics.
+"""
+
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -12,9 +21,38 @@ class InferenceLog(Base):
     """
     Immutable record of a single model inference.
 
-    actual_return and is_correct are filled in after-the-fact via
-    POST /releases/{id}/record-outcome so accuracy can be computed live.
+    Attributes
+    ----------
+    id: str
+        Primary key generated as a UUID4 string.
+    release_id: str
+        Foreign key referencing the model release that generated the inference.
+    model_name: str
+        Human‑readable name of the model.
+    version: str
+        Version identifier of the model.
+    symbol: str
+        Trading symbol the inference was made for.
+    ts: datetime
+        Timestamp of the inference (UTC, timezone‑aware).
+    prediction: float
+        Raw model output in the range ``[0, 1]``.
+    signal: str
+        Discretised trading signal (e.g. ``'buy'``, ``'sell'``, ``'hold'``).
+    confidence: float
+        Calibration metric calculated as ``abs(prediction - 0.5) * 2``.
+    latency_ms: float
+        Inference latency in milliseconds.
+    ab_group: str
+        Identifier of the A/B test branch that served the request
+        (e.g. ``'champion'``, ``'challenger'``, ``'shadow'``).
+    actual_return: Optional[float]
+        Realised market return, populated after the outcome is known.
+    is_correct: Optional[bool]
+        Flag indicating whether the signal matched the market direction,
+        populated after the outcome is known.
     """
+
     __tablename__ = "inference_logs"
     __table_args__ = (
         Index("ix_inf_release_ts", "release_id", "ts"),
@@ -44,5 +82,5 @@ class InferenceLog(Base):
     # Which branch of the A/B test served this request
     ab_group: Mapped[str] = mapped_column(String(16), nullable=False)  # champion|challenger|shadow
     # Filled in ex-post when actual market return is known
-    actual_return: Mapped[float | None] = mapped_column(Numeric(10, 6))
-    is_correct: Mapped[bool | None] = mapped_column(Boolean)
+    actual_return: Mapped[Optional[float]] = mapped_column(Numeric(10, 6))
+    is_correct: Mapped[Optional[bool]] = mapped_column(Boolean)
