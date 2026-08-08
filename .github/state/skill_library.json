@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Test API timeouts",
-    "Sweep for lingering annotations",
-    "Bind thread pools",
     "Check RAM usage",
     "* A circuit-breaker wrapper will be added to `backend/app/api/external_client.py` for resilience and fault-tolerance.",
     "Based on the recent learnings, here are 2-3 concise bullet points of the most important, actionable knowledge:",
@@ -199,8 +196,11 @@
     "Based on the agent learnings, the following are the most important and actionable takeaways:",
     "Validate API responses",
     "Eliminate raw dictionaries",
-    "Check RAM limits"
+    "Check RAM limits",
+    "Timeout API requests",
+    "Hash user inputs",
+    "Log GPU usage"
   ],
-  "last_updated": "2026-08-08T03:35:30.054828+00:00",
+  "last_updated": "2026-08-08T04:34:06.831811+00:00",
   "total": 200
 }
