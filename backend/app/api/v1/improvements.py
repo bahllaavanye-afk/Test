@@ -7,6 +7,23 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import get_current_user
 from app.models.user import User
 
+# Constants
+ENTRY_SCORE_THRESHOLD = 0.7
+VOLUME_MULTIPLIER = 1.2
+
+STATUS_NOT_RUNNING = "not_running"
+DETAIL_IMPROVER_NOT_INITIALIZED = "Improver not initialized"
+DETAIL_HISTORY_RETRIEVAL_FAILED = "Failed to retrieve history"
+DETAIL_CODE_QUALITY_NOT_STARTED = "Code quality loop not started"
+DETAIL_CODE_QUALITY_FETCH_FAILED = "Failed to fetch code quality"
+DETAIL_BEST_PARAMS_NOT_RUNNING = "not_running"
+DETAIL_BEST_PARAMS_FETCH_FAILED = "Failed to retrieve best parameters"
+DETAIL_PROCESS_SIGNAL_QUALITY_FAILED = "Failed to process signal quality"
+ERROR_MSG_INVALID_FORMAT = "Invalid signal format"
+ERROR_MSG_NON_DICT = "Signal items must be dictionaries"
+LOG_MSG_VALIDATION_TYPE = "Signal validation failed: expected list, got %s"
+LOG_MSG_VALIDATION_NON_DICT = "Signal validation failed: list contains non-dict elements"
+
 router = APIRouter(prefix="/improvements", tags=["improvements"])
 
 logger = logging.getLogger(__name__)
@@ -25,10 +42,10 @@ def _apply_entry_filters(signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     filtered: List[Dict[str, Any]] = []
     for sig in signals:
         # Basic score threshold
-        if sig.get("entry_score", 0) < 0.7:
+        if sig.get("entry_score", 0) < ENTRY_SCORE_THRESHOLD:
             continue
-        # Volume confirmation (at least 20% above average)
-        if sig.get("volume", 0) < sig.get("avg_volume", 0) * 1.2:
+        # Volume confirmation (at least VOLUME_MULTIPLIER above average)
+        if sig.get("volume", 0) < sig.get("avg_volume", 0) * VOLUME_MULTIPLIER:
             continue
         # Moving‑average crossover confirmation
         if not sig.get("ma_cross", False):
@@ -67,14 +84,11 @@ def _validate_signals(raw_signals: Any) -> List[Dict[str, Any]]:
     Raises HTTPException on validation failure.
     """
     if not isinstance(raw_signals, list):
-        logger.error(
-            "Signal validation failed: expected list, got %s",
-            type(raw_signals).__name__,
-        )
-        raise HTTPException(status_code=400, detail="Invalid signal format")
+        logger.error(LOG_MSG_VALIDATION_TYPE, type(raw_signals).__name__)
+        raise HTTPException(status_code=400, detail=ERROR_MSG_INVALID_FORMAT)
     if not all(isinstance(sig, dict) for sig in raw_signals):
-        logger.error("Signal validation failed: list contains non-dict elements")
-        raise HTTPException(status_code=400, detail="Signal items must be dictionaries")
+        logger.error(LOG_MSG_VALIDATION_NON_DICT)
+        raise HTTPException(status_code=400, detail=ERROR_MSG_NON_DICT)
     return raw_signals
 
 
@@ -106,9 +120,11 @@ async def get_history(current_user: User = Depends(get_current_user)):
             return improver.get_history()
         except Exception as exc:
             logger.exception(
-                "Error retrieving history for user %s: %s", getattr(current_user, "id", "unknown"), exc
+                "Error retrieving history for user %s: %s",
+                getattr(current_user, "id", "unknown"),
+                exc,
             )
-            raise HTTPException(status_code=500, detail="Failed to retrieve history")
+            raise HTTPException(status_code=500, detail=DETAIL_HISTORY_RETRIEVAL_FAILED)
     return []
 
 
@@ -118,7 +134,7 @@ async def get_quality(current_user: User = Depends(get_current_user)):
 
     loop_ref = getattr(app.state, "code_quality_loop", None)
     if loop_ref is None:
-        return {"status": "not_running", "message": "Code quality loop not started"}
+        return {"status": STATUS_NOT_RUNNING, "message": DETAIL_CODE_QUALITY_NOT_STARTED}
     try:
         return loop_ref.latest()
     except Exception as exc:
@@ -127,14 +143,14 @@ async def get_quality(current_user: User = Depends(get_current_user)):
             getattr(current_user, "id", "unknown"),
             exc,
         )
-        raise HTTPException(status_code=500, detail="Failed to fetch code quality")
+        raise HTTPException(status_code=500, detail=DETAIL_CODE_QUALITY_FETCH_FAILED)
 
 
 @router.get("/best_params")
 async def get_best_params(current_user: User = Depends(get_current_user)):
     improver = _get_improver()
     if improver is None:
-        return {"status": "not_running", "best_params": {}}
+        return {"status": STATUS_NOT_RUNNING, "best_params": {}}
     try:
         return {"best_params": getattr(improver, "_best_params", {})}
     except Exception as exc:
@@ -143,7 +159,7 @@ async def get_best_params(current_user: User = Depends(get_current_user)):
             getattr(current_user, "id", "unknown"),
             exc,
         )
-        raise HTTPException(status_code=500, detail="Failed to retrieve best parameters")
+        raise HTTPException(status_code=500, detail=DETAIL_BEST_PARAMS_FETCH_FAILED)
 
 
 @router.get("/signal_quality")
@@ -153,7 +169,7 @@ async def get_signal_quality(current_user: User = Depends(get_current_user)):
     """
     improver = _get_improver()
     if improver is None:
-        raise HTTPException(status_code=404, detail="Improver not initialized")
+        raise HTTPException(status_code=404, detail=DETAIL_IMPROVER_NOT_INITIALIZED)
     try:
         final_signals = _retrieve_and_filter_signals(improver)
         return {"filtered_signals": final_signals, "count": len(final_signals)}
@@ -166,4 +182,4 @@ async def get_signal_quality(current_user: User = Depends(get_current_user)):
             getattr(current_user, "id", "unknown"),
             exc,
         )
-        raise HTTPException(status_code=500, detail="Failed to process signal quality")
+        raise HTTPException(status_code=500, detail=DETAIL_PROCESS_SIGNAL_QUALITY_FAILED)
