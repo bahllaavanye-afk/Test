@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from sqlalchemy import String, Boolean, ForeignKey, Numeric, DateTime, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -9,11 +9,64 @@ from app.database import Base
 from app.models.base import TimestampMixin
 
 
+"""Models defining account structures and snapshots for the trading platform.
+
+The module contains SQLAlchemy ORM models used throughout the system:
+
+* :class:`Account` – Represents a brokerage account linked to a user, storing
+  configuration, status, and relationships to orders, positions, etc.
+* :class:`AccountSnapshot` – Periodic snapshot of an account's equity, cash,
+  and unrealized P&L for historical analysis.
+"""
+
+
 class Account(Base, TimestampMixin):
+    """SQLAlchemy model for a user's brokerage account.
+
+    Attributes
+    ----------
+    id : Mapped[str]
+        Primary key, generated as a UUID string.
+    user_id : Mapped[str]
+        Foreign key referencing the owning user.
+    broker : Mapped[str]
+        Broker identifier (e.g., ``alpaca``, ``tradestation``, ``binance``).
+    label : Mapped[str]
+        Human‑readable label for the account.
+    mode : Mapped[str]
+        Execution mode, either ``paper`` or ``live``.
+    encrypted_key : Mapped[str | None]
+        Encrypted API key; optional.
+    encrypted_secret : Mapped[str | None]
+        Encrypted API secret; optional.
+    extra_config : Mapped[dict]
+        JSON‑serialisable dictionary for account‑specific configuration such as
+        volume thresholds or moving‑average windows.
+    is_active : Mapped[bool]
+        Flag indicating whether the account is currently active.
+
+    Relationships
+    -------------
+    user : Mapped["User"]
+        Back‑reference to the owning user.
+    snapshots : Mapped[List["AccountSnapshot"]]
+        Historical equity snapshots.
+    orders : Mapped[List["Order"]]
+        Orders placed against this account.
+    positions : Mapped[List["Position"]]
+        Open positions held by the account.
+    strategies : Mapped[List["Strategy"]]
+        Trading strategies attached to the account.
+    """
+
     __tablename__ = "accounts"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     broker: Mapped[str] = mapped_column(String(50), nullable=False)  # alpaca|tradestation|binance|polymarket
     label: Mapped[str] = mapped_column(String(100), nullable=False)
     mode: Mapped[str] = mapped_column(String(10), nullable=False, default="paper")  # paper|live
@@ -23,25 +76,26 @@ class Account(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     user: Mapped["User"] = relationship("User", back_populates="accounts")
-    snapshots: Mapped[list["AccountSnapshot"]] = relationship("AccountSnapshot", back_populates="account")
-    orders: Mapped[list["Order"]] = relationship("Order", back_populates="account")
-    positions: Mapped[list["Position"]] = relationship("Position", back_populates="account")
-    strategies: Mapped[list["Strategy"]] = relationship("Strategy", back_populates="account")
+    snapshots: Mapped[List["AccountSnapshot"]] = relationship("AccountSnapshot", back_populates="account")
+    orders: Mapped[List["Order"]] = relationship("Order", back_populates="account")
+    positions: Mapped[List["Position"]] = relationship("Position", back_populates="account")
+    strategies: Mapped[List["Strategy"]] = relationship("Strategy", back_populates="account")
 
     def is_signal_allowed(self, signal: Dict[str, Any], market_data: Dict[str, Any]) -> bool:
-        """
-        Evaluate whether a trading signal meets tightened entry conditions.
+        """Determine whether a trading signal satisfies entry constraints.
 
-        Entry criteria:
-        1. Account must be active.
-        2. Signal must contain required fields: ``price`` and ``volume``.
-        3. ``price`` must be positive.
-        4. ``volume`` must exceed the configured ``min_volume`` (default 0).
-        5. Confirmation filter: price must be above the moving average (``ma``) if provided
-           in ``market_data`` and ``ma_window`` is defined in ``extra_config``.
+        Parameters
+        ----------
+        signal : Dict[str, Any]
+            Signal payload expected to contain ``price`` and ``volume`` keys.
+        market_data : Dict[str, Any]
+            Current market context, optionally containing a moving average ``ma``.
 
-        Returns:
-            bool: ``True`` if the signal passes all checks, ``False`` otherwise.
+        Returns
+        -------
+        bool
+            ``True`` if the account is active and the signal meets all configured
+            thresholds; otherwise ``False``.
         """
         if not self.is_active:
             return False
@@ -68,21 +122,20 @@ class Account(Base, TimestampMixin):
         return True
 
     def should_exit_position(self, position: Dict[str, Any], market_data: Dict[str, Any]) -> bool:
-        """
-        Determine if a position should be exited based on improved exit logic.
+        """Assess whether an open position should be closed based on exit rules.
 
-        Exit criteria:
-        1. Stop‑loss: unrealized P&L falls below ``-stop_loss_pct`` of entry price.
-        2. Take‑profit: unrealized P&L exceeds ``take_profit_pct`` of entry price.
-        3. Trailing stop (optional): if ``trailing_stop_pct`` is set, exit when price drops
-           a configured percentage from the highest price observed.
+        Parameters
+        ----------
+        position : Dict[str, Any]
+            Must contain ``entry_price`` and ``unrealized_pnl`` entries.
+        market_data : Dict[str, Any]
+            Provides the current ``price`` and optionally ``high_price`` for trailing‑stop logic.
 
-        Args:
-            position: Dictionary containing at least ``entry_price`` and ``unrealized_pnl``.
-            market_data: Dictionary containing current ``price`` and optionally ``high_price``.
-
-        Returns:
-            bool: ``True`` if the position meets any exit condition, ``False`` otherwise.
+        Returns
+        -------
+        bool
+            ``True`` if any stop‑loss, take‑profit, or trailing‑stop condition is met;
+            otherwise ``False``.
         """
         entry_price = position.get("entry_price")
         unrealized_pnl = position.get("unrealized_pnl")
@@ -109,6 +162,26 @@ class Account(Base, TimestampMixin):
 
 
 class AccountSnapshot(Base):
+    """SQLAlchemy model capturing a point‑in‑time view of an account's financial state.
+
+    Attributes
+    ----------
+    id : Mapped[str]
+        Primary key, generated as a UUID string.
+    account_id : Mapped[str]
+        Foreign key linking to the ``Account``.
+    ts : Mapped[datetime]
+        Timestamp of the snapshot (timezone‑aware).
+    total_equity : Mapped[float]
+        Total equity value at the snapshot time.
+    cash : Mapped[float]
+        Cash balance.
+    unrealized_pnl : Mapped[float]
+        Unrealized profit and loss.
+    raw_payload : Mapped[dict]
+        Raw JSON payload received from the broker for reference.
+    """
+
     __tablename__ = "account_snapshots"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
