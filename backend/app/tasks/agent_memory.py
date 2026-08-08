@@ -49,14 +49,24 @@ class AgentMemory:
 
     # ── Helper methods ────────────────────────────────────────────────────────
 
+    def _validate_topic(self, topic: Any) -> str | None:
+        """Return a cleaned, validated topic string or log and return None."""
+        if not isinstance(topic, str):
+            self._log_error_sync("validate_topic", topic, TypeError(_ERROR_TOPIC_INVALID))
+            return None
+        cleaned = topic.strip()
+        if not cleaned:
+            self._log_error_sync("validate_topic", cleaned, ValueError(_ERROR_TOPIC_EMPTY))
+            return None
+        return cleaned
+
     def _key(self, topic: str, *, latest: bool = False) -> str:
         """Construct a Redis key for a given topic."""
-        if not topic:
-            raise ValueError(_ERROR_TOPIC_INVALID)
+        # Assume topic already validated.
         prefix = f"{_PREFIX}latest:" if latest else _PREFIX
         return f"{prefix}{topic}"
 
-    def _payload(self, data: dict) -> str:
+    def _payload(self, data: dict | None) -> str:
         """Serialise data with a timestamp."""
         if data is None:
             data = {}
@@ -70,10 +80,17 @@ class AgentMemory:
             "error_type": type(exc).__name__,
             "error_msg": str(exc),
         }
-        logger.error(
-            "AgentMemory operation failed",
-            extra=extra,
-        )
+        logger.error("AgentMemory operation failed", extra=extra)
+
+    def _log_error_sync(self, operation: str, topic: str | None, exc: Exception) -> None:
+        """Synchronous variant used in validation helpers."""
+        extra = {
+            "operation": operation,
+            "topic": topic,
+            "error_type": type(exc).__name__,
+            "error_msg": str(exc),
+        }
+        logger.error("AgentMemory validation error", extra=extra)
 
     async def _add_topic_to_set(self, topic: str) -> None:
         """Ensure the topic is recorded in the Redis set of topics."""
@@ -108,71 +125,79 @@ class AgentMemory:
 
     # ── Write ─────────────────────────────────────────────────────────────────
 
-    async def write(self, topic: str, data: dict) -> None:
+    async def write(self, topic: str, data: dict | None) -> None:
         """Append an observation to a topic list with a timestamp."""
-        if not topic:
-            await self._log_error("write", topic, ValueError(_ERROR_TOPIC_EMPTY))
+        cleaned_topic = self._validate_topic(topic)
+        if cleaned_topic is None:
             return
         payload = self._payload(data)
-        key = self._key(topic)
+        key = self._key(cleaned_topic)
         try:
             await self._r.lpush(key, payload)
-            await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
-            await self._add_topic_to_set(topic)
+            # Guard against a zero max length which would cause an invalid range.
+            if _MAX_LIST_LEN > 0:
+                await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
+            await self._add_topic_to_set(cleaned_topic)
         except RedisError as e:
-            await self._log_error("write", topic, e)
+            await self._log_error("write", cleaned_topic, e)
         except Exception as e:  # pragma: no cover
-            await self._log_error("write", topic, e)
+            await self._log_error("write", cleaned_topic, e)
 
-    async def set_latest(self, topic: str, data: dict) -> None:
+    async def set_latest(self, topic: str, data: dict | None) -> None:
         """Overwrite the latest value for a topic (single-value slot)."""
-        if not topic:
-            await self._log_error("set_latest", topic, ValueError(_ERROR_TOPIC_EMPTY))
+        cleaned_topic = self._validate_topic(topic)
+        if cleaned_topic is None:
             return
         payload = self._payload(data)
-        key = self._key(topic, latest=True)
+        key = self._key(cleaned_topic, latest=True)
         try:
             await self._r.set(key, payload)
-            await self._add_topic_to_set(topic)
+            await self._add_topic_to_set(cleaned_topic)
         except RedisError as e:
-            await self._log_error("set_latest", topic, e)
+            await self._log_error("set_latest", cleaned_topic, e)
         except Exception as e:  # pragma: no cover
-            await self._log_error("set_latest", topic, e)
+            await self._log_error("set_latest", cleaned_topic, e)
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
     async def read_recent(self, topic: str, n: int = _DEFAULT_READ_RECENT_LIMIT) -> List[dict]:
         """Return up to n most‑recent observations for a topic."""
-        if not topic:
-            await self._log_error("read_recent", topic, ValueError(_ERROR_TOPIC_EMPTY))
+        cleaned_topic = self._validate_topic(topic)
+        if cleaned_topic is None:
             return []
         if n <= 0:
             return []
-        key = self._key(topic)
+        key = self._key(cleaned_topic)
         try:
             items = await self._r.lrange(key, 0, n - 1)
-            return [json.loads(i) for i in items]
+            # Guard against None entries that could arise from Redis anomalies.
+            return [json.loads(i) for i in items if i]
         except RedisError as e:
-            await self._log_error("read_recent", topic, e)
+            await self._log_error("read_recent", cleaned_topic, e)
             return []
         except Exception as e:  # pragma: no cover
-            await self._log_error("read_recent", topic, e)
+            await self._log_error("read_recent", cleaned_topic, e)
             return []
 
     async def get_latest(self, topic: str) -> dict | None:
         """Return the latest single‑value for a topic."""
-        if not topic:
-            await self._log_error("get_latest", topic, ValueError(_ERROR_TOPIC_EMPTY))
+        cleaned_topic = self._validate_topic(topic)
+        if cleaned_topic is None:
             return None
-        key = self._key(topic, latest=True)
+        key = self._key(cleaned_topic, latest=True)
         try:
             val = await self._r.get(key)
-            return json.loads(val) if val else None
+            if not val:
+                return None
+            # Ensure bytes are decoded before JSON parsing.
+            if isinstance(val, (bytes, bytearray)):
+                val = val.decode()
+            return json.loads(val)
         except RedisError as e:
-            await self._log_error("get_latest", topic, e)
+            await self._log_error("get_latest", cleaned_topic, e)
             return None
         except Exception as e:  # pragma: no cover
-            await self._log_error("get_latest", topic, e)
+            await self._log_error("get_latest", cleaned_topic, e)
             return None
 
     async def read_all_topics(self) -> List[str]:
