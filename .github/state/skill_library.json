@@ -1,8 +1,5 @@
 {
   "skills": [
-    "Retrain models",
-    "Log exception stacks",
-    "Use retry mechanisms",
     "Limit open orders",
     "Log database queries",
     "Disambiguate overloaded code",
@@ -199,8 +196,11 @@
     "Monitor winning trades.",
     "Analyze Sharpe ratios.",
     "Optimize model retraining.",
-    "Check thread limits"
+    "Check thread limits",
+    "Check CPU usage",
+    "Scan for deadlocks",
+    "Flush cache regularly"
   ],
-  "last_updated": "2026-08-08T08:35:33.186788+00:00",
+  "last_updated": "2026-08-08T09:33:14.352014+00:00",
   "total": 200
 }
