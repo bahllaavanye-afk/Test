@@ -1,8 +1,12 @@
 """ModelRelease ORM — tracks every trained model artifact through its serving lifecycle."""
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Float, Integer, Text, DateTime, JSON, Index
-from sqlalchemy.orm import Mapped, mapped_column
+from functools import lru_cache
+from typing import Optional
+
+from sqlalchemy import Float, Index, Integer, String, Text, DateTime, JSON
+from sqlalchemy.orm import Mapped, mapped_column, Session
+
 from app.database import Base
 from app.models.base import TimestampMixin
 
@@ -54,3 +58,23 @@ class ModelRelease(Base, TimestampMixin):
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Who registered this release (email or "system")
     created_by: Mapped[str] = mapped_column(String(128), nullable=False, default="system")
+
+    @classmethod
+    @lru_cache(maxsize=128)
+    def get_champion(cls, session: Session, model_name: str) -> Optional["ModelRelease"]:
+        """
+        Retrieve the current champion for a given model name, caching the result.
+        The cache is keyed by model_name; it is cleared automatically when the
+        process restarts or when the underlying data changes (call ``clear_champion_cache``).
+        """
+        return (
+            session.query(cls)
+            .filter(cls.model_name == model_name, cls.status == "champion")
+            .order_by(cls.promoted_at.desc())
+            .first()
+        )
+
+    @classmethod
+    def clear_champion_cache(cls) -> None:
+        """Explicitly clear the champion cache. Useful after promotions or archivals."""
+        cls.get_champion.cache_clear()
