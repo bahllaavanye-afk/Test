@@ -1,10 +1,11 @@
 """
-Redis-backed shared agent memory.
+Redis‑backed shared agent memory.
 
 Agents read and write structured observations to a shared Redis namespace.
-All data is JSON-serialised. Keys are namespaced under 'agent:memory:'.
+All data is JSON‑serialised. Keys are namespaced under ``agent:memory:``.
 
-Usage:
+Typical usage::
+
     mem = AgentMemory(redis_client)
     await mem.write("strategy_insight", {"strategy": "ema_stack_tv", "sharpe": 1.8})
     observations = await mem.read_recent("strategy_insight", n=20)
@@ -18,7 +19,7 @@ import json
 import logging
 import time
 import asyncio
-from typing import Any, List
+from typing import Any, List, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -41,42 +42,102 @@ except Exception:  # pragma: no cover
 
 
 class AgentMemory:
-    def __init__(self, redis_client: Any):
+    """
+    Helper around a Redis client for persisting agent observations.
+
+    The class maintains a short‑lived in‑memory cache of known topics to avoid
+    frequent round‑trips when enumerating topics. All payloads are JSON encoded
+    and contain a ``ts`` field with the Unix timestamp at write time.
+    """
+
+    def __init__(self, redis_client: Any) -> None:
+        """
+        Initialise the memory helper.
+
+        Parameters
+        ----------
+        redis_client: Any
+            An ``aioredis`` compatible client instance. The exact type is not
+            enforced to keep the class flexible for testing or alternative
+            implementations.
+        """
         self._r = redis_client
-        self._topics_cache: List[str] | None = None
+        self._topics_cache: Optional[List[str]] = None
         self._cache_timestamp: float = 0.0
         self._lock = asyncio.Lock()
 
     # ── Helper methods ────────────────────────────────────────────────────────
 
     def _key(self, topic: str, *, latest: bool = False) -> str:
-        """Construct a Redis key for a given topic."""
+        """
+        Build a Redis key for a given topic.
+
+        Parameters
+        ----------
+        topic: str
+            The memory topic name.
+        latest: bool, optional
+            If ``True`` a key for a single‑value slot is generated, otherwise a
+            list key is used. Defaults to ``False``.
+
+        Returns
+        -------
+        str
+            Fully‑qualified Redis key.
+        """
         if not topic:
             raise ValueError(_ERROR_TOPIC_INVALID)
         prefix = f"{_PREFIX}latest:" if latest else _PREFIX
         return f"{prefix}{topic}"
 
-    def _payload(self, data: dict) -> str:
-        """Serialise data with a timestamp."""
+    def _payload(self, data: Dict[str, Any]) -> str:
+        """
+        Serialise a payload with an attached timestamp.
+
+        Parameters
+        ----------
+        data: dict
+            The observation payload. ``None`` is treated as an empty dict.
+
+        Returns
+        -------
+        str
+            JSON string containing the original data plus a ``ts`` timestamp.
+        """
         if data is None:
             data = {}
         return json.dumps({"ts": time.time(), **data})
 
-    async def _log_error(self, operation: str, topic: str | None, exc: Exception) -> None:
-        """Log a Redis operation failure with structured context."""
+    async def _log_error(self, operation: str, topic: Optional[str], exc: Exception) -> None:
+        """
+        Emit a structured log entry for a failed Redis operation.
+
+        Parameters
+        ----------
+        operation: str
+            Name of the operation (e.g., ``write`` or ``read_recent``).
+        topic: str | None
+            The topic involved, if applicable.
+        exc: Exception
+            The caught exception.
+        """
         extra = {
             "operation": operation,
             "topic": topic,
             "error_type": type(exc).__name__,
             "error_msg": str(exc),
         }
-        logger.error(
-            "AgentMemory operation failed",
-            extra=extra,
-        )
+        logger.error("AgentMemory operation failed", extra=extra)
 
     async def _add_topic_to_set(self, topic: str) -> None:
-        """Ensure the topic is recorded in the Redis set of topics."""
+        """
+        Record a topic in the Redis ``topics`` set.
+
+        Parameters
+        ----------
+        topic: str
+            The topic to add.
+        """
         if not topic:
             await self._log_error("add_topic_to_set", topic, ValueError(_ERROR_TOPIC_INVALID))
             return
@@ -88,19 +149,45 @@ class AgentMemory:
             await self._log_error("add_topic_to_set", topic, e)
 
     def _decode_topics(self, raw_topics: Any) -> List[str]:
-        """Convert raw Redis topic members to a list of strings."""
+        """
+        Convert raw Redis topic members to a list of strings.
+
+        Parameters
+        ----------
+        raw_topics: Any
+            Iterable of bytes or string‑like objects returned by Redis.
+
+        Returns
+        -------
+        List[str]
+            Decoded topic names.
+        """
         return [
             t.decode() if isinstance(t, (bytes, bytearray)) else str(t)
             for t in raw_topics
         ]
 
     def _update_topics_cache(self, topics: List[str]) -> None:
-        """Refresh the in‑memory cache of topics."""
+        """
+        Refresh the in‑memory cache of known topics.
+
+        Parameters
+        ----------
+        topics: List[str]
+            The latest list of topics.
+        """
         self._topics_cache = topics
         self._cache_timestamp = time.time()
 
     async def _fetch_topics_from_redis(self) -> List[str]:
-        """Retrieve the set of topics from Redis, handling empty results."""
+        """
+        Retrieve the set of topics from Redis.
+
+        Returns
+        -------
+        List[str]
+            A list of topic names; empty if none are stored.
+        """
         raw_topics = await self._r.smembers(_TOPICS_SET_KEY)
         if not raw_topics:
             return []
@@ -108,8 +195,17 @@ class AgentMemory:
 
     # ── Write ─────────────────────────────────────────────────────────────────
 
-    async def write(self, topic: str, data: dict) -> None:
-        """Append an observation to a topic list with a timestamp."""
+    async def write(self, topic: str, data: Dict[str, Any]) -> None:
+        """
+        Append an observation to a topic list with a timestamp.
+
+        Parameters
+        ----------
+        topic: str
+            The memory topic name.
+        data: dict
+            Observation payload.
+        """
         if not topic:
             await self._log_error("write", topic, ValueError(_ERROR_TOPIC_EMPTY))
             return
@@ -124,8 +220,17 @@ class AgentMemory:
         except Exception as e:  # pragma: no cover
             await self._log_error("write", topic, e)
 
-    async def set_latest(self, topic: str, data: dict) -> None:
-        """Overwrite the latest value for a topic (single-value slot)."""
+    async def set_latest(self, topic: str, data: Dict[str, Any]) -> None:
+        """
+        Overwrite the latest value for a topic (single‑value slot).
+
+        Parameters
+        ----------
+        topic: str
+            The memory topic name.
+        data: dict
+            Observation payload.
+        """
         if not topic:
             await self._log_error("set_latest", topic, ValueError(_ERROR_TOPIC_EMPTY))
             return
@@ -141,8 +246,24 @@ class AgentMemory:
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
-    async def read_recent(self, topic: str, n: int = _DEFAULT_READ_RECENT_LIMIT) -> List[dict]:
-        """Return up to n most‑recent observations for a topic."""
+    async def read_recent(self, topic: str, n: int = _DEFAULT_READ_RECENT_LIMIT) -> List[Dict[str, Any]]:
+        """
+        Return up to ``n`` most‑recent observations for a topic.
+
+        Parameters
+        ----------
+        topic: str
+            The memory topic name.
+        n: int, optional
+            Maximum number of items to retrieve. Must be positive; defaults to
+            ``_DEFAULT_READ_RECENT_LIMIT``.
+
+        Returns
+        -------
+        List[dict]
+            List of deserialized observation payloads; empty on error or if the
+            topic does not exist.
+        """
         if not topic:
             await self._log_error("read_recent", topic, ValueError(_ERROR_TOPIC_EMPTY))
             return []
@@ -159,8 +280,20 @@ class AgentMemory:
             await self._log_error("read_recent", topic, e)
             return []
 
-    async def get_latest(self, topic: str) -> dict | None:
-        """Return the latest single‑value for a topic."""
+    async def get_latest(self, topic: str) -> Optional[Dict[str, Any]]:
+        """
+        Return the latest single‑value for a topic.
+
+        Parameters
+        ----------
+        topic: str
+            The memory topic name.
+
+        Returns
+        -------
+        dict | None
+            Deserialized payload if present; otherwise ``None``.
+        """
         if not topic:
             await self._log_error("get_latest", topic, ValueError(_ERROR_TOPIC_EMPTY))
             return None
@@ -176,7 +309,14 @@ class AgentMemory:
             return None
 
     async def read_all_topics(self) -> List[str]:
-        """List all memory topics currently stored, using a short‑lived cache."""
+        """
+        List all memory topics currently stored, using a short‑lived cache.
+
+        Returns
+        -------
+        List[str]
+            Cached or freshly fetched topic names.
+        """
         async with self._lock:
             now = time.time()
             if self._topics_cache is not None and (now - self._cache_timestamp) < _CACHE_TTL:
