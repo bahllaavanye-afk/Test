@@ -1,35 +1,210 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, ForeignKey, Numeric, DateTime, Boolean, Text
+from typing import List, Optional
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from pydantic import BaseModel, Field, validator
+
 from app.database import Base
 
 
 class RiskRule(Base):
     __tablename__ = "risk_rules"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    account_id: Mapped[str | None] = mapped_column(String, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=True, index=True)
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    account_id: Mapped[Optional[str]] = mapped_column(
+        String,
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     rule_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    risk_bucket: Mapped[str | None] = mapped_column(String(16))  # None=global, arbitrage, ml
+    risk_bucket: Mapped[Optional[str]] = mapped_column(String(16))  # None=global, arbitrage, ml
     threshold: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False)
     action: Mapped[str] = mapped_column(String(32), nullable=False)  # alert|halt_bucket|halt_all
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
-    events: Mapped[list["RiskEvent"]] = relationship("RiskEvent", back_populates="rule")
+    events: Mapped[List["RiskEvent"]] = relationship(
+        "RiskEvent", back_populates="rule"
+    )
 
 
 class RiskEvent(Base):
     __tablename__ = "risk_events"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    rule_id: Mapped[str | None] = mapped_column(String, ForeignKey("risk_rules.id", ondelete="SET NULL"))
-    account_id: Mapped[str] = mapped_column(String, ForeignKey("accounts.id"), index=True)
-    triggered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    value_at_trigger: Mapped[float | None] = mapped_column(Numeric(18, 6))
-    action_taken: Mapped[str | None] = mapped_column(String(64))
-    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    notes: Mapped[str | None] = mapped_column(Text)
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    rule_id: Mapped[Optional[str]] = mapped_column(
+        String, ForeignKey("risk_rules.id", ondelete="SET NULL")
+    )
+    account_id: Mapped[str] = mapped_column(
+        String, ForeignKey("accounts.id"), index=True
+    )
+    triggered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    value_at_trigger: Mapped[Optional[float]] = mapped_column(Numeric(18, 6))
+    action_taken: Mapped[Optional[str]] = mapped_column(String(64))
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
 
-    rule: Mapped["RiskRule | None"] = relationship("RiskRule", back_populates="events")
+    rule: Mapped[Optional["RiskRule"]] = relationship(
+        "RiskRule", back_populates="events"
+    )
+
+
+# Pydantic schemas -----------------------------------------------------------
+
+
+class RiskRuleSchema(BaseModel):
+    """Schema representing a risk rule configuration."""
+
+    id: str = Field(
+        ..., description="Unique identifier for the risk rule.", example="a1b2c3d4-5678-90ab-cdef-1234567890ab"
+    )
+    account_id: Optional[str] = Field(
+        None,
+        description="Identifier of the associated account; null indicates a global rule.",
+        example="acct_001",
+    )
+    rule_type: str = Field(
+        ...,
+        description="Category of the rule (e.g., 'max_position', 'drawdown_limit').",
+        example="max_position",
+    )
+    risk_bucket: Optional[str] = Field(
+        None,
+        description="Bucket grouping for risk aggregation (e.g., 'arbitrage', 'ml').",
+        example="ml",
+    )
+    threshold: float = Field(
+        ...,
+        description="Numeric threshold that triggers the rule.",
+        example=0.05,
+        gt=0,
+    )
+    action: str = Field(
+        ...,
+        description="Action to take when the rule is triggered.",
+        example="halt_bucket",
+    )
+    is_active: bool = Field(
+        True,
+        description="Flag indicating whether the rule is currently active.",
+    )
+    created_at: Optional[datetime] = Field(
+        None,
+        description="Timestamp when the rule was created.",
+        example="2024-01-15T12:34:56Z",
+    )
+    events: Optional[List["RiskEventSchema"]] = Field(
+        None,
+        description="List of events generated by this rule.",
+    )
+
+    @validator("rule_type")
+    def validate_rule_type(cls, v: str) -> str:
+        allowed = {"max_position", "drawdown_limit", "max_leverage", "custom"}
+        if v not in allowed:
+            raise ValueError(f"rule_type must be one of {allowed}")
+        return v
+
+    @validator("action")
+    def validate_action(cls, v: str) -> str:
+        allowed = {"alert", "halt_bucket", "halt_all"}
+        if v not in allowed:
+            raise ValueError(f"action must be one of {allowed}")
+        return v
+
+    class Config:
+        orm_mode = True
+        schema_extra = {
+            "example": {
+                "id": "a1b2c3d4-5678-90ab-cdef-1234567890ab",
+                "account_id": "acct_001",
+                "rule_type": "max_position",
+                "risk_bucket": "ml",
+                "threshold": 0.05,
+                "action": "halt_bucket",
+                "is_active": True,
+                "created_at": "2024-01-15T12:34:56Z",
+                "events": [],
+            }
+        }
+
+
+class RiskEventSchema(BaseModel):
+    """Schema representing an individual risk event."""
+
+    id: str = Field(
+        ..., description="Unique identifier for the risk event.", example="e1f2g3h4-5678-90ab-cdef-1234567890ab"
+    )
+    rule_id: Optional[str] = Field(
+        None,
+        description="Identifier of the rule that generated this event.",
+        example="a1b2c3d4-5678-90ab-cdef-1234567890ab",
+    )
+    account_id: str = Field(
+        ..., description="Account identifier linked to the event.", example="acct_001"
+    )
+    triggered_at: datetime = Field(
+        ...,
+        description="Timestamp when the event was triggered.",
+        example="2024-02-01T08:00:00Z",
+    )
+    value_at_trigger: Optional[float] = Field(
+        None,
+        description="Metric value that caused the trigger.",
+        example=0.07,
+    )
+    action_taken: Optional[str] = Field(
+        None,
+        description="Action performed in response to the event.",
+        example="halt_bucket",
+    )
+    resolved_at: Optional[datetime] = Field(
+        None,
+        description="Timestamp when the event was resolved.",
+        example="2024-02-01T09:30:00Z",
+    )
+    notes: Optional[str] = Field(
+        None,
+        description="Additional context or commentary for the event.",
+        example="Threshold exceeded due to sudden market move.",
+    )
+
+    @validator("action_taken")
+    def validate_action_taken(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        allowed = {"alert", "halt_bucket", "halt_all"}
+        if v not in allowed:
+            raise ValueError(f"action_taken must be one of {allowed}")
+        return v
+
+    class Config:
+        orm_mode = True
+        schema_extra = {
+            "example": {
+                "id": "e1f2g3h4-5678-90ab-cdef-1234567890ab",
+                "rule_id": "a1b2c3d4-5678-90ab-cdef-1234567890ab",
+                "account_id": "acct_001",
+                "triggered_at": "2024-02-01T08:00:00Z",
+                "value_at_trigger": 0.07,
+                "action_taken": "halt_bucket",
+                "resolved_at": "2024-02-01T09:30:00Z",
+                "notes": "Threshold exceeded due to sudden market move.",
+            }
+        }
+
+
+# Resolve forward references for nested schemas
+RiskRuleSchema.update_forward_refs()
+RiskEventSchema.update_forward_refs()
