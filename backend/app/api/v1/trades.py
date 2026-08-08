@@ -102,6 +102,16 @@ async def list_trades(
     current_user: User = Depends(get_current_user),
 ):
     """Return a list of recent trades for the current user with optional filters."""
+    # Input validation
+    if not isinstance(limit, int):
+        raise ValueError("limit must be an integer")
+    if limit < 1 or limit > 500:
+        raise ValueError("limit must be between 1 and 500 inclusive")
+    if symbol is not None and not isinstance(symbol, str):
+        raise ValueError("symbol must be a string if provided")
+    if account_id is not None and not isinstance(account_id, str):
+        raise ValueError("account_id must be a string if provided")
+
     # Guard against unexpected None or out‑of‑range values for limit.
     if limit is None:
         limit = 50
