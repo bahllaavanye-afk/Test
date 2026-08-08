@@ -54,6 +54,16 @@ def _find_latest_updated(states: Dict[str, Any]) -> Optional[str]:
     )
 
 
+def _most_common_label(label_counts: Counter) -> str:
+    """Return the most common label or 'unknown' if none exist."""
+    return label_counts.most_common(1)[0][0] if label_counts else "unknown"
+
+
+def _average_confidence(confidences: List[float]) -> float:
+    """Calculate the average confidence rounded to three decimals."""
+    return round(sum(confidences) / len(confidences), 3) if confidences else 0.0
+
+
 def _compute_aggregates(
     states: Dict[str, Any],
 ) -> Tuple[str, float, Optional[str]]:
@@ -69,8 +79,8 @@ def _compute_aggregates(
     confidences = _extract_confidences(states)
     latest_updated = _find_latest_updated(states)
 
-    overall_regime = label_counts.most_common(1)[0][0] if label_counts else "unknown"
-    avg_confidence = round(sum(confidences) / len(confidences), 3) if confidences else 0.0
+    overall_regime = _most_common_label(label_counts)
+    avg_confidence = _average_confidence(confidences)
     return overall_regime, avg_confidence, latest_updated
 
 
