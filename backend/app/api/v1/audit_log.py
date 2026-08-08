@@ -31,7 +31,7 @@ class AuditLogOut(BaseModel):
 
     This model mirrors the fields of :class:`app.models.audit_log.AuditLog` that
     are relevant for external consumption. It is used as the response model for
-    the ``/audit-log`` endpoint.
+    the ``/audit‑log`` endpoint.
 
     Attributes
     ----------
@@ -83,9 +83,55 @@ def _validate_limit(limit: Optional[int]) -> int:
     """
     if limit is None:
         raise ValueError("limit must not be None")
+    if not isinstance(limit, int):
+        raise ValueError(f"limit must be an integer, got {type(limit).__name__}")
     if limit < 1 or limit > 500:
         raise ValueError(f"limit must be between 1 and 500, got {limit}")
     return limit
+
+
+def _validate_user_id(user_id: str) -> str:
+    """Validate that a user identifier is a non‑empty string.
+
+    Raises ``ValueError`` if validation fails.
+
+    Parameters
+    ----------
+    user_id: str
+        Identifier to validate.
+
+    Returns
+    -------
+    str
+        The validated user identifier.
+    """
+    if not isinstance(user_id, str):
+        raise ValueError(f"user_id must be a string, got {type(user_id).__name__}")
+    if not user_id:
+        raise ValueError("user_id must not be empty")
+    return user_id
+
+
+def _validate_db_session(db: AsyncSession) -> AsyncSession:
+    """Validate that the provided database session is an AsyncSession instance.
+
+    Raises ``ValueError`` if validation fails.
+
+    Parameters
+    ----------
+    db: AsyncSession
+        The session to validate.
+
+    Returns
+    -------
+    AsyncSession
+        The validated database session.
+    """
+    if not isinstance(db, AsyncSession):
+        raise ValueError(
+            f"db must be an instance of AsyncSession, got {type(db).__name__}"
+        )
+    return db
 
 
 async def _fetch_audit_logs(
@@ -107,6 +153,12 @@ async def _fetch_audit_logs(
     List[AuditLog]
         List of audit log entries ordered by creation time descending.
     """
+    # Input validation
+    _validate_db_session(db)
+    _validate_user_id(user_id)
+    if not isinstance(limit, int):
+        raise ValueError(f"limit must be an integer, got {type(limit).__name__}")
+
     result = await db.execute(
         select(AuditLog)
         .where(AuditLog.user_id == user_id)
