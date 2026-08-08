@@ -110,5 +110,15 @@ def _include(router_obj: Optional[APIRouter], name: str) -> None:
         logger.error(LOG_ERROR_INCLUDE_ROUTER, name, exc)
 
 
-for r, n in _ROUTER_DEFINITIONS:
-    _include(r, n)
+def _register_routers(definitions: List[Tuple[Optional[APIRouter], str]]) -> None:
+    """Iterate over router definitions and include each safely.
+
+    This helper isolates the registration loop, improving readability and
+    allowing easier testing or future extension.
+    """
+    for router_obj, name in definitions:
+        _include(router_obj, name)
+
+
+# Register all routers defined in _ROUTER_DEFINITIONS
+_register_routers(_ROUTER_DEFINITIONS)
