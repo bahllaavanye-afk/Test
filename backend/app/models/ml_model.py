@@ -43,6 +43,30 @@ class MLModel(Base):
             return None
         return max(self.predictions, key=lambda p: p.ts)
 
+    def _validate_recent_predictions(self, recent: List["MLPrediction"]):
+        """Validate the recent predictions list."""
+        if not isinstance(recent, list):
+            raise ValueError("The 'recent' argument must be a list of MLPrediction objects.")
+        if not recent:
+            raise ValueError("The 'recent' list cannot be empty.")
+        for idx, pred in enumerate(recent):
+            if not isinstance(pred, MLPrediction):
+                raise ValueError(
+                    f"Item at index {idx} in 'recent' is not an MLPrediction instance."
+                )
+            if not isinstance(pred.ts, datetime):
+                raise ValueError(
+                    f"Prediction at index {idx} lacks a valid datetime timestamp."
+                )
+            if not isinstance(pred.prediction, str):
+                raise ValueError(
+                    f"Prediction at index {idx} lacks a valid 'prediction' string."
+                )
+            if not isinstance(pred.confidence, (float, int)):
+                raise ValueError(
+                    f"Prediction at index {idx} lacks a valid numeric 'confidence' value."
+                )
+
     def is_signal_strong(self, recent: List["MLPrediction"]) -> bool:
         """
         Determine if the entry signal meets tightened criteria.
@@ -52,14 +76,12 @@ class MLModel(Base):
         2. Prediction direction is not 'neutral'.
         3. At least CONFIRMATION_COUNT of the most recent predictions share the same direction.
         """
-        if not recent:
-            return False
+        self._validate_recent_predictions(recent)
 
         latest = max(recent, key=lambda p: p.ts)
         if latest.prediction == "neutral" or latest.confidence < ENTRY_CONFIDENCE_THRESHOLD:
             return False
 
-        # Count consecutive predictions with the same direction as the latest
         same_dir_count = 0
         for pred in sorted(recent, key=lambda p: p.ts, reverse=True):
             if pred.prediction == latest.prediction:
@@ -67,7 +89,7 @@ class MLModel(Base):
                 if same_dir_count >= CONFIRMATION_COUNT:
                     return True
             else:
-                break  # Stop counting once a different direction appears
+                break
 
         return False
 
@@ -79,15 +101,13 @@ class MLModel(Base):
         * Confidence drops below (ENTRY_CONFIDENCE_THRESHOLD - EXIT_CONFIDENCE_DROP), or
         * An opposite prediction appears within the recent window.
         """
-        if not recent:
-            return False
+        self._validate_recent_predictions(recent)
 
         latest = max(recent, key=lambda p: p.ts)
         confidence_floor = ENTRY_CONFIDENCE_THRESHOLD - EXIT_CONFIDENCE_DROP
         if latest.confidence < confidence_floor:
             return True
 
-        # Detect opposite direction within the recent predictions
         opposite = {"up": "down", "down": "up"}
         opposite_dir = opposite.get(latest.prediction)
         if opposite_dir:

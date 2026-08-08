@@ -119,7 +119,14 @@ async def get_fix_log(
     """Recent auto‑fixes applied by the QA monitor (requires auth).
 
     Returns the last *limit* entries from the fix log (newest last).
+
+    Raises:
+        ValueError: If *limit* is not a positive integer.
     """
+    if not isinstance(limit, int):
+        raise ValueError("limit must be an integer")
+    if limit <= 0:
+        raise ValueError("limit must be a positive integer")
     return _read_fix_log(limit)
 
 
