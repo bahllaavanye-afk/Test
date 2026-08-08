@@ -1,9 +1,11 @@
 """Pydantic v2 schemas for the Bot builder."""
 from __future__ import annotations
+
 import uuid
 from datetime import datetime
 from typing import Literal
-from pydantic import BaseModel, ConfigDict
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TriggerConfig(BaseModel):
@@ -18,7 +20,16 @@ class TriggerConfig(BaseModel):
 
 
 class ConditionConfig(BaseModel):
-    type: Literal["indicator", "price_vs_ma", "pnl", "time_window", "position_exists", "no_position", "ml_signal", "regime"]
+    type: Literal[
+        "indicator",
+        "price_vs_ma",
+        "pnl",
+        "time_window",
+        "position_exists",
+        "no_position",
+        "ml_signal",
+        "regime",
+    ]
     indicator: str | None = None
     period: int = 14
     operator: str = "<"   # < | > | == | != | crosses_above | crosses_below
@@ -96,10 +107,10 @@ class BotCreate(BaseModel):
     symbol: str
     market_type: str = "equity"
     trigger: TriggerConfig
-    conditions: list[ConditionConfig] = []
+    conditions: list[ConditionConfig] = Field(default_factory=list)
     condition_logic: str = "ALL"
     action: ActionConfig
-    exit_rules: list[ExitRuleConfig] = []
+    exit_rules: list[ExitRuleConfig] = Field(default_factory=list)
     template_id: str | None = None
 
 

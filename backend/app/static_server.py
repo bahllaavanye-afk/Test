@@ -3,15 +3,16 @@
 This wraps the existing app (`app.main:app`) so we do NOT modify main.py. Render
 builds `frontend/dist` (see render.yaml) and `start.sh` runs
 `uvicorn app.static_server:app`. The API routers are registered first on the
-imported app, so they always match before the SPA catch-all. If the build dir is
-missing (e.g. backend-only dev), the API still works and the catch-all no-ops.
+imported app, so they always match before the SPA catch‑all. If the build dir is
+missing (e.g. backend‑only dev), the API still works and the catch‑all no‑ops.
 
-Why this instead of Vercel: one deployment, one origin (no CORS), auto-deploys
+Why this instead of Vercel: one deployment, one origin (no CORS), auto‑deploys
 from main on Render — no separate frontend host or orphaned deployments.
 """
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Set
 
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,6 +22,15 @@ from app.main import app  # the existing FastAPI app — unchanged
 # frontend/dist relative to repo root (backend/app/static_server.py → ../../frontend/dist)
 _DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 _INDEX = _DIST / "index.html"
+
+# Pre‑compute a set of all static file paths (relative to _DIST) to avoid per‑request
+# filesystem look‑ups. This is cheap at startup and speeds up the catch‑all route.
+_STATIC_FILES: Set[str] = set()
+if _DIST.is_dir():
+    for file_path in _DIST.rglob("*"):
+        if file_path.is_file():
+            # Store the path relative to the dist directory using forward slashes.
+            _STATIC_FILES.add(str(file_path.relative_to(_DIST)).replace("\\", "/"))
 
 if _INDEX.is_file():
     _assets = _DIST / "assets"
@@ -33,9 +43,11 @@ if _INDEX.is_file():
         # (this route only runs when no registered API route matched first).
         if full_path.startswith(("api/", "ws/", "health")):
             return JSONResponse({"detail": "Not Found"}, status_code=404)
+
         # Serve a real static file if it exists (favicon, manifest, robots…),
-        # otherwise return the SPA shell so client-side routing works on any path.
-        candidate = _DIST / full_path
-        if full_path and candidate.is_file():
+        # otherwise return the SPA shell so client‑side routing works on any path.
+        if full_path and full_path in _STATIC_FILES:
+            candidate = _DIST / full_path
             return FileResponse(str(candidate))
+
         return FileResponse(str(_INDEX))

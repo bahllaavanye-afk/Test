@@ -2,7 +2,7 @@
 Redis-backed shared agent memory.
 
 Agents read and write structured observations to a shared Redis namespace.
-All data is JSON-serialised. Keys are namespaced under 'agent:memory:'.
+All data is JSON‑serialised. Keys are namespaced under 'agent:memory:'.
 
 Usage:
     mem = AgentMemory(redis_client)
@@ -70,10 +70,7 @@ class AgentMemory:
             "error_type": type(exc).__name__,
             "error_msg": str(exc),
         }
-        logger.error(
-            "AgentMemory operation failed",
-            extra=extra,
-        )
+        logger.error("AgentMemory operation failed", extra=extra)
 
     async def _add_topic_to_set(self, topic: str) -> None:
         """Ensure the topic is recorded in the Redis set of topics."""
@@ -109,35 +106,60 @@ class AgentMemory:
     # ── Write ─────────────────────────────────────────────────────────────────
 
     async def write(self, topic: str, data: dict) -> None:
-        """Append an observation to a topic list with a timestamp."""
+        """Append an observation to a topic list with a timestamp.
+
+        Optimized using a Redis pipeline to reduce round‑trips.
+        """
         if not topic:
             await self._log_error("write", topic, ValueError(_ERROR_TOPIC_EMPTY))
             return
         payload = self._payload(data)
         key = self._key(topic)
+
+        # Use pipeline if the client supports it; fall back to sequential calls otherwise.
         try:
-            await self._r.lpush(key, payload)
-            await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
-            await self._add_topic_to_set(topic)
-        except RedisError as e:
-            await self._log_error("write", topic, e)
-        except Exception as e:  # pragma: no cover
-            await self._log_error("write", topic, e)
+            pipe = self._r.pipeline()
+            await pipe.lpush(key, payload)
+            await pipe.ltrim(key, 0, _MAX_LIST_LEN - 1)
+            await pipe.sadd(_TOPICS_SET_KEY, topic)
+            await pipe.execute()
+        except (AttributeError, RedisError) as e:
+            # If pipeline is unavailable or fails, revert to the original sequential logic.
+            await self._log_error("write_pipeline", topic, e)
+            try:
+                await self._r.lpush(key, payload)
+                await self._r.ltrim(key, 0, _MAX_LIST_LEN - 1)
+                await self._add_topic_to_set(topic)
+            except RedisError as e2:
+                await self._log_error("write", topic, e2)
+            except Exception as e2:  # pragma: no cover
+                await self._log_error("write", topic, e2)
 
     async def set_latest(self, topic: str, data: dict) -> None:
-        """Overwrite the latest value for a topic (single-value slot)."""
+        """Overwrite the latest value for a topic (single‑value slot).
+
+        Optimized using a Redis pipeline.
+        """
         if not topic:
             await self._log_error("set_latest", topic, ValueError(_ERROR_TOPIC_EMPTY))
             return
         payload = self._payload(data)
         key = self._key(topic, latest=True)
+
         try:
-            await self._r.set(key, payload)
-            await self._add_topic_to_set(topic)
-        except RedisError as e:
-            await self._log_error("set_latest", topic, e)
-        except Exception as e:  # pragma: no cover
-            await self._log_error("set_latest", topic, e)
+            pipe = self._r.pipeline()
+            await pipe.set(key, payload)
+            await pipe.sadd(_TOPICS_SET_KEY, topic)
+            await pipe.execute()
+        except (AttributeError, RedisError) as e:
+            await self._log_error("set_latest_pipeline", topic, e)
+            try:
+                await self._r.set(key, payload)
+                await self._add_topic_to_set(topic)
+            except RedisError as e2:
+                await self._log_error("set_latest", topic, e2)
+            except Exception as e2:  # pragma: no cover
+                await self._log_error("set_latest", topic, e2)
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
