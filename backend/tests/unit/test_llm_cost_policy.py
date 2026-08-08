@@ -91,3 +91,41 @@ def test_employees_are_zero_spend_by_default():
     assert re.search(ALLOW_PAID_APIS_REGEX, src), (
         "employees must default ALLOW_PAID_APIS = False"
     )
+
+
+# -------------------------------------------------------------------------
+# Additional edge‑case tests
+# -------------------------------------------------------------------------
+
+def test_default_backstop_model_name_format():
+    """The captured backstop model name should consist only of allowed characters."""
+    src = _src(LLM_COMMON)
+    m = re.search(DEFAULT_BACKSTOP_REGEX, src)
+    assert m, "default backstop model not found"
+    model_name = m.group(1)
+    # Allowed characters: lowercase letters, digits, hyphens, underscores
+    assert re.fullmatch(r"[a-z0-9_-]+", model_name), (
+        f"Backstop model name contains invalid characters: {model_name!r}"
+    )
+
+
+def test_allow_paid_apis_flag_occurs_once():
+    """ALLOW_PAID_APIS should be set to False exactly once in agent_team.py."""
+    src = _src(AGENT_TEAM)
+    matches = list(re.finditer(ALLOW_PAID_APIS_REGEX, src))
+    assert matches, "ALLOW_PAID_APIS flag not found"
+    assert len(matches) == 1, f"ALLOW_PAID_APIS flag should appear once, found {len(matches)} times"
+
+
+def test_claude_backstop_guard_is_precise():
+    """The guard clause for Claude backstop must match the expected pattern exactly."""
+    src = _src(LLM_COMMON)
+    # Ensure there is a line that contains the guard regex without extra logical operators
+    guard_lines = [ln for ln in src.splitlines() if re.search(CLAUDE_BACKSTOP_GUARD_REGEX, ln)]
+    assert guard_lines, "Claude backstop guard clause not found"
+    # Verify that the guard line does not contain unintended additional conditions
+    for line in guard_lines:
+        # After the guard condition, there should be a colon and the block start
+        assert re.search(rf"{CLAUDE_BACKSTOP_GUARD_REGEX}\s*:", line), (
+            f"Guard clause format unexpected in line: {line!r}"
+        )
