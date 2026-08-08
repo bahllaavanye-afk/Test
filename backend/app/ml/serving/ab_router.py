@@ -1,10 +1,10 @@
 """
 A/B traffic router for ML model serving.
 
-Maintains an in-memory snapshot of release states refreshed lazily from DB.
+Maintains an in‑memory snapshot of release states refreshed lazily from DB.
 Routes each inference request to champion or challenger based on traffic_pct.
 
-Thread-safety: uses asyncio.Lock to prevent thundering-herd refreshes.
+Thread‑safety: uses asyncio.Lock to prevent thundering‑herd refreshes.
 """
 from __future__ import annotations
 
@@ -34,11 +34,11 @@ class RouteDecision(NamedTuple):
 
 class ABRouter:
     """
-    In-memory A/B router backed by the model_releases DB table.
+    In‑memory A/B router backed by the model_releases DB table.
 
     The snapshot is a dict mapping model_name → list of active release dicts.
     It is refreshed at most once per `refresh_interval_s` seconds using a
-    lazy-refresh strategy so the hot inference path is never blocked by a DB
+    lazy‑refresh strategy so the hot inference path is never blocked by a DB
     query (unless the cache is completely cold).
 
     Usage::
@@ -53,8 +53,11 @@ class ABRouter:
     def __init__(self, db_factory, refresh_interval_s: int = 60) -> None:
         self._db_factory = db_factory
         self._refresh_interval = refresh_interval_s
-        # model_name → list of {id, model_name, version, artifact_path, framework, status, traffic_pct}
+        # model_name → list of release dicts
         self._snapshot: dict[str, list[dict]] = {}
+        # fast‑lookup maps for champion / challenger per model
+        self._champions: dict[str, dict] = {}
+        self._challengers: dict[str, dict] = {}
         self._last_refresh: float = 0.0
         self._refresh_lock: asyncio.Lock = asyncio.Lock()
 
@@ -63,7 +66,7 @@ class ABRouter:
     async def refresh(self) -> None:
         """Reload champion/challenger/shadow state from DB."""
         async with self._refresh_lock:
-            # Double-checked locking: another coroutine may have refreshed while
+            # Double‑checked locking: another coroutine may have refreshed while
             # we were waiting for the lock.
             if time.monotonic() - self._last_refresh < self._refresh_interval:
                 return
@@ -88,6 +91,9 @@ class ABRouter:
                     rows = result.all()
 
                 snapshot: dict[str, list[dict]] = {}
+                champions: dict[str, dict] = {}
+                challengers: dict[str, dict] = {}
+
                 for row in rows:
                     entry = {
                         "id": row.id,
@@ -100,14 +106,21 @@ class ABRouter:
                     }
                     snapshot.setdefault(row.model_name, []).append(entry)
 
+                    if row.status == "champion":
+                        champions[row.model_name] = entry
+                    elif row.status == "challenger":
+                        challengers[row.model_name] = entry
+
                 self._snapshot = snapshot
+                self._champions = champions
+                self._challengers = challengers
                 self._last_refresh = time.monotonic()
                 logger.debug(
                     "ABRouter: snapshot refreshed",
                     n_models=len(snapshot),
                     total_releases=sum(len(v) for v in snapshot.values()),
                 )
-            except Exception as exc:
+            except Exception as exc:  # pragma: no cover
                 logger.error("ABRouter: refresh failed", error=str(exc))
 
     async def _maybe_refresh(self) -> None:
@@ -123,21 +136,20 @@ class ABRouter:
         Returns None if no champion exists for this model name.
 
         Traffic splitting:
-        - If no challenger: champion receives 100 % of calls.
-        - If challenger with traffic_pct=T: challenger receives T % of calls,
-          champion receives (100-T) %.
+        - If no challenger: champion receives 100 % of calls.
+        - If challenger with traffic_pct=T: challenger receives T % of calls,
+          champion receives (100‑T) % .
         - Shadow releases: never routed; use :meth:`route_shadow` for logging.
         """
         await self._maybe_refresh()
 
-        releases = self._snapshot.get(model_name, [])
-        champion = next((r for r in releases if r["status"] == "champion"), None)
-        challenger = next((r for r in releases if r["status"] == "challenger"), None)
-
+        champion = self._champions.get(model_name)
         if champion is None:
             return None
 
-        if challenger and random.random() * 100 < challenger["traffic_pct"]:
+        challenger = self._challengers.get(model_name)
+
+        if challenger and random.random() < challenger["traffic_pct"] / 100.0:
             chosen = challenger
         else:
             chosen = champion
@@ -154,33 +166,31 @@ class ABRouter:
 
     def get_champion(self, model_name: str) -> dict | None:
         """Return the champion release dict for *model_name* from the snapshot."""
-        return next(
-            (r for r in self._snapshot.get(model_name, []) if r["status"] == "champion"),
-            None,
-        )
+        return self._champions.get(model_name)
 
     def get_challenger(self, model_name: str) -> dict | None:
         """Return the challenger release dict for *model_name* from the snapshot, if any."""
-        return next(
-            (r for r in self._snapshot.get(model_name, []) if r["status"] == "challenger"),
-            None,
-        )
+        return self._challengers.get(model_name)
 
     def invalidate(self, model_name: str | None = None) -> None:
         """
-        Force the next call to route() to re-read from DB.
+        Force the next call to route() to re‑read from DB.
 
         Call this after any promote/archive action to prevent stale routing.
         Pass model_name to invalidate just one model, or None for full invalidation.
         """
         if model_name:
             self._snapshot.pop(model_name, None)
+            self._champions.pop(model_name, None)
+            self._challengers.pop(model_name, None)
         else:
             self._snapshot.clear()
+            self._champions.clear()
+            self._challengers.clear()
         self._last_refresh = 0.0
 
 
-# ── Module-level singleton ────────────────────────────────────────────────────
+# ── Module‑level singleton ────────────────────────────────────────────────────
 # Initialised in app startup (main.py lifespan or first use).
 _router: ABRouter | None = None
 
