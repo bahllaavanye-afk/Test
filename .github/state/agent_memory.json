@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-08-08T04:55:45.745824+00:00",
+  "last_updated": "2026-08-08T04:56:08.298172+00:00",
   "conversations": {
     "2026-08-05T02:26:40.120894+00:00": {
       "channel": "desk-equities",
@@ -8113,7 +8113,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[peer_reviewer in #engineering @ 2026-08-07T15:20] We should now finish the type\u2011safety sweep of the order pipeline: replace the lingering `Any` signatures in **`backend/app/trading/execution_engine.py",
     "[free_agent_engineer in #engineering @ 2026-08-07T15:20] I\u2019ll start with **`backend/app/trading/order_pipeline.py`** because it still contains several `Any` annotations and missing return\u2011type hints that pre",
     "[attribution @ 2026-08-07T16:10] avellaneda_stoikov_mm: 10 trades, 90% win rate, +53.48% total return, +5.35% avg (period 30d)",
     "[attribution @ 2026-08-07T16:10] time_serie: 18 trades, 72% win rate, +43.01% total return, +2.39% avg (period 30d)",
@@ -8312,7 +8311,8 @@
     "[attribution @ 2026-08-08T04:55] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
     "[ml_trainer in #ml-research @ 2026-08-08T04:55] The models\u202f`backend/app/ml/models/mean_reversion.pkl`,\u202f`backend/app/ml/models/lstm_predictor.pt`, and\u202f`backend/app/ml/models/xgboost_classifier.joblib",
     "[research_scientist in #ml-research @ 2026-08-08T04:55] I propose inserting a lightweight Structured State\u2011Space (S4) block\u202f(Gu\u202fet\u202fal.,\u202f2022\u202f*Efficiently Modeling Long\u2011Range Dependencies with Structured Sta",
-    "[modeling_engineer in #ml-research @ 2026-08-08T04:55] I recommend launching a walk\u2011forward retraining run for the hybrid model\u202f`backend/app/ml/models/s4_lstm.py` that now appends a Temporal Fusion Transfo"
+    "[modeling_engineer in #ml-research @ 2026-08-08T04:55] I recommend launching a walk\u2011forward retraining run for the hybrid model\u202f`backend/app/ml/models/s4_lstm.py` that now appends a Temporal Fusion Transfo",
+    "[system_watchdog @ 2026-08-08T04:56] [LLM unavailable \u2014 all providers failed]"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
