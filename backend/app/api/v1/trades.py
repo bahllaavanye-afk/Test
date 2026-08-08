@@ -1,6 +1,8 @@
-"""Trade history endpoints."""
+"""API endpoints for retrieving trade history."""
+
 import logging
 from datetime import datetime
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -20,7 +22,21 @@ logger = logging.getLogger(__name__)
 
 
 class TradeOut(BaseModel):
-    """Schema representing a trade record returned by the API."""
+    """Schema representing a trade record returned by the API.
+
+    Attributes:
+        id: Unique identifier for the trade.
+        symbol: Ticker symbol of the traded instrument.
+        side: Trade direction; either ``'buy'`` or ``'sell'``.
+        realized_pnl: Realized profit and loss in the account's base currency.
+        entry_price: Price at which the position was entered.
+        exit_price: Price at which the position was exited.
+        avg_fill_price: Average fill price used for chart markers.
+        quantity: Number of shares/contracts traded.
+        opened_at: Timestamp when the trade was opened.
+        closed_at: Timestamp when the trade was closed.
+        strategy_name: Name of the strategy that generated the trade.
+    """
 
     id: str = Field(..., description="Unique identifier for the trade.", json_schema_extra={"example": "trd_12345"})
     symbol: str = Field(..., description="Ticker symbol of the traded instrument.", json_schema_extra={"example": "AAPL"})
@@ -29,22 +45,22 @@ class TradeOut(BaseModel):
         description="Trade direction; either 'buy' or 'sell'.",
         json_schema_extra={"example": "buy"},
     )
-    realized_pnl: float | None = Field(
+    realized_pnl: Optional[float] = Field(
         None,
         description="Realized profit and loss in the account's base currency.",
         json_schema_extra={"example": 152.35},
     )
-    entry_price: float | None = Field(
+    entry_price: Optional[float] = Field(
         None,
         description="Price at which the position was entered.",
         json_schema_extra={"example": 145.30},
     )
-    exit_price: float | None = Field(
+    exit_price: Optional[float] = Field(
         None,
         description="Price at which the position was exited.",
         json_schema_extra={"example": 150.00},
     )
-    avg_fill_price: float | None = Field(
+    avg_fill_price: Optional[float] = Field(
         None,
         description=(
             "Average fill price used for chart markers. "
@@ -58,17 +74,17 @@ class TradeOut(BaseModel):
         description="Number of shares/contracts traded.",
         json_schema_extra={"example": 100},
     )
-    opened_at: datetime | None = Field(
+    opened_at: Optional[datetime] = Field(
         None,
         description="Timestamp when the trade was opened.",
         json_schema_extra={"example": "2023-01-01T09:30:00Z"},
     )
-    closed_at: datetime | None = Field(
+    closed_at: Optional[datetime] = Field(
         None,
         description="Timestamp when the trade was closed.",
         json_schema_extra={"example": "2023-01-01T15:45:00Z"},
     )
-    strategy_name: str | None = Field(
+    strategy_name: Optional[str] = Field(
         None,
         description="Name of the strategy that generated the trade.",
         json_schema_extra={"example": "mean_rev_20_2"},
@@ -79,7 +95,7 @@ class TradeOut(BaseModel):
     @field_validator("side")
     @classmethod
     def validate_side(cls, v: str) -> str:
-        """Ensure side is either 'buy' or 'sell'."""
+        """Ensure side is either ``'buy'`` or ``'sell'``."""
         if v not in {"buy", "sell"}:
             raise ValueError("side must be either 'buy' or 'sell'")
         return v
@@ -93,15 +109,26 @@ class TradeOut(BaseModel):
         return v
 
 
-@router.get("/", response_model=list[TradeOut])
+@router.get("/", response_model=List[TradeOut])
 async def list_trades(
     limit: int = Query(50, ge=1, le=500),
-    symbol: str | None = Query(None, description="Filter by symbol"),
-    account_id: str | None = Query(None, description="Filter by account ID"),
+    symbol: Optional[str] = Query(None, description="Filter by symbol"),
+    account_id: Optional[str] = Query(None, description="Filter by account ID"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
-    """Return a list of recent trades for the current user with optional filters."""
+) -> List[TradeOut]:
+    """Retrieve a list of recent trades for the authenticated user.
+
+    Args:
+        limit: Maximum number of trades to return (default 50, min 1, max 500).
+        symbol: Optional ticker symbol to filter trades.
+        account_id: Optional account identifier to filter trades.
+        db: Async SQLAlchemy session provided by the dependency injector.
+        current_user: The authenticated user extracted from the request context.
+
+    Returns:
+        A list of :class:`TradeOut` objects representing the requested trades.
+    """
     # Guard against unexpected None or out‑of‑range values for limit.
     if limit is None:
         limit = 50
