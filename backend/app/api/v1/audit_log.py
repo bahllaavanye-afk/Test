@@ -73,29 +73,6 @@ class AuditLogOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-def _validate_limit(limit: Optional[int]) -> int:
-    """Validate the ``limit`` query parameter.
-
-    Ensures the limit is not ``None`` and lies within the allowed range.
-    Raises ``ValueError`` if validation fails.
-
-    Parameters
-    ----------
-    limit: Optional[int]
-        The raw limit value from the request.
-
-    Returns
-    -------
-    int
-        The validated limit.
-    """
-    if limit is None:
-        raise ValueError("limit must not be None")
-    if limit < MIN_LIMIT or limit > MAX_LIMIT:
-        raise ValueError(f"limit must be between {MIN_LIMIT} and {MAX_LIMIT}, got {limit}")
-    return limit
-
-
 async def _fetch_audit_logs(
     db: AsyncSession, user_id: str, limit: int
 ) -> List[AuditLog]:
@@ -154,8 +131,6 @@ async def list_audit_log(
     ------
     HTTPException
         If the user is not authenticated.
-    ValueError
-        If ``limit`` is ``None`` or outside the allowed range.
     """
     if current_user is None:
         raise HTTPException(
@@ -163,6 +138,5 @@ async def list_audit_log(
             detail=AUTH_ERROR_DETAIL,
         )
 
-    validated_limit = _validate_limit(limit)
-    audit_logs = await _fetch_audit_logs(db, current_user.id, validated_limit)
+    audit_logs = await _fetch_audit_logs(db, current_user.id, limit)
     return audit_logs
