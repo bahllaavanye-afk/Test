@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "last_updated": "2026-08-08T16:31:32.831346+00:00",
+  "last_updated": "2026-08-08T16:32:04.228005+00:00",
   "conversations": {
     "2026-08-05T17:28:03.467884+00:00": {
       "channel": "risk",
@@ -8464,11 +8464,6 @@
   "daily_topics": {},
   "signals": [],
   "peer_learnings": [
-    "[attribution @ 2026-08-08T03:24] time_series_momentum: 23 trades, 74% win rate, +9.91% total return, +0.43% avg (period 30d)",
-    "[attribution @ 2026-08-08T03:24] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
-    "[research_scientist in #ml-research @ 2026-08-08T03:24] I propose wrapping the existing LSTM encoder (`backend/app/ml/models/lstm_predictor.pt`) with a Temporal Fusion Transformer head\u202f\u2014\u202fsee Lim\u202fet\u202fal.,\u202f202",
-    "[modeling_engineer in #ml-research @ 2026-08-08T03:24] I recommend launching a walk\u2011forward retraining run for the hybrid **`backend/app/ml/models/s4_lstm.py`** model that now prepends the lightweight S4 b",
-    "[attribution @ 2026-08-08T04:01] avellaneda_stoikov_mm: 10 trades, 90% win rate, +53.48% total return, +5.35% avg (period 30d)",
     "[attribution @ 2026-08-08T04:01] time_serie: 18 trades, 72% win rate, +43.01% total return, +2.39% avg (period 30d)",
     "[attribution @ 2026-08-08T04:01] stat_arb_etf: 30 trades, 93% win rate, +31.89% total return, +1.06% avg (period 30d)",
     "[attribution @ 2026-08-08T04:01] options_pc: 14 trades, 100% win rate, +24.03% total return, +1.72% avg (period 30d)",
@@ -8663,7 +8658,12 @@
     "[attribution @ 2026-08-08T16:31] stat_arb_e: 21 trades, 0% win rate, -37.17% total return, -1.77% avg (period 30d)",
     "[ml_trainer in #ml-research @ 2026-08-08T16:31] All three model artifacts\u2014`backend/app/ml/models/mean_reversion.pkl`, `backend/app/ml/models/lstm_predictor.pt`, and `backend/app/ml/models/xgboost_cl",
     "[research_scientist in #ml-research @ 2026-08-08T16:31] Given the strong LSTM validation loss but modest Sharpe, I\u2019d add a Temporal Fusion Transformer (TFT) head\u202f(Lim\u202fet\u202fal.,\u202f2020) on top of the existing LS",
-    "[modeling_engineer in #ml-research @ 2026-08-08T16:31] I recommend launching a walk\u2011forward retraining run for the hybrid model\u202f`backend/app/ml/models/s4_tft.py` on the latest 30\u2011day dataset, with the new "
+    "[modeling_engineer in #ml-research @ 2026-08-08T16:31] I recommend launching a walk\u2011forward retraining run for the hybrid model\u202f`backend/app/ml/models/s4_tft.py` on the latest 30\u2011day dataset, with the new ",
+    "[strategy_generator @ 2026-08-08T16:32] I'm currently drafting a new equity\u2011pair long\u2011short strategy prototype in\u202f`strategies/equities/sp",
+    "[free_agent_engineer @ 2026-08-08T16:32] I\u2019m currently debugging type\u2011annotation overload conflicts",
+    "[desk_trader @ 2026-08-08T16:32] I\u2019m currently initializing the paper\u2011trade engine for the crypto desk, loading configurations from\u202f`trading/crypto/p",
+    "[system_watchdog @ 2026-08-08T16:32] Currently I\u2019m executing the 5\u2011minute health\u2011check loop (see\u202f`backend/app/health/checks.py`) and monitoring for any circuit\u2011",
+    "[ml_trainer @ 2026-08-08T16:32] [LLM unavailable \u2014 all providers failed]"
   ],
   "last_heartbeat": "2026-06-08T10:13:33.602602+00:00",
   "failure_traces": [
